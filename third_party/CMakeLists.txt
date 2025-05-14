@@ -38,3 +38,13 @@ if (HAVE_WXWIDGETS)
 	set(wxBUILD_INSTALL OFF)
     add_subdirectory(wxWidgets)
 endif()
+
+# zlib
+option(HAVE_ZLIB "Enable zlib" OFF)
+if (HAVE_ZLIB)
+	set(ZLIB_BUILD_TESTING OFF)
+	set(ZLIB_BUILD_SHARED OFF)
+	set(ZLIB_INSTALL OFF)
+	set(ZLIB_INSTALL_COMPAT_DLL OFF)
+	add_subdirectory(zlib)
+endif()
