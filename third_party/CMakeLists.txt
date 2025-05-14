@@ -21,3 +21,7 @@ target_include_directories(Detours
 
 # nlohmann/json
 add_subdirectory(json)
+
+# wxWidgets
+set(wxBUILD_SHARED OFF)
+add_subdirectory(wxWidgets)

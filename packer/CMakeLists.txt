@@ -21,6 +21,7 @@ endfunction()
 
 set(loader_sources
     "main.cpp"
+    "resource.rc"
 )
 
 add_executable(${appbox_packer_name} WIN32 ${loader_sources})
@@ -31,7 +32,12 @@ appbox_setup_target_wall(${appbox_packer_name})
 ###############################################################################
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party third_party)
-target_link_libraries(${appbox_packer_name} PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(${appbox_packer_name}
+    PRIVATE
+        nlohmann_json::nlohmann_json
+        wx::core
+        wx::base
+)
 
 ###############################################################################
 # Install target
