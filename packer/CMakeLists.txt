@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.15)
-project(loader)
+project(packer)
 
-option(APPBOX_LOADER_SUFFIX "Suffix for executable" "")
-set(appbox_loader_name ${PROJECT_NAME}${APPBOX_LOADER_SUFFIX})
+option(APPBOX_PACKER_SUFFIX "Suffix for executable" "")
+set(appbox_packer_name ${PROJECT_NAME}${APPBOX_PACKER_SUFFIX})
 
 ###############################################################################
 # Support functions
@@ -23,18 +23,18 @@ set(loader_sources
     "main.cpp"
 )
 
-add_executable(${appbox_loader_name} WIN32 ${loader_sources})
-appbox_setup_target_wall(${appbox_loader_name})
+add_executable(${appbox_packer_name} WIN32 ${loader_sources})
+appbox_setup_target_wall(${appbox_packer_name})
 
 ###############################################################################
 # Dependency
 ###############################################################################
 
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party third_party)
-target_link_libraries(${appbox_loader_name} PRIVATE Detours)
+target_link_libraries(${appbox_packer_name} PRIVATE nlohmann_json::nlohmann_json)
 
 ###############################################################################
 # Install target
 ###############################################################################
 
-install(TARGETS ${appbox_loader_name})
+install(TARGETS ${appbox_packer_name})

@@ -1,4 +1,5 @@
 
+# microsoft/Detours
 set(DETOURS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/Detours)
 add_library(Detours STATIC
     ${DETOURS_ROOT}/src/creatwth.cpp
@@ -17,3 +18,6 @@ target_include_directories(Detours
         $<INSTALL_INTERFACE:include>
         $<BUILD_INTERFACE:${DETOURS_ROOT}/src>
 )
+
+# nlohmann/json
+add_subdirectory(json)
