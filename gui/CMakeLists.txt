@@ -1,8 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(appbox)
-
-option(APPBOX_DLL_SUFFIX "Suffix for library" "")
-set(appbox_lib_name ${PROJECT_NAME}${APPBOX_DLL_SUFFIX})
+project(gui)
 
 ###############################################################################
 # Support functions
@@ -16,34 +13,33 @@ function(appbox_setup_target_wall name)
 endfunction()
 
 ###############################################################################
-# Setup library
+# Setup executable
 ###############################################################################
 
-set(appbox_sources
-    "hooks/__init__.cpp"
-    "hooks/CreateFileA.cpp"
-    "hooks/CreateFileW.cpp"
-    "hooks/LoadLibraryA.cpp"
-    "hooks/LoadLibraryW.cpp"
-    "appbox.cpp"
+set(gui_sources
+    "main.cpp"
+    "resource.rc"
 )
 
-add_library(${appbox_lib_name} SHARED ${appbox_sources})
-appbox_setup_target_wall(${appbox_lib_name})
+add_executable(${PROJECT_NAME} WIN32 ${gui_sources})
+appbox_setup_target_wall(${PROJECT_NAME})
 
 ###############################################################################
 # Dependency
 ###############################################################################
 
-set(HAVE_DETOURS ON)
+set(HAVE_JSON ON)
+set(HAVE_WXWIDGETS ON)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party third_party)
-target_link_libraries(${appbox_lib_name} PRIVATE Detours)
-
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../utils utils)
-target_link_libraries(${appbox_lib_name} PRIVATE utils)
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+        nlohmann_json::nlohmann_json
+        wx::core
+        wx::base
+)
 
 ###############################################################################
 # Install target
 ###############################################################################
 
-install(TARGETS ${appbox_lib_name})
+install(TARGETS ${PROJECT_NAME})

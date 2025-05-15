@@ -121,11 +121,9 @@
 
 #include <Windows.h>
 
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
+int wmain(int argc, wchar_t* argv[])
 {
-    (void)hInstance;
-    (void)hPrevInstance;
-    (void)pCmdLine;
-    (void)nCmdShow;
+    (void)argc;
+    (void)argv;
     return 0;
 }

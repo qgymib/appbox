@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 project(packer)
 
-option(APPBOX_PACKER_SUFFIX "Suffix for executable" "")
-set(appbox_packer_name ${PROJECT_NAME}${APPBOX_PACKER_SUFFIX})
-
 ###############################################################################
 # Support functions
 ###############################################################################
@@ -21,26 +18,24 @@ endfunction()
 
 set(loader_sources
     "main.cpp"
-    "resource.rc"
 )
 
-add_executable(${appbox_packer_name} WIN32 ${loader_sources})
-appbox_setup_target_wall(${appbox_packer_name})
+add_executable(${PROJECT_NAME} ${loader_sources})
+appbox_setup_target_wall(${PROJECT_NAME})
 
 ###############################################################################
 # Dependency
 ###############################################################################
 
+set(HAVE_JSON ON)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party third_party)
-target_link_libraries(${appbox_packer_name}
+target_link_libraries(${PROJECT_NAME}
     PRIVATE
         nlohmann_json::nlohmann_json
-        wx::core
-        wx::base
 )
 
 ###############################################################################
 # Install target
 ###############################################################################
 
-install(TARGETS ${appbox_packer_name})
+install(TARGETS ${PROJECT_NAME})

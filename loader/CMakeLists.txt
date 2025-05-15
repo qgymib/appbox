@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 project(loader)
 
-option(APPBOX_LOADER_SUFFIX "Suffix for executable" "")
-set(appbox_loader_name ${PROJECT_NAME}${APPBOX_LOADER_SUFFIX})
-
 ###############################################################################
 # Support functions
 ###############################################################################
@@ -23,18 +20,19 @@ set(loader_sources
     "main.cpp"
 )
 
-add_executable(${appbox_loader_name} WIN32 ${loader_sources})
-appbox_setup_target_wall(${appbox_loader_name})
+add_executable(${PROJECT_NAME} WIN32 ${loader_sources})
+appbox_setup_target_wall(${PROJECT_NAME})
 
 ###############################################################################
 # Dependency
 ###############################################################################
 
+set(HAVE_DETOURS ON)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party third_party)
-target_link_libraries(${appbox_loader_name} PRIVATE Detours)
+target_link_libraries(${PROJECT_NAME} PRIVATE Detours)
 
 ###############################################################################
 # Install target
 ###############################################################################
 
-install(TARGETS ${appbox_loader_name})
+install(TARGETS ${PROJECT_NAME})

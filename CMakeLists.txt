@@ -7,34 +7,35 @@ ExternalProject_Add(appbox32
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/appbox
     CMAKE_ARGS
         -DAPPBOX_DLL_SUFFIX:STRING=32
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/appbox
+        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install
         -A Win32
-    BUILD_ALWAYS TRUE
 )
 
 ExternalProject_Add(appbox64
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/appbox
     CMAKE_ARGS
         -DAPPBOX_DLL_SUFFIX:STRING=64
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/appbox
+        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install
         -A x64
-    BUILD_ALWAYS TRUE
 )
 
-ExternalProject_Add(loader32
+ExternalProject_Add(loader
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/loader
     CMAKE_ARGS
-		-DAPPBOX_LOADER_SUFFIX:STRING=32
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/appbox
+        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install
         -A Win32
-    BUILD_ALWAYS TRUE
 )
 
-ExternalProject_Add(packer32
+ExternalProject_Add(packer
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/packer
     CMAKE_ARGS
-        -DAPPBOX_PACKER_SUFFIX:STRING=32
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/appbox
+        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install
         -A Win32
-    BUILD_ALWAYS TRUE
+)
+
+ExternalProject_Add(gui
+    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/gui
+    CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install
+        -A Win32
 )
