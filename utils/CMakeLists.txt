@@ -18,6 +18,7 @@ endfunction()
 
 set(utils_sources
     "crc32.cpp"
+    "winapi.cpp"
     "wstring.cpp"
     "zstream.cpp"
 )

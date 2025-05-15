@@ -30,12 +30,17 @@ appbox_setup_target_wall(${PROJECT_NAME})
 
 set(HAVE_DETOURS ON)
 set(HAVE_WXWIDGETS ON)
+set(HAVE_JSON ON)
+set(HAVE_ZLIB ON)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party third_party)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../utils utils)
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
+        nlohmann_json::nlohmann_json
         Detours
         wx::core
         wx::base
+        utils
 )
 
 ###############################################################################

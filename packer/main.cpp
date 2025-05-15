@@ -7,10 +7,10 @@
 #include <zlib.h>
 #include "macros.hpp"
 #include "crc32.hpp"
+#include "winapi.hpp"
 #include "wstring.hpp"
 #include "zstream.hpp"
 
-#define APPBOX_MAGIC "$APPBOX:"
 #define ZLIB_CHUNK 16384
 
 enum FileIsolation
@@ -39,10 +39,10 @@ struct StrIntPair
  */
 extern "C" struct FileRecord
 {
-    uint16_t path_len;    /* Path name length. */
-    uint8_t  isolation;   /* Isolation mode. */
-    uint8_t  attribute;   /* Bit-OR attribute. */
-    uint32_t payload_len; /* Payload size. */
+    uint32_t path_len;    /* Path name length. */
+    uint16_t isolation;   /* Isolation mode. */
+    uint16_t attribute;   /* Bit-OR attribute. */
+    uint64_t payload_len; /* Payload size. */
 };
 
 struct packer_ctx
@@ -143,13 +143,6 @@ static std::string s_load_file(const std::wstring& path)
     return content;
 }
 
-static std::wstring s_get_executable_path(void)
-{
-    wchar_t path[MAX_PATH];
-    GetModuleFileNameW(nullptr, path, MAX_PATH);
-    return path;
-}
-
 static size_t s_write_loader(void)
 {
     std::wstring loader_path = G->executable_path + L"\\loader.exe";
@@ -198,7 +191,7 @@ static int s_get_compress_level()
     return v.is_number() ? v.get<int>() : 0;
 }
 
-static uint8_t s_get_isolation(const std::string& isolation)
+static uint16_t s_get_isolation(const std::string& isolation)
 {
     static const StrIntPair s_kv[] = {
         { "full",       ISOLATION_FULL       },
@@ -217,7 +210,7 @@ static uint8_t s_get_isolation(const std::string& isolation)
     return ISOLATION_FULL;
 }
 
-static uint8_t s_get_attribute(const nlohmann::json& attr)
+static uint16_t s_get_attribute(const nlohmann::json& attr)
 {
     static const StrIntPair s_kv[] = {
         { "file",     0                  },
@@ -290,7 +283,7 @@ static void s_write_filesystem()
 
         FileRecord record;
         memset(&record, 0, sizeof(record));
-        record.path_len = (uint16_t)path.size();
+        record.path_len = (uint32_t)path.size();
         record.isolation = s_get_isolation(isolation);
         record.attribute = s_get_attribute(file["attribute"]);
 
@@ -300,10 +293,7 @@ static void s_write_filesystem()
         {
             throw std::runtime_error("Failed to open file");
         }
-
-        LARGE_INTEGER fileSize;
-        GetFileSizeEx(hFile, &fileSize);
-        record.payload_len = (uint32_t)fileSize.QuadPart;
+        record.payload_len = appbox::GetFileSize(hFile);
 
         G->deflate_stream->deflate(&record, sizeof(record));
         G->deflate_stream->deflate(path.c_str(), path.size());
@@ -359,7 +349,7 @@ int wmain(int argc, wchar_t* argv[])
     s_parse_cmd(argc, argv);
     G->template_data = s_load_file(G->template_path);
     G->template_json = nlohmann::json::parse(G->template_data);
-    G->executable_path = s_get_executable_path();
+    G->executable_path = appbox::exepath();
 
     G->target_handle = CreateFileW(G->executable_path.c_str(), GENERIC_WRITE, 0, nullptr,
                                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -370,9 +360,9 @@ int wmain(int argc, wchar_t* argv[])
 
     G->offset_magic = s_write_loader();
     s_write_magic();
+    s_write_metadata();
     s_write_filesystem();
     s_write_registry();
-    s_write_metadata();
     s_write_magic();
     s_write_offset();
     s_write_crc32();

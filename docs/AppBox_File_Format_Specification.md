@@ -12,6 +12,12 @@ The AppBox file layout is defined as following:
   |-------------------|
   | MAGIC             | # 8 bytes binary data.
   |-------------------|
+  | Metadata Length   | # 8 bytes.
+  |-------------------|
+  | Metadata          | # JSON data.
+  |-------------------|
+  | MAGIC             | # 8 bytes binary data.
+  |-------------------|
   | Filesystem Length | # 8 bytes.
   |-------------------|
   | Filesystem        | # Compressed data
@@ -19,12 +25,6 @@ The AppBox file layout is defined as following:
   | Registry Length   | # 8 bytes.
   |-------------------|
   | Registry          | # Compressed data
-  |-------------------|
-  | Metadata Length   | # 8 bytes.
-  |-------------------|
-  | Metadata          | # Compressed data
-  |-------------------|
-  | MAGIC             | # 8 bytes binary data.
   |-------------------|
   | OFFSET            | # 8 bytes.
   |-------------------|
@@ -78,7 +78,7 @@ A CRC32 code for [n-20, n-4] bytes, ensures the [OFFSET](#offset) value is corre
 
 ## Metadata Details
 
-Metadata is a compressed json encoding in UTF-8:
+Metadata is a JSON encoding in UTF-8:
 
 ```json
 {

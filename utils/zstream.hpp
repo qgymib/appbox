@@ -24,6 +24,20 @@ private:
     struct Data* m_data;
 };
 
+class ZInflateStream
+{
+public:
+    ZInflateStream(const void* data, size_t size);
+    ~ZInflateStream();
+
+public:
+    size_t inflate(void* buff, size_t size);
+
+private:
+    struct Data;
+    struct Data* m_data;
+};
+
 } // namespace appbox
 
 #endif

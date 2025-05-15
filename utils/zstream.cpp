@@ -16,6 +16,8 @@ appbox::ZDeflateStream::ZDeflateStream(HANDLE hFile, int level)
 {
     m_data = new Data;
     m_data->hFile = hFile;
+
+    memset(&m_data->stream, 0, sizeof(m_data->stream));
     if (deflateInit(&m_data->stream, level) != Z_OK)
     {
         throw std::runtime_error("deflateInit failed");
@@ -82,4 +84,44 @@ size_t appbox::ZDeflateStream::deflate(HANDLE file)
     }
 
     return total_write_sz;
+}
+
+struct appbox::ZInflateStream::Data
+{
+    z_stream    stream;
+    const void* data;
+    size_t      size;
+};
+
+appbox::ZInflateStream::ZInflateStream(const void* data, size_t size)
+{
+    m_data = new Data;
+    m_data->data = data;
+    m_data->size = size;
+
+    memset(&m_data->stream, 0, sizeof(m_data->stream));
+    if (::inflateInit(&m_data->stream) != Z_OK)
+    {
+        throw std::runtime_error("inflateInit failed");
+    }
+    m_data->stream.next_in = (Bytef*)data;
+    m_data->stream.avail_in = (uInt)size;
+}
+
+appbox::ZInflateStream::~ZInflateStream()
+{
+    ::inflateEnd(&m_data->stream);
+    delete m_data;
+}
+
+size_t appbox::ZInflateStream::inflate(void* buff, size_t size)
+{
+    m_data->stream.avail_out = (uInt)size;
+    m_data->stream.next_out = (Bytef*)buff;
+    int ret = ::inflate(&m_data->stream, Z_NO_FLUSH);
+    if (ret == Z_STREAM_ERROR)
+    {
+        throw std::runtime_error("inflateInflate failed");
+    }
+    return (ret == Z_STREAM_END) ? 0 : (size - m_data->stream.avail_out);
 }
