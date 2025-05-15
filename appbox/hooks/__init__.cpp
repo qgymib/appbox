@@ -1,8 +1,7 @@
 #include <Windows.h>
 #include <detours.h>
+#include "macros.hpp"
 #include "__init__.hpp"
-
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
 
 static appbox::hook::Func* s_hooks[] = {
     &appbox::hook::CreateFileA,

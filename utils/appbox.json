@@ -1,0 +1,41 @@
+{
+    "settings": {
+        "packer": {
+            "compression": 0
+        }
+    },
+    "filesystem": {
+        [
+            {
+                "path": "%LocalAppData%\\AppBox\\gui.exe",
+                "isolation": "full",
+                "attribute": ["file", "startup"],
+                "copy": "gui.exe"
+            },
+            {
+                "path": "%LocalAppData%\\AppBox\\loader.exe",
+                "isolation": "full",
+                "attribute": ["file"],
+                "copy": "loader.exe"
+            },
+            {
+                "path": "%LocalAppData%\\AppBox\\packer.exe",
+                "isolation": "full",
+                "attribute": ["file"],
+                "copy": "packer.exe"
+            },
+            {
+                "path": "%LocalAppData%\\AppBox\\appbox32.dll",
+                "isolation": "full",
+                "attribute": ["file"],
+                "copy": "appbox32.dll"
+            },
+            {
+                "path": "%LocalAppData%\\AppBox\\appbox64.dll",
+                "isolation": "full",
+                "attribute": ["file"],
+                "copy": "appbox64.dll"
+            }
+        ]
+    }
+}

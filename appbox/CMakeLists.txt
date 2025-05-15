@@ -36,6 +36,7 @@ appbox_setup_target_wall(${appbox_lib_name})
 ###############################################################################
 
 set(HAVE_DETOURS ON)
+set(HAVE_ZLIB ON)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party third_party)
 target_link_libraries(${appbox_lib_name} PRIVATE Detours)
 

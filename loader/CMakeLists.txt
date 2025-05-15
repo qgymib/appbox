@@ -18,6 +18,7 @@ endfunction()
 
 set(loader_sources
     "main.cpp"
+    "resource.rc"
 )
 
 add_executable(${PROJECT_NAME} WIN32 ${loader_sources})
@@ -28,8 +29,14 @@ appbox_setup_target_wall(${PROJECT_NAME})
 ###############################################################################
 
 set(HAVE_DETOURS ON)
+set(HAVE_WXWIDGETS ON)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party third_party)
-target_link_libraries(${PROJECT_NAME} PRIVATE Detours)
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+        Detours
+        wx::core
+        wx::base
+)
 
 ###############################################################################
 # Install target
