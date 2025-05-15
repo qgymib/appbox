@@ -15,7 +15,7 @@
         "file",
         "startup"
       ],
-      "copy": "gui.exe"
+      "source": "gui.exe"
     },
     {
       "path": "%LocalAppData%\\AppBox\\loader.exe",
@@ -23,7 +23,7 @@
       "attribute": [
         "file"
       ],
-      "copy": "loader.exe"
+      "source": "loader.exe"
     },
     {
       "path": "%LocalAppData%\\AppBox\\packer.exe",
@@ -31,23 +31,23 @@
       "attribute": [
         "file"
       ],
-      "copy": "packer.exe"
+      "source": "packer.exe"
     },
     {
-      "path": "%LocalAppData%\\AppBox\\appbox32.dll",
+      "path": "%LocalAppData%\\AppBox\\sandbox32.dll",
       "isolation": "full",
       "attribute": [
         "file"
       ],
-      "copy": "appbox32.dll"
+      "source": "sandbox32.dll"
     },
     {
-      "path": "%LocalAppData%\\AppBox\\appbox64.dll",
+      "path": "%LocalAppData%\\AppBox\\sandbox64.dll",
       "isolation": "full",
       "attribute": [
         "file"
       ],
-      "copy": "appbox64.dll"
+      "source": "sandbox64.dll"
     }
   ],
   "network": {}

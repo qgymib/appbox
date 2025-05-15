@@ -48,9 +48,10 @@ struct packer_ctx
     packer_ctx();
     ~packer_ctx();
 
-    std::wstring template_path;   /* Template file path. */
-    std::wstring target_path;     /* Target file path. */
-    std::wstring executable_path; /* Where we are. */
+    std::wstring              loader_path;   /* Loader path. */
+    std::wstring              template_path; /* Template file path. */
+    std::wstring              target_path;   /* Target file path. */
+    spdlog::level::level_enum log_level;     /* Log level. */
 
     std::string    template_data; /* Content of the template file. Encoding: UTF-8. */
     nlohmann::json template_json; /* Json data of template file. */
@@ -67,7 +68,11 @@ struct packer_ctx
 static const wchar_t* s_help = L""
 "Pack executable and resources into on file."
 "Usage: packer [OPTIONS] target\n"
-"  --template=\n"
+"  --loader=[PATH]\n"
+"    Loader path.\n"
+"  --loglevel=[trace|debug|info|warn|error|critical|off]\n"
+"    Set log leve.\n"
+"  --template=[in]\n"
 "    Template file path.\n"
 "  -h, --help\n"
 "    Show this help and exit.\n";
@@ -77,6 +82,7 @@ static packer_ctx* G = nullptr;
 
 packer_ctx::packer_ctx()
 {
+    log_level = spdlog::level::info;
     target_handle = INVALID_HANDLE_VALUE;
     offset_magic = 0;
     offset_filesystem = 0;
@@ -89,6 +95,33 @@ packer_ctx::~packer_ctx()
         CloseHandle(target_handle);
         target_handle = INVALID_HANDLE_VALUE;
     }
+}
+
+struct WStrIntPair
+{
+    const wchar_t* str;
+    int            val;
+};
+
+static spdlog::level::level_enum s_parse_loglevel(const wchar_t* level)
+{
+    static const WStrIntPair s_kv[] = {
+        { L"trace",    spdlog::level::trace    },
+        { L"debug",    spdlog::level::debug    },
+        { L"info",     spdlog::level::info     },
+        { L"warn",     spdlog::level::warn     },
+        { L"error",    spdlog::level::err      },
+        { L"critical", spdlog::level::critical },
+        { L"off",      spdlog::level::off      },
+    };
+    for (size_t i = 0; i < ARRAY_SIZE(s_kv); i++)
+    {
+        if (wcscmp(level, s_kv[i].str) == 0)
+        {
+            return static_cast<spdlog::level::level_enum>(s_kv[i].val);
+        }
+    }
+    return spdlog::level::info;
 }
 
 static void s_parse_cmd(int argc, wchar_t* argv[])
@@ -111,7 +144,34 @@ static void s_parse_cmd(int argc, wchar_t* argv[])
             continue;
         }
 
+        opt = L"--loader=";
+        optlen = wcslen(opt);
+        if (wcsncmp(argv[i], opt, optlen) == 0)
+        {
+            G->loader_path = argv[i] + optlen;
+            continue;
+        }
+
+        opt = L"--loglevel=";
+        optlen = wcslen(opt);
+        if (wcsncmp(argv[i], opt, optlen) == 0)
+        {
+            G->log_level = s_parse_loglevel(argv[i] + optlen);
+            continue;
+        }
+
         G->target_path = argv[i];
+    }
+
+    if (G->template_path.empty())
+    {
+        spdlog::error("Missing argument `--template`");
+        exit(EXIT_FAILURE);
+    }
+    if (G->loader_path.empty())
+    {
+        spdlog::error("Missing argument `--loader`");
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -132,7 +192,7 @@ static std::string s_load_file(const std::wstring& path)
     std::string content;
     char        buff[4096];
     DWORD       read_sz;
-    while (ReadFile(hFile, buff, sizeof(buff), &read_sz, nullptr))
+    while (ReadFile(hFile, buff, sizeof(buff), &read_sz, nullptr) && read_sz != 0)
     {
         content.append(buff, read_sz);
     }
@@ -143,8 +203,7 @@ static std::string s_load_file(const std::wstring& path)
 
 static size_t s_write_loader(void)
 {
-    std::wstring loader_path = G->executable_path + L"\\loader.exe";
-    std::string  loader_data = s_load_file(loader_path);
+    std::string loader_data = s_load_file(G->loader_path);
 
     DWORD write_sz = 0;
     if (!WriteFile(G->target_handle, loader_data.c_str(), loader_data.size(), &write_sz, nullptr))
@@ -276,8 +335,7 @@ static void s_write_filesystem()
         std::string    path = file["path"].get<std::string>();
         std::string    isolation = json_get_default(file["isolation"], "full");
         std::string    type = json_get_default(file["type"], "file");
-        std::string    copy = file["copy"].get<std::string>();
-        std::wstring   copy_w = appbox::mbstowcs(copy.c_str(), CP_UTF8);
+        std::wstring   source = appbox::mbstowcs(file["source"].get<std::string>(), CP_UTF8);
 
         FileRecord record;
         memset(&record, 0, sizeof(record));
@@ -285,16 +343,20 @@ static void s_write_filesystem()
         record.isolation = s_get_isolation(isolation);
         record.attribute = s_get_attribute(file["attribute"]);
 
-        HANDLE hFile = CreateFileW(copy_w.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+        spdlog::debug(L"Processing {}", source);
+        HANDLE hFile = CreateFileW(source.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
                                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (hFile == INVALID_HANDLE_VALUE)
         {
-            throw std::runtime_error("Failed to open file");
+            spdlog::error(L"Failed to open {}", source);
         }
         record.payload_len = appbox::GetFileSize(hFile);
 
+        spdlog::debug("deflate header");
         G->deflate_stream->deflate(&record, sizeof(record));
+        spdlog::debug("deflate path");
         G->deflate_stream->deflate(path.c_str(), path.size());
+        spdlog::debug("deflate file");
         G->deflate_stream->deflate(hFile);
         CloseHandle(hFile);
     }
@@ -346,25 +408,44 @@ int wmain(int argc, wchar_t* argv[])
     G = new packer_ctx;
     atexit(s_at_exit);
 
+    spdlog::info("Welcome to use AppBox Packer");
     s_parse_cmd(argc, argv);
+    spdlog::set_level(G->log_level);
+
     G->template_data = s_load_file(G->template_path);
     G->template_json = nlohmann::json::parse(G->template_data);
-    G->executable_path = appbox::GetExePath();
 
-    G->target_handle = CreateFileW(G->executable_path.c_str(), GENERIC_WRITE, 0, nullptr,
-                                   CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    G->target_handle = CreateFileW(G->target_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                   FILE_ATTRIBUTE_NORMAL, nullptr);
     if (G->target_handle == INVALID_HANDLE_VALUE)
     {
-        throw std::runtime_error("Failed to open file");
+        spdlog::critical(L"Failed to open file {}", G->target_path);
+        exit(EXIT_FAILURE);
     }
+    spdlog::info(L"Open target {}", G->target_path);
 
+    spdlog::info(L"Writing loader {}", G->loader_path);
     G->offset_magic = s_write_loader();
+
+    spdlog::info(L"Writing magic");
     s_write_magic();
+
+    spdlog::info(L"Writing metadata");
     s_write_metadata();
+
+    spdlog::info(L"Writing filesystem");
     s_write_filesystem();
+
+    spdlog::info(L"Writing registry");
     s_write_registry();
+
+    spdlog::info(L"Writing magic");
     s_write_magic();
+
+    spdlog::info(L"Writing offset");
     s_write_offset();
+
+    spdlog::info(L"Writing crc32");
     s_write_crc32();
 
     return 0;

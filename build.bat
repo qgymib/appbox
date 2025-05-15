@@ -19,7 +19,7 @@ if %errorlevel% neq 0 exit /b %errorlevel%
 ::spdlog
 set SPDLOG_SOURCE_DIR=%SOURCE_DIR%\third_party\spdlog
 set SPDLOG_BUILD_DIR=%BUILD_DIR%\spdlog32
-cmake -B %SPDLOG_BUILD_DIR% -DCMAKE_INSTALL_PREFIX:PATH=%INSTALL_DIR%\Win32 -A Win32 %SPDLOG_SOURCE_DIR%
+cmake -B %SPDLOG_BUILD_DIR% -DCMAKE_INSTALL_PREFIX:PATH=%INSTALL_DIR%\Win32 -DSPDLOG_BUILD_EXAMPLE=OFF -DSPDLOG_WCHAR_SUPPORT=ON -DSPDLOG_WCHAR_FILENAMES=ON -DSPDLOG_WCHAR_CONSOLE=ON -A Win32 %SPDLOG_SOURCE_DIR%
 if %errorlevel% neq 0 exit /b %errorlevel%
 cmake --build %SPDLOG_BUILD_DIR% --config %BUILD_TYPE%
 if %errorlevel% neq 0 exit /b %errorlevel%

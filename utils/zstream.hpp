@@ -87,10 +87,10 @@ size_t ZDeflateStream::deflate(HANDLE file)
     DWORD  read_sz = 0;
     size_t total_write_sz = 0;
 
-    while (ReadFile(file, this->cache_out, sizeof(this->cache_out), &read_sz, nullptr) ||
-           read_sz == 0)
+    while (ReadFile(file, this->cache_in, sizeof(this->cache_in), &read_sz, nullptr) &&
+           read_sz != 0)
     {
-        total_write_sz += deflate(this->cache_out, read_sz);
+        total_write_sz += deflate(this->cache_in, read_sz);
     }
 
     return total_write_sz;

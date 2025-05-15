@@ -15,6 +15,10 @@ ExternalProject_Add(spdlog32
     SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/spdlog
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install/Win32
+        -DSPDLOG_BUILD_EXAMPLE=OFF
+        -DSPDLOG_WCHAR_SUPPORT=ON
+        -DSPDLOG_WCHAR_FILENAMES=ON
+        -DSPDLOG_WCHAR_CONSOLE=ON
         -A Win32
 )
 

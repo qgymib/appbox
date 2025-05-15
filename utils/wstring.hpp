@@ -45,6 +45,11 @@ inline std::wstring mbstowcs(const char* s, int codepage = CP_ACP)
     return appbox::mbstowcs(s, (size_t)-1, codepage);
 }
 
+inline std::wstring mbstowcs(const std::string& s, int codepage = CP_ACP)
+{
+    return appbox::mbstowcs(s.c_str(), s.size(), codepage);
+}
+
 /**
  * Converts a wide string to a multibyte string using the specified code page,
  * with a limitation on the number of characters to process.
