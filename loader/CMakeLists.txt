@@ -24,24 +24,45 @@ set(loader_sources
 add_executable(${PROJECT_NAME} WIN32 ${loader_sources})
 appbox_setup_target_wall(${PROJECT_NAME})
 
+target_include_directories(${PROJECT_NAME}
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../utils
+)
+
 ###############################################################################
 # Dependency
 ###############################################################################
 
 set(HAVE_DETOURS ON)
-set(HAVE_WXWIDGETS ON)
-set(HAVE_JSON ON)
-set(HAVE_ZLIB ON)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party third_party)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../utils utils)
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
-        nlohmann_json::nlohmann_json
         Detours
-        wx::core
-        wx::base
-        utils
 )
+
+option(JSON_SEARCH_PATH "Search path for nlohmann_json" OFF)
+if (JSON_SEARCH_PATH)
+    find_package(nlohmann_json REQUIRED PATHS ${JSON_SEARCH_PATH} NO_DEFAULT_PATH)
+else ()
+    find_package(nlohmann_json REQUIRED)
+endif ()
+target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
+
+option(WXWIDGETS_SEARCH_PATH "Search path for wxWidgets" OFF)
+if (WXWIDGETS_SEARCH_PATH)
+    find_package(wxWidgets REQUIRED COMPONENTS core base PATHS ${WXWIDGETS_SEARCH_PATH} NO_DEFAULT_PATH)
+else()
+    find_package(wxWidgets REQUIRED COMPONENTS core base)
+endif()
+target_link_libraries(${PROJECT_NAME} PRIVATE wx::core wx::base)
+
+option(ZLIB_SEARCH_PATH "Search path for zlib" OFF)
+if (ZLIB_SEARCH_PATH)
+    find_package(zlib REQUIRED PATHS ${ZLIB_SEARCH_PATH} NO_DEFAULT_PATH)
+else()
+    find_package(zlib REQUIRED)
+endif()
+target_link_libraries(${PROJECT_NAME} PRIVATE ZLIB::ZLIBSTATIC)
 
 ###############################################################################
 # Install target

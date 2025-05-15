@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.15)
-project(appbox)
+project(sandbox)
 
-option(APPBOX_DLL_SUFFIX "Suffix for library" "")
-set(appbox_lib_name ${PROJECT_NAME}${APPBOX_DLL_SUFFIX})
+option(APPBOX_SANDBOX_SUFFIX "Suffix for library" "")
+set(sandbox_name ${PROJECT_NAME}${APPBOX_SANDBOX_SUFFIX})
 
 ###############################################################################
 # Support functions
@@ -28,23 +28,24 @@ set(appbox_sources
     "appbox.cpp"
 )
 
-add_library(${appbox_lib_name} SHARED ${appbox_sources})
-appbox_setup_target_wall(${appbox_lib_name})
+add_library(${sandbox_name} SHARED ${appbox_sources})
+appbox_setup_target_wall(${sandbox_name})
+
+target_include_directories(${sandbox_name}
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../utils
+)
 
 ###############################################################################
 # Dependency
 ###############################################################################
 
 set(HAVE_DETOURS ON)
-set(HAVE_ZLIB ON)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party third_party)
-target_link_libraries(${appbox_lib_name} PRIVATE Detours)
-
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../utils utils)
-target_link_libraries(${appbox_lib_name} PRIVATE utils)
+target_link_libraries(${sandbox_name} PRIVATE Detours)
 
 ###############################################################################
 # Install target
 ###############################################################################
 
-install(TARGETS ${appbox_lib_name})
+install(TARGETS ${sandbox_name})

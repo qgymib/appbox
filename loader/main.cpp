@@ -3,9 +3,9 @@
 #include <vector>
 #include <stdexcept>
 #include <nlohmann/json.hpp>
+#include <zlib.h>
 #include "winapi.hpp"
 #include "macros.hpp"
-#include "crc32.hpp"
 
 union UnionData4 {
     uint8_t  bin[4];
@@ -144,7 +144,8 @@ static void s_parse_magic_offset()
     }
 
     UnionData4 crc;
-    crc.val = appbox::crc32(buff, 16);
+    crc.val = crc32(0, Z_NULL, 0);
+    crc.val = crc32(crc.val, buff, 16);
     if (memcmp(crc.bin, &buff[16], 4) != 0)
     {
         throw std::runtime_error("Invalid CRC32");
@@ -232,7 +233,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     atexit(s_at_exit);
 
     s_parser_cmdline(pCmdLine);
-    G->exe_path = appbox::exepath();
+    G->exe_path = appbox::GetExePath();
     G->hFileSelf = CreateFileW(G->exe_path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
                                OPEN_EXISTING, 0, nullptr);
 

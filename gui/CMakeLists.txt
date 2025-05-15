@@ -28,15 +28,13 @@ appbox_setup_target_wall(${PROJECT_NAME})
 # Dependency
 ###############################################################################
 
-set(HAVE_JSON ON)
-set(HAVE_WXWIDGETS ON)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party third_party)
-target_link_libraries(${PROJECT_NAME}
-    PRIVATE
-        nlohmann_json::nlohmann_json
-        wx::core
-        wx::base
-)
+option(WXWIDGETS_SEARCH_PATH "Search path for wxWidgets" OFF)
+if (WXWIDGETS_SEARCH_PATH)
+    find_package(wxWidgets REQUIRED COMPONENTS core base PATHS ${WXWIDGETS_SEARCH_PATH} NO_DEFAULT_PATH)
+else()
+    find_package(wxWidgets REQUIRED COMPONENTS core base)
+endif()
+target_link_libraries(${PROJECT_NAME} PRIVATE wx::core wx::base)
 
 ###############################################################################
 # Install target

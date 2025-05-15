@@ -4,14 +4,12 @@
 #include <Windows.h>
 #include <stdexcept>
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 #include <zlib.h>
 #include "macros.hpp"
-#include "crc32.hpp"
 #include "winapi.hpp"
 #include "wstring.hpp"
 #include "zstream.hpp"
-
-#define ZLIB_CHUNK 16384
 
 enum FileIsolation
 {
@@ -337,7 +335,9 @@ static void s_write_crc32()
     uint8_t buff[16];
     memcpy(&buff[0], APPBOX_MAGIC, strlen(APPBOX_MAGIC));
     memcpy(&buff[8], &G->offset_magic, sizeof(G->offset_magic));
-    uint32_t crc = appbox::crc32(buff, sizeof(buff));
+
+    uint32_t crc = crc32(0, Z_NULL, 0);
+    crc = crc32(crc, buff, sizeof(buff));
     WriteFile(G->target_handle, &crc, sizeof(crc), nullptr, nullptr);
 }
 
@@ -349,7 +349,7 @@ int wmain(int argc, wchar_t* argv[])
     s_parse_cmd(argc, argv);
     G->template_data = s_load_file(G->template_path);
     G->template_json = nlohmann::json::parse(G->template_data);
-    G->executable_path = appbox::exepath();
+    G->executable_path = appbox::GetExePath();
 
     G->target_handle = CreateFileW(G->executable_path.c_str(), GENERIC_WRITE, 0, nullptr,
                                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
