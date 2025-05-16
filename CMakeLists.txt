@@ -65,6 +65,7 @@ ExternalProject_Add(loader32
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install/dist
         -DJSON_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
+        -DSPDLOG_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
         -DWXWIDGETS_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
         -DZLIB_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
         -A Win32

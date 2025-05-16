@@ -17,6 +17,9 @@ endfunction()
 ###############################################################################
 
 set(loader_sources
+    "supervise/__init__.cpp"
+    "widgets/LogPanel.cpp"
+    "widgets/MainFrame.cpp"
     "main.cpp"
     "resource.rc"
 )
@@ -47,6 +50,14 @@ else ()
     find_package(nlohmann_json REQUIRED)
 endif ()
 target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
+
+option(SPDLOG_SEARCH_PATH "Search path for spdlog" OFF)
+if (SPDLOG_SEARCH_PATH)
+    find_package(spdlog REQUIRED PATHS ${SPDLOG_SEARCH_PATH} NO_DEFAULT_PATH)
+else ()
+    find_package(spdlog REQUIRED)
+endif()
+target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
 
 option(WXWIDGETS_SEARCH_PATH "Search path for wxWidgets" OFF)
 if (WXWIDGETS_SEARCH_PATH)

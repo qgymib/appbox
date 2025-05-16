@@ -1,9 +1,10 @@
+#if 0
 #include <Windows.h>
 #include <cstdlib>
 #include <vector>
 #include <stdexcept>
-#include <nlohmann/json.hpp>
 #include <zlib.h>
+#include <nlohmann/json.hpp>
 #include "winapi.hpp"
 #include "macros.hpp"
 
@@ -41,6 +42,7 @@ static const wchar_t* s_help = L"\n"
 ;
 /* clang-format on */
 
+
 static LoaderCtx* G = nullptr;
 
 LoaderCtx::LoaderCtx()
@@ -58,6 +60,7 @@ LoaderCtx::~LoaderCtx()
         hFileSelf = INVALID_HANDLE_VALUE;
     }
 }
+
 
 static void s_at_exit(void)
 {
@@ -242,3 +245,80 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
     return 0;
 }
+
+#else
+
+#include <wx/wx.h>
+#include <wx/cmdline.h>
+#include "supervise/__init__.hpp"
+#include "widgets/MainFrame.hpp"
+
+class LoaderApp : public wxApp
+{
+public:
+    LoaderApp();
+    virtual bool OnInit();
+    virtual int  OnExit();
+    virtual void OnInitCmdLine(wxCmdLineParser& parser);
+    virtual bool OnCmdLineParsed(wxCmdLineParser& parser);
+
+private:
+    bool option_admin;
+};
+
+LoaderApp::LoaderApp()
+{
+    option_admin = false;
+}
+
+bool LoaderApp::OnInit()
+{
+    /* The command line arguments will be parsered here. */
+    if (!wxApp::OnInit())
+    {
+        return false;
+    }
+
+    MainFrame* main_frame = new MainFrame;
+    main_frame->Show(option_admin);
+
+    appbox::supervise::Init();
+    return true;
+}
+
+int LoaderApp::OnExit()
+{
+    appbox::supervise::Exit();
+    return 0;
+}
+
+void LoaderApp::OnInitCmdLine(wxCmdLineParser& parser)
+{
+    /* clang-format off */
+    static const wxCmdLineEntryDesc options[] = {
+        {
+            wxCMD_LINE_SWITCH,
+            nullptr,
+            "X-AppBox-Admin",
+            "Enable management interface",
+            wxCMD_LINE_VAL_NONE,
+            wxCMD_LINE_PARAM_OPTIONAL,
+        },
+        wxCMD_LINE_DESC_END,
+    };
+    /* clang-format on */
+    parser.SetDesc(options);
+    parser.SetSwitchChars("-");
+
+    wxApp::OnInitCmdLine(parser);
+}
+
+bool LoaderApp::OnCmdLineParsed(wxCmdLineParser& parser)
+{
+    this->option_admin = parser.Found("X-AppBox-Admin");
+    return wxApp::OnCmdLineParsed(parser);
+}
+
+wxIMPLEMENT_APP(LoaderApp); // NOLINT
+
+#endif
