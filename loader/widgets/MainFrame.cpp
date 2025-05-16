@@ -1,6 +1,7 @@
 #include <wx/wx.h>
 #include <wx/aboutdlg.h>
 #include <wx/notebook.h>
+#include <spdlog/spdlog.h>
 #include "LogPanel.hpp"
 #include "MainFrame.hpp"
 

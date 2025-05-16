@@ -20,7 +20,7 @@ set(loader_sources
     "supervise/__init__.cpp"
     "widgets/LogPanel.cpp"
     "widgets/MainFrame.cpp"
-    "main.cpp"
+    "App.cpp"
     "resource.rc"
 )
 
@@ -29,6 +29,7 @@ appbox_setup_target_wall(${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME}
     PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/../utils
 )
 

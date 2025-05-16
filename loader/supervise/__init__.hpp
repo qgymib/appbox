@@ -10,7 +10,7 @@ namespace supervise
 void Init();
 void Exit();
 
-}
+} // namespace supervise
 
 } // namespace appbox
 

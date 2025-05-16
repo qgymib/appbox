@@ -250,37 +250,45 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
 
 #include <wx/wx.h>
 #include <wx/cmdline.h>
+#include <spdlog/spdlog.h>
 #include "supervise/__init__.hpp"
 #include "widgets/MainFrame.hpp"
+#include "App.hpp"
 
-class LoaderApp : public wxApp
+struct LoaderApp::Data
 {
-public:
-    LoaderApp();
-    virtual bool OnInit();
-    virtual int  OnExit();
-    virtual void OnInitCmdLine(wxCmdLineParser& parser);
-    virtual bool OnCmdLineParsed(wxCmdLineParser& parser);
+    Data(LoaderApp* owner);
 
-private:
-    bool option_admin;
+    LoaderApp* owner;
+    bool       option_admin;
+    MainFrame* main_frame;
+
+    void HandleEventExitApplicationNoGUI(wxCommandEvent&);
 };
 
-LoaderApp::LoaderApp()
+wxDEFINE_EVENT(APPBOX_EXIT_APPLICATION_NO_GUI, wxCommandEvent);
+
+LoaderApp::Data::Data(LoaderApp* owner)
 {
+    this->owner = owner;
     option_admin = false;
+    main_frame = nullptr;
+
+    owner->Bind(APPBOX_EXIT_APPLICATION_NO_GUI, &Data::HandleEventExitApplicationNoGUI, this);
 }
 
 bool LoaderApp::OnInit()
 {
-    /* The command line arguments will be parsered here. */
+    m_data = new Data(this);
+
+    /* The command line arguments parser here. */
     if (!wxApp::OnInit())
     {
         return false;
     }
 
-    MainFrame* main_frame = new MainFrame;
-    main_frame->Show(option_admin);
+    m_data->main_frame = new MainFrame;
+    m_data->main_frame->Show(m_data->option_admin);
 
     appbox::supervise::Init();
     return true;
@@ -289,6 +297,7 @@ bool LoaderApp::OnInit()
 int LoaderApp::OnExit()
 {
     appbox::supervise::Exit();
+    delete m_data;
     return 0;
 }
 
@@ -315,8 +324,17 @@ void LoaderApp::OnInitCmdLine(wxCmdLineParser& parser)
 
 bool LoaderApp::OnCmdLineParsed(wxCmdLineParser& parser)
 {
-    this->option_admin = parser.Found("X-AppBox-Admin");
+    m_data->option_admin = parser.Found("X-AppBox-Admin");
     return wxApp::OnCmdLineParsed(parser);
+}
+
+void LoaderApp::Data::HandleEventExitApplicationNoGUI(wxCommandEvent&)
+{
+    spdlog::info("Try to exit application");
+    if (!main_frame->IsShown())
+    {
+        main_frame->Close();
+    }
 }
 
 wxIMPLEMENT_APP(LoaderApp); // NOLINT
