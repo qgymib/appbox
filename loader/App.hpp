@@ -20,6 +20,6 @@ wxDECLARE_APP(LoaderApp);
 /**
  * @brief Exit the application if no gui window shown.
  */
-wxDECLARE_EVENT(APPBOX_EXIT_APPLICATION_NO_GUI, wxCommandEvent);
+wxDECLARE_EVENT(APPBOX_EXIT_APPLICATION_IF_NO_GUI, wxCommandEvent);
 
 #endif

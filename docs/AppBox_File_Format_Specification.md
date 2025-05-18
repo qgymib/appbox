@@ -16,8 +16,6 @@ The AppBox file layout is defined as following:
   |-------------------|
   | Metadata          | # JSON data.
   |-------------------|
-  | MAGIC             | # 8 bytes binary data.
-  |-------------------|
   | Filesystem Length | # 8 bytes.
   |-------------------|
   | Filesystem        | # Compressed data
@@ -25,6 +23,8 @@ The AppBox file layout is defined as following:
   | Registry Length   | # 8 bytes.
   |-------------------|
   | Registry          | # Compressed data
+  |-------------------|
+  | MAGIC             | # 8 bytes binary data.
   |-------------------|
   | OFFSET            | # 8 bytes.
   |-------------------|

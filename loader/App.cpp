@@ -266,7 +266,7 @@ struct LoaderApp::Data
     void HandleEventExitApplicationNoGUI(wxCommandEvent&);
 };
 
-wxDEFINE_EVENT(APPBOX_EXIT_APPLICATION_NO_GUI, wxCommandEvent);
+wxDEFINE_EVENT(APPBOX_EXIT_APPLICATION_IF_NO_GUI, wxCommandEvent);
 
 LoaderApp::Data::Data(LoaderApp* owner)
 {
@@ -274,7 +274,7 @@ LoaderApp::Data::Data(LoaderApp* owner)
     option_admin = false;
     main_frame = nullptr;
 
-    owner->Bind(APPBOX_EXIT_APPLICATION_NO_GUI, &Data::HandleEventExitApplicationNoGUI, this);
+    owner->Bind(APPBOX_EXIT_APPLICATION_IF_NO_GUI, &Data::HandleEventExitApplicationNoGUI, this);
 }
 
 bool LoaderApp::OnInit()
