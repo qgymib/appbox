@@ -6,10 +6,10 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <zlib.h>
-#include "macros.hpp"
-#include "winapi.hpp"
-#include "wstring.hpp"
-#include "zstream.hpp"
+#include "utils/macros.hpp"
+#include "utils/winapi.hpp"
+#include "utils/wstring.hpp"
+#include "utils/zstream.hpp"
 
 enum FileIsolation
 {

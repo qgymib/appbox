@@ -1,8 +1,10 @@
 #include <wx/wx.h>
+#include <wx/timer.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/base_sink.h>
 #include <spdlog/fmt/bundled/xchar.h>
 #include <mutex>
+#include "config.hpp"
 #include "LogPanel.hpp"
 
 wxDEFINE_EVENT(Spdlog_NewMsg, wxThreadEvent);
@@ -18,7 +20,7 @@ public:
     }
 
 protected:
-    virtual void sink_it_(const spdlog::details::log_msg& msg) override
+    void sink_it_(const spdlog::details::log_msg& msg) override
     {
         spdlog::memory_buf_t formatted;
         spdlog::sinks::base_sink<Mutex>::formatter_->format(msg, formatted);
@@ -27,7 +29,7 @@ protected:
         fn(data);
     }
 
-    virtual void flush_() override
+    void flush_() override
     {
     }
 
@@ -71,6 +73,12 @@ void LogPanel::Data::OnSpdlogCallback(const wxString& msg)
 void LogPanel::Data::OnSpdlog(const wxThreadEvent& evt)
 {
     logTextCtrl->AppendText(evt.GetString());
+
+    while (logTextCtrl->GetNumberOfLines() > APPBOX_LOADER_DEFAULT_LOG_MAX_LINE_LENGTH)
+    {
+        int line_sz = logTextCtrl->GetLineLength(0);
+        logTextCtrl->Remove(0, line_sz + 1);
+    }
 }
 
 LogPanel::LogPanel(wxWindow* parent) : wxPanel(parent)

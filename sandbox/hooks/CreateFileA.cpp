@@ -1,6 +1,6 @@
 #include <Windows.h>
-#include "wstring.hpp"
-#include "winapi.hpp"
+#include "utils/wstring.hpp"
+#include "utils/winapi.hpp"
 #include "__init__.hpp"
 
 static HANDLE s_CreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,

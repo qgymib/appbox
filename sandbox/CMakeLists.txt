@@ -33,7 +33,7 @@ appbox_setup_target_wall(${sandbox_name})
 
 target_include_directories(${sandbox_name}
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../utils
+        ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 
 ###############################################################################

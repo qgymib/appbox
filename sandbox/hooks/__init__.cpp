@@ -1,6 +1,6 @@
 #include <Windows.h>
 #include <detours.h>
-#include "macros.hpp"
+#include "utils/macros.hpp"
 #include "__init__.hpp"
 
 static appbox::hook::Func* s_hooks[] = {
