@@ -1,22 +1,18 @@
 {
   "settings": {
     "packer": {
-      "compression": 0
+      "compression": 0,
+      "output": "appbox.exe"
     },
     "process": {},
     "sandbox": {},
-    "startup": {}
+    "startup": {
+      "path": [
+        "%LocalAppData%\\AppBox\\packer.exe"
+      ]
+    }
   },
   "filesystem": [
-    {
-      "path": "%LocalAppData%\\AppBox\\gui.exe",
-      "isolation": "full",
-      "attribute": [
-        "file",
-        "startup"
-      ],
-      "source": "gui.exe"
-    },
     {
       "path": "%LocalAppData%\\AppBox\\loader.exe",
       "isolation": "full",

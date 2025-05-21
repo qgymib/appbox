@@ -71,6 +71,7 @@ ExternalProject_Add(loader32
         -A Win32
     DEPENDS
         json32
+        spdlog32
         wxWidgets32
         zlib32
 )
@@ -81,20 +82,12 @@ ExternalProject_Add(packer32
         -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install/dist
         -DJSON_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
         -DSPDLOG_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
+        -DWXWIDGETS_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
         -DZLIB_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
         -A Win32
     DEPENDS
         json32
         spdlog32
-        zlib32
-)
-
-ExternalProject_Add(gui32
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/gui
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install/dist
-        -DWXWIDGETS_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
-        -A Win32
-    DEPENDS
         wxWidgets32
+        zlib32
 )

@@ -1,3 +1,5 @@
+#if 0
+
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
 #endif
@@ -6,25 +8,9 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <zlib.h>
-#include "utils/macros.hpp"
 #include "utils/winapi.hpp"
 #include "utils/wstring.hpp"
 #include "utils/zstream.hpp"
-
-enum FileIsolation
-{
-    ISOLATION_FULL = 0,
-    ISOLATION_MERGE = 1,
-    ISOLATION_WRITE_COPY = 2,
-    ISOLATION_HIDE = 3,
-};
-
-enum FileAttribute
-{
-    ATTRIBUTE_FOLDER = 0x01,   /* This record is a folder. */
-    ATTRIBUTE_STARTUP = 0x02,  /* The file is automatically startup. */
-    ATTRIBUTE_READONLY = 0x04, /* Read only file or folder. */
-};
 
 struct StrIntPair
 {
@@ -97,33 +83,6 @@ packer_ctx::~packer_ctx()
     }
 }
 
-struct WStrIntPair
-{
-    const wchar_t* str;
-    int            val;
-};
-
-static spdlog::level::level_enum s_parse_loglevel(const wchar_t* level)
-{
-    static const WStrIntPair s_kv[] = {
-        { L"trace",    spdlog::level::trace    },
-        { L"debug",    spdlog::level::debug    },
-        { L"info",     spdlog::level::info     },
-        { L"warn",     spdlog::level::warn     },
-        { L"error",    spdlog::level::err      },
-        { L"critical", spdlog::level::critical },
-        { L"off",      spdlog::level::off      },
-    };
-    for (size_t i = 0; i < ARRAY_SIZE(s_kv); i++)
-    {
-        if (wcscmp(level, s_kv[i].str) == 0)
-        {
-            return static_cast<spdlog::level::level_enum>(s_kv[i].val);
-        }
-    }
-    return spdlog::level::info;
-}
-
 static void s_parse_cmd(int argc, wchar_t* argv[])
 {
     const wchar_t* opt;
@@ -179,26 +138,6 @@ static void s_at_exit(void)
 {
     delete G;
     G = nullptr;
-}
-
-static std::string s_load_file(const std::wstring& path)
-{
-    HANDLE hFile = CreateFileW(path.c_str(), GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, NULL);
-    if (hFile == INVALID_HANDLE_VALUE)
-    {
-        throw std::runtime_error("Failed to open file");
-    }
-
-    std::string content;
-    char        buff[4096];
-    DWORD       read_sz;
-    while (ReadFile(hFile, buff, sizeof(buff), &read_sz, nullptr) && read_sz != 0)
-    {
-        content.append(buff, read_sz);
-    }
-    CloseHandle(hFile);
-
-    return content;
 }
 
 static size_t s_write_loader(void)
@@ -450,3 +389,15 @@ int wmain(int argc, wchar_t* argv[])
 
     return 0;
 }
+
+#else
+
+
+
+
+
+#include "App.hpp"
+
+
+
+#endif

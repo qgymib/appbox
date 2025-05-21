@@ -76,19 +76,9 @@ if %errorlevel% neq 0 exit /b %errorlevel%
 :: Packer
 set PACKER_SOURCE_DIR=%SOURCE_DIR%\packer
 set PACKER_BUILD_DIR=%BUILD_DIR%\packer32
-cmake -B %PACKER_BUILD_DIR% -DCMAKE_INSTALL_PREFIX:PATH=%INSTALL_DIR%\dist -DJSON_SEARCH_PATH=%INSTALL_DIR%\Win32 -DSPDLOG_SEARCH_PATH=%INSTALL_DIR%\Win32 -DZLIB_SEARCH_PATH=%INSTALL_DIR%\Win32 -A Win32 %PACKER_SOURCE_DIR%
+cmake -B %PACKER_BUILD_DIR% -DCMAKE_INSTALL_PREFIX:PATH=%INSTALL_DIR%\dist -DJSON_SEARCH_PATH=%INSTALL_DIR%\Win32 -DSPDLOG_SEARCH_PATH=%INSTALL_DIR%\Win32 -DWXWIDGETS_SEARCH_PATH=%INSTALL_DIR%\Win32 -DZLIB_SEARCH_PATH=%INSTALL_DIR%\Win32 -A Win32 %PACKER_SOURCE_DIR%
 if %errorlevel% neq 0 exit /b %errorlevel%
 cmake --build %PACKER_BUILD_DIR% --config %BUILD_TYPE%
 if %errorlevel% neq 0 exit /b %errorlevel%
 cmake --install %PACKER_BUILD_DIR% --config %BUILD_TYPE%
-if %errorlevel% neq 0 exit /b %errorlevel%
-
-:: Build GUI
-set GUI_SOURCE_DIR=%SOURCE_DIR%\gui
-set GUI_BUILD_DIR=%BUILD_DIR%\gui32
-cmake -B %GUI_BUILD_DIR% -DCMAKE_INSTALL_PREFIX:PATH=%INSTALL_DIR%\dist -DWXWIDGETS_SEARCH_PATH=%INSTALL_DIR%\Win32 -A Win32 %GUI_SOURCE_DIR%
-if %errorlevel% neq 0 exit /b %errorlevel%
-cmake --build %GUI_BUILD_DIR% --config %BUILD_TYPE%
-if %errorlevel% neq 0 exit /b %errorlevel%
-cmake --install %GUI_BUILD_DIR% --config %BUILD_TYPE%
 if %errorlevel% neq 0 exit /b %errorlevel%

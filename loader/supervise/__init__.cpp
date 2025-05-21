@@ -7,6 +7,9 @@
 #include "utils/file.hpp"
 #include "utils/macros.hpp"
 #include "utils/winapi.hpp"
+#include "utils/meta.hpp"
+#include "utils/zstream.hpp"
+#include "utils/wstring.hpp"
 #include "App.hpp"
 #include "__init__.hpp"
 
@@ -61,75 +64,153 @@ static uint64_t s_get_offset(HANDLE file)
     distanceToMove.QuadPart = -20;
     if (!SetFilePointerEx(file, distanceToMove, nullptr, FILE_END))
     {
-        throw wxString(L"SetFilePointerEx() failed");
+        throw std::runtime_error("SetFilePointerEx() failed");
     }
 
     uint8_t moc[20];
-    if (!appbox::ReadFileRequiredSize(file, moc, sizeof(moc)))
-    {
-        throw wxString(L"ReadFileRequiredSize() failed");
-    }
+    appbox::ReadFileSized(file, moc, sizeof(moc));
 
     if (memcmp(moc, APPBOX_MAGIC, 8) != 0)
     {
-        throw wxString(L"Invalid magic");
+        throw std::runtime_error("Invalid magic_2");
     }
 
     uint32_t crc = crc32(0, Z_NULL, 0);
     crc = crc32(crc, moc, 16);
     if (memcmp(&moc[16], &crc, 4) != 0)
     {
-        throw wxString(L"Invalid crc");
+        throw std::runtime_error("Invalid crc");
     }
 
     /* Read offset */
-    uint64_t offset;
+    uint64_t offset = 0;
     memcpy(&offset, &moc[8], 8);
 
     return offset;
 }
 
-static std::string s_read_metadata(HANDLE file)
+struct PayloadDecompressor
 {
-    uint64_t metadata_sz = 0;
-    if (!appbox::ReadFileRequiredSize(file, &metadata_sz, sizeof(metadata_sz)))
+    PayloadDecompressor(HANDLE file, size_t size);
+    bool WaitForCache(size_t size);
+    void Process();
+    void ProcessMeta();
+    void ProcessFilesystem();
+
+    appbox::ZInflateStream mStream;  /* Inflate stream. */
+    appbox::PayloadNode    mCurrent; /* Payload type current processing. */
+    std::string            mData;    /* Payload data. */
+};
+
+PayloadDecompressor::PayloadDecompressor(HANDLE file, size_t size) : mStream(file, size)
+{
+}
+
+bool PayloadDecompressor::WaitForCache(size_t size)
+{
+    while (mData.size() < size)
     {
-        throw wxString(L"Failed to read metadata size");
+        std::string cache = mStream.inflate();
+        if (cache.empty())
+        {
+            return false;
+        }
+        mData.append(cache);
+    }
+    return true;
+}
+
+void PayloadDecompressor::Process()
+{
+    while (1)
+    {
+        switch (mCurrent.type)
+        {
+        case appbox::PAYLOAD_TYPE_NONE:
+            if (!WaitForCache(sizeof(mCurrent)))
+            {
+                wxASSERT(mData.empty());
+                return;
+            }
+            memcpy(&mCurrent, &mData[0], sizeof(mCurrent));
+            mData.erase(0, sizeof(appbox::PayloadNode));
+            spdlog::info("node: type={} path_sz={} payload_sz={}", mCurrent.type, mCurrent.path_len,
+                         mCurrent.payload_len);
+            break;
+
+        case appbox::PAYLOAD_TYPE_METADATA:
+            spdlog::info("Metadata");
+            ProcessMeta();
+            mCurrent.type = appbox::PAYLOAD_TYPE_NONE;
+            break;
+
+        case appbox::PAYLOAD_TYPE_FILESYSTEM:
+            spdlog::info("Filesystem");
+            ProcessFilesystem();
+            mCurrent.type = appbox::PAYLOAD_TYPE_NONE;
+            break;
+
+        default: {
+            std::wstring msg =
+                wxString::Format("Invalid payload type %d", mCurrent.type).ToStdWstring();
+            throw std::runtime_error(appbox::wcstombs(msg.c_str()));
+        }
+        }
+    }
+}
+
+void PayloadDecompressor::ProcessFilesystem()
+{
+    if (!WaitForCache(mCurrent.path_len))
+    {
+        throw std::runtime_error("Corrupted data");
     }
 
-    std::string metadata(metadata_sz, '\0');
-    if (!appbox::ReadFileRequiredSize(file, &metadata[0], metadata_sz))
+    std::string pathU8 = mData.substr(0, mCurrent.path_len);
+    mData.erase(0, mCurrent.path_len);
+    spdlog::info("Path: {}.", pathU8);
+
+    if (!WaitForCache(mCurrent.payload_len))
     {
-        throw wxString(L"Failed to read metadata");
+        throw std::runtime_error("Corrupted data");
+    }
+    std::string payload = mData.substr(0, mCurrent.payload_len);
+    mData.erase(0, mCurrent.payload_len);
+
+    // TODO: write to filesystem.
+}
+
+void PayloadDecompressor::ProcessMeta()
+{
+    wxASSERT(mCurrent.path_len == 0);
+    if (!WaitForCache(mCurrent.payload_len))
+    {
+        throw std::runtime_error("Corrupted data");
     }
 
-    return metadata;
+    std::string metaStr = mData.substr(0, mCurrent.payload_len);
+    mData.erase(0, mCurrent.payload_len);
+
+    spdlog::info("Meta: {}", metaStr);
 }
 
 static void s_process_payload(HANDLE file, uint64_t offset)
 {
-    LARGE_INTEGER distanceToMove;
-    distanceToMove.QuadPart = offset;
-    if (!SetFilePointerEx(file, distanceToMove, nullptr, FILE_BEGIN))
-    {
-        throw wxString(L"Failed to set file position");
-    }
+    appbox::SetFilePosition(file, offset);
 
     uint8_t magic[8];
-    if (!appbox::ReadFileRequiredSize(file, magic, sizeof(magic)))
-    {
-        throw wxString(L"Failed to read magic");
-    }
+    appbox::ReadFileSized(file, magic, sizeof(magic));
 
     if (memcmp(magic, APPBOX_MAGIC, 8) != 0)
     {
-        throw wxString(L"Invalid magic");
+        throw std::runtime_error("Invalid magic_1");
     }
 
-    std::string metadata_str = s_read_metadata(file);
-    spdlog::info("metadata: {}", metadata_str);
+    uint64_t payload_sz = 0;
+    appbox::ReadFileSized(file, &payload_sz, sizeof(payload_sz));
 
-    nlohmann::json metadata = nlohmann::json::parse(metadata_str);
+    PayloadDecompressor pd(file, payload_sz);
+    pd.Process();
 }
 
 wxThread::ExitCode SuperviseService::Entry()
@@ -149,9 +230,9 @@ wxThread::ExitCode SuperviseService::Entry()
         spdlog::info("offset: {}", offset);
         s_process_payload(hFile.get(), offset);
     }
-    catch (const wxString& e)
+    catch (const std::runtime_error& e)
     {
-        spdlog::error(L"{}", e.ToStdWstring());
+        spdlog::error("{}", e.what());
         goto EXIT_APPLICATION;
     }
 

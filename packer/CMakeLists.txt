@@ -17,7 +17,13 @@ endfunction()
 ###############################################################################
 
 set(loader_sources
-    "main.cpp"
+    "widgets/FileDataView.cpp"
+    "widgets/FilePanel.cpp"
+    "widgets/MainFrame.cpp"
+    "widgets/ProcessDialog.cpp"
+    "widgets/RegistryPanel.cpp"
+    "widgets/SettingsPanel.cpp"
+    "App.cpp"
 )
 
 add_executable(${PROJECT_NAME} ${loader_sources})
@@ -25,8 +31,11 @@ appbox_setup_target_wall(${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME}
     PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
+
+target_link_libraries(${PROJECT_NAME} PRIVATE Pathcch)
 
 ###############################################################################
 # Dependency
@@ -47,6 +56,14 @@ else ()
     find_package(spdlog REQUIRED)
 endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
+
+option(WXWIDGETS_SEARCH_PATH "Search path for wxWidgets" OFF)
+if (WXWIDGETS_SEARCH_PATH)
+    find_package(wxWidgets REQUIRED COMPONENTS core base PATHS ${WXWIDGETS_SEARCH_PATH} NO_DEFAULT_PATH)
+else()
+    find_package(wxWidgets REQUIRED COMPONENTS core base)
+endif()
+target_link_libraries(${PROJECT_NAME} PRIVATE wx::core wx::base)
 
 option(ZLIB_SEARCH_PATH "Search path for zlib" OFF)
 if (ZLIB_SEARCH_PATH)

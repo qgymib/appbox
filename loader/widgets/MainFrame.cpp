@@ -55,7 +55,7 @@ MainFrame::Data::~Data()
 {
 }
 
-MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox")
+MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox Loader")
 {
     m_data = new Data(this);
 }

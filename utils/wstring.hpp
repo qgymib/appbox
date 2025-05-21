@@ -26,6 +26,7 @@ inline std::wstring mbstowcs(const char* s, size_t n, int codepage = CP_ACP)
     int          size_need = MultiByteToWideChar(codepage, 0, s, (int)n, nullptr, 0);
     std::wstring dst(size_need, 0);
     MultiByteToWideChar(codepage, 0, s, (int)n, &dst[0], size_need);
+    dst.resize(size_need - 1);
     return dst;
 }
 
@@ -70,6 +71,7 @@ inline std::string wcstombs(const wchar_t* s, size_t n, int codepage = CP_UTF8)
     int size_need = WideCharToMultiByte(codepage, 0, s, (int)n, nullptr, 0, nullptr, nullptr);
     std::string dst(size_need, 0);
     WideCharToMultiByte(codepage, 0, s, (int)n, &dst[0], size_need, nullptr, nullptr);
+    dst.resize(size_need - 1);
     return dst;
 }
 
