@@ -1,5 +1,5 @@
-[submodule "third_party/Detours"]
-	path = third_party/Detours
+[submodule "third_party/Detours/lib"]
+	path = third_party/Detours/lib
 	url = https://github.com/microsoft/Detours.git
 [submodule "third_party/json"]
 	path = third_party/json

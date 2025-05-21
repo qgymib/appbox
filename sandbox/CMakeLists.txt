@@ -40,8 +40,6 @@ target_include_directories(${sandbox_name}
 # Dependency
 ###############################################################################
 
-set(HAVE_DETOURS ON)
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party third_party)
 target_link_libraries(${sandbox_name} PRIVATE Detours)
 
 ###############################################################################

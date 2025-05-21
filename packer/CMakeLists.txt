@@ -24,9 +24,10 @@ set(loader_sources
     "widgets/RegistryPanel.cpp"
     "widgets/SettingsPanel.cpp"
     "App.cpp"
+    "resource.rc"
 )
 
-add_executable(${PROJECT_NAME} ${loader_sources})
+add_executable(${PROJECT_NAME} WIN32 ${loader_sources})
 appbox_setup_target_wall(${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME}
@@ -41,36 +42,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE Pathcch)
 # Dependency
 ###############################################################################
 
-option(JSON_SEARCH_PATH "Search path for nlohmann_json" OFF)
-if (JSON_SEARCH_PATH)
-    find_package(nlohmann_json REQUIRED PATHS ${JSON_SEARCH_PATH} NO_DEFAULT_PATH)
-else ()
-    find_package(nlohmann_json REQUIRED)
-endif ()
 target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
-
-option(SPDLOG_SEARCH_PATH "Search path for spdlog" OFF)
-if (SPDLOG_SEARCH_PATH)
-    find_package(spdlog REQUIRED PATHS ${SPDLOG_SEARCH_PATH} NO_DEFAULT_PATH)
-else ()
-    find_package(spdlog REQUIRED)
-endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
-
-option(WXWIDGETS_SEARCH_PATH "Search path for wxWidgets" OFF)
-if (WXWIDGETS_SEARCH_PATH)
-    find_package(wxWidgets REQUIRED COMPONENTS core base PATHS ${WXWIDGETS_SEARCH_PATH} NO_DEFAULT_PATH)
-else()
-    find_package(wxWidgets REQUIRED COMPONENTS core base)
-endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE wx::core wx::base)
-
-option(ZLIB_SEARCH_PATH "Search path for zlib" OFF)
-if (ZLIB_SEARCH_PATH)
-    find_package(zlib REQUIRED PATHS ${ZLIB_SEARCH_PATH} NO_DEFAULT_PATH)
-else()
-    find_package(zlib REQUIRED)
-endif()
 target_link_libraries(${PROJECT_NAME} PRIVATE ZLIB::ZLIBSTATIC)
 
 ###############################################################################

@@ -7,13 +7,7 @@
 #include "widgets/MainFrame.hpp"
 #include "App.hpp"
 
-struct WStrIntPair
-{
-    const wchar_t* str;
-    int            val;
-};
-
-wxIMPLEMENT_APP_CONSOLE(PackerApp);
+wxIMPLEMENT_APP(PackerApp);
 
 static const appbox::Pair<const wchar_t*, spdlog::level::level_enum> s_spdlog_levels[] = {
     { L"trace",    spdlog::level::trace    },

@@ -3,91 +3,58 @@ project(appbox)
 
 include(ExternalProject)
 
-ExternalProject_Add(json32
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/json
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install/Win32
-        -DJSON_BuildTests=OFF
-        -A Win32
-)
+option(APPBOX_INSTALL_PREFIX "" OFF)
+if (APPBOX_INSTALL_PREFIX)
+	set(CMAKE_INSTALL_PREFIX ${APPBOX_INSTALL_PREFIX})
+else()
+	set(CMAKE_INSTALL_PREFIX ${CMAKE_BINARY_DIR}/install/dist)
+endif()
 
-ExternalProject_Add(spdlog32
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/spdlog
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install/Win32
-        -DSPDLOG_BUILD_EXAMPLE=OFF
-        -DSPDLOG_WCHAR_SUPPORT=ON
-        -DSPDLOG_WCHAR_FILENAMES=ON
-        -DSPDLOG_WCHAR_CONSOLE=ON
-        -A Win32
-)
+set(JSON_BuildTests OFF)
+set(JSON_Install OFF)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/json)
 
-ExternalProject_Add(wxWidgets32
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/wxWidgets
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install/Win32
-        -DwxBUILD_SHARED=OFF
-        -DwxBUILD_TESTS=OFF
-        -DwxBUILD_SAMPLES=OFF
-        -DwxBUILD_DEMOS=OFF
-        -DwxBUILD_PRECOMP=OFF
-        -A Win32
-)
+set(SPDLOG_BUILD_EXAMPLE OFF)
+set(SPDLOG_WCHAR_SUPPORT ON)
+set(SPDLOG_WCHAR_FILENAMES ON)
+set(SPDLOG_WCHAR_CONSOLE ON)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/spdlog)
 
-ExternalProject_Add(zlib32
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/zlib
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install/Win32
-        -DZLIB_BUILD_TESTING=OFF
-        -DZLIB_BUILD_SHARED=OFF
-        -DZLIB_INSTALL_COMPAT_DLL=OFF
-        -A Win32
-)
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(wxBUILD_SHARED OFF)
+    set(wxBUILD_TESTS OFF)
+    set(wxBUILD_SAMPLES OFF)
+    set(wxBUILD_DEMOS OFF)
+    set(wxBUILD_PRECOMP OFF)
+    set(wxBUILD_INSTALL OFF)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/wxWidgets)
 
-ExternalProject_Add(sandbox32
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/sandbox
-    CMAKE_ARGS
-        -DAPPBOX_SANDBOX_SUFFIX:STRING=32
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install/dist
-        -A Win32
-)
+    set(ZLIB_BUILD_TESTING OFF)
+    set(ZLIB_BUILD_SHARED OFF)
+    set(ZLIB_INSTALL OFF)
+    set(ZLIB_INSTALL_COMPAT_DLL OFF)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/zlib)
+endif()
 
-ExternalProject_Add(sandbox64
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/sandbox
-    CMAKE_ARGS
-        -DAPPBOX_SANDBOX_SUFFIX:STRING=64
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install/dist
-        -A x64
-)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/Detours)
 
-ExternalProject_Add(loader32
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/loader
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install/dist
-        -DJSON_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
-        -DSPDLOG_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
-        -DWXWIDGETS_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
-        -DZLIB_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
-        -A Win32
-    DEPENDS
-        json32
-        spdlog32
-        wxWidgets32
-        zlib32
-)
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    add_subdirectory(loader)
+    add_subdirectory(packer)
+endif()
 
-ExternalProject_Add(packer32
-    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/packer
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_BINARY_DIR}/install/dist
-        -DJSON_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
-        -DSPDLOG_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
-        -DWXWIDGETS_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
-        -DZLIB_SEARCH_PATH=${CMAKE_BINARY_DIR}/install/Win32
-        -A Win32
-    DEPENDS
-        json32
-        spdlog32
-        wxWidgets32
-        zlib32
-)
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(APPBOX_SANDBOX_SUFFIX 64)
+else ()
+    set(APPBOX_SANDBOX_SUFFIX 32)
+endif ()
+add_subdirectory(sandbox)
+
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    ExternalProject_Add(sandbox_build_32bit
+        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
+        CMAKE_ARGS
+			-DAPPBOX_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX}
+            -A Win32
+    )
+endif()
