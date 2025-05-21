@@ -44,6 +44,8 @@ public:
     void AddFolderRecursive(wxDataViewItem parent, const std::wstring& sandboxPath,
                             const std::wstring& sourcePath);
 
+    void DeleteItem(wxDataViewItem node);
+
     std::vector<Filesystem> Export() const;
     void Import(const std::vector<Filesystem>& fs);
 

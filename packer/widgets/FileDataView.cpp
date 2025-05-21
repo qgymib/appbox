@@ -164,6 +164,34 @@ void FileDataView::AddFolderRecursive(wxDataViewItem parent, const std::wstring&
     ItemAdded(wxDataViewItem(parentEntry), wxDataViewItem(newEntry));
 }
 
+void FileDataView::DeleteItem(wxDataViewItem node)
+{
+    if (!node.IsOk())
+    {
+        return;
+    }
+    FileDataViewNode* entry = static_cast<FileDataViewNode*>(node.GetID());
+    if (entry == nullptr || entry == mData->mRoot)
+    {
+        return;
+    }
+
+    FileDataViewNode* parent = entry->parent;
+    wxASSERT(parent != nullptr);
+
+    for (auto it = parent->children.begin(); it != parent->children.end(); ++it)
+    {
+        if (*it == entry)
+        {
+            parent->children.erase(it);
+            break;
+        }
+    }
+
+    ItemDeleted(wxDataViewItem(parent), wxDataViewItem(entry));
+    delete entry;
+}
+
 bool FileDataView::IsContainer(const wxDataViewItem& item) const
 {
     if (!item.IsOk())

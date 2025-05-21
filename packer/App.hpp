@@ -3,6 +3,13 @@
 
 #include <wx/wx.h>
 
+enum PackerWidgetID
+{
+    PACKER_LOWEST = wxID_HIGHEST + 1,
+    PACKER_FILE_MENU_ADD_FOLDER_RECURSIVE,
+    PACKER_FILE_MENU_DELETE,
+};
+
 class PackerApp : public wxApp
 {
 public:

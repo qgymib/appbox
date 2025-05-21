@@ -4,12 +4,14 @@
 #include <spdlog/spdlog.h>
 #include "FileDataView.hpp"
 #include "FilePanel.hpp"
+#include "App.hpp"
 
 struct FilePanel::Data
 {
     Data(FilePanel* owner);
     void OnDataViewContextMenu(wxDataViewEvent&);
     void OnMenuAddFolderRecursive(wxCommandEvent&);
+    void OnMenuDelete(wxCommandEvent&);
 
     FilePanel*      mOwner;
     FileDataView*   mFileDataView;
@@ -27,9 +29,8 @@ FilePanel::Data::Data(FilePanel* owner)
 
     {
         wxDataViewTextRenderer* tr = new wxDataViewTextRenderer("string", wxDATAVIEW_CELL_INERT);
-        wxDataViewColumn*       column0 =
-            new wxDataViewColumn("Name", tr, 0, 320, wxALIGN_CENTER,
-                                 wxDATAVIEW_COL_SORTABLE | wxDATAVIEW_COL_RESIZABLE);
+        wxDataViewColumn*       column0 = new wxDataViewColumn(
+            "Name", tr, 0, 320, wxALIGN_CENTER, wxDATAVIEW_COL_SORTABLE | wxDATAVIEW_COL_RESIZABLE);
         mFileDataViewCtrl->AppendColumn(column0);
     }
     {
@@ -50,10 +51,19 @@ FilePanel::Data::Data(FilePanel* owner)
 void FilePanel::Data::OnDataViewContextMenu(wxDataViewEvent& e)
 {
     wxMenu menu;
-    menu.Append(1, "Add Folder Recursive");
-    menu.Bind(wxEVT_MENU, &Data::OnMenuAddFolderRecursive, this, 1, wxID_ANY,
+    menu.Append(PACKER_FILE_MENU_ADD_FOLDER_RECURSIVE, _("Add Folder Recursive"));
+    menu.Bind(wxEVT_MENU, &Data::OnMenuAddFolderRecursive, this,
+              PACKER_FILE_MENU_ADD_FOLDER_RECURSIVE, wxID_ANY, new wxDataViewEvent(e));
+    menu.Append(PACKER_FILE_MENU_DELETE, _("Delete"));
+    menu.Bind(wxEVT_MENU, &Data::OnMenuDelete, this, PACKER_FILE_MENU_DELETE, wxID_ANY,
               new wxDataViewEvent(e));
     mFileDataViewCtrl->PopupMenu(&menu);
+}
+
+void FilePanel::Data::OnMenuDelete(wxCommandEvent& e)
+{
+    wxDataViewEvent* orig_event = static_cast<wxDataViewEvent*>(e.GetEventUserData());
+    mFileDataView->DeleteItem(orig_event->GetItem());
 }
 
 void FilePanel::Data::OnMenuAddFolderRecursive(wxCommandEvent& e)
