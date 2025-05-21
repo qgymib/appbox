@@ -114,9 +114,22 @@ static void s_inflate_payload(SuperviseService* service, HANDLE file)
     appbox::ReadFileSized(file, &payload_sz, sizeof(payload_sz));
     spdlog::info("payload_sz: {}", payload_sz);
 
-    PayloadDecompressor pd(file, payload_sz);
-    pd.Process();
-    spdlog::info("decompress finished");
+    LARGE_INTEGER Frequency, StartingTime, EndingTime, ElapsedMilliseconds;
+    QueryPerformanceFrequency(&Frequency);
+    QueryPerformanceCounter(&StartingTime);
+    {
+        PayloadDecompressor pd(file, payload_sz);
+        pd.Process();
+    }
+    QueryPerformanceCounter(&EndingTime);
+    ElapsedMilliseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
+    ElapsedMilliseconds.QuadPart *= 1000;
+    ElapsedMilliseconds.QuadPart /= Frequency.QuadPart;
+
+    double speed = (double)payload_sz / ((double)ElapsedMilliseconds.QuadPart / 1000);
+
+    spdlog::info("Decompress finished, cost: {} Milliseconds, speed: {} MB/s",
+                 ElapsedMilliseconds.QuadPart, speed / 1024 / 1024);
 }
 
 static void s_process_payload(SuperviseService* service, HANDLE file)

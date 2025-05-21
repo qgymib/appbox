@@ -74,8 +74,10 @@ MainFrame::Data::Data(MainFrame* owner)
 
 void MainFrame::Data::OnProcessButtonClick(const wxCommandEvent&)
 {
-    mMeta.settings.SandboxLocation = appbox::wcstombs(mSettingsPanel->Export().sandboxPath.c_str());
+    SettingsPanel::Config config = mSettingsPanel->Export();
+    mMeta.settings.SandboxLocation = appbox::wcstombs(config.sandboxPath.c_str());
 
+    mConfig.compress = config.compressLevel;
     mConfig.loaderPath = L"loader.exe";
     mConfig.outputPath = mSettingsPanel->Export().outputPath;
     mConfig.filesystem = mFilePanel->Export();
