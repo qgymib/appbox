@@ -18,8 +18,8 @@ endfunction()
 
 set(loader_sources
     "supervise/__init__.cpp"
-    "widgets/LogPanel.cpp"
-    "widgets/MainFrame.cpp"
+    "Loader/LogPanel.cpp"
+    "Loader/MainFrame.cpp"
     "App.cpp"
     "resource.rc"
 )

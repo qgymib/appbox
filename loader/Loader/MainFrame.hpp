@@ -3,6 +3,12 @@
 
 #include <wx/wx.h>
 
+namespace appbox
+{
+
+namespace Loader
+{
+
 class MainFrame : public wxFrame
 {
 public:
@@ -13,5 +19,9 @@ private:
     struct Data;
     Data* m_data;
 };
+
+} // namespace loader
+
+} // namespace appbox
 
 #endif

@@ -5,7 +5,7 @@
 #include "LogPanel.hpp"
 #include "MainFrame.hpp"
 
-struct MainFrame::Data
+struct appbox::Loader::MainFrame::Data
 {
     Data(MainFrame* owner);
     ~Data();
@@ -20,7 +20,7 @@ static void s_on_about(wxCommandEvent&)
     wxAboutBox(info);
 }
 
-MainFrame::Data::Data(MainFrame* owner)
+appbox::Loader::MainFrame::Data::Data(MainFrame* owner)
 {
     this->owner = owner;
 
@@ -51,16 +51,16 @@ MainFrame::Data::Data(MainFrame* owner)
     owner->Bind(wxEVT_MENU, &s_on_about, wxID_ABOUT);
 }
 
-MainFrame::Data::~Data()
+appbox::Loader::MainFrame::Data::~Data()
 {
 }
 
-MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox Loader")
+appbox::Loader::MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox Loader")
 {
     m_data = new Data(this);
 }
 
-MainFrame::~MainFrame()
+appbox::Loader::MainFrame::~MainFrame()
 {
     delete m_data;
 }
