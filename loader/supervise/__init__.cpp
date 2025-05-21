@@ -3,33 +3,29 @@
 #include <spdlog/spdlog.h>
 #include <Windows.h>
 #include <zlib.h>
-#include <nlohmann/json.hpp>
 #include "utils/file.hpp"
 #include "utils/macros.hpp"
 #include "utils/winapi.hpp"
-#include "utils/meta.hpp"
-#include "utils/zstream.hpp"
-#include "utils/wstring.hpp"
+#include "PayloadDecompressor.hpp"
+#include "VariableDecoder.hpp"
 #include "App.hpp"
 #include "__init__.hpp"
 
-class SuperviseService : public wxEvtHandler, public wxThreadHelper
+struct SuperviseService : wxEvtHandler, wxThreadHelper
 {
-public:
     SuperviseService();
     ~SuperviseService() override;
-
-protected:
     wxThread::ExitCode Entry() override;
 
-private:
-    std::wstring m_self_path; /* Path to self. */
+    VariableDecoder mVarDecoder; /* Environment decoder. */
+    std::wstring    mSelfPath;   /* Path to self. */
+    nlohmann::json  mMeta;       /* Metadata. */
 };
 
 SuperviseService::SuperviseService()
 {
-    m_self_path = appbox::GetExePath();
-    spdlog::info(L"Loader path: {}", m_self_path);
+    mSelfPath = appbox::GetExePath();
+    spdlog::info(L"Loader path: {}", mSelfPath);
 
     if (CreateThread(wxTHREAD_JOINABLE) != wxTHREAD_NO_ERROR)
     {
@@ -89,115 +85,42 @@ static uint64_t s_get_offset(HANDLE file)
     return offset;
 }
 
-struct PayloadDecompressor
+static nlohmann::json s_get_meta(HANDLE file)
 {
-    PayloadDecompressor(HANDLE file, size_t size);
-    bool WaitForCache(size_t size);
-    void Process();
-    void ProcessMeta();
-    void ProcessFilesystem();
+    uint64_t metadata_sz = 0;
+    appbox::ReadFileSized(file, &metadata_sz, sizeof(metadata_sz));
+    spdlog::info("metadata_sz: {}", metadata_sz);
 
-    appbox::ZInflateStream mStream;  /* Inflate stream. */
-    appbox::PayloadNode    mCurrent; /* Payload type current processing. */
-    std::string            mData;    /* Payload data. */
-};
-
-PayloadDecompressor::PayloadDecompressor(HANDLE file, size_t size) : mStream(file, size)
-{
-}
-
-bool PayloadDecompressor::WaitForCache(size_t size)
-{
-    while (mData.size() < size)
-    {
-        std::string cache = mStream.inflate();
-        if (cache.empty())
-        {
-            return false;
-        }
-        mData.append(cache);
-    }
-    return true;
-}
-
-void PayloadDecompressor::Process()
-{
+    std::string metadata;
+    auto        inflateStream = std::make_shared<appbox::ZInflateStream>(file, metadata_sz);
     while (1)
     {
-        switch (mCurrent.type)
+        std::string tmp = inflateStream->inflate();
+        if (tmp.empty())
         {
-        case appbox::PAYLOAD_TYPE_NONE:
-            if (!WaitForCache(sizeof(mCurrent)))
-            {
-                wxASSERT(mData.empty());
-                return;
-            }
-            memcpy(&mCurrent, &mData[0], sizeof(mCurrent));
-            mData.erase(0, sizeof(appbox::PayloadNode));
-            spdlog::info("node: type={} path_sz={} payload_sz={}", mCurrent.type, mCurrent.path_len,
-                         mCurrent.payload_len);
             break;
-
-        case appbox::PAYLOAD_TYPE_METADATA:
-            spdlog::info("Metadata");
-            ProcessMeta();
-            mCurrent.type = appbox::PAYLOAD_TYPE_NONE;
-            break;
-
-        case appbox::PAYLOAD_TYPE_FILESYSTEM:
-            spdlog::info("Filesystem");
-            ProcessFilesystem();
-            mCurrent.type = appbox::PAYLOAD_TYPE_NONE;
-            break;
-
-        default: {
-            std::wstring msg =
-                wxString::Format("Invalid payload type %d", mCurrent.type).ToStdWstring();
-            throw std::runtime_error(appbox::wcstombs(msg.c_str()));
         }
-        }
+        metadata.append(tmp);
     }
+
+    spdlog::info("metadata: {}", metadata);
+    return nlohmann::json::parse(metadata);
 }
 
-void PayloadDecompressor::ProcessFilesystem()
+static void s_inflate_payload(SuperviseService* service, HANDLE file)
 {
-    if (!WaitForCache(mCurrent.path_len))
-    {
-        throw std::runtime_error("Corrupted data");
-    }
+    (void)service;
+    uint64_t payload_sz = 0;
+    appbox::ReadFileSized(file, &payload_sz, sizeof(payload_sz));
+    spdlog::info("payload_sz: {}", payload_sz);
 
-    std::string pathU8 = mData.substr(0, mCurrent.path_len);
-    mData.erase(0, mCurrent.path_len);
-    spdlog::info("Path: {}.", pathU8);
-
-    if (!WaitForCache(mCurrent.payload_len))
-    {
-        throw std::runtime_error("Corrupted data");
-    }
-    std::string payload = mData.substr(0, mCurrent.payload_len);
-    mData.erase(0, mCurrent.payload_len);
-
-    // TODO: write to filesystem.
+    PayloadDecompressor pd(file, payload_sz);
+    pd.Process();
+    spdlog::info("decompress finished");
 }
 
-void PayloadDecompressor::ProcessMeta()
+static void s_process_payload(SuperviseService* service, HANDLE file)
 {
-    wxASSERT(mCurrent.path_len == 0);
-    if (!WaitForCache(mCurrent.payload_len))
-    {
-        throw std::runtime_error("Corrupted data");
-    }
-
-    std::string metaStr = mData.substr(0, mCurrent.payload_len);
-    mData.erase(0, mCurrent.payload_len);
-
-    spdlog::info("Meta: {}", metaStr);
-}
-
-static void s_process_payload(HANDLE file, uint64_t offset)
-{
-    appbox::SetFilePosition(file, offset);
-
     uint8_t magic[8];
     appbox::ReadFileSized(file, magic, sizeof(magic));
 
@@ -206,16 +129,13 @@ static void s_process_payload(HANDLE file, uint64_t offset)
         throw std::runtime_error("Invalid magic_1");
     }
 
-    uint64_t payload_sz = 0;
-    appbox::ReadFileSized(file, &payload_sz, sizeof(payload_sz));
-
-    PayloadDecompressor pd(file, payload_sz);
-    pd.Process();
+    service->mMeta = s_get_meta(file);
+    s_inflate_payload(service, file);
 }
 
 wxThread::ExitCode SuperviseService::Entry()
 {
-    std::shared_ptr<void> hFile(CreateFileW(m_self_path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+    std::shared_ptr<void> hFile(CreateFileW(mSelfPath.c_str(), GENERIC_READ, FILE_SHARE_READ,
                                             nullptr, OPEN_EXISTING, 0, nullptr),
                                 CloseHandle);
     if (hFile.get() == INVALID_HANDLE_VALUE)
@@ -228,7 +148,8 @@ wxThread::ExitCode SuperviseService::Entry()
     {
         uint64_t offset = s_get_offset(hFile.get());
         spdlog::info("offset: {}", offset);
-        s_process_payload(hFile.get(), offset);
+        appbox::SetFilePosition(hFile.get(), offset);
+        s_process_payload(this, hFile.get());
     }
     catch (const std::runtime_error& e)
     {

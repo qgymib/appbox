@@ -6,9 +6,9 @@
 #include "widgets/RegistryPanel.hpp"
 #include "widgets/SettingsPanel.hpp"
 #include "widgets/ProcessDialog.hpp"
-#include "MainFrame.hpp"
-
 #include "utils/file.hpp"
+#include "utils/wstring.hpp"
+#include "MainFrame.hpp"
 
 struct MainFrame::Data
 {
@@ -46,6 +46,7 @@ MainFrame::Data::Data(MainFrame* owner)
 {
     mOwner = owner;
     s_setup_menubar(owner);
+    owner->SetSize(wxDefaultCoord, wxDefaultCoord, 800, 600, wxSIZE_AUTO);
 
     wxBoxSizer* bSizer = new wxBoxSizer(wxVERTICAL);
     {
@@ -64,19 +65,21 @@ MainFrame::Data::Data(MainFrame* owner)
         sizer->Add(mProcessButton, 1, wxEXPAND);
         bSizer->Add(sizer, 0, 0);
     }
-    owner->SetSizerAndFit(bSizer);
+    owner->SetSizer(bSizer);
 
     owner->CreateStatusBar();
-    owner->SetSize(wxDefaultCoord, wxDefaultCoord, 800, 600, wxSIZE_AUTO);
     owner->Bind(wxEVT_MENU, &Data::OnProjectSave, this, wxID_SAVE);
     mProcessButton->Bind(wxEVT_BUTTON, &Data::OnProcessButtonClick, this);
 }
 
 void MainFrame::Data::OnProcessButtonClick(const wxCommandEvent&)
 {
+    mMeta.settings.SandboxLocation = appbox::wcstombs(mSettingsPanel->Export().sandboxPath.c_str());
+
     mConfig.loaderPath = L"loader.exe";
     mConfig.outputPath = mSettingsPanel->Export().outputPath;
     mConfig.filesystem = mFilePanel->Export();
+
     ProcessDialog dialog(mOwner, mMeta, mConfig);
     dialog.ShowModal();
 }

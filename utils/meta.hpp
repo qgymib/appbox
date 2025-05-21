@@ -18,10 +18,8 @@ enum IsolationMode
 enum PayloadType
 {
     PAYLOAD_TYPE_NONE = 0,
-    PAYLOAD_TYPE_METADATA = 1,
-    PAYLOAD_TYPE_FILESYSTEM = 2,
-    PAYLOAD_TYPE_REGISTRY = 3,
-    PAYLOAD_TYPE_NETWORK = 4,
+    PAYLOAD_TYPE_FILESYSTEM = 1,
+    PAYLOAD_TYPE_REGISTRY = 2,
 };
 
 struct PayloadNode
@@ -40,23 +38,34 @@ struct PayloadNode
     uint64_t payload_len; /* Binary payload length in bytes. */
 };
 
-struct MetaSettingsStartup
-{
-    std::vector<std::wstring> path; /* Startup file path */
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(MetaSettingsStartup, path);
-};
-
 struct MetaSettings
 {
-    MetaSettingsStartup startup; /* Startup settings. */
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(MetaSettings, startup);
+    std::string              SandboxLocation; /* Sandbox location. */
+    bool                     SandboxReset;    /* Reset sandbox after exit. */
+    std::vector<std::string> StartupFiles;    /* Startup file path */
+    MetaSettings();
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(MetaSettings, SandboxLocation, SandboxReset,
+                                                StartupFiles);
+};
+
+struct MetaEnvironments
+{
+    std::string title;   /* Program title. */
+    std::string version; /* Program version. */
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(MetaEnvironments, title);
 };
 
 struct Meta
 {
-    MetaSettings settings; /* Settings. */
+    MetaEnvironments environments; /* Environments. */
+    MetaSettings     settings;     /* Settings. */
     NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Meta, settings);
 };
+
+inline MetaSettings::MetaSettings()
+{
+    SandboxReset = false;
+}
 
 inline PayloadNode::PayloadNode()
 {

@@ -45,7 +45,7 @@ FilePanel::Data::Data(FilePanel* owner)
 
     wxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     sizer->Add(mFileDataViewCtrl, 1, wxGROW | wxALL);
-    owner->SetSizerAndFit(sizer);
+    owner->SetSizer(sizer);
 }
 
 void FilePanel::Data::OnDataViewContextMenu(wxDataViewEvent& e)

@@ -8,7 +8,8 @@ class SettingsPanel : public wxPanel
 public:
     struct Config
     {
-        std::wstring outputPath;
+        std::wstring outputPath;    /* The path of the output file. */
+        std::wstring sandboxPath;   /* The path of the sandbox environment. */
     };
 
 public:

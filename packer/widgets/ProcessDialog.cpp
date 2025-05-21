@@ -96,11 +96,6 @@ static void s_write_meta(ProcessDialog::Data* iner, appbox::ZDeflateStream& ds,
     nlohmann::json metaJson = meta;
     std::string    metaStr = metaJson.dump();
     iner->Log(L"Writing metadata");
-
-    appbox::PayloadNode node;
-    node.type = appbox::PAYLOAD_TYPE_METADATA;
-    node.payload_len = metaStr.size();
-    ds.deflate(&node, sizeof(node));
     ds.deflate(metaStr.c_str(), metaStr.size());
 }
 
@@ -169,31 +164,36 @@ wxThread::ExitCode ProcessDialog::Data::Entry()
         goto FINISH;
     }
 
-    uint64_t payload_offset = 0; /* Point to content of payload. */
-    uint64_t content_length_offset = 0;
     try
     {
         Log(L"Writing loader");
         s_write_loader(outputFile.get(), m_config.loaderPath);
 
         Log(L"Writing magic");
-        payload_offset = appbox::GetFilePosition(outputFile.get());
+        uint64_t payload_offset = appbox::GetFilePosition(outputFile.get());
         appbox::WriteFileSized(outputFile.get(), APPBOX_MAGIC, 8);
 
-        /* Write payload length. The value is incorrect here, we will fix it later. */
-        content_length_offset = appbox::GetFilePosition(outputFile.get());
-        appbox::WriteFileSized(outputFile.get(), &content_length_offset,
-                               sizeof(content_length_offset));
+        {
+            uint64_t length = 0;
+            uint64_t off_begin = appbox::GetFilePosition(outputFile.get());
+            appbox::WriteFileSized(outputFile.get(), &length, sizeof(length));
+            appbox::ZDeflateStream deflateStream(outputFile.get(), m_config.compress);
+            s_write_meta(this, deflateStream, m_meta);
+            deflateStream.finish();
+            length = appbox::GetFilePosition(outputFile.get()) - off_begin - sizeof(off_begin);
+            appbox::WriteFilePositionSized(outputFile.get(), &length, sizeof(length), off_begin);
+        }
 
-        appbox::ZDeflateStream deflateStream(outputFile.get(), m_config.compress);
-        s_write_meta(this, deflateStream, m_meta);
-        s_write_filesystem(this, deflateStream, m_config);
-        deflateStream.finish();
-
-        /* Update payload size. */
-        uint64_t payload_sz = deflateStream.written();
-        appbox::WriteFilePositionSized(outputFile.get(), &payload_sz, sizeof(payload_sz),
-                                       content_length_offset);
+        {
+            uint64_t length = 0;
+            uint64_t off_begin = appbox::GetFilePosition(outputFile.get());
+            appbox::WriteFileSized(outputFile.get(), &length, sizeof(length));
+            appbox::ZDeflateStream deflateStream(outputFile.get(), m_config.compress);
+            s_write_filesystem(this, deflateStream, m_config);
+            deflateStream.finish();
+            length = appbox::GetFilePosition(outputFile.get()) - off_begin - sizeof(off_begin);
+            appbox::WriteFilePositionSized(outputFile.get(), &length, sizeof(length), off_begin);
+        }
 
         std::array<char, 20> buff;
         memcpy(&buff[0], APPBOX_MAGIC, 8);
@@ -202,9 +202,8 @@ wxThread::ExitCode ProcessDialog::Data::Entry()
         uint32_t crc = crc32(0, Z_NULL, 0);
         crc = crc32(crc, (Bytef*)&buff[0], 16);
         memcpy(&buff[16], &crc, sizeof(crc));
-        spdlog::info("20buff: {}", spdlog::to_hex(buff));
-
         appbox::WriteFileSized(outputFile.get(), &buff[0], buff.size());
+
         Log(L"Build finish");
     }
     catch (const std::runtime_error& e)

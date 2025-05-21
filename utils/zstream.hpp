@@ -79,11 +79,9 @@ inline size_t ZDeflateStream::deflate(HANDLE file)
     while (ReadFile(file, this->cache_in, sizeof(this->cache_in), &read_sz, nullptr) &&
            read_sz != 0)
     {
-        spdlog::info("read handle: {}", read_sz);
         total_write_sz += deflate(this->cache_in, read_sz);
     }
 
-    spdlog::info("write handle: {}", total_write_sz);
     this->totalWriteBytes += total_write_sz;
     return total_write_sz;
 }
@@ -161,6 +159,10 @@ inline std::string ZInflateStream::inflate()
     DWORD read_sz = 0;
     DWORD cacheSize = MIN(sizeof(mCacheIn), mMaxReadSize);
 
+    if (cacheSize == 0)
+    {
+        return std::string();
+    }
     if (!::ReadFile(mFile, mCacheIn, cacheSize, &read_sz, nullptr))
     {
         throw std::runtime_error("ReadFile() failed");
