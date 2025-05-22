@@ -101,7 +101,14 @@ FilePanel::~FilePanel()
     delete m_data;
 }
 
-std::vector<FileDataView::Filesystem> FilePanel::Export() const
+FilePanel::Config FilePanel::Export() const
 {
-    return m_data->mFileDataView->Export();
+    FilePanel::Config config;
+    config.fs = m_data->mFileDataView->Export();
+    return config;
+}
+
+void FilePanel::Import(const FilePanel::Config& config)
+{
+    m_data->mFileDataView->Import(config.fs);
 }

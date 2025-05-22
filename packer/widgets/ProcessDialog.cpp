@@ -45,6 +45,7 @@ ProcessDialog::Data::Data(ProcessDialog* owner, const appbox::Meta& meta, const 
         sizer->Add(m_owner->CreateButtonSizer(wxCLOSE));
         m_owner->SetSizer(sizer);
     }
+    owner->SetSize(wxSize(600, 400));
 
     /* Bind events before create thread. */
     m_owner->Bind(APPBOX_PROCESSDIALOG_LOG, &Data::OnProcessLog, this);
@@ -84,9 +85,9 @@ void ProcessDialog::Data::OnProcessLog(const wxThreadEvent& e)
     logTextCtrl->AppendText(L"\n");
 }
 
-static void s_write_loader(HANDLE file, const std::wstring& path)
+static void s_write_loader(HANDLE file, const wxString& path)
 {
-    std::string loader = appbox::ReadFileAll(path);
+    std::string loader = appbox::ReadFileAll(path.ToStdWstring());
     appbox::WriteFileSized(file, loader.c_str(), loader.size());
 }
 
@@ -104,16 +105,16 @@ static void s_write_filesystem_entry(ProcessDialog::Data* iner, appbox::ZDeflate
 {
     std::shared_ptr<void> hFile;
     appbox::PayloadNode   node;
-    std::string           sandboxPathU8 = appbox::wcstombs(entry.sandboxPath.c_str(), CP_UTF8);
+    const wxString        wSandboxPath = wxString::FromUTF8(entry.sandboxPath);
 
     node.type = appbox::PAYLOAD_TYPE_FILESYSTEM;
     node.isolation = entry.isolation;
     node.attribute = entry.dwFileAttributes;
-    node.path_len = sandboxPathU8.size();
+    node.path_len = entry.sandboxPath.size();
 
     if (!(entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
     {
-        hFile = std::shared_ptr<void>(CreateFileW(entry.sourcePath.c_str(), GENERIC_READ,
+        hFile = std::shared_ptr<void>(CreateFileW(wSandboxPath.ToStdWstring().c_str(), GENERIC_READ,
                                                   FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                                                   FILE_ATTRIBUTE_NORMAL, nullptr),
                                       CloseHandle);
@@ -126,9 +127,11 @@ static void s_write_filesystem_entry(ProcessDialog::Data* iner, appbox::ZDeflate
         node.payload_len = appbox::GetFileSize(hFile.get());
     }
 
-    iner->Log(wxString::Format(L"Processing %s", entry.sourcePath.c_str()).ToStdWstring());
+    iner->Log(wxString::Format(L"Processing %s --> %s", entry.sourcePath.c_str(),
+                               entry.sandboxPath.c_str())
+                  .ToStdWstring());
     ds.deflate(&node, sizeof(node));
-    ds.deflate(sandboxPathU8.c_str(), sandboxPathU8.size());
+    ds.deflate(entry.sandboxPath.c_str(), entry.sandboxPath.size());
 
     if (hFile)
     {
@@ -154,9 +157,9 @@ static void s_write_filesystem(ProcessDialog::Data* iner, appbox::ZDeflateStream
 
 wxThread::ExitCode ProcessDialog::Data::Entry()
 {
-    std::shared_ptr<void> outputFile(CreateFileW(m_config.outputPath.c_str(), GENERIC_WRITE, 0,
-                                                 nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
-                                                 nullptr),
+    std::shared_ptr<void> outputFile(CreateFileW(m_config.outputPath.ToStdWstring().c_str(),
+                                                 GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                                 FILE_ATTRIBUTE_NORMAL, nullptr),
                                      CloseHandle);
     if (outputFile.get() == INVALID_HANDLE_VALUE)
     {

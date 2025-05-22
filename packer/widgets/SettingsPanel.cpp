@@ -18,6 +18,11 @@ struct SettingsPanel::Data
     int            mCompressLevel;
 };
 
+SettingsPanel::Config::Config()
+{
+    compressLevel = 1;
+}
+
 SettingsPanel::Data::Data(SettingsPanel* owner)
 {
     mOwner = owner;
@@ -101,7 +106,17 @@ SettingsPanel::Config SettingsPanel::Export() const
 {
     SettingsPanel::Config config;
     config.compressLevel = mData->mCompressLevel;
-    config.outputPath = wxFileName(mData->mOutputTextCtrl->GetValue()).GetFullPath();
-    config.sandboxPath = wxFileName(mData->mSandboxTextCtrl->GetValue()).GetFullPath();
+    config.outputPath =
+        wxFileName(mData->mOutputTextCtrl->GetValue()).GetFullPath().ToStdString(wxConvUTF8);
+    config.sandboxPath =
+        wxFileName(mData->mSandboxTextCtrl->GetValue()).GetFullPath().ToStdString(wxConvUTF8);
     return config;
+}
+
+void SettingsPanel::Import(const SettingsPanel::Config& config)
+{
+    mData->mCompressLevel = config.compressLevel;
+    mData->mCompressLevelChoice->SetSelection(mData->mCompressLevel);
+    mData->mOutputTextCtrl->SetValue(wxString::FromUTF8(config.outputPath));
+    mData->mSandboxTextCtrl->SetValue(wxString::FromUTF8(config.sandboxPath));
 }

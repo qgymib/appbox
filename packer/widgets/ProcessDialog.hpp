@@ -10,14 +10,12 @@ class ProcessDialog : public wxDialog
 public:
     struct Config
     {
-        int          compress;   /* Compress level. 0=no compress, 9=max compress. */
-        std::wstring loaderPath; /* Loader path. */
-        std::wstring outputPath; /* Output file path. */
+        int      compress;   /* Compress level. 0=no compress, 9=max compress. */
+        wxString loaderPath; /* Loader path. */
+        wxString outputPath; /* Output file path. */
         std::vector<FileDataView::Filesystem> filesystem; /* Filesystem input. */
 
         Config();
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Config, compress, loaderPath, outputPath,
-                                                    filesystem);
     };
 
     ProcessDialog(wxWindow* parent, const appbox::Meta& meta, const Config& config);

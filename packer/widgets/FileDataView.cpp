@@ -13,9 +13,9 @@ struct FileDataViewNode
 
     FileDataViewNode*              parent;           /* Parent node. */
     std::vector<FileDataViewNode*> children;         /* Children nodes. */
-    std::wstring                   name;             /* Node name. */
-    std::wstring                   sandboxPath;      /* Location in sandbox. */
-    std::wstring                   sourcePath;       /* Location in real filesystem. */
+    wxString                       name;             /* Node name. */
+    wxString                       sandboxPath;      /* Location in sandbox. */
+    wxString                       sourcePath;       /* Location in real filesystem. */
     DWORD                          dwFileAttributes; /* Entry type. */
     appbox::IsolationMode          isolation;        /* Isolation mode. */
 };
@@ -103,7 +103,7 @@ wxArrayString FileDataView::GetIsolationArray() const
 
 static void s_expand_entry(FileDataViewNode* parent)
 {
-    auto files = appbox::ListFiles(parent->sourcePath);
+    auto files = appbox::ListFiles(parent->sourcePath.ToStdWstring());
     for (auto it = files.begin(); it != files.end(); it++)
     {
         FileDataViewNode* child = new FileDataViewNode;
@@ -154,7 +154,7 @@ void FileDataView::AddFolderRecursive(wxDataViewItem parent, const std::wstring&
     {
         parentEntry = static_cast<FileDataViewNode*>(parent.GetID());
     }
-    spdlog::info(L"parent: {}", parentEntry->name);
+    spdlog::info(L"parent: {}", parentEntry->name.ToStdWstring());
 
     FileDataViewNode* newEntry = s_build_entry_tree(sandboxPath, sourcePath);
     newEntry->parent = parentEntry;
@@ -321,8 +321,8 @@ bool FileDataView::HasContainerColumns(const wxDataViewItem&) const
 
 static void s_node_to_fs(FileDataView::Filesystem& dst, const FileDataViewNode* src)
 {
-    dst.sandboxPath = src->sandboxPath;
-    dst.sourcePath = src->sourcePath;
+    dst.sandboxPath = src->sandboxPath.ToStdString(wxConvUTF8);
+    dst.sourcePath = src->sourcePath.ToStdString(wxConvUTF8);
     dst.isolation = src->isolation;
     dst.dwFileAttributes = src->dwFileAttributes;
 
@@ -352,11 +352,11 @@ static void s_fs_to_node(FileDataViewNode* parent, const FileDataView::Filesyste
 {
     FileDataViewNode* node = new FileDataViewNode;
     node->parent = parent;
-    node->sandboxPath = fs.sandboxPath;
-    node->sourcePath = fs.sourcePath;
+    node->sandboxPath = wxString::FromUTF8(fs.sandboxPath);
+    node->sourcePath = wxString::FromUTF8(fs.sourcePath);
     node->dwFileAttributes = fs.dwFileAttributes;
     node->isolation = fs.isolation;
-    node->name = wxFileName(node->sourcePath).GetFullName().ToStdWstring();
+    node->name = wxFileName(node->sourcePath).GetFullName();
     parent->children.push_back(node);
 
     for (auto it = fs.children.begin(); it != fs.children.end(); ++it)

@@ -7,7 +7,7 @@
 
 struct PayloadDecompressor
 {
-    PayloadDecompressor(HANDLE file, size_t size);
+    PayloadDecompressor(HANDLE file, size_t size, const appbox::Meta& meta);
     bool WaitForCache(size_t size);
     void Process();
     void ProcessFilesystem();
@@ -15,7 +15,7 @@ struct PayloadDecompressor
     appbox::ZInflateStream mStream;  /* Inflate stream. */
     appbox::PayloadNode    mCurrent; /* Payload type current processing. */
     std::string            mData;    /* Payload data. */
-    nlohmann::json         mMeta;    /* Metadata. */
+    appbox::Meta           mMeta;    /* Metadata. */
 };
 
 #endif

@@ -2,9 +2,12 @@
 #include <spdlog/spdlog.h>
 #include "utils/wstring.hpp"
 #include "PayloadDecompressor.hpp"
+#include "__init__.hpp"
 
-PayloadDecompressor::PayloadDecompressor(HANDLE file, size_t size) : mStream(file, size)
+PayloadDecompressor::PayloadDecompressor(HANDLE file, size_t size, const appbox::Meta& meta)
+    : mStream(file, size)
 {
+    mMeta = meta;
 }
 
 bool PayloadDecompressor::WaitForCache(size_t size)
@@ -23,6 +26,16 @@ bool PayloadDecompressor::WaitForCache(size_t size)
 
 void PayloadDecompressor::Process()
 {
+    std::wstring sandboxLocation = appbox::mbstowcs(mMeta.settings.SandboxLocation);
+    spdlog::info(L"Sandbox location: {}", sandboxLocation);
+
+    if (!wxMkdir(sandboxLocation))
+    {
+        wxString msg = wxString::Format(L"Create sandbox location failed: %s",
+                                        sandboxLocation.c_str());
+        throw std::runtime_error(msg.ToStdString(wxConvUTF8));
+    }
+
     while (1)
     {
         switch (mCurrent.type)

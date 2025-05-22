@@ -16,13 +16,12 @@ struct MainFrame::Data
     Data(MainFrame* owner);
     void OnProcessButtonClick(const wxCommandEvent&);
     void OnProjectSave(const wxCommandEvent&);
+    void OnProjectOpen(const wxCommandEvent&);
 
-    MainFrame*            mOwner;
-    wxButton*             mProcessButton;
-    FilePanel*            mFilePanel;
-    SettingsPanel*        mSettingsPanel;
-    appbox::Meta          mMeta;
-    ProcessDialog::Config mConfig;
+    MainFrame*     mOwner;
+    wxButton*      mProcessButton;
+    FilePanel*     mFilePanel;
+    SettingsPanel* mSettingsPanel;
 };
 
 static void s_setup_menubar(MainFrame* owner)
@@ -71,20 +70,24 @@ MainFrame::Data::Data(MainFrame* owner)
 
     owner->CreateStatusBar();
     owner->Bind(wxEVT_MENU, &Data::OnProjectSave, this, wxID_SAVE);
+    owner->Bind(wxEVT_MENU, &Data::OnProjectOpen, this, wxID_OPEN);
     mProcessButton->Bind(wxEVT_BUTTON, &Data::OnProcessButtonClick, this);
 }
 
 void MainFrame::Data::OnProcessButtonClick(const wxCommandEvent&)
 {
-    SettingsPanel::Config config = mSettingsPanel->Export();
-    mMeta.settings.SandboxLocation = appbox::wcstombs(config.sandboxPath.c_str());
+    SettingsPanel::Config settingsConfig = mSettingsPanel->Export();
 
-    mConfig.compress = config.compressLevel;
-    mConfig.loaderPath = L"loader.exe";
-    mConfig.outputPath = mSettingsPanel->Export().outputPath;
-    mConfig.filesystem = mFilePanel->Export();
+    appbox::Meta meta;
+    meta.settings.SandboxLocation = settingsConfig.sandboxPath;
 
-    ProcessDialog dialog(mOwner, mMeta, mConfig);
+    ProcessDialog::Config processConfig;
+    processConfig.compress = settingsConfig.compressLevel;
+    processConfig.loaderPath = L"loader.exe";
+    processConfig.outputPath = wxString::FromUTF8(settingsConfig.outputPath);
+    processConfig.filesystem = mFilePanel->Export().fs;
+
+    ProcessDialog dialog(mOwner, meta, processConfig);
     dialog.ShowModal();
 }
 
@@ -92,7 +95,7 @@ void MainFrame::Data::OnProjectSave(const wxCommandEvent&)
 {
     wxFileDialog saveDialog(mOwner, _("Save Project"), wxEmptyString, wxEmptyString,
                             "JSON Files (*.json)|*.json", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
-    if (saveDialog.ShowModal() == wxID_CANCEL)
+    if (saveDialog.ShowModal() != wxID_OK)
     {
         return;
     }
@@ -108,10 +111,35 @@ void MainFrame::Data::OnProjectSave(const wxCommandEvent&)
     }
 
     nlohmann::json project;
-    project["meta"] = mMeta;
-    project["config"] = mConfig;
-    std::string projectData = project.dump();
+    project["filesystem"] = mFilePanel->Export();
+    project["settings"] = mSettingsPanel->Export();
+    std::string projectData = project.dump(2);
     appbox::WriteFileSized(outFile.get(), projectData.c_str(), projectData.size());
+}
+
+void MainFrame::Data::OnProjectOpen(const wxCommandEvent&)
+{
+    wxFileDialog openDialog(mOwner, _("Open Project"), wxEmptyString, wxEmptyString,
+                            "JSON Files (*.json)|*.json", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (openDialog.ShowModal() != wxID_OK)
+    {
+        return;
+    }
+
+    try
+    {
+        std::string           data = appbox::ReadFileAll(openDialog.GetPath().ToStdWstring());
+        nlohmann::json        project = nlohmann::json::parse(data);
+        SettingsPanel::Config settingsConfig = project["settings"];
+        mSettingsPanel->Import(settingsConfig);
+        FilePanel::Config fileConfig = project["filesystem"];
+        mFilePanel->Import(fileConfig);
+    }
+    catch (const std::runtime_error& e)
+    {
+        wxString msg = wxString::FromUTF8(e.what());
+        wxMessageBox(L"Failed to open project file: " + msg);
+    }
 }
 
 MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox Packer")

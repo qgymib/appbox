@@ -7,10 +7,17 @@
 class FilePanel : public wxPanel
 {
 public:
+    struct Config
+    {
+        std::vector<FileDataView::Filesystem> fs;
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Config, fs);
+    };
+
     FilePanel(wxWindow* parent);
     virtual ~FilePanel();
 
-    std::vector<FileDataView::Filesystem> Export() const;
+    Config Export() const;
+    void Import(const Config& config);
 
 private:
     struct Data;

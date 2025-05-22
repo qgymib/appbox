@@ -2,6 +2,7 @@
 #define APPBOX_UTILS_WSTRING_HPP
 
 #include <Windows.h>
+#include <stdexcept>
 #include <string>
 
 namespace appbox
@@ -18,15 +19,23 @@ namespace appbox
  *
  * @param[in] s The multibyte string to convert.
  * @param[in] n The maximum number of characters to process from the multibyte string.
- * @param[in] codepage The code page used for the conversion. Defaults to CP_ACP if not provided.
+ * @param[in] codepage The code page used for the conversion. Defaults to CP_UTF8 if not provided.
  * @return A wide string representation of the specified portion of the input multibyte string.
  */
-inline std::wstring mbstowcs(const char* s, size_t n, int codepage = CP_ACP)
+inline std::wstring mbstowcs(const char* s, size_t n, int codepage = CP_UTF8)
 {
-    int          size_need = MultiByteToWideChar(codepage, 0, s, (int)n, nullptr, 0);
-    std::wstring dst(size_need, 0);
-    MultiByteToWideChar(codepage, 0, s, (int)n, &dst[0], size_need);
-    dst.resize(size_need - 1);
+    int size_need = MultiByteToWideChar(codepage, 0, s, (int)n, nullptr, 0);
+    if (size_need < 0)
+    {
+        throw std::runtime_error("MultiByteToWideChar() failed");
+    }
+    wchar_t* new_str = new wchar_t[size_need];
+    if (MultiByteToWideChar(codepage, 0, s, (int)n, new_str, size_need) != size_need)
+    {
+        throw std::runtime_error("MultiByteToWideChar() failed");
+    }
+    std::wstring dst(new_str);
+    delete[] new_str;
     return dst;
 }
 
@@ -38,15 +47,15 @@ inline std::wstring mbstowcs(const char* s, size_t n, int codepage = CP_ACP)
  * for the wide string, then performs the conversion.
  *
  * @param[in] s The multibyte string to convert.
- * @param[in] codepage The code page used for the conversion. Defaults to CP_ACP if not provided.
+ * @param[in] codepage The code page used for the conversion. Defaults to CP_UTF8 if not provided.
  * @return A wide string representation of the input multibyte string.
  */
-inline std::wstring mbstowcs(const char* s, int codepage = CP_ACP)
+inline std::wstring mbstowcs(const char* s, int codepage = CP_UTF8)
 {
     return appbox::mbstowcs(s, (size_t)-1, codepage);
 }
 
-inline std::wstring mbstowcs(const std::string& s, int codepage = CP_ACP)
+inline std::wstring mbstowcs(const std::string& s, int codepage = CP_UTF8)
 {
     return appbox::mbstowcs(s.c_str(), s.size(), codepage);
 }
@@ -68,10 +77,11 @@ inline std::wstring mbstowcs(const std::string& s, int codepage = CP_ACP)
  */
 inline std::string wcstombs(const wchar_t* s, size_t n, int codepage = CP_UTF8)
 {
-    int size_need = WideCharToMultiByte(codepage, 0, s, (int)n, nullptr, 0, nullptr, nullptr);
-    std::string dst(size_need, 0);
-    WideCharToMultiByte(codepage, 0, s, (int)n, &dst[0], size_need, nullptr, nullptr);
-    dst.resize(size_need - 1);
+    int   size_need = WideCharToMultiByte(codepage, 0, s, (int)n, nullptr, 0, nullptr, nullptr);
+    char* new_str = new char[size_need];
+    WideCharToMultiByte(codepage, 0, s, (int)n, new_str, size_need, nullptr, nullptr);
+    std::string dst(new_str);
+    delete[] new_str;
     return dst;
 }
 
@@ -90,6 +100,11 @@ inline std::string wcstombs(const wchar_t* s, size_t n, int codepage = CP_UTF8)
 inline std::string wcstombs(const wchar_t* s, int codepage = CP_UTF8)
 {
     return appbox::wcstombs(s, (size_t)-1, codepage);
+}
+
+inline std::string wcstombs(const std::wstring& s, int codepage = CP_UTF8)
+{
+    return appbox::wcstombs(s.c_str(), s.size(), codepage);
 }
 
 } // namespace appbox

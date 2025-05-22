@@ -6,6 +6,8 @@
 #include "utils/file.hpp"
 #include "utils/macros.hpp"
 #include "utils/winapi.hpp"
+#include "utils/meta.hpp"
+#include "utils/wstring.hpp"
 #include "PayloadDecompressor.hpp"
 #include "VariableDecoder.hpp"
 #include "App.hpp"
@@ -19,7 +21,7 @@ struct SuperviseService : wxEvtHandler, wxThreadHelper
 
     VariableDecoder mVarDecoder; /* Environment decoder. */
     std::wstring    mSelfPath;   /* Path to self. */
-    nlohmann::json  mMeta;       /* Metadata. */
+    appbox::Meta    mMeta;       /* Metadata. */
 };
 
 SuperviseService::SuperviseService()
@@ -109,7 +111,6 @@ static nlohmann::json s_get_meta(HANDLE file)
 
 static void s_inflate_payload(SuperviseService* service, HANDLE file)
 {
-    (void)service;
     uint64_t payload_sz = 0;
     appbox::ReadFileSized(file, &payload_sz, sizeof(payload_sz));
     spdlog::info("payload_sz: {}", payload_sz);
@@ -118,7 +119,7 @@ static void s_inflate_payload(SuperviseService* service, HANDLE file)
     QueryPerformanceFrequency(&Frequency);
     QueryPerformanceCounter(&StartingTime);
     {
-        PayloadDecompressor pd(file, payload_sz);
+        PayloadDecompressor pd(file, payload_sz, service->mMeta);
         pd.Process();
     }
     QueryPerformanceCounter(&EndingTime);
@@ -132,6 +133,17 @@ static void s_inflate_payload(SuperviseService* service, HANDLE file)
                  ElapsedMilliseconds.QuadPart, speed / 1024 / 1024);
 }
 
+static void s_expand_necessary_variable(VariableDecoder& decoder, appbox::Meta& meta)
+{
+    std::wstring value = appbox::mbstowcs(meta.settings.SandboxLocation, CP_UTF8);
+    value = decoder.Decode(value);
+    spdlog::info("fix sandbox location. before={}", meta.settings.SandboxLocation);
+    spdlog::info(L"fix sandbox location. after={}", value);
+
+    meta.settings.SandboxLocation = appbox::wcstombs(value, CP_UTF8);
+    spdlog::info("assign = {}", meta.settings.SandboxLocation);
+}
+
 static void s_process_payload(SuperviseService* service, HANDLE file)
 {
     uint8_t magic[8];
@@ -142,7 +154,10 @@ static void s_process_payload(SuperviseService* service, HANDLE file)
         throw std::runtime_error("Invalid magic_1");
     }
 
-    service->mMeta = s_get_meta(file);
+    nlohmann::json meta = s_get_meta(file);
+    service->mMeta = meta;
+    s_expand_necessary_variable(service->mVarDecoder, service->mMeta);
+
     s_inflate_payload(service, file);
 }
 
@@ -191,6 +206,21 @@ void appbox::supervise::Init()
 
 void appbox::supervise::Exit()
 {
+    if (G->mMeta.settings.SandboxReset)
+    {
+        wxString   sandboxLocation = wxString::FromUTF8(G->mMeta.settings.SandboxLocation);
+        wxFileName dir(sandboxLocation);
+        if (!dir.Rmdir(wxPATH_RMDIR_RECURSIVE))
+        {
+            spdlog::error("Failed to reset sandbox {}", G->mMeta.settings.SandboxLocation);
+        }
+    }
+
     delete G;
     G = nullptr;
+}
+
+VariableDecoder& appbox::supervise::GetVariableDecoder()
+{
+    return G->mVarDecoder;
 }

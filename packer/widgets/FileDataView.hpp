@@ -11,8 +11,8 @@ class FileDataView : public wxDataViewModel
 public:
     struct Filesystem
     {
-        std::wstring            sandboxPath;      /* Path in sandbox. */
-        std::wstring            sourcePath;       /* Path to copy from real filesystem. */
+        std::string             sandboxPath;      /* Path in sandbox. */
+        std::string             sourcePath;       /* Path to copy from real filesystem. */
         appbox::IsolationMode   isolation;        /* Isolation. */
         DWORD                   dwFileAttributes; /* File Attribute.*/
         std::vector<Filesystem> children;         /* Children nodes. */
@@ -47,7 +47,7 @@ public:
     void DeleteItem(wxDataViewItem node);
 
     std::vector<Filesystem> Export() const;
-    void Import(const std::vector<Filesystem>& fs);
+    void                    Import(const std::vector<Filesystem>& fs);
 
     /* Override */
 public:
