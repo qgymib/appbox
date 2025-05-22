@@ -113,7 +113,6 @@ static void s_inflate_payload(SuperviseService* service, HANDLE file)
 {
     uint64_t payload_sz = 0;
     appbox::ReadFileSized(file, &payload_sz, sizeof(payload_sz));
-    spdlog::info("payload_sz: {}", payload_sz);
 
     LARGE_INTEGER Frequency, StartingTime, EndingTime, ElapsedMilliseconds;
     QueryPerformanceFrequency(&Frequency);
@@ -135,13 +134,10 @@ static void s_inflate_payload(SuperviseService* service, HANDLE file)
 
 static void s_expand_necessary_variable(VariableDecoder& decoder, appbox::Meta& meta)
 {
-    std::wstring value = appbox::mbstowcs(meta.settings.SandboxLocation, CP_UTF8);
+    std::wstring value = appbox::mbstowcs(meta.settings.SandboxLocation.c_str(), CP_UTF8);
     value = decoder.Decode(value);
-    spdlog::info("fix sandbox location. before={}", meta.settings.SandboxLocation);
-    spdlog::info(L"fix sandbox location. after={}", value);
 
-    meta.settings.SandboxLocation = appbox::wcstombs(value, CP_UTF8);
-    spdlog::info("assign = {}", meta.settings.SandboxLocation);
+    meta.settings.SandboxLocation = appbox::wcstombs(value.c_str(), CP_UTF8);
 }
 
 static void s_process_payload(SuperviseService* service, HANDLE file)

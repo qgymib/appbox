@@ -1,9 +1,11 @@
 #ifndef APPBOX_UTILS_FILE_HPP
 #define APPBOX_UTILS_FILE_HPP
 
-#include "winapi.hpp"
 #include <wx/filename.h>
 #include <pathcch.h>
+#include <memory>
+#include "wstring.hpp"
+#include "winapi.hpp"
 
 namespace appbox
 {
@@ -13,6 +15,27 @@ struct FileEntry
     std::wstring name;             /* Entry name. */
     std::wstring path;             /* Entry path. */
     DWORD        dwFileAttributes; /* Entry attributes. */
+};
+
+struct FileHandle : std::shared_ptr<void>
+{
+    FileHandle() = default;
+    FileHandle(const wchar_t* path, DWORD dwDesiredAccess = GENERIC_READ,
+               DWORD                 dwShareMode = FILE_SHARE_READ,
+               LPSECURITY_ATTRIBUTES lpSecurityAttributes = nullptr,
+               DWORD                 dwCreationDisposition = OPEN_EXISTING,
+               DWORD dwFlagsAndAttributes = FILE_ATTRIBUTE_NORMAL, HANDLE hTemplateFile = nullptr)
+        : std::shared_ptr<void>(CreateFileW(path, dwDesiredAccess, dwShareMode,
+                                            lpSecurityAttributes, dwCreationDisposition,
+                                            dwFlagsAndAttributes, hTemplateFile),
+                                CloseHandle)
+    {
+        if (get() == INVALID_HANDLE_VALUE)
+        {
+            std::string msg = "Failed to open file: " + appbox::wcstombs(path, CP_UTF8);
+            throw std::runtime_error(msg);
+        }
+    }
 };
 
 /**

@@ -26,8 +26,8 @@ bool PayloadDecompressor::WaitForCache(size_t size)
 
 void PayloadDecompressor::Process()
 {
-    std::wstring sandboxLocation = appbox::mbstowcs(mMeta.settings.SandboxLocation);
-    spdlog::info(L"Sandbox location: {}", sandboxLocation);
+    wxString sandboxLocation =  wxString::FromUTF8(mMeta.settings.SandboxLocation);
+    spdlog::info(L"Sandbox location: {}", sandboxLocation.ToStdWstring());
 
     if (!wxMkdir(sandboxLocation))
     {

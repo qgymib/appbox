@@ -14,7 +14,7 @@ struct ProcessDialog::Data : wxThreadHelper
     Data(ProcessDialog* owner, const appbox::Meta& meta, const Config& config);
     ~Data() override;
     wxThread::ExitCode Entry() override;
-    void               Log(const std::wstring& msg);
+    void               Log(const wxString& msg);
     void               OnProcessLog(const wxThreadEvent&);
 
     ProcessDialog* m_owner; /* Object own this data. */
@@ -72,7 +72,7 @@ ProcessDialog::Data::~Data()
     }
 }
 
-void ProcessDialog::Data::Log(const std::wstring& msg)
+void ProcessDialog::Data::Log(const wxString& msg)
 {
     wxThreadEvent* e = new wxThreadEvent(APPBOX_PROCESSDIALOG_LOG);
     e->SetString(msg);
@@ -103,9 +103,10 @@ static void s_write_meta(ProcessDialog::Data* iner, appbox::ZDeflateStream& ds,
 static void s_write_filesystem_entry(ProcessDialog::Data* iner, appbox::ZDeflateStream& ds,
                                      const FileDataView::Filesystem& entry)
 {
-    std::shared_ptr<void> hFile;
-    appbox::PayloadNode   node;
-    const wxString        wSandboxPath = wxString::FromUTF8(entry.sandboxPath);
+    appbox::FileHandle  hFile;
+    appbox::PayloadNode node;
+    const wxString      wSandboxPath = wxString::FromUTF8(entry.sandboxPath);
+    const wxString      wSourcePath = wxString::FromUTF8(entry.sourcePath);
 
     node.type = appbox::PAYLOAD_TYPE_FILESYSTEM;
     node.isolation = entry.isolation;
@@ -114,22 +115,12 @@ static void s_write_filesystem_entry(ProcessDialog::Data* iner, appbox::ZDeflate
 
     if (!(entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
     {
-        hFile = std::shared_ptr<void>(CreateFileW(wSandboxPath.ToStdWstring().c_str(), GENERIC_READ,
-                                                  FILE_SHARE_READ, nullptr, OPEN_EXISTING,
-                                                  FILE_ATTRIBUTE_NORMAL, nullptr),
-                                      CloseHandle);
-        if (hFile.get() == INVALID_HANDLE_VALUE)
-        {
-            std::wstring msg =
-                wxString::Format(L"Cannot open file %s", entry.sourcePath.c_str()).ToStdWstring();
-            throw std::runtime_error(appbox::wcstombs(msg.c_str()));
-        }
+        hFile = appbox::FileHandle(wSourcePath.ToStdWstring().c_str());
         node.payload_len = appbox::GetFileSize(hFile.get());
     }
 
     iner->Log(wxString::Format(L"Processing %s --> %s", entry.sourcePath.c_str(),
-                               entry.sandboxPath.c_str())
-                  .ToStdWstring());
+                               entry.sandboxPath.c_str()));
     ds.deflate(&node, sizeof(node));
     ds.deflate(entry.sandboxPath.c_str(), entry.sandboxPath.size());
 
@@ -157,18 +148,11 @@ static void s_write_filesystem(ProcessDialog::Data* iner, appbox::ZDeflateStream
 
 wxThread::ExitCode ProcessDialog::Data::Entry()
 {
-    std::shared_ptr<void> outputFile(CreateFileW(m_config.outputPath.ToStdWstring().c_str(),
-                                                 GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
-                                                 FILE_ATTRIBUTE_NORMAL, nullptr),
-                                     CloseHandle);
-    if (outputFile.get() == INVALID_HANDLE_VALUE)
-    {
-        Log(wxString::Format(L"Cannot open file %s", m_config.outputPath.c_str()).ToStdWstring());
-        goto FINISH;
-    }
-
     try
     {
+        appbox::FileHandle outputFile(m_config.outputPath.ToStdWstring().c_str(), GENERIC_WRITE, 0,
+                                      nullptr, CREATE_ALWAYS);
+
         Log(L"Writing loader");
         s_write_loader(outputFile.get(), m_config.loaderPath);
 
@@ -214,7 +198,6 @@ wxThread::ExitCode ProcessDialog::Data::Entry()
         Log(wxString::FromUTF8(e.what()).ToStdWstring());
     }
 
-FINISH:
     return 0;
 }
 

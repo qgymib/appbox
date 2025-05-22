@@ -100,10 +100,8 @@ void MainFrame::Data::OnProjectSave(const wxCommandEvent&)
         return;
     }
 
-    std::wstring          outPath = saveDialog.GetPath().ToStdWstring();
-    std::shared_ptr<void> outFile(CreateFileW(outPath.c_str(), GENERIC_WRITE, 0, nullptr,
-                                              CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr),
-                                  CloseHandle);
+    std::wstring       outPath = saveDialog.GetPath().ToStdWstring();
+    appbox::FileHandle outFile(outPath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS);
     if (outFile.get() == INVALID_HANDLE_VALUE)
     {
         wxMessageBox("Failed to create project file");
