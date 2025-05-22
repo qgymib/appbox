@@ -35,7 +35,7 @@ SettingsPanel::Data::Data(SettingsPanel* owner)
     {
         gSizer->Add(new wxStaticText(owner, wxID_ANY, _("Sandbox location")));
         mSandboxTextCtrl = new wxTextCtrl(owner, wxID_ANY,
-                                          L"%LocalAppData%\\AppBox\\Sandbox\\%APPBOX::ENV::TITLE%");
+                                          L"%LOCALAPPDATA%\\AppBox\\Sandbox\\%APPBOX::ENV::TITLE%");
         gSizer->Add(mSandboxTextCtrl, 1, wxGROW);
         mSandboxBrowseButton = new wxButton(owner, wxID_ANY, _("Browse"));
         gSizer->Add(mSandboxBrowseButton);

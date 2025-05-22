@@ -6,6 +6,7 @@
 #include "widgets/RegistryPanel.hpp"
 #include "widgets/SettingsPanel.hpp"
 #include "widgets/ProcessDialog.hpp"
+#include "LogPanel.hpp"
 #include "utils/file.hpp"
 #include "utils/wstring.hpp"
 #include "MainFrame.hpp"
@@ -56,6 +57,7 @@ MainFrame::Data::Data(MainFrame* owner)
         noteBook->AddPage(new RegistryPanel(noteBook), _("Registry"));
         mSettingsPanel = new SettingsPanel(noteBook);
         noteBook->AddPage(mSettingsPanel, _("Settings"));
+        noteBook->AddPage(new LogPanel(noteBook), _("Log"));
         bSizer->Add(noteBook, 1, wxEXPAND);
     }
     {

@@ -16,9 +16,10 @@ endfunction()
 # Setup executable
 ###############################################################################
 
-set(loader_sources
+set(packer_sources
     "widgets/FileDataView.cpp"
     "widgets/FilePanel.cpp"
+    "widgets/LogPanel.cpp"
     "widgets/MainFrame.cpp"
     "widgets/ProcessDialog.cpp"
     "widgets/RegistryPanel.cpp"
@@ -27,7 +28,7 @@ set(loader_sources
     "resource.rc"
 )
 
-add_executable(${PROJECT_NAME} WIN32 ${loader_sources})
+add_executable(${PROJECT_NAME} WIN32 ${packer_sources})
 appbox_setup_target_wall(${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME}

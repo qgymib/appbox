@@ -1,0 +1,1 @@
+#include "../../loader/widgets/LogPanel.cpp"
