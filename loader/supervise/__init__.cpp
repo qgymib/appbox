@@ -197,7 +197,8 @@ void appbox::supervise::Exit()
     if (G->mMeta.settings.sandboxReset)
     {
         wxString   sandboxLocation = wxString::FromUTF8(G->mMeta.settings.sandboxLocation);
-        wxFileName dir(sandboxLocation);
+        wxFileName dir;
+        dir.AssignDir(sandboxLocation);
         if (!dir.Rmdir(wxPATH_RMDIR_RECURSIVE))
         {
             spdlog::error("Failed to reset sandbox {}", G->mMeta.settings.sandboxLocation);
