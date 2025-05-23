@@ -2,6 +2,7 @@
 #include <wx/filedlg.h>
 #include <wx/notebook.h>
 #include <wx/wfstream.h>
+#include <spdlog/spdlog.h>
 #include "widgets/FilePanel.hpp"
 #include "widgets/RegistryPanel.hpp"
 #include "widgets/SettingsPanel.hpp"
@@ -26,6 +27,30 @@ struct MainFrame::Data
     SettingsPanel*             mSettingsPanel;
     StartupFilesDialog::Config mStartupFiles;
 };
+
+static void s_append_startup_choice(wxArrayString& choice, const FileDataView::Filesystem& fs)
+{
+    wxString path = wxString::FromUTF8(fs.sandboxPath);
+    if (path.EndsWith(L".exe"))
+    {
+        choice.Add(wxString::FromUTF8(fs.sandboxPath));
+    }
+
+    for (auto it = fs.children.begin(); it != fs.children.end(); ++it)
+    {
+        s_append_startup_choice(choice, *it);
+    }
+}
+
+static wxArrayString s_get_startup_choices(const FilePanel::Config& config)
+{
+    wxArrayString choices;
+    for (auto it = config.fs.begin(); it != config.fs.end(); ++it)
+    {
+        s_append_startup_choice(choices, *it);
+    }
+    return choices;
+}
 
 static void s_setup_menubar(MainFrame* owner)
 {
@@ -100,7 +125,8 @@ void MainFrame::Data::OnProcessButtonClick(const wxCommandEvent&)
 
 void MainFrame::Data::OnStartupFilesButtonClick(const wxCommandEvent&)
 {
-    StartupFilesDialog dialog(mOwner, mStartupFiles);
+    wxArrayString      choices = s_get_startup_choices(mFilePanel->Export());
+    StartupFilesDialog dialog(mOwner, mStartupFiles, choices);
     if (dialog.ShowModal() != wxID_OK)
     {
         return;

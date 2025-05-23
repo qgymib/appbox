@@ -24,7 +24,7 @@ public:
     };
 
 public:
-    StartupFilesDialog(wxWindow* parent, const Config& config);
+    StartupFilesDialog(wxWindow* parent, const Config& config, const wxArrayString& choices);
     ~StartupFilesDialog() override;
 
     Config GetResult() const;

@@ -22,7 +22,7 @@ struct StartupFilesDataView : wxDataViewModel
 
 struct StartupFilesDialog::Data
 {
-    Data(StartupFilesDialog* owner, const Config& config);
+    Data(StartupFilesDialog* owner, const Config& config, const wxArrayString& choices);
     ~Data();
     void OnAddButtonClick(wxCommandEvent&);
     void OnDeleteButtonClick(wxCommandEvent&);
@@ -137,26 +137,23 @@ static bool s_col_trigger_set(const wxVariant& variant, StartupFilesDialog::File
     return true;
 }
 
-static DataViewValueGS<StartupFilesDialog::File> s_startup_files_data_view_gs[] = {
-    { s_col_path_get,    s_col_path_set    },
-    { s_col_cmd_get,     s_col_cmd_set     },
-    { s_col_trigger_get, s_col_trigger_set },
-};
-
-static wxArrayString s_get_all_exes_from_config(const StartupFilesDialog::Config& config)
+static void s_col_autostart_get(wxVariant& variant, const StartupFilesDialog::File* file)
 {
-    wxArrayString result;
-    for (auto it = config.files.begin(); it != config.files.end(); ++it)
-    {
-        const StartupFilesDialog::File& file = *it;
-        const wxString                  path = wxString::FromUTF8(file.path);
-        if (path.EndsWith(L".exe", nullptr))
-        {
-            result.Add(path);
-        }
-    }
-    return result;
+    variant = file->autoStart;
 }
+
+static bool s_col_autostart_set(const wxVariant& variant, StartupFilesDialog::File* file)
+{
+    file->autoStart = variant.GetBool();
+    return true;
+}
+
+static DataViewValueGS<StartupFilesDialog::File> s_startup_files_data_view_gs[] = {
+    { s_col_path_get,      s_col_path_set      },
+    { s_col_cmd_get,       s_col_cmd_set       },
+    { s_col_trigger_get,   s_col_trigger_set   },
+    { s_col_autostart_get, s_col_autostart_set },
+};
 
 void StartupFilesDataView::GetValue(wxVariant& variant, const wxDataViewItem& item,
                                     unsigned int col) const
@@ -183,7 +180,8 @@ bool StartupFilesDataView::SetValue(const wxVariant& variant, const wxDataViewIt
     return s_startup_files_data_view_gs[col].SetValue(variant, file);
 }
 
-StartupFilesDialog::Data::Data(StartupFilesDialog* owner, const Config& config)
+StartupFilesDialog::Data::Data(StartupFilesDialog* owner, const Config& config,
+                               const wxArrayString& choices)
 {
     mOwner = owner;
     mStartupFilesDataView = new StartupFilesDataView(config);
@@ -191,18 +189,18 @@ StartupFilesDialog::Data::Data(StartupFilesDialog* owner, const Config& config)
     mStartupFilesDataViewCtrl->AssociateModel(mStartupFilesDataView);
 
     {
-        wxArrayString             choices = s_get_all_exes_from_config(config);
         wxDataViewChoiceRenderer* c =
             new wxDataViewChoiceRenderer(choices, wxDATAVIEW_CELL_EDITABLE, wxALIGN_LEFT);
-        wxDataViewColumn* column = new wxDataViewColumn(_("Path"), c, 0, wxDVC_DEFAULT_WIDTH,
+        wxDataViewColumn* column = new wxDataViewColumn(_("Path"), c, 0, 2 * wxDVC_DEFAULT_WIDTH,
                                                         wxALIGN_CENTER, wxDATAVIEW_COL_RESIZABLE);
         mStartupFilesDataViewCtrl->AppendColumn(column);
     }
     {
         wxDataViewTextRenderer* c = new wxDataViewTextRenderer(
             wxDataViewTextRenderer::GetDefaultType(), wxDATAVIEW_CELL_EDITABLE);
-        wxDataViewColumn* column = new wxDataViewColumn(
-            _("Command Line"), c, 1, wxDVC_DEFAULT_WIDTH, wxALIGN_CENTER, wxDATAVIEW_COL_RESIZABLE);
+        wxDataViewColumn* column =
+            new wxDataViewColumn(_("Command Line"), c, 1, 2 * wxDVC_DEFAULT_WIDTH, wxALIGN_CENTER,
+                                 wxDATAVIEW_COL_RESIZABLE);
         mStartupFilesDataViewCtrl->AppendColumn(column);
     }
     {
@@ -219,14 +217,15 @@ StartupFilesDialog::Data::Data(StartupFilesDialog* owner, const Config& config)
         mStartupFilesDataViewCtrl->AppendColumn(column);
     }
 
-    wxSizer* bSizer = new wxBoxSizer(wxVERTICAL);
-    bSizer->Add(mStartupFilesDataViewCtrl, 1, wxEXPAND);
+    wxBoxSizer* bSizer = new wxBoxSizer(wxVERTICAL);
     {
         wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
         sizer->Add(new wxButton(owner, wxID_ADD));
         sizer->Add(new wxButton(owner, wxID_DELETE));
         bSizer->Add(sizer);
     }
+    bSizer->Add(mStartupFilesDataViewCtrl, 1, wxEXPAND);
+    bSizer->Add(owner->CreateSeparatedButtonSizer(wxOK | wxCANCEL));
     owner->SetSizer(bSizer);
 
     owner->Bind(wxEVT_BUTTON, &Data::OnAddButtonClick, this, wxID_ADD);
@@ -248,11 +247,12 @@ void StartupFilesDialog::Data::OnDeleteButtonClick(wxCommandEvent&)
     mStartupFilesDataView->DeleteRecord(item);
 }
 
-StartupFilesDialog::StartupFilesDialog(wxWindow* parent, const Config& config)
+StartupFilesDialog::StartupFilesDialog(wxWindow* parent, const Config& config,
+                                       const wxArrayString& choices)
     : wxDialog(parent, wxID_ANY, _("Startup Files"), wxDefaultPosition, wxDefaultSize,
                wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
 {
-    mData = new Data(this, config);
+    mData = new Data(this, config, choices);
 }
 
 StartupFilesDialog::~StartupFilesDialog()
