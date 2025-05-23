@@ -29,12 +29,7 @@ void PayloadDecompressor::Process()
     wxString sandboxLocation =  wxString::FromUTF8(mMeta.settings.sandboxLocation);
     spdlog::info(L"Sandbox location: {}", sandboxLocation.ToStdWstring());
 
-    if (!wxMkdir(sandboxLocation))
-    {
-        wxString msg = wxString::Format(L"Create sandbox location failed: %s",
-                                        sandboxLocation.c_str());
-        throw std::runtime_error(msg.ToStdString(wxConvUTF8));
-    }
+    appbox::CreateNestedDirectory(sandboxLocation.ToStdWstring());
 
     while (1)
     {

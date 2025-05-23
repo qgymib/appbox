@@ -294,6 +294,61 @@ inline std::vector<FileEntry> ListFiles(const std::wstring& path)
     return result;
 }
 
+/**
+ * Retrieves a formatted, localized error message string corresponding to a given error code.
+ *
+ * This function uses the Windows API to format an error message based
+ * on the specified error code and returns the message as a wide string.
+ * Memory allocated for the message buffer is freed after use.
+ *
+ * @param[in] errCode The error code for which the corresponding message is to be retrieved.
+ * @return A localized and formatted error message string corresponding to the error code.
+ */
+inline std::wstring ErrorMessage(DWORD errCode)
+{
+    LPWSTR       messageBuffer = nullptr;
+    size_t       size = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
+                                           FORMAT_MESSAGE_IGNORE_INSERTS,
+                                       nullptr, errCode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                                       (LPWSTR)&messageBuffer, 0, nullptr);
+    std::wstring result(messageBuffer, size);
+    LocalFree(messageBuffer);
+    return result;
+}
+
+/**
+ * Creates a nested directory structure.
+ *
+ * This function ensures that the full directory path specified by `path` is created,
+ * including any necessary intermediate directories that do not already exist.
+ * If the directories are successfully created or already exist, the operation is considered
+ * successful.
+ *
+ * @param[in] path A string specifying the full path of the directory to be created.
+ *                 The path may include multiple nested directories.
+ */
+inline void CreateNestedDirectory(const std::wstring& path)
+{
+    DWORD        errCode;
+    std::wstring bak_path = path.c_str(); // ensure deep copy.
+    for (wchar_t* p = &bak_path[0]; *p; ++p)
+    {
+        if (*p == L'\\' || *p == L'/')
+        {
+            *p = L'\0';
+            CreateDirectoryW(bak_path.c_str(), nullptr);
+            *p = L'\\';
+        }
+    }
+    if (!CreateDirectoryW(&bak_path[0], nullptr) &&
+        (errCode = GetLastError()) != ERROR_ALREADY_EXISTS)
+    {
+        std::wstring errmsg = appbox::ErrorMessage(errCode);
+        std::wstring msg = std::wstring(L"CreateDirectoryW() `") + path + L"` failed: " + errmsg;
+        throw std::runtime_error(appbox::wcstombs(msg.c_str(), CP_UTF8));
+    }
+}
+
 } // namespace appbox
 
 #endif

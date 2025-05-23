@@ -40,8 +40,7 @@ SettingsPanel::Data::Data(SettingsPanel* owner)
     }
     {
         gSizer->Add(new wxStaticText(owner, wxID_ANY, _("Sandbox location")));
-        mSandboxTextCtrl = new wxTextCtrl(owner, wxID_ANY,
-                                          L"%LOCALAPPDATA%\\AppBox\\Sandbox\\%APPBOX::ENV::TITLE%");
+        mSandboxTextCtrl = new wxTextCtrl(owner, wxID_ANY, L"%LOCALAPPDATA%\\AppBox\\Sandbox");
         gSizer->Add(mSandboxTextCtrl, 1, wxGROW);
         mSandboxBrowseButton = new wxButton(owner, wxID_ANY, _("Browse"));
         gSizer->Add(mSandboxBrowseButton);
@@ -114,10 +113,8 @@ SettingsPanel::Config SettingsPanel::Export() const
 {
     SettingsPanel::Config config;
     config.compressLevel = mData->mCompressLevel;
-    config.outputPath =
-        wxFileName(mData->mOutputTextCtrl->GetValue()).GetFullPath().ToStdString(wxConvUTF8);
-    config.sandboxPath =
-        wxFileName(mData->mSandboxTextCtrl->GetValue()).GetFullPath().ToStdString(wxConvUTF8);
+    config.outputPath = mData->mOutputTextCtrl->GetValue().ToStdString(wxConvUTF8);
+    config.sandboxPath = mData->mSandboxTextCtrl->GetValue().ToStdString(wxConvUTF8);
     config.resetSandbox = mData->mResetSandboxCheckBox->GetValue();
     return config;
 }
