@@ -10,10 +10,12 @@ class StartupFilesDialog : public wxDialog
 public:
     struct File
     {
-        std::string path;    /* File path in sandbox. */
-        std::string args;    /* Command line arguments. */
-        std::string trigger; /* Trigger keyword. */
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(File, path, args, trigger);
+        File();
+        std::string path;      /* File path in sandbox. */
+        std::string args;      /* Command line arguments. */
+        std::string trigger;   /* Trigger keyword. */
+        bool        autoStart; /* Auto startup. */
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(File, path, args, trigger, autoStart);
     };
     struct Config
     {

@@ -1,5 +1,6 @@
 #include <wx/wx.h>
 #include <wx/dataview.h>
+#include "Common.hpp"
 #include "StartupFilesDialog.hpp"
 
 struct StartupFilesDataView : wxDataViewModel
@@ -19,12 +20,6 @@ struct StartupFilesDataView : wxDataViewModel
     std::vector<StartupFilesDialog::File*> mFiles;
 };
 
-struct StartupFilesValueGS
-{
-    void (*GetValue)(wxVariant& variant, const StartupFilesDialog::File* file);
-    bool (*SetValue)(const wxVariant& variant, StartupFilesDialog::File* file);
-};
-
 struct StartupFilesDialog::Data
 {
     Data(StartupFilesDialog* owner, const Config& config);
@@ -36,6 +31,11 @@ struct StartupFilesDialog::Data
     wxDataViewCtrl*       mStartupFilesDataViewCtrl;
     StartupFilesDataView* mStartupFilesDataView;
 };
+
+StartupFilesDialog::File::File()
+{
+    autoStart = false;
+}
 
 StartupFilesDataView::StartupFilesDataView(const StartupFilesDialog::Config& config)
 {
@@ -111,12 +111,36 @@ static void s_col_path_get(wxVariant& variant, const StartupFilesDialog::File* f
 
 static bool s_col_path_set(const wxVariant& variant, StartupFilesDialog::File* file)
 {
-    file->path = variant.GetString();
+    file->path = variant.GetString().ToStdString(wxConvUTF8);
     return true;
 }
 
-static StartupFilesValueGS s_startup_files_data_view_gs[] = {
-    { s_col_path_get, s_col_path_set },
+static void s_col_cmd_get(wxVariant& variant, const StartupFilesDialog::File* file)
+{
+    variant = file->args;
+}
+
+static bool s_col_cmd_set(const wxVariant& variant, StartupFilesDialog::File* file)
+{
+    file->args = variant.GetString().ToStdString(wxConvUTF8);
+    return true;
+}
+
+static void s_col_trigger_get(wxVariant& variant, const StartupFilesDialog::File* file)
+{
+    variant = file->trigger;
+}
+
+static bool s_col_trigger_set(const wxVariant& variant, StartupFilesDialog::File* file)
+{
+    file->trigger = variant.GetString().ToStdString(wxConvUTF8);
+    return true;
+}
+
+static DataViewValueGS<StartupFilesDialog::File> s_startup_files_data_view_gs[] = {
+    { s_col_path_get,    s_col_path_set    },
+    { s_col_cmd_get,     s_col_cmd_set     },
+    { s_col_trigger_get, s_col_trigger_set },
 };
 
 static wxArrayString s_get_all_exes_from_config(const StartupFilesDialog::Config& config)
@@ -170,9 +194,28 @@ StartupFilesDialog::Data::Data(StartupFilesDialog* owner, const Config& config)
         wxArrayString             choices = s_get_all_exes_from_config(config);
         wxDataViewChoiceRenderer* c =
             new wxDataViewChoiceRenderer(choices, wxDATAVIEW_CELL_EDITABLE, wxALIGN_LEFT);
-        wxDataViewColumn* column =
-            new wxDataViewColumn(_("Path"), c, 0, wxDVC_DEFAULT_WIDTH, wxALIGN_CENTER,
-                                 wxDATAVIEW_COL_REORDERABLE | wxDATAVIEW_COL_RESIZABLE);
+        wxDataViewColumn* column = new wxDataViewColumn(_("Path"), c, 0, wxDVC_DEFAULT_WIDTH,
+                                                        wxALIGN_CENTER, wxDATAVIEW_COL_RESIZABLE);
+        mStartupFilesDataViewCtrl->AppendColumn(column);
+    }
+    {
+        wxDataViewTextRenderer* c = new wxDataViewTextRenderer(
+            wxDataViewTextRenderer::GetDefaultType(), wxDATAVIEW_CELL_EDITABLE);
+        wxDataViewColumn* column = new wxDataViewColumn(
+            _("Command Line"), c, 1, wxDVC_DEFAULT_WIDTH, wxALIGN_CENTER, wxDATAVIEW_COL_RESIZABLE);
+        mStartupFilesDataViewCtrl->AppendColumn(column);
+    }
+    {
+        wxDataViewTextRenderer* c = new wxDataViewTextRenderer(
+            wxDataViewTextRenderer::GetDefaultType(), wxDATAVIEW_CELL_EDITABLE);
+        wxDataViewColumn* column = new wxDataViewColumn(_("Trigger"), c, 2, wxDVC_DEFAULT_WIDTH,
+                                                        wxALIGN_CENTER, wxDATAVIEW_COL_RESIZABLE);
+        mStartupFilesDataViewCtrl->AppendColumn(column);
+    }
+    {
+        wxDataViewToggleRenderer* c = new wxDataViewToggleRenderer;
+        wxDataViewColumn*         column = new wxDataViewColumn(
+            _("Auto Start"), c, 3, wxDVC_TOGGLE_DEFAULT_WIDTH, wxALIGN_CENTER, 0);
         mStartupFilesDataViewCtrl->AppendColumn(column);
     }
 
@@ -206,7 +249,8 @@ void StartupFilesDialog::Data::OnDeleteButtonClick(wxCommandEvent&)
 }
 
 StartupFilesDialog::StartupFilesDialog(wxWindow* parent, const Config& config)
-    : wxDialog(parent, wxID_ANY, _("Startup Files"))
+    : wxDialog(parent, wxID_ANY, _("Startup Files"), wxDefaultPosition, wxDefaultSize,
+               wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
 {
     mData = new Data(this, config);
 }

@@ -10,4 +10,11 @@ enum AppboxID
     APPBOX_PACKER_MAINFRAME_STARTUP_FILES_BUTTON,
 };
 
+template<typename T>
+struct DataViewValueGS
+{
+    void (*GetValue)(wxVariant& variant, const T* entry);
+    bool (*SetValue)(const wxVariant& variant, T* entry);
+};
+
 #endif
