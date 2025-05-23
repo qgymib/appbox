@@ -79,7 +79,8 @@ void MainFrame::Data::OnProcessButtonClick(const wxCommandEvent&)
     SettingsPanel::Config settingsConfig = mSettingsPanel->Export();
 
     appbox::Meta meta;
-    meta.settings.SandboxLocation = settingsConfig.sandboxPath;
+    meta.settings.sandboxLocation = settingsConfig.sandboxPath;
+    meta.settings.sandboxReset = settingsConfig.resetSandbox;
 
     ProcessDialog::Config processConfig;
     processConfig.compress = settingsConfig.compressLevel;

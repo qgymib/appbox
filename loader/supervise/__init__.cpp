@@ -134,10 +134,10 @@ static void s_inflate_payload(SuperviseService* service, HANDLE file)
 
 static void s_expand_necessary_variable(VariableDecoder& decoder, appbox::Meta& meta)
 {
-    std::wstring value = appbox::mbstowcs(meta.settings.SandboxLocation.c_str(), CP_UTF8);
+    std::wstring value = appbox::mbstowcs(meta.settings.sandboxLocation.c_str(), CP_UTF8);
     value = decoder.Decode(value);
 
-    meta.settings.SandboxLocation = appbox::wcstombs(value.c_str(), CP_UTF8);
+    meta.settings.sandboxLocation = appbox::wcstombs(value.c_str(), CP_UTF8);
 }
 
 static void s_process_payload(SuperviseService* service, HANDLE file)
@@ -159,18 +159,10 @@ static void s_process_payload(SuperviseService* service, HANDLE file)
 
 wxThread::ExitCode SuperviseService::Entry()
 {
-    std::shared_ptr<void> hFile(CreateFileW(mSelfPath.c_str(), GENERIC_READ, FILE_SHARE_READ,
-                                            nullptr, OPEN_EXISTING, 0, nullptr),
-                                CloseHandle);
-    if (hFile.get() == INVALID_HANDLE_VALUE)
-    {
-        spdlog::error("Open self failed.");
-        goto EXIT_APPLICATION;
-    }
-
     try
     {
-        uint64_t offset = s_get_offset(hFile.get());
+        appbox::FileHandle hFile(mSelfPath.c_str());
+        uint64_t           offset = s_get_offset(hFile.get());
         spdlog::info("offset: {}", offset);
         appbox::SetFilePosition(hFile.get(), offset);
         s_process_payload(this, hFile.get());
@@ -202,13 +194,13 @@ void appbox::supervise::Init()
 
 void appbox::supervise::Exit()
 {
-    if (G->mMeta.settings.SandboxReset)
+    if (G->mMeta.settings.sandboxReset)
     {
-        wxString   sandboxLocation = wxString::FromUTF8(G->mMeta.settings.SandboxLocation);
+        wxString   sandboxLocation = wxString::FromUTF8(G->mMeta.settings.sandboxLocation);
         wxFileName dir(sandboxLocation);
         if (!dir.Rmdir(wxPATH_RMDIR_RECURSIVE))
         {
-            spdlog::error("Failed to reset sandbox {}", G->mMeta.settings.SandboxLocation);
+            spdlog::error("Failed to reset sandbox {}", G->mMeta.settings.sandboxLocation);
         }
     }
 

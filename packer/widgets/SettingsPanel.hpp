@@ -10,11 +10,13 @@ public:
     struct Config
     {
         int         compressLevel; /* Compress level. */
+        bool        resetSandbox;  /* Reset sandbox after exit. */
         std::string outputPath;    /* The path of the output file. */
         std::string sandboxPath;   /* The path of the sandbox environment. */
 
         Config();
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Config, compressLevel, outputPath, sandboxPath);
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Config, compressLevel, resetSandbox, outputPath,
+                                                    sandboxPath);
     };
 
 public:
@@ -22,7 +24,7 @@ public:
     ~SettingsPanel();
 
     Config Export() const;
-    void Import(const Config& config);
+    void   Import(const Config& config);
 
 private:
     struct Data;

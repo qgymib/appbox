@@ -16,6 +16,7 @@ struct SettingsPanel::Data
     wxButton*      mSandboxBrowseButton;
     wxChoice*      mCompressLevelChoice;
     int            mCompressLevel;
+    wxCheckBox*    mResetSandboxCheckBox;
 };
 
 SettingsPanel::Config::Config()
@@ -55,6 +56,13 @@ SettingsPanel::Data::Data(SettingsPanel* owner)
                                             std::size(choices), choices);
         mCompressLevelChoice->SetSelection(mCompressLevel);
         gSizer->Add(mCompressLevelChoice, 1, wxGROW);
+        gSizer->AddSpacer(0);
+    }
+    {
+        gSizer->AddSpacer(0);
+        mResetSandboxCheckBox =
+            new wxCheckBox(owner, wxID_ANY, _("Reset sandbox on application shutdown"));
+        gSizer->Add(mResetSandboxCheckBox, 1, wxGROW);
         gSizer->AddSpacer(0);
     }
     owner->SetSizer(gSizer);
@@ -110,6 +118,7 @@ SettingsPanel::Config SettingsPanel::Export() const
         wxFileName(mData->mOutputTextCtrl->GetValue()).GetFullPath().ToStdString(wxConvUTF8);
     config.sandboxPath =
         wxFileName(mData->mSandboxTextCtrl->GetValue()).GetFullPath().ToStdString(wxConvUTF8);
+    config.resetSandbox = mData->mResetSandboxCheckBox->GetValue();
     return config;
 }
 
@@ -119,4 +128,5 @@ void SettingsPanel::Import(const SettingsPanel::Config& config)
     mData->mCompressLevelChoice->SetSelection(mData->mCompressLevel);
     mData->mOutputTextCtrl->SetValue(wxString::FromUTF8(config.outputPath));
     mData->mSandboxTextCtrl->SetValue(wxString::FromUTF8(config.sandboxPath));
+    mData->mResetSandboxCheckBox->SetValue(config.resetSandbox);
 }

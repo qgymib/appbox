@@ -40,12 +40,12 @@ struct PayloadNode
 
 struct MetaSettings
 {
-    std::string              SandboxLocation; /* Sandbox location. */
-    bool                     SandboxReset;    /* Reset sandbox after exit. */
-    std::vector<std::string> StartupFiles;    /* Startup file path */
+    std::string              sandboxLocation; /* Sandbox location. */
+    bool                     sandboxReset;    /* Reset sandbox after exit. */
+    std::vector<std::string> startupFiles;    /* Startup file path */
     MetaSettings();
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(MetaSettings, SandboxLocation, SandboxReset,
-                                                StartupFiles);
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(MetaSettings, sandboxLocation, sandboxReset,
+                                                startupFiles);
 };
 
 struct MetaEnvironments
@@ -64,7 +64,7 @@ struct Meta
 
 inline MetaSettings::MetaSettings()
 {
-    SandboxReset = false;
+    sandboxReset = false;
 }
 
 inline PayloadNode::PayloadNode()
