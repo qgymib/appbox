@@ -5,7 +5,7 @@
 
 struct StartupFilesDataView : wxDataViewModel
 {
-    StartupFilesDataView(const StartupFilesDialog::Config& config);
+    StartupFilesDataView(const appbox::MetaFileVec& config);
     ~StartupFilesDataView();
     void AddRecord();
     void DeleteRecord(wxDataViewItem& item);
@@ -17,12 +17,13 @@ struct StartupFilesDataView : wxDataViewModel
     void GetValue(wxVariant& variant, const wxDataViewItem& item, unsigned int col) const override;
     bool SetValue(const wxVariant& variant, const wxDataViewItem& item, unsigned int col) override;
 
-    std::vector<StartupFilesDialog::File*> mFiles;
+    std::vector<appbox::MetaFile*> mFiles;
 };
 
 struct StartupFilesDialog::Data
 {
-    Data(StartupFilesDialog* owner, const Config& config, const wxArrayString& choices);
+    Data(StartupFilesDialog* owner, const appbox::MetaFileVec& config,
+         const wxArrayString& choices);
     ~Data();
     void OnAddButtonClick(wxCommandEvent&);
     void OnDeleteButtonClick(wxCommandEvent&);
@@ -32,16 +33,11 @@ struct StartupFilesDialog::Data
     wxObjectDataPtr<StartupFilesDataView> mStartupFilesDataView;
 };
 
-StartupFilesDialog::File::File()
+StartupFilesDataView::StartupFilesDataView(const appbox::MetaFileVec& config)
 {
-    autoStart = false;
-}
-
-StartupFilesDataView::StartupFilesDataView(const StartupFilesDialog::Config& config)
-{
-    for (auto it = config.files.begin(); it != config.files.end(); ++it)
+    for (auto it = config.begin(); it != config.end(); ++it)
     {
-        StartupFilesDialog::File* copy = new StartupFilesDialog::File;
+        appbox::MetaFile* copy = new appbox::MetaFile;
         *copy = *it;
         mFiles.push_back(copy);
     }
@@ -57,7 +53,7 @@ StartupFilesDataView::~StartupFilesDataView()
 
 void StartupFilesDataView::AddRecord()
 {
-    StartupFilesDialog::File* file = new StartupFilesDialog::File;
+    appbox::MetaFile* file = new appbox::MetaFile;
     mFiles.push_back(file);
     ItemAdded(wxDataViewItem(nullptr), wxDataViewItem(file));
 }
@@ -65,7 +61,7 @@ void StartupFilesDataView::AddRecord()
 void StartupFilesDataView::DeleteRecord(wxDataViewItem& item)
 {
     ItemDeleted(wxDataViewItem(nullptr), item);
-    StartupFilesDialog::File* file = static_cast<StartupFilesDialog::File*>(item.GetID());
+    appbox::MetaFile* file = static_cast<appbox::MetaFile*>(item.GetID());
     for (auto it = mFiles.begin(); it != mFiles.end(); ++it)
     {
         if (*it == file)
@@ -97,58 +93,58 @@ unsigned int StartupFilesDataView::GetChildren(const wxDataViewItem& item,
 
     for (auto it = mFiles.begin(); it != mFiles.end(); ++it)
     {
-        StartupFilesDialog::File* file = *it;
+        appbox::MetaFile* file = *it;
         children.Add(wxDataViewItem(file));
     }
 
     return mFiles.size();
 }
 
-static void s_col_path_get(wxVariant& variant, const StartupFilesDialog::File* file)
+static void s_col_path_get(wxVariant& variant, const appbox::MetaFile* file)
 {
     variant = file->path;
 }
 
-static bool s_col_path_set(const wxVariant& variant, StartupFilesDialog::File* file)
+static bool s_col_path_set(const wxVariant& variant, appbox::MetaFile* file)
 {
     file->path = variant.GetString().ToStdString(wxConvUTF8);
     return true;
 }
 
-static void s_col_cmd_get(wxVariant& variant, const StartupFilesDialog::File* file)
+static void s_col_cmd_get(wxVariant& variant, const appbox::MetaFile* file)
 {
     variant = file->args;
 }
 
-static bool s_col_cmd_set(const wxVariant& variant, StartupFilesDialog::File* file)
+static bool s_col_cmd_set(const wxVariant& variant, appbox::MetaFile* file)
 {
     file->args = variant.GetString().ToStdString(wxConvUTF8);
     return true;
 }
 
-static void s_col_trigger_get(wxVariant& variant, const StartupFilesDialog::File* file)
+static void s_col_trigger_get(wxVariant& variant, const appbox::MetaFile* file)
 {
     variant = file->trigger;
 }
 
-static bool s_col_trigger_set(const wxVariant& variant, StartupFilesDialog::File* file)
+static bool s_col_trigger_set(const wxVariant& variant, appbox::MetaFile* file)
 {
     file->trigger = variant.GetString().ToStdString(wxConvUTF8);
     return true;
 }
 
-static void s_col_autostart_get(wxVariant& variant, const StartupFilesDialog::File* file)
+static void s_col_autostart_get(wxVariant& variant, const appbox::MetaFile* file)
 {
     variant = file->autoStart;
 }
 
-static bool s_col_autostart_set(const wxVariant& variant, StartupFilesDialog::File* file)
+static bool s_col_autostart_set(const wxVariant& variant, appbox::MetaFile* file)
 {
     file->autoStart = variant.GetBool();
     return true;
 }
 
-static DataViewValueGS<StartupFilesDialog::File> s_startup_files_data_view_gs[] = {
+static DataViewValueGS<appbox::MetaFile> s_startup_files_data_view_gs[] = {
     { s_col_path_get,      s_col_path_set      },
     { s_col_cmd_get,       s_col_cmd_set       },
     { s_col_trigger_get,   s_col_trigger_set   },
@@ -159,7 +155,7 @@ void StartupFilesDataView::GetValue(wxVariant& variant, const wxDataViewItem& it
                                     unsigned int col) const
 {
     wxASSERT(item.IsOk());
-    StartupFilesDialog::File* file = static_cast<StartupFilesDialog::File*>(item.GetID());
+    appbox::MetaFile* file = static_cast<appbox::MetaFile*>(item.GetID());
     if (col >= std::size(s_startup_files_data_view_gs))
     {
         wxLogError("StartupFilesDataView::GetValue() called with invalid column index.");
@@ -172,7 +168,7 @@ bool StartupFilesDataView::SetValue(const wxVariant& variant, const wxDataViewIt
                                     unsigned int col)
 {
     wxASSERT(item.IsOk());
-    StartupFilesDialog::File* file = static_cast<StartupFilesDialog::File*>(item.GetID());
+    appbox::MetaFile* file = static_cast<appbox::MetaFile*>(item.GetID());
     if (col >= std::size(s_startup_files_data_view_gs))
     {
         wxLogError("StartupFilesDataView::SetValue() called with invalid column index.");
@@ -180,7 +176,7 @@ bool StartupFilesDataView::SetValue(const wxVariant& variant, const wxDataViewIt
     return s_startup_files_data_view_gs[col].SetValue(variant, file);
 }
 
-StartupFilesDialog::Data::Data(StartupFilesDialog* owner, const Config& config,
+StartupFilesDialog::Data::Data(StartupFilesDialog* owner, const appbox::MetaFileVec& config,
                                const wxArrayString& choices)
 {
     mOwner = owner;
@@ -248,7 +244,7 @@ void StartupFilesDialog::Data::OnDeleteButtonClick(wxCommandEvent&)
     mStartupFilesDataView->DeleteRecord(item);
 }
 
-StartupFilesDialog::StartupFilesDialog(wxWindow* parent, const Config& config,
+StartupFilesDialog::StartupFilesDialog(wxWindow* parent, const appbox::MetaFileVec& config,
                                        const wxArrayString& choices)
     : wxDialog(parent, wxID_ANY, _("Startup Files"), wxDefaultPosition, wxDefaultSize,
                wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
@@ -261,14 +257,14 @@ StartupFilesDialog::~StartupFilesDialog()
     delete mData;
 }
 
-StartupFilesDialog::Config StartupFilesDialog::GetResult() const
+appbox::MetaFileVec StartupFilesDialog::GetResult() const
 {
-    Config result;
+    appbox::MetaFileVec result;
     for (auto it = mData->mStartupFilesDataView->mFiles.begin();
          it != mData->mStartupFilesDataView->mFiles.end(); ++it)
     {
-        StartupFilesDialog::File* record = *it;
-        result.files.push_back(*record);
+        appbox::MetaFile* record = *it;
+        result.push_back(*record);
     }
     return result;
 }

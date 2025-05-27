@@ -11,6 +11,7 @@
 #include "PayloadDecompressor.hpp"
 #include "VariableDecoder.hpp"
 #include "App.hpp"
+#include "Path.hpp"
 #include "__init__.hpp"
 
 struct SuperviseService : wxEvtHandler, wxThreadHelper
@@ -157,6 +158,32 @@ static void s_process_payload(SuperviseService* service, HANDLE file)
     s_inflate_payload(service, file);
 }
 
+static void s_start_file(const appbox::Meta& meta)
+{
+    for (auto it = meta.settings.startupFiles.begin(); it != meta.settings.startupFiles.end(); ++it)
+    {
+        const std::string& path = it->path;
+        const std::string  filePath = appbox::GetPathInSandbox(meta.settings.sandboxLocation, path);
+        const std::wstring wFilePath = appbox::mbstowcs(filePath.c_str(), CP_UTF8);
+        spdlog::info("CreateProcess: {}", filePath);
+
+        STARTUPINFOW startupInfo;
+        memset(&startupInfo, 0, sizeof(startupInfo));
+        startupInfo.cb = sizeof(startupInfo);
+
+        PROCESS_INFORMATION processInfo;
+        if (!CreateProcessW(wFilePath.c_str(), nullptr, nullptr, nullptr, FALSE, 0, nullptr,
+                            nullptr, &startupInfo, &processInfo))
+        {
+            spdlog::info("CreateProcess() failed: {}", filePath);
+            continue;
+        }
+
+        CloseHandle(processInfo.hProcess);
+        CloseHandle(processInfo.hThread);
+    }
+}
+
 wxThread::ExitCode SuperviseService::Entry()
 {
     try
@@ -166,6 +193,9 @@ wxThread::ExitCode SuperviseService::Entry()
         spdlog::info("offset: {}", offset);
         appbox::SetFilePosition(hFile.get(), offset);
         s_process_payload(this, hFile.get());
+        hFile.reset(); // close file.
+
+        s_start_file(mMeta);
     }
     catch (const std::runtime_error& e)
     {

@@ -22,10 +22,10 @@ struct MainFrame::Data
     void OnProjectSave(const wxCommandEvent&);
     void OnProjectOpen(const wxCommandEvent&);
 
-    MainFrame*                 mOwner;
-    FilePanel*                 mFilePanel;
-    SettingsPanel*             mSettingsPanel;
-    StartupFilesDialog::Config mStartupFiles;
+    MainFrame*          mOwner;
+    FilePanel*          mFilePanel;
+    SettingsPanel*      mSettingsPanel;
+    appbox::MetaFileVec mStartupFiles;
 };
 
 static void s_append_startup_choice(wxArrayString& choice, const FileDataView::Filesystem& fs)
@@ -112,6 +112,7 @@ void MainFrame::Data::OnProcessButtonClick(const wxCommandEvent&)
     appbox::Meta meta;
     meta.settings.sandboxLocation = settingsConfig.sandboxPath;
     meta.settings.sandboxReset = settingsConfig.resetSandbox;
+    meta.settings.startupFiles = mStartupFiles;
 
     ProcessDialog::Config processConfig;
     processConfig.compress = settingsConfig.compressLevel;

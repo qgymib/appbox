@@ -38,13 +38,24 @@ struct PayloadNode
     uint64_t payload_len; /* Binary payload length in bytes. */
 };
 
+struct MetaFile
+{
+    MetaFile();
+    std::string path;      /* File path in sandbox. */
+    std::string args;      /* Command line arguments. */
+    std::string trigger;   /* Trigger keyword. */
+    bool        autoStart; /* Auto startup. */
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(MetaFile, path, args, trigger, autoStart);
+};
+typedef std::vector<MetaFile> MetaFileVec;
+
 struct MetaSettings
 {
-    std::string              sandboxLocation; /* Sandbox location. */
-    bool                     sandboxReset;    /* Reset sandbox after exit. */
-    std::vector<std::string> startupFiles;    /* Startup file path */
+    bool        sandboxReset;    /* Reset sandbox after exit. */
+    std::string sandboxLocation; /* Sandbox location. */
+    MetaFileVec startupFiles;    /* Startup file path */
     MetaSettings();
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(MetaSettings, sandboxLocation, sandboxReset,
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(MetaSettings, sandboxReset, sandboxLocation,
                                                 startupFiles);
 };
 
@@ -61,6 +72,11 @@ struct Meta
     MetaSettings     settings;     /* Settings. */
     NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Meta, settings);
 };
+
+inline MetaFile::MetaFile()
+{
+    autoStart = false;
+}
 
 inline MetaSettings::MetaSettings()
 {

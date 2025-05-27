@@ -2,7 +2,7 @@
 #include <spdlog/spdlog.h>
 #include "utils/wstring.hpp"
 #include "PayloadDecompressor.hpp"
-#include "__init__.hpp"
+#include "Path.hpp"
 
 PayloadDecompressor::PayloadDecompressor(HANDLE file, size_t size, const appbox::Meta& meta)
     : mStream(file, size)
@@ -59,13 +59,6 @@ void PayloadDecompressor::Process()
     }
 }
 
-static std::string s_get_real_file_path(const std::string& sandboxLocation, const std::string& path)
-{
-    std::string copyPath = path;
-    copyPath.erase(std::remove(copyPath.begin(), copyPath.end(), ':'), copyPath.end());
-    return sandboxLocation + "\\" + copyPath;
-}
-
 void PayloadDecompressor::ProcessFilesystem()
 {
     if (!WaitForCache(mCurrent.path_len))
@@ -76,7 +69,7 @@ void PayloadDecompressor::ProcessFilesystem()
     std::string filePath = mData.substr(0, mCurrent.path_len);
     mData.erase(0, mCurrent.path_len);
 
-    std::string filePathSandbox = s_get_real_file_path(mMeta.settings.sandboxLocation, filePath);
+    std::string filePathSandbox = appbox::GetPathInSandbox(mMeta.settings.sandboxLocation, filePath);
     spdlog::info("Path: {} PathSandbox: {}", filePath, filePathSandbox);
     std::wstring wFilePathSandbox = appbox::mbstowcs(filePathSandbox.c_str(), CP_UTF8);
 

@@ -18,6 +18,7 @@ endfunction()
 
 set(loader_sources
     "supervise/__init__.cpp"
+    "supervise/Path.cpp"
     "supervise/PayloadDecompressor.cpp"
     "supervise/VariableDecoder.cpp"
     "widgets/LogPanel.cpp"
