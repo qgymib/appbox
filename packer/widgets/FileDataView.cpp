@@ -4,6 +4,7 @@
 #include "utils/file.hpp"
 #include "utils/meta.hpp"
 #include "utils/pair.hpp"
+#include "Common.hpp"
 #include "FileDataView.hpp"
 
 struct FileDataViewNode
@@ -18,12 +19,6 @@ struct FileDataViewNode
     wxString                       sourcePath;       /* Location in real filesystem. */
     DWORD                          dwFileAttributes; /* Entry type. */
     appbox::IsolationMode          isolation;        /* Isolation mode. */
-};
-
-struct FileDataViewValueGS
-{
-    void (*GetValue)(wxVariant& variant, const FileDataViewNode* entry);
-    bool (*SetValue)(const wxVariant& variant, FileDataViewNode* entry);
 };
 
 struct FileDataView::Data
@@ -281,7 +276,7 @@ static bool s_col_isolation_set(const wxVariant& variant, FileDataViewNode* entr
  *         of the file view, defining how data is accessed and modified
  *         for that column.
  */
-static FileDataViewValueGS s_file_data_view_value_gs[] = {
+static DataViewValueGS<FileDataViewNode> s_file_data_view_value_gs[] = {
     { s_col_name_get,      s_col_name_set      },
     { s_col_isolation_get, s_col_isolation_set },
 };

@@ -2,27 +2,55 @@
 #include <wx/filedlg.h>
 #include <wx/notebook.h>
 #include <wx/wfstream.h>
+#include <spdlog/spdlog.h>
 #include "widgets/FilePanel.hpp"
 #include "widgets/RegistryPanel.hpp"
 #include "widgets/SettingsPanel.hpp"
 #include "widgets/ProcessDialog.hpp"
+#include "StartupFilesDialog.hpp"
 #include "LogPanel.hpp"
 #include "utils/file.hpp"
 #include "utils/wstring.hpp"
 #include "MainFrame.hpp"
+#include "Common.hpp"
 
 struct MainFrame::Data
 {
     Data(MainFrame* owner);
     void OnProcessButtonClick(const wxCommandEvent&);
+    void OnStartupFilesButtonClick(const wxCommandEvent&);
     void OnProjectSave(const wxCommandEvent&);
     void OnProjectOpen(const wxCommandEvent&);
 
-    MainFrame*     mOwner;
-    wxButton*      mProcessButton;
-    FilePanel*     mFilePanel;
-    SettingsPanel* mSettingsPanel;
+    MainFrame*                 mOwner;
+    FilePanel*                 mFilePanel;
+    SettingsPanel*             mSettingsPanel;
+    StartupFilesDialog::Config mStartupFiles;
 };
+
+static void s_append_startup_choice(wxArrayString& choice, const FileDataView::Filesystem& fs)
+{
+    wxString path = wxString::FromUTF8(fs.sandboxPath);
+    if (path.EndsWith(L".exe"))
+    {
+        choice.Add(wxString::FromUTF8(fs.sandboxPath));
+    }
+
+    for (auto it = fs.children.begin(); it != fs.children.end(); ++it)
+    {
+        s_append_startup_choice(choice, *it);
+    }
+}
+
+static wxArrayString s_get_startup_choices(const FilePanel::Config& config)
+{
+    wxArrayString choices;
+    for (auto it = config.fs.begin(); it != config.fs.end(); ++it)
+    {
+        s_append_startup_choice(choices, *it);
+    }
+    return choices;
+}
 
 static void s_setup_menubar(MainFrame* owner)
 {
@@ -61,9 +89,9 @@ MainFrame::Data::Data(MainFrame* owner)
     }
     {
         wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
-        mProcessButton = new wxButton(owner, wxID_ANY, _("Process"));
-        sizer->AddStretchSpacer(0);
-        sizer->Add(mProcessButton, 1, wxEXPAND);
+        sizer->Add(new wxButton(owner, APPBOX_PACKER_MAINFRAME_PROCESS_BUTTON, _("Process")));
+        sizer->Add(
+            new wxButton(owner, APPBOX_PACKER_MAINFRAME_STARTUP_FILES_BUTTON, _("Startup Files")));
         bSizer->Add(sizer, 0, 0);
     }
     owner->SetSizer(bSizer);
@@ -71,7 +99,10 @@ MainFrame::Data::Data(MainFrame* owner)
     owner->CreateStatusBar();
     owner->Bind(wxEVT_MENU, &Data::OnProjectSave, this, wxID_SAVE);
     owner->Bind(wxEVT_MENU, &Data::OnProjectOpen, this, wxID_OPEN);
-    mProcessButton->Bind(wxEVT_BUTTON, &Data::OnProcessButtonClick, this);
+    owner->Bind(wxEVT_BUTTON, &Data::OnProcessButtonClick, this,
+                APPBOX_PACKER_MAINFRAME_PROCESS_BUTTON);
+    owner->Bind(wxEVT_BUTTON, &Data::OnStartupFilesButtonClick, this,
+                APPBOX_PACKER_MAINFRAME_STARTUP_FILES_BUTTON);
 }
 
 void MainFrame::Data::OnProcessButtonClick(const wxCommandEvent&)
@@ -90,6 +121,17 @@ void MainFrame::Data::OnProcessButtonClick(const wxCommandEvent&)
 
     ProcessDialog dialog(mOwner, meta, processConfig);
     dialog.ShowModal();
+}
+
+void MainFrame::Data::OnStartupFilesButtonClick(const wxCommandEvent&)
+{
+    wxArrayString      choices = s_get_startup_choices(mFilePanel->Export());
+    StartupFilesDialog dialog(mOwner, mStartupFiles, choices);
+    if (dialog.ShowModal() != wxID_OK)
+    {
+        return;
+    }
+    mStartupFiles = dialog.GetResult();
 }
 
 void MainFrame::Data::OnProjectSave(const wxCommandEvent&)
@@ -112,6 +154,7 @@ void MainFrame::Data::OnProjectSave(const wxCommandEvent&)
     nlohmann::json project;
     project["filesystem"] = mFilePanel->Export();
     project["settings"] = mSettingsPanel->Export();
+    project["startupFiles"] = mStartupFiles;
     std::string projectData = project.dump(2);
     appbox::WriteFileSized(outFile.get(), projectData.c_str(), projectData.size());
 }
@@ -133,6 +176,7 @@ void MainFrame::Data::OnProjectOpen(const wxCommandEvent&)
         mSettingsPanel->Import(settingsConfig);
         FilePanel::Config fileConfig = project["filesystem"];
         mFilePanel->Import(fileConfig);
+        mStartupFiles = project["startupFiles"];
     }
     catch (const std::runtime_error& e)
     {

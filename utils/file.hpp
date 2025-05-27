@@ -122,6 +122,27 @@ inline void WriteFileSized(HANDLE file, const void* buff, size_t size)
 }
 
 /**
+ * Writes the entire content of the provided buffer to a file.
+ *
+ * This function continuously writes data from the buffer pointed to by `buff`
+ * to the file represented by the given HANDLE `file` until `size` bytes have
+ * been written or an error occurs during the operation. It ensures all the data
+ * is written unless interrupted by an error.
+ *
+ * @param[in] path File path.
+ * @param[in] data A pointer to the buffer containing the data to write.
+ *        The buffer must contain at least `size` bytes of valid data.
+ * @param[in] size The total number of bytes to write to the file.
+ * @param[in] wdCreationDisposition File creation mode.
+ */
+inline void WriteFileReplace(const std::wstring& path, const void* data, size_t size,
+                             DWORD wdCreationDisposition = CREATE_ALWAYS)
+{
+    FileHandle hFile(path.c_str(), GENERIC_WRITE, 0, nullptr, wdCreationDisposition);
+    WriteFileSized(hFile.get(), data, size);
+}
+
+/**
  * Retrieves the current file pointer position of the specified file.
  *
  * This function determines the current position of the file pointer in the file

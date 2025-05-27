@@ -24,6 +24,7 @@ set(packer_sources
     "widgets/ProcessDialog.cpp"
     "widgets/RegistryPanel.cpp"
     "widgets/SettingsPanel.cpp"
+    "widgets/StartupFilesDialog.cpp"
     "App.cpp"
     "resource.rc"
 )

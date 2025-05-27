@@ -26,7 +26,7 @@ bool PayloadDecompressor::WaitForCache(size_t size)
 
 void PayloadDecompressor::Process()
 {
-    wxString sandboxLocation =  wxString::FromUTF8(mMeta.settings.sandboxLocation);
+    wxString sandboxLocation = wxString::FromUTF8(mMeta.settings.sandboxLocation);
     spdlog::info(L"Sandbox location: {}", sandboxLocation.ToStdWstring());
 
     appbox::CreateNestedDirectory(sandboxLocation.ToStdWstring());
@@ -59,6 +59,13 @@ void PayloadDecompressor::Process()
     }
 }
 
+static std::string s_get_real_file_path(const std::string& sandboxLocation, const std::string& path)
+{
+    std::string copyPath = path;
+    copyPath.erase(std::remove(copyPath.begin(), copyPath.end(), ':'), copyPath.end());
+    return sandboxLocation + "\\" + copyPath;
+}
+
 void PayloadDecompressor::ProcessFilesystem()
 {
     if (!WaitForCache(mCurrent.path_len))
@@ -66,9 +73,12 @@ void PayloadDecompressor::ProcessFilesystem()
         throw std::runtime_error("Corrupted data");
     }
 
-    std::string pathU8 = mData.substr(0, mCurrent.path_len);
+    std::string filePath = mData.substr(0, mCurrent.path_len);
     mData.erase(0, mCurrent.path_len);
-    spdlog::info("Path: {}.", pathU8);
+
+    std::string filePathSandbox = s_get_real_file_path(mMeta.settings.sandboxLocation, filePath);
+    spdlog::info("Path: {} PathSandbox: {}", filePath, filePathSandbox);
+    std::wstring wFilePathSandbox = appbox::mbstowcs(filePathSandbox.c_str(), CP_UTF8);
 
     if (!WaitForCache(mCurrent.payload_len))
     {
@@ -77,5 +87,12 @@ void PayloadDecompressor::ProcessFilesystem()
     std::string payload = mData.substr(0, mCurrent.payload_len);
     mData.erase(0, mCurrent.payload_len);
 
-    // TODO: write to filesystem.
+    if (mCurrent.attribute & FILE_ATTRIBUTE_DIRECTORY)
+    {
+        appbox::CreateNestedDirectory(wFilePathSandbox);
+    }
+    else
+    {
+        appbox::WriteFileReplace(wFilePathSandbox, payload.data(), payload.size());
+    }
 }
