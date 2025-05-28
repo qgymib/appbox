@@ -3,6 +3,7 @@
 #include <zlib.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/fmt/bin_to_hex.h>
+#include "utils/layout.hpp"
 #include "utils/file.hpp"
 #include "utils/zstream.hpp"
 #include "utils/wstring.hpp"
@@ -22,6 +23,12 @@ struct ProcessDialog::Data : wxThreadHelper
 
     appbox::Meta m_meta;   /* Meta data. */
     Config       m_config; /* Pack configuration. */
+};
+
+struct DeflateProcessor
+{
+    appbox::LayoutSection* section;
+    void (*process_fn)(ProcessDialog::Data* iner, appbox::ZDeflateStream& ds);
 };
 
 wxDEFINE_EVENT(APPBOX_PROCESSDIALOG_LOG, wxThreadEvent);
@@ -91,15 +98,6 @@ static void s_write_loader(HANDLE file, const wxString& path)
     appbox::WriteFileSized(file, loader.c_str(), loader.size());
 }
 
-static void s_write_meta(ProcessDialog::Data* iner, appbox::ZDeflateStream& ds,
-                         const appbox::Meta& meta)
-{
-    nlohmann::json metaJson = meta;
-    std::string    metaStr = metaJson.dump();
-    iner->Log(L"Writing metadata");
-    ds.deflate(metaStr.c_str(), metaStr.size());
-}
-
 static void s_write_filesystem_entry(ProcessDialog::Data* iner, appbox::ZDeflateStream& ds,
                                      const FileDataView::Filesystem& entry)
 {
@@ -146,8 +144,48 @@ static void s_write_filesystem(ProcessDialog::Data* iner, appbox::ZDeflateStream
     }
 }
 
+static void s_process_meta(ProcessDialog::Data* iner, appbox::ZDeflateStream& ds)
+{
+    nlohmann::json metaJson = iner->m_meta;
+    std::string    metaStr = metaJson.dump();
+    iner->Log(L"Writing metadata");
+    ds.deflate(metaStr.c_str(), metaStr.size());
+}
+
+static void s_process_filesystem(ProcessDialog::Data* iner, appbox::ZDeflateStream& ds)
+{
+    s_write_filesystem(iner, ds, iner->m_config);
+}
+
+static void s_process_sandbox_dll(ProcessDialog::Data* iner, appbox::ZDeflateStream& ds)
+{
+    appbox::PayloadNode node;
+
+    node.type = appbox::PAYLOAD_TYPE_SANDBOX_32;
+    appbox::FileHandle fDll32(L"sandbox32.dll");
+    node.payload_len = appbox::GetFileSize(fDll32.get());
+    iner->Log(L"Writing sandbox32.dll");
+    ds.deflate(&node, sizeof(node));
+    ds.deflate(fDll32.get());
+
+    node.type = appbox::PAYLOAD_TYPE_SANDBOX_64;
+    appbox::FileHandle fDll64(L"sandbox64.dll");
+    node.payload_len = appbox::GetFileSize(fDll64.get());
+    iner->Log(L"Writing sandbox64.dll");
+    ds.deflate(&node, sizeof(node));
+    ds.deflate(fDll64.get());
+}
+
 wxThread::ExitCode ProcessDialog::Data::Entry()
 {
+    appbox::Layout   layout;
+    DeflateProcessor processor[] = {
+        { &layout.meta,       s_process_meta        },
+        { &layout.filesystem, s_process_filesystem  },
+        { &layout.sandbox,    s_process_sandbox_dll },
+    };
+    memset(&layout, 0, sizeof(layout));
+
     try
     {
         appbox::FileHandle outputFile(m_config.outputPath.ToStdWstring().c_str(), GENERIC_WRITE, 0,
@@ -159,28 +197,19 @@ wxThread::ExitCode ProcessDialog::Data::Entry()
         Log(L"Writing magic");
         uint64_t payload_offset = appbox::GetFilePosition(outputFile.get());
         appbox::WriteFileSized(outputFile.get(), APPBOX_MAGIC, 8);
+        appbox::WriteFileSized(outputFile.get(), &layout, sizeof(layout));
 
+        for (size_t i = 0; i < std::size(processor); ++i)
         {
-            uint64_t length = 0;
-            uint64_t off_begin = appbox::GetFilePosition(outputFile.get());
-            appbox::WriteFileSized(outputFile.get(), &length, sizeof(length));
+            const DeflateProcessor* p = &processor[i];
+            p->section->offset = appbox::GetFilePosition(outputFile.get());
             appbox::ZDeflateStream deflateStream(outputFile.get(), m_config.compress);
-            s_write_meta(this, deflateStream, m_meta);
+            p->process_fn(this, deflateStream);
             deflateStream.finish();
-            length = appbox::GetFilePosition(outputFile.get()) - off_begin - sizeof(off_begin);
-            appbox::WriteFilePositionSized(outputFile.get(), &length, sizeof(length), off_begin);
+            p->section->length = appbox::GetFilePosition(outputFile.get()) - p->section->offset;
         }
-
-        {
-            uint64_t length = 0;
-            uint64_t off_begin = appbox::GetFilePosition(outputFile.get());
-            appbox::WriteFileSized(outputFile.get(), &length, sizeof(length));
-            appbox::ZDeflateStream deflateStream(outputFile.get(), m_config.compress);
-            s_write_filesystem(this, deflateStream, m_config);
-            deflateStream.finish();
-            length = appbox::GetFilePosition(outputFile.get()) - off_begin - sizeof(off_begin);
-            appbox::WriteFilePositionSized(outputFile.get(), &length, sizeof(length), off_begin);
-        }
+        appbox::WriteFilePositionSized(outputFile.get(), &layout, sizeof(layout),
+                                       payload_offset + 8);
 
         std::array<char, 20> buff;
         memcpy(&buff[0], APPBOX_MAGIC, 8);

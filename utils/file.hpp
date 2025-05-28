@@ -1,7 +1,6 @@
 #ifndef APPBOX_UTILS_FILE_HPP
 #define APPBOX_UTILS_FILE_HPP
 
-#include <wx/filename.h>
 #include <pathcch.h>
 #include <memory>
 #include "wstring.hpp"
@@ -53,8 +52,9 @@ struct FileHandle : std::shared_ptr<void>
  */
 inline void ReadFileSized(HANDLE file, void* buff, size_t size)
 {
+    DWORD except_read_sz = (DWORD)size;
     DWORD read_sz = 0;
-    if (!ReadFile(file, buff, size, &read_sz, nullptr) || read_sz != (DWORD)size)
+    if (!ReadFile(file, buff, except_read_sz, &read_sz, nullptr) || read_sz != except_read_sz)
     {
         throw std::runtime_error("Failed to read file");
     }
@@ -115,7 +115,7 @@ inline std::string ReadFileAll(const std::wstring& path)
 inline void WriteFileSized(HANDLE file, const void* buff, size_t size)
 {
     DWORD write_sz = 0;
-    if (!WriteFile(file, buff, size, &write_sz, nullptr) || write_sz != (DWORD)size)
+    if (!WriteFile(file, buff, (DWORD)size, &write_sz, nullptr) || write_sz != (DWORD)size)
     {
         throw std::runtime_error("Failed to write file");
     }
@@ -239,12 +239,23 @@ inline std::wstring DirName(const std::wstring& path)
 
     wchar_t* path_buf = new wchar_t[malloc_sz];
     {
-        int write_sz = _snwprintf(path_buf, malloc_sz, L"%s", path.c_str());
+        int write_sz = _snwprintf_s(path_buf, malloc_sz, _TRUNCATE, L"%s", path.c_str());
         PathCchRemoveFileSpec(path_buf, MIN(write_sz, (int)path_sz));
     }
     std::wstring result(path_buf);
     delete[] path_buf;
 
+    return result;
+}
+
+inline std::wstring BaseName(const std::wstring& path)
+{
+    std::wstring            result = path;
+    std::wstring::size_type pos = result.find_last_of(L'\\');
+    if (pos != std::wstring::npos)
+    {
+        result = result.substr(pos + 1);
+    }
     return result;
 }
 
@@ -273,7 +284,7 @@ inline std::vector<FileEntry> ListFiles(const std::wstring& path)
     if (!(attributes & FILE_ATTRIBUTE_DIRECTORY))
     {
         FileEntry entry;
-        entry.name = wxFileName(path).GetName().ToStdWstring();
+        entry.name = BaseName(path);
         entry.path = path;
         entry.dwFileAttributes = attributes;
         result.push_back(entry);

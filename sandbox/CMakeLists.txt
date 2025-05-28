@@ -41,6 +41,8 @@ target_include_directories(${sandbox_name}
 ###############################################################################
 
 target_link_libraries(${sandbox_name} PRIVATE Detours)
+target_link_libraries(${sandbox_name} PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(${sandbox_name} PRIVATE spdlog::spdlog)
 
 ###############################################################################
 # Install target

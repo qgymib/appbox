@@ -18,8 +18,10 @@ enum IsolationMode
 enum PayloadType
 {
     PAYLOAD_TYPE_NONE = 0,
-    PAYLOAD_TYPE_FILESYSTEM = 1,
-    PAYLOAD_TYPE_REGISTRY = 2,
+    PAYLOAD_TYPE_FILESYSTEM = 1, /* filesystem entry. */
+    PAYLOAD_TYPE_REGISTRY = 2,   /* Registry entry. */
+    PAYLOAD_TYPE_SANDBOX_32 = 3, /* 32-bit sandbox dll. */
+    PAYLOAD_TYPE_SANDBOX_64 = 4, /* 64-bit sandbox dll. */
 };
 
 struct PayloadNode

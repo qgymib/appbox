@@ -1,4 +1,5 @@
 #include <wx/wx.h>
+#include <wx/filename.h>
 #include <spdlog/spdlog.h>
 #include <vector>
 #include "utils/file.hpp"

@@ -1,7 +1,7 @@
 #ifndef APPBOX_UTILS_WSTRING_HPP
 #define APPBOX_UTILS_WSTRING_HPP
 
-#include <Windows.h>
+#include "winapi.hpp"
 #include <stdexcept>
 #include <string>
 

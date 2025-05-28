@@ -1,18 +1,23 @@
 #include <wx/wx.h>
 #include <wx/event.h>
+#include <wx/filename.h>
 #include <spdlog/spdlog.h>
 #include <Windows.h>
+#include <detours.h>
 #include <zlib.h>
 #include "utils/file.hpp"
 #include "utils/macros.hpp"
 #include "utils/winapi.hpp"
 #include "utils/meta.hpp"
 #include "utils/wstring.hpp"
-#include "PayloadDecompressor.hpp"
+#include "utils/layout.hpp"
+#include "utils/zstream.hpp"
+#include "utils/inject.hpp"
 #include "VariableDecoder.hpp"
 #include "App.hpp"
 #include "Path.hpp"
 #include "__init__.hpp"
+#include "config.hpp"
 
 struct SuperviseService : wxEvtHandler, wxThreadHelper
 {
@@ -23,6 +28,9 @@ struct SuperviseService : wxEvtHandler, wxThreadHelper
     VariableDecoder mVarDecoder; /* Environment decoder. */
     std::wstring    mSelfPath;   /* Path to self. */
     appbox::Meta    mMeta;       /* Metadata. */
+
+    std::wstring tempDll32Path;
+    std::wstring tempDll64Path;
 };
 
 SuperviseService::SuperviseService()
@@ -88,57 +96,126 @@ static uint64_t s_get_offset(HANDLE file)
     return offset;
 }
 
-static nlohmann::json s_get_meta(HANDLE file)
-{
-    uint64_t metadata_sz = 0;
-    appbox::ReadFileSized(file, &metadata_sz, sizeof(metadata_sz));
-    spdlog::info("metadata_sz: {}", metadata_sz);
-
-    std::string metadata;
-    auto        inflateStream = std::make_shared<appbox::ZInflateStream>(file, metadata_sz);
-    while (1)
-    {
-        std::string tmp = inflateStream->inflate();
-        if (tmp.empty())
-        {
-            break;
-        }
-        metadata.append(tmp);
-    }
-
-    spdlog::info("metadata: {}", metadata);
-    return nlohmann::json::parse(metadata);
-}
-
-static void s_inflate_payload(SuperviseService* service, HANDLE file)
-{
-    uint64_t payload_sz = 0;
-    appbox::ReadFileSized(file, &payload_sz, sizeof(payload_sz));
-
-    LARGE_INTEGER Frequency, StartingTime, EndingTime, ElapsedMilliseconds;
-    QueryPerformanceFrequency(&Frequency);
-    QueryPerformanceCounter(&StartingTime);
-    {
-        PayloadDecompressor pd(file, payload_sz, service->mMeta);
-        pd.Process();
-    }
-    QueryPerformanceCounter(&EndingTime);
-    ElapsedMilliseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
-    ElapsedMilliseconds.QuadPart *= 1000;
-    ElapsedMilliseconds.QuadPart /= Frequency.QuadPart;
-
-    double speed = (double)payload_sz / ((double)ElapsedMilliseconds.QuadPart / 1000);
-
-    spdlog::info("Decompress finished, cost: {} Milliseconds, speed: {} MB/s",
-                 ElapsedMilliseconds.QuadPart, speed / 1024 / 1024);
-}
-
 static void s_expand_necessary_variable(VariableDecoder& decoder, appbox::Meta& meta)
 {
     std::wstring value = appbox::mbstowcs(meta.settings.sandboxLocation.c_str(), CP_UTF8);
     value = decoder.Decode(value);
 
     meta.settings.sandboxLocation = appbox::wcstombs(value.c_str(), CP_UTF8);
+}
+
+struct InflateProcessor
+{
+    appbox::LayoutSection* section;
+    void (*process)(SuperviseService* service, appbox::ZInflateStream& is);
+};
+
+static void s_inflate_meta(SuperviseService* service, appbox::ZInflateStream& is)
+{
+    std::string metadata;
+    while (1)
+    {
+        std::string tmp = is.inflate();
+        if (tmp.empty())
+        {
+            break;
+        }
+        metadata.append(tmp);
+    }
+    service->mMeta = nlohmann::json::parse(metadata);
+
+    s_expand_necessary_variable(service->mVarDecoder, service->mMeta);
+}
+
+static void s_wait_cache(std::string& cache, appbox::ZInflateStream& is, size_t size)
+{
+    while (cache.size() < size)
+    {
+        std::string tmp = is.inflate();
+        if (tmp.empty())
+        {
+            throw std::runtime_error("Cache is not enough");
+        }
+        cache.append(tmp);
+    }
+}
+
+static void s_inflate_filesystem(SuperviseService* service, appbox::ZInflateStream& is)
+{
+    wxString sandboxLocation = wxString::FromUTF8(service->mMeta.settings.sandboxLocation);
+    spdlog::info(L"Sandbox location: {}", sandboxLocation.ToStdWstring());
+    appbox::CreateNestedDirectory(sandboxLocation.ToStdWstring());
+
+    std::string cache;
+    while (1)
+    {
+        appbox::PayloadNode node;
+        try
+        {
+            s_wait_cache(cache, is, sizeof(node));
+        }
+        catch (std::runtime_error&)
+        {
+            break;
+        }
+        memcpy(&node, cache.c_str(), sizeof(node));
+        cache.erase(0, sizeof(node));
+
+        /* Get file path. */
+        s_wait_cache(cache, is, node.path_len);
+        std::string filePath = cache.substr(0, node.path_len);
+        cache.erase(0, node.path_len);
+        std::string filePathSandbox =
+            appbox::GetPathInSandbox(service->mMeta.settings.sandboxLocation, filePath);
+        std::wstring wFilePathSandbox = appbox::mbstowcs(filePathSandbox.c_str(), CP_UTF8);
+
+        /* Get file payload. */
+        s_wait_cache(cache, is, node.payload_len);
+        std::string payload = cache.substr(0, node.payload_len);
+        cache.erase(0, node.payload_len);
+
+        spdlog::info("Inflate {}", filePath);
+        if (node.attribute & FILE_ATTRIBUTE_DIRECTORY)
+        {
+            appbox::CreateNestedDirectory(wFilePathSandbox);
+        }
+        else
+        {
+            appbox::WriteFileReplace(wFilePathSandbox, payload.data(), payload.size());
+        }
+    }
+}
+
+static void s_inflate_sandbox_dll(SuperviseService* service, appbox::ZInflateStream& is)
+{
+    std::string  dllDir = service->mMeta.settings.sandboxLocation + "\\%sandbox%";
+    std::wstring wDllDir = appbox::mbstowcs(dllDir.c_str(), CP_UTF8);
+    appbox::CreateNestedDirectory(wDllDir);
+
+    std::string         cache;
+    appbox::PayloadNode node;
+
+    s_wait_cache(cache, is, sizeof(node));
+    memcpy(&node, cache.c_str(), sizeof(node));
+    cache.erase(0, sizeof(node));
+
+    service->tempDll32Path = wDllDir + L"\\sandbox32.dll";
+    appbox::FileHandle tempDll32(service->tempDll32Path.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+                                 nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL);
+    s_wait_cache(cache, is, node.payload_len);
+    appbox::WriteFileSized(tempDll32.get(), cache.c_str(), node.payload_len);
+    cache.erase(0, node.payload_len);
+
+    s_wait_cache(cache, is, sizeof(node));
+    memcpy(&node, cache.c_str(), sizeof(node));
+    cache.erase(0, sizeof(node));
+
+    service->tempDll64Path = wDllDir + L"\\sandbox64.dll";
+    appbox::FileHandle tempDll64(service->tempDll64Path.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+                                 nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL);
+    s_wait_cache(cache, is, node.payload_len);
+    appbox::WriteFileSized(tempDll64.get(), cache.c_str(), node.payload_len);
+    cache.erase(0, node.payload_len);
 }
 
 static void s_process_payload(SuperviseService* service, HANDLE file)
@@ -151,15 +228,32 @@ static void s_process_payload(SuperviseService* service, HANDLE file)
         throw std::runtime_error("Invalid magic_1");
     }
 
-    nlohmann::json meta = s_get_meta(file);
-    service->mMeta = meta;
-    s_expand_necessary_variable(service->mVarDecoder, service->mMeta);
+    appbox::Layout layout;
+    appbox::ReadFileSized(file, &layout, sizeof(layout));
 
-    s_inflate_payload(service, file);
+    InflateProcessor processor[] = {
+        { &layout.meta,       s_inflate_meta        },
+        { &layout.filesystem, s_inflate_filesystem  },
+        { &layout.sandbox,    s_inflate_sandbox_dll },
+    };
+
+    for (size_t i = 0; i < std::size(processor); i++)
+    {
+        InflateProcessor* p = &processor[i];
+        appbox::SetFilePosition(file, p->section->offset);
+        appbox::ZInflateStream inflateStream(file, p->section->length);
+        p->process(service, inflateStream);
+    }
 }
 
-static void s_start_file(const appbox::Meta& meta)
+static void s_start_file(SuperviseService* service, const appbox::Meta& meta)
 {
+#if defined(_WIN64)
+    std::string tempDllPath = appbox::wcstombs(service->tempDll64Path.c_str(), CP_UTF8);
+#else
+    std::string tempDllPath = appbox::wcstombs(service->tempDll32Path.c_str(), CP_UTF8);
+#endif
+
     for (auto it = meta.settings.startupFiles.begin(); it != meta.settings.startupFiles.end(); ++it)
     {
         const std::string& path = it->path;
@@ -172,13 +266,32 @@ static void s_start_file(const appbox::Meta& meta)
         startupInfo.cb = sizeof(startupInfo);
 
         PROCESS_INFORMATION processInfo;
-        if (!CreateProcessW(wFilePath.c_str(), nullptr, nullptr, nullptr, FALSE, 0, nullptr,
-                            nullptr, &startupInfo, &processInfo))
+        if (!DetourCreateProcessWithDllExW(wFilePath.c_str(), nullptr, nullptr, nullptr, FALSE,
+                                           CREATE_SUSPENDED, nullptr, nullptr, &startupInfo,
+                                           &processInfo, tempDllPath.c_str(), nullptr))
         {
             spdlog::info("CreateProcess() failed: {}", filePath);
             continue;
         }
 
+        appbox::InjectData inject;
+        inject.sandboxPath = service->mMeta.settings.sandboxLocation;
+        inject.dllPath32 = appbox::wcstombs(service->tempDll32Path.c_str(), CP_UTF8);
+        inject.dllPath64 = appbox::wcstombs(service->tempDll64Path.c_str(), CP_UTF8);
+        nlohmann::json injectJson = inject;
+        std::string    injectData = injectJson.dump();
+
+        const GUID guid = APPBOX_SANDBOX_GUID;
+        if (!DetourCopyPayloadToProcess(processInfo.hProcess, guid, injectData.c_str(),
+                                        injectData.size()))
+        {
+            spdlog::info("DetourCopyPayloadToProcess() failed");
+            CloseHandle(processInfo.hProcess);
+            CloseHandle(processInfo.hThread);
+            continue;
+        }
+
+        ResumeThread(processInfo.hThread);
         CloseHandle(processInfo.hProcess);
         CloseHandle(processInfo.hThread);
     }
@@ -195,7 +308,7 @@ wxThread::ExitCode SuperviseService::Entry()
         s_process_payload(this, hFile.get());
         hFile.reset(); // close file.
 
-        s_start_file(mMeta);
+        s_start_file(this, mMeta);
     }
     catch (const std::runtime_error& e)
     {
