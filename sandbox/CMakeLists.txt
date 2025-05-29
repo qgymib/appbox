@@ -26,6 +26,7 @@ set(appbox_sources
     "hooks/LoadLibraryA.cpp"
     "hooks/LoadLibraryW.cpp"
     "appbox.cpp"
+    "appbox.def"
 )
 
 add_library(${sandbox_name} SHARED ${appbox_sources})

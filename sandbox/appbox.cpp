@@ -78,6 +78,20 @@ static void s_setup_log()
 
 static void s_on_process_attach(HINSTANCE hinstDLL)
 {
+    /*
+     * When creating a 32-bit target process from a 64-bit parent process or creating a 64-bit
+     * target process from a 32-bit parent process, a temporary helper process is created.
+     *
+     * When a user-supplied DLL is loaded into a helper process, it must not detour any functions.
+     * Instead, it should perform no operations in DllMain.
+     *
+     * https://github.com/microsoft/Detours/wiki/DetourIsHelperProcess
+     */
+    if (DetourIsHelperProcess())
+    {
+        return;
+    }
+
     appbox::G = new appbox::AppBox;
     appbox::G->hinstDLL = hinstDLL;
     appbox::G->inject = s_find_inject_data();
@@ -88,11 +102,15 @@ static void s_on_process_attach(HINSTANCE hinstDLL)
 
 static void s_on_process_detach()
 {
+    if (appbox::G == nullptr)
+    {
+        return;
+    }
     delete appbox::G;
     appbox::G = nullptr;
 }
 
-__declspec(dllexport) BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
 {
     try
     {
