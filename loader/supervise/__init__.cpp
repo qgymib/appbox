@@ -274,7 +274,7 @@ static void s_start_file(SuperviseService* service, const appbox::Meta& meta)
             continue;
         }
 
-        appbox::InjectData inject;
+        appbox::InjectConfig inject;
         inject.sandboxPath = service->mMeta.settings.sandboxLocation;
         inject.dllPath32 = appbox::wcstombs(service->tempDll32Path.c_str(), CP_UTF8);
         inject.dllPath64 = appbox::wcstombs(service->tempDll64Path.c_str(), CP_UTF8);

@@ -3,25 +3,19 @@
 #include "utils/macros.hpp"
 #include "__init__.hpp"
 
-static appbox::hook::Func* s_hooks[] = {
-    &appbox::hook::CreateFileA,
-    &appbox::hook::CreateFileW,
-    &appbox::hook::LoadLibraryA,
-    &appbox::hook::LoadLibraryW,
+static appbox::Detour* s_hooks[] = {
+    &appbox::CreateProcessInternalW,
 };
 
-void appbox::hook::Init()
+void appbox::InitHook()
 {
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
 
     for (size_t i = 0; i < ARRAY_SIZE(s_hooks); i++)
     {
-        appbox::hook::Func* f = s_hooks[i];
-        if (f->OrigAddr != nullptr)
-        {
-            DetourAttach(&f->OrigAddr, f->HookAddr);
-        }
+        appbox::Detour* f = s_hooks[i];
+        f->init();
     }
 
     DetourTransactionCommit();

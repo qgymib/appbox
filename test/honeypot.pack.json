@@ -1,0 +1,26 @@
+{
+  "filesystem": {
+    "fs": [
+      {
+        "dwFileAttributes": 32,
+        "isolation": 0,
+        "sandboxPath": "%LOCALAPPDATA%\\honeypot.exe",
+        "sourcePath": "honeypot.exe"
+      }
+    ]
+  },
+  "settings": {
+    "compressLevel": 0,
+    "outputPath": "test.exe",
+    "resetSandbox": false,
+    "sandboxPath": "%LOCALAPPDATA%\\appbox\\Sandbox\\Test"
+  },
+  "startupFiles": [
+    {
+      "args": "",
+      "autoStart": true,
+      "path": "%LOCALAPPDATA%\\honeypot.exe",
+      "trigger": ""
+    }
+  ]
+}

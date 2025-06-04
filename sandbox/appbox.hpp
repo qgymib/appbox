@@ -9,9 +9,12 @@ namespace appbox
 
 struct AppBox
 {
-    AppBox();
-    HINSTANCE  hinstDLL; /* A handle to the DLL module. */
-    InjectData inject;   /* Inject data. */
+    AppBox(HINSTANCE hinstDLL);
+    InjectConfig config;      /* Inject configuration. */
+    HINSTANCE    hinstDLL;    /* A handle to the DLL module. */
+    HMODULE      hNtdll;      /* ntdll.dll */
+    HMODULE      hKernel32;   /* kernel32.dll */
+    HMODULE      hKernelBase; /* kernelbase.dll */
 };
 
 extern AppBox* G;

@@ -58,3 +58,5 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
             -A Win32
     )
 endif()
+
+add_subdirectory(test)

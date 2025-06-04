@@ -21,10 +21,7 @@ endfunction()
 
 set(appbox_sources
     "hooks/__init__.cpp"
-    "hooks/CreateFileA.cpp"
-    "hooks/CreateFileW.cpp"
-    "hooks/LoadLibraryA.cpp"
-    "hooks/LoadLibraryW.cpp"
+    "hooks/CreateProcessInternalW.cpp"
     "appbox.cpp"
     "appbox.def"
 )
@@ -34,6 +31,7 @@ appbox_setup_target_wall(${sandbox_name})
 
 target_include_directories(${sandbox_name}
     PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 

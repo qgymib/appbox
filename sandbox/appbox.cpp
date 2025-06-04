@@ -15,7 +15,7 @@
 
 appbox::AppBox* appbox::G = nullptr;
 
-static nlohmann::json s_find_inject_data()
+static nlohmann::json s_find_inject_config()
 {
     const GUID guid = APPBOX_SANDBOX_GUID;
     DWORD      payload_sz = 0;
@@ -57,7 +57,7 @@ static std::wstring s_get_log_file_path(const std::wstring& processName, DWORD p
     std::array<wchar_t, 8192> buff;
     _snwprintf_s(buff.data(), buff.size(), _TRUNCATE, L"%s-%u.txt", processName.c_str(), pid);
 
-    return appbox::mbstowcs(appbox::G->inject.sandboxPath.c_str(), CP_UTF8) + L"\\" + buff.data();
+    return appbox::mbstowcs(appbox::G->config.sandboxPath.c_str(), CP_UTF8) + L"\\" + buff.data();
 }
 
 static void s_setup_log()
@@ -91,13 +91,13 @@ static void s_on_process_attach(HINSTANCE hinstDLL)
     {
         return;
     }
+    DetourRestoreAfterWith();
 
-    appbox::G = new appbox::AppBox;
-    appbox::G->hinstDLL = hinstDLL;
-    appbox::G->inject = s_find_inject_data();
+    appbox::G = new appbox::AppBox(hinstDLL);
+    appbox::G->config = s_find_inject_config();
     s_setup_log();
 
-    // TODO: inject filesystem and registry functions.
+    appbox::InitHook();
 }
 
 static void s_on_process_detach()
@@ -141,7 +141,10 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
     return TRUE;
 }
 
-appbox::AppBox::AppBox()
+appbox::AppBox::AppBox(HINSTANCE hinstDLL)
 {
-    hinstDLL = nullptr;
+    this->hinstDLL = hinstDLL;
+    hNtdll = GetModuleHandleW(L"ntdll.dll");
+    hKernel32 = GetModuleHandleW(L"kernel32.dll");
+    hKernelBase = GetModuleHandleW(L"kernelbase.dll");
 }
