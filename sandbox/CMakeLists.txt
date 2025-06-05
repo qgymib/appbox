@@ -22,6 +22,7 @@ endfunction()
 set(appbox_sources
     "hooks/__init__.cpp"
     "hooks/CreateProcessInternalW.cpp"
+    "hooks/NtCreateFile.cpp"
     "appbox.cpp"
     "appbox.def"
 )

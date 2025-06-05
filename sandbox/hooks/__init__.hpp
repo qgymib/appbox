@@ -11,13 +11,10 @@ struct Detour
 {
     const wchar_t* name; /* The function name. */
     void (*init)();      /* Detour initialize point. */
-#if 0
-    void* OrigAddr;      /* The function address. */
-    void* HookAddr;      /* The hook function address. */
-#endif
 };
 
-extern Detour CreateProcessInternalW; /* DLL:Kernel32 */
+extern const Detour CreateProcessInternalW; /* Kernel32 */
+extern const Detour NtCreateFile;           /* ntdll.dll */
 
 /**
  * @brief Initialize hook.

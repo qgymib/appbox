@@ -118,7 +118,7 @@ static void s_init_CreateProcessInternalW()
     hook_CreateProcessInternalW->injectData = injectJson.dump();
 }
 
-appbox::Detour appbox::CreateProcessInternalW = {
+const appbox::Detour appbox::CreateProcessInternalW = {
     L"CreateProcessInternalW",
     s_init_CreateProcessInternalW,
 };
