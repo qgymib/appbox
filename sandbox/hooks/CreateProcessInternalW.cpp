@@ -16,13 +16,13 @@ struct HookCreateProcessInternalW
 
 static HookCreateProcessInternalW* hook_CreateProcessInternalW = nullptr;
 
-static BOOL s_proxy_CREATE_PROCESS_ROUTINEW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
-                                            LPSECURITY_ATTRIBUTES lpProcessAttributes,
-                                            LPSECURITY_ATTRIBUTES lpThreadAttributes,
-                                            BOOL bInheritHandles, DWORD dwCreationFlags,
-                                            LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory,
-                                            LPSTARTUPINFOW        lpStartupInfo,
-                                            LPPROCESS_INFORMATION lpProcessInformation)
+static BOOL WINAPI s_proxy_CREATE_PROCESS_ROUTINEW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
+                                                   LPSECURITY_ATTRIBUTES lpProcessAttributes,
+                                                   LPSECURITY_ATTRIBUTES lpThreadAttributes,
+                                                   BOOL bInheritHandles, DWORD dwCreationFlags,
+                                                   LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory,
+                                                   LPSTARTUPINFOW        lpStartupInfo,
+                                                   LPPROCESS_INFORMATION lpProcessInformation)
 {
     HANDLE  hToken = hook_CreateProcessInternalW->hTmpToken;
     HANDLE* hNewToken = hook_CreateProcessInternalW->hTmpNewToken;
@@ -39,9 +39,9 @@ static BOOL s_hook_CreateProcessInternalW(
     LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation, PHANDLE hNewToken)
 {
 #if defined(_WIN64)
-    std::string tempDllPath = appbox::G->config.dllPath64;
+    const std::string& tempDllPath = appbox::G->config.dllPath64;
 #else
-    std::string tempDllPath = appbox::G->config.dllPath32;
+    const std::string& tempDllPath = appbox::G->config.dllPath32;
 #endif
 
     BOOL result;
