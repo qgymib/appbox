@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include <detours.h>
 #include <zlib.h>
+#include <list>
 #include "utils/file.hpp"
 #include "utils/macros.hpp"
 #include "utils/winapi.hpp"
@@ -19,6 +20,17 @@
 #include "__init__.hpp"
 #include "config.hpp"
 
+struct ProcHandle : std::shared_ptr<void>
+{
+    ProcHandle() = default;
+
+    ProcHandle(HANDLE hProcess) : std::shared_ptr<void>(hProcess, CloseHandle)
+    {
+    }
+};
+
+typedef std::list<ProcHandle> ProcHandleList;
+
 struct SuperviseService : wxEvtHandler, wxThreadHelper
 {
     SuperviseService();
@@ -29,8 +41,9 @@ struct SuperviseService : wxEvtHandler, wxThreadHelper
     std::wstring    mSelfPath;   /* Path to self. */
     appbox::Meta    mMeta;       /* Metadata. */
 
-    std::wstring tempDll32Path;
-    std::wstring tempDll64Path;
+    std::wstring   tempDll32Path;
+    std::wstring   tempDll64Path;
+    ProcHandleList procHandles;
 };
 
 SuperviseService::SuperviseService()
@@ -292,8 +305,8 @@ static void s_start_file(SuperviseService* service, const appbox::Meta& meta)
         }
 
         ResumeThread(processInfo.hThread);
-        CloseHandle(processInfo.hProcess);
         CloseHandle(processInfo.hThread);
+        service->procHandles.push_back(processInfo.hProcess);
     }
 }
 
@@ -313,18 +326,38 @@ wxThread::ExitCode SuperviseService::Entry()
     catch (const std::runtime_error& e)
     {
         spdlog::error("{}", e.what());
-        goto EXIT_APPLICATION;
+        goto FINISH;
     }
 
-    while (!GetThread()->TestDestroy())
+    while (!GetThread()->TestDestroy() && procHandles.size() > 0)
     {
-        wxMilliSleep(100);
-    }
-    goto FINISH;
+        wxMilliSleep(1000);
 
-EXIT_APPLICATION:
-    wxGetApp().QueueEvent(new wxCommandEvent(APPBOX_EXIT_APPLICATION_IF_NO_GUI));
+        ProcHandleList::iterator it;
+        for (it = procHandles.begin(); it != procHandles.end();)
+        {
+            HANDLE hProcess = (*it).get();
+            DWORD  waitRet = WaitForSingleObject(hProcess, 0);
+            switch (waitRet)
+            {
+            case WAIT_TIMEOUT:
+                ++it;
+                break;
+
+            case WAIT_OBJECT_0:
+                procHandles.erase(it++);
+                break;
+
+            default:
+                spdlog::error("WaitForSingleObject({})={}", hProcess, waitRet);
+                procHandles.erase(it++);
+                break;
+            }
+        }
+    }
+
 FINISH:
+    wxGetApp().QueueEvent(new wxCommandEvent(APPBOX_EXIT_APPLICATION_IF_NO_GUI));
     return (wxThread::ExitCode)0;
 }
 
