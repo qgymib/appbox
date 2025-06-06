@@ -1,6 +1,8 @@
 #ifndef APPBOX_HOOKS_INIT_HPP
 #define APPBOX_HOOKS_INIT_HPP
 
+#include <initializer_list>
+
 namespace appbox
 {
 
@@ -9,12 +11,14 @@ namespace appbox
  */
 struct Detour
 {
-    const wchar_t* name; /* The function name. */
-    void (*init)();      /* Detour initialize point. */
+    const char*                           name;   /* The function name. */
+    std::initializer_list<const wchar_t*> search; /* DLL list to search the function. */
+    void*                                 hook;   /* Hook function. */
+    void*                                 orig;   /* Original function. */
 };
 
-extern const Detour CreateProcessInternalW; /* Kernel32 */
-extern const Detour NtCreateFile;           /* ntdll.dll */
+extern Detour CreateProcessInternalW; /* KernelBase.dll */
+extern Detour NtCreateFile;           /* ntdll.dll */
 
 /**
  * @brief Initialize hook.

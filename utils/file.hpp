@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <stdexcept>
+#include <vector>
 #include "wstring.hpp"
 #include "macros.hpp"
 
@@ -251,6 +252,17 @@ inline std::wstring DirName(const std::wstring& path)
     return result;
 }
 
+/**
+ * Extracts the base name (file name) from a given file path.
+ *
+ * This function takes a file path as input and returns the base name,
+ * which is the portion of the path following the last path separator ('\').
+ * If the input string does not contain a path separator, the original string
+ * is returned unchanged.
+ *
+ * @param[in] path The full path as a wide string.
+ * @return The base name extracted from the input path as a wide string.
+ */
 inline std::wstring BaseName(const std::wstring& path)
 {
     std::wstring            result = path;
@@ -416,6 +428,27 @@ inline uint64_t GetFileSize(HANDLE hFile)
         throw std::runtime_error("GetFileSizeEx failed");
     }
     return fileSize.QuadPart;
+}
+
+/**
+ * Concatenates a name to a given file path, ensuring proper path separator.
+ *
+ * This function appends the given `name` to the `path`. If the `path` does not
+ * already end with a backslash ('\'), one is appended before adding the `name`.
+ *
+ * @param[in,out] path The file path to which the name will be appended. The path
+ *                     may be modified to include a backslash if it does not
+ *                     already have one at the end.
+ * @param[in] name The name to append to the path. This can represent a file
+ *                 name or a directory name.
+ */
+inline void PathConcat(std::wstring& path, const std::wstring& name)
+{
+    if (path.back() != L'\\')
+    {
+        path += L'\\';
+    }
+    path += name;
 }
 
 } // namespace appbox

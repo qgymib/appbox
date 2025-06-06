@@ -7,11 +7,10 @@
 
 struct HookCreateProcessInternalW
 {
-    appbox::winapi::CreateProcessInternalW orig;       /* Original function entrypoint. */
-    std::string                            injectData; /* Inject data. */
-    CRITICAL_SECTION                       lock;       /* Global lock for arguments sync. */
-    HANDLE  hTmpToken;    /* first argument for CreateProcessInternalW() */
-    HANDLE* hTmpNewToken; /* Last argument for CreateProcessInternalW() */
+    std::string      injectData;   /* Inject data. */
+    CRITICAL_SECTION lock;         /* Global lock for arguments sync. */
+    HANDLE           hTmpToken;    /* first argument for CreateProcessInternalW() */
+    HANDLE*          hTmpNewToken; /* Last argument for CreateProcessInternalW() */
 };
 
 static HookCreateProcessInternalW* hook_CreateProcessInternalW = nullptr;
@@ -24,12 +23,25 @@ static BOOL WINAPI s_proxy_CREATE_PROCESS_ROUTINEW(LPCWSTR lpApplicationName, LP
                                                    LPSTARTUPINFOW        lpStartupInfo,
                                                    LPPROCESS_INFORMATION lpProcessInformation)
 {
-    HANDLE  hToken = hook_CreateProcessInternalW->hTmpToken;
-    HANDLE* hNewToken = hook_CreateProcessInternalW->hTmpNewToken;
-    return hook_CreateProcessInternalW->orig(
-        hToken, lpApplicationName, lpCommandLine, lpProcessAttributes, lpThreadAttributes,
-        bInheritHandles, dwCreationFlags, lpEnvironment, lpCurrentDirectory, lpStartupInfo,
-        lpProcessInformation, hNewToken);
+    HANDLE                                 hToken = hook_CreateProcessInternalW->hTmpToken;
+    HANDLE*                                hNewToken = hook_CreateProcessInternalW->hTmpNewToken;
+    appbox::winapi::CreateProcessInternalW fn =
+        (appbox::winapi::CreateProcessInternalW)appbox::CreateProcessInternalW.orig;
+
+    return fn(hToken, lpApplicationName, lpCommandLine, lpProcessAttributes, lpThreadAttributes,
+              bInheritHandles, dwCreationFlags, lpEnvironment, lpCurrentDirectory, lpStartupInfo,
+              lpProcessInformation, hNewToken);
+}
+
+static BOOL s_hook_CreateProcessInternalW_init(PINIT_ONCE, PVOID, PVOID*)
+{
+    hook_CreateProcessInternalW = new HookCreateProcessInternalW;
+    InitializeCriticalSection(&hook_CreateProcessInternalW->lock);
+
+    nlohmann::json injectJson = appbox::G->config;
+    hook_CreateProcessInternalW->injectData = injectJson.dump();
+
+    return TRUE;
 }
 
 static BOOL s_hook_CreateProcessInternalW(
@@ -43,6 +55,9 @@ static BOOL s_hook_CreateProcessInternalW(
 #else
     const std::string& tempDllPath = appbox::G->config.dllPath32;
 #endif
+
+    static INIT_ONCE once_token = INIT_ONCE_STATIC_INIT;
+    InitOnceExecuteOnce(&once_token, s_hook_CreateProcessInternalW_init, nullptr, nullptr);
 
     BOOL result;
     EnterCriticalSection(&hook_CreateProcessInternalW->lock);
@@ -88,37 +103,9 @@ static BOOL s_hook_CreateProcessInternalW(
     return result;
 }
 
-static void s_init_CreateProcessInternalW()
-{
-    hook_CreateProcessInternalW = new HookCreateProcessInternalW;
-    InitializeCriticalSection(&hook_CreateProcessInternalW->lock);
-
-    hook_CreateProcessInternalW->orig = reinterpret_cast<appbox::winapi::CreateProcessInternalW>(
-        GetProcAddress(appbox::G->hKernelBase, "CreateProcessInternalW"));
-    if (hook_CreateProcessInternalW->orig == nullptr)
-    {
-        hook_CreateProcessInternalW->orig =
-            reinterpret_cast<appbox::winapi::CreateProcessInternalW>(
-                GetProcAddress(appbox::G->hKernel32, "CreateProcessInternalW"));
-    }
-    if (hook_CreateProcessInternalW->orig == nullptr)
-    {
-        throw std::runtime_error("GetProcAddress(CreateProcessInternalW) failed");
-    }
-
-    LONG status =
-        DetourAttach((void**)&hook_CreateProcessInternalW->orig, s_hook_CreateProcessInternalW);
-    if (status != NO_ERROR)
-    {
-        std::string s = fmt::format("DetourAttach(CreateProcessInternalW): %lu", status);
-        throw std::runtime_error(s);
-    }
-
-    nlohmann::json injectJson = appbox::G->config;
-    hook_CreateProcessInternalW->injectData = injectJson.dump();
-}
-
-const appbox::Detour appbox::CreateProcessInternalW = {
-    L"CreateProcessInternalW",
-    s_init_CreateProcessInternalW,
+appbox::Detour appbox::CreateProcessInternalW = {
+    "CreateProcessInternalW",
+    { L"KernelBase.dll", L"kernel32.dll" },
+    s_hook_CreateProcessInternalW,
+    nullptr,
 };

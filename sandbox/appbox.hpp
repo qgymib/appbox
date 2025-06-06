@@ -14,7 +14,7 @@ struct AppBox
     HINSTANCE    hinstDLL;    /* A handle to the DLL module. */
     HMODULE      hNtdll;      /* ntdll.dll */
     HMODULE      hKernel32;   /* kernel32.dll */
-    HMODULE      hKernelBase; /* kernelbase.dll */
+    HMODULE      hKernelBase; /* KernelBase.dll */
 };
 
 extern AppBox* G;
