@@ -62,6 +62,15 @@ inline std::string wcstombs(const wchar_t* s, int codepage = CP_UTF8)
     return dst;
 }
 
+inline bool StartWith(const std::wstring& str, const std::wstring& prefix)
+{
+    if (prefix.size() > str.size())
+    {
+        return false;
+    }
+    return std::equal(prefix.begin(), prefix.end(), str.begin());
+}
+
 } // namespace appbox
 
 #endif

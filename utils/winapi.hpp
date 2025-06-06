@@ -33,6 +33,8 @@ typedef NTSTATUS (*NtCreateFile)(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
                                  ULONG CreateOptions, PVOID EaBuffer, ULONG EaLength);
 
 #define ObjectNameInformation ((OBJECT_INFORMATION_CLASS)1)
+#define ObjectAllTypesInformation ((OBJECT_INFORMATION_CLASS)3)
+#define ObjectDataInformation ((OBJECT_INFORMATION_CLASS)4)
 
 typedef NTSTATUS (*NtQueryObject)(HANDLE Handle, OBJECT_INFORMATION_CLASS ObjectInformationClass,
                                   PVOID ObjectInformation, ULONG ObjectInformationLength,

@@ -34,7 +34,7 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
     if (ObjectAttributes->RootDirectory != nullptr)
     {
         std::array<BYTE, 4096> buffer;
-        ULONG                  returnLength;
+        ULONG                  returnLength = 0;
         NTSTATUS               status = hook_NtCreateFileCtx->sys_NtQueryObject(
             ObjectAttributes->RootDirectory, ObjectNameInformation, buffer.data(),
             (ULONG)buffer.size(), &returnLength);
