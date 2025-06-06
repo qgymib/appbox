@@ -19,6 +19,7 @@ struct Detour
 
 extern Detour CreateProcessInternalW; /* KernelBase.dll */
 extern Detour NtCreateFile;           /* ntdll.dll */
+extern Detour NtQueryObject;          /* ntdll.dll */
 
 /**
  * @brief Initialize hook.

@@ -23,6 +23,7 @@ set(appbox_sources
     "hooks/__init__.cpp"
     "hooks/CreateProcessInternalW.cpp"
     "hooks/NtCreateFile.cpp"
+    "hooks/NtQueryObject.cpp"
     "appbox.cpp"
     "appbox.def"
 )

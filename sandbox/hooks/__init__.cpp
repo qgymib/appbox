@@ -9,6 +9,7 @@
 static appbox::Detour* s_hooks[] = {
     &appbox::CreateProcessInternalW,
     &appbox::NtCreateFile,
+    &appbox::NtQueryObject,
 };
 
 void appbox::InitHook()

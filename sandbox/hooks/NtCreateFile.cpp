@@ -13,8 +13,8 @@ static HookNtCreateFileCtx* hook_NtCreateFileCtx = nullptr;
 static BOOL Hook_NtCreateFile_InitOnce(PINIT_ONCE, PVOID, PVOID*)
 {
     hook_NtCreateFileCtx = new HookNtCreateFileCtx;
-    hook_NtCreateFileCtx->sys_NtQueryObject = reinterpret_cast<appbox::winapi::NtQueryObject>(
-        GetProcAddress(appbox::G->hNtdll, "NtQueryObject"));
+    hook_NtCreateFileCtx->sys_NtQueryObject =
+        reinterpret_cast<appbox::winapi::NtQueryObject>(appbox::NtQueryObject.orig);
 
     return TRUE;
 }
@@ -58,8 +58,5 @@ FINISH:
 }
 
 appbox::Detour appbox::NtCreateFile = {
-    "NtCreateFile",
-    { L"ntdll.dll" },
-    Hook_NtCreateFile,
-    nullptr,
+    "NtCreateFile", { L"ntdll.dll" }, Hook_NtCreateFile, nullptr
 };

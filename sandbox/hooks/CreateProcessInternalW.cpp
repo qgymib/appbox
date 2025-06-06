@@ -107,5 +107,5 @@ appbox::Detour appbox::CreateProcessInternalW = {
     "CreateProcessInternalW",
     { L"KernelBase.dll", L"kernel32.dll" },
     s_hook_CreateProcessInternalW,
-    nullptr,
+    nullptr
 };
