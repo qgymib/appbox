@@ -1,8 +1,16 @@
 #include "utils/winapi.hpp"
 #include "utils/wstring.hpp"
+#include "utils/FolderConv.hpp"
 #include "__init__.hpp"
 #include "appbox.hpp"
 #include <spdlog/spdlog.h>
+
+struct HookNtQueryObjectCtx
+{
+    appbox::FolderConv folderConv;
+};
+
+static HookNtQueryObjectCtx* hookNtQueryObjectCtx = nullptr;
 
 static NTSTATUS Hook_NtQueryObject_FixName(UNICODE_STRING* name, ULONG ObjectInformationLength,
                                            PULONG ReturnLength)
@@ -29,10 +37,19 @@ static NTSTATUS Hook_NtQueryObject_FixName(UNICODE_STRING* name, ULONG ObjectInf
     }
 }
 
+static BOOL Hook_NtQueryObject_Init(PINIT_ONCE, PVOID, PVOID*)
+{
+    hookNtQueryObjectCtx = new HookNtQueryObjectCtx;
+    return TRUE;
+}
+
 static NTSTATUS Hook_NtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS ObjectInformationClass,
                                    PVOID ObjectInformation, ULONG ObjectInformationLength,
                                    PULONG ReturnLength)
 {
+    static INIT_ONCE once_token = INIT_ONCE_STATIC_INIT;
+    InitOnceExecuteOnce(&once_token, Hook_NtQueryObject_Init, nullptr, nullptr);
+
     auto sys_NtQueryObject =
         reinterpret_cast<appbox::winapi::NtQueryObject>(appbox::NtQueryObject.orig);
     NTSTATUS result = sys_NtQueryObject(Handle, ObjectInformationClass, ObjectInformation,
