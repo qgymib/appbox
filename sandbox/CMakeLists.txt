@@ -30,6 +30,7 @@ set(appbox_sources
 
 add_library(${sandbox_name} SHARED ${appbox_sources})
 appbox_setup_target_wall(${sandbox_name})
+set_property(TARGET ${sandbox_name} PROPERTY CXX_STANDARD 17)
 
 target_include_directories(${sandbox_name}
     PRIVATE
