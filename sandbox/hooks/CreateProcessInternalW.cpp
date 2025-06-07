@@ -109,6 +109,27 @@ static BOOL Hook_CreateProcessInternalW_InSandbox(
 }
 
 /**
+ * @brief Convert \p path to real host path.
+ * @param[in] path File path in the sandbox or host file system.
+ * @return File path in host file system.
+ */
+static std::wstring ToHostPath(const std::wstring& path)
+{
+    /* Get full path of target path. */
+    DWORD                     ret;
+    std::array<wchar_t, 8192> buff;
+    ret = GetFullPathNameW(path.c_str(), buff.size(), buff.data(), nullptr);
+    if (ret == 0 || ret == buff.size())
+    {
+        spdlog::error("GetFullPathNameW() failed");
+        abort();
+    }
+    std::wstring fullPath(buff.data(), ret);
+
+
+}
+
+/**
  * @brief Fix application path.
  * @param[in,out] wApplicationName Application name or path.
  * @param[in,out] wCommandLine Application command line arguments.
