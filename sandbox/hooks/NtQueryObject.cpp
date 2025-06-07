@@ -1,3 +1,5 @@
+#include <ntstatus.h>
+#define WIN32_NO_STATUS
 #include "utils/winapi.hpp"
 #include "utils/wstring.hpp"
 #include "utils/FolderConv.hpp"
@@ -15,26 +17,48 @@ static HookNtQueryObjectCtx* hookNtQueryObjectCtx = nullptr;
 static NTSTATUS Hook_NtQueryObject_FixName(UNICODE_STRING* name, ULONG ObjectInformationLength,
                                            PULONG ReturnLength)
 {
-    std::wstring wName = name->Buffer;
+    std::wstring wPath = name->Buffer;
     std::wstring wSandboxPath = appbox::mbstowcs(appbox::G->config.sandboxPath.c_str(), CP_UTF8);
 
     /* If the path is not in the sandbox, do nothing. */
-    if (!appbox::StartWith(wName, wSandboxPath))
+    if (!appbox::StartWith(wPath, wSandboxPath))
     {
-        return 0;
+        return STATUS_SUCCESS;
     }
 
     /* Remove the leading sandbox path. */
-    wName.erase(0, wSandboxPath.size());
-    while (wName.front() == L'\\')
+    wPath.erase(0, wSandboxPath.size());
+    while (wPath.front() == L'\\')
     {
-        wName.erase(0, 1);
+        wPath.erase(0, 1);
     }
-    if (wName.empty())
+    /* In this case the path point to the sandbox, which should not happen. */
+    if (wPath.empty())
     {
         spdlog::error(L"Invalid name: {}", name->Buffer);
         return STATUS_INVALID_PARAMETER;
     }
+
+    /*
+     * Decode the sandbox path as a fake filesystem path.
+     * E.G. `@ProgramFiles@\foo` -> `C:\Program Files\foo`
+     */
+    wPath = hookNtQueryObjectCtx->folderConv.Decode(wPath);
+    if (wPath.size() + sizeof(*name) >= ObjectInformationLength)
+    {
+        spdlog::error(L"[NtQueryObject/ObjectNameInformation] Buffer too small for path `{}`",
+                      wPath.c_str());
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+
+    /* Fix information. */
+    name->MaximumLength = static_cast<USHORT>(ObjectInformationLength - sizeof(*name));
+    name->Length = static_cast<USHORT>(wPath.size() * sizeof(WCHAR));
+    name->Buffer = reinterpret_cast<PWSTR>(name + 1);
+    memcpy(name->Buffer, wPath.c_str(), wPath.size() * sizeof(WCHAR));
+    name->Buffer[wPath.size()] = L'\0';
+    *ReturnLength = static_cast<ULONG>(name->Length + sizeof(*name));
+    return STATUS_SUCCESS;
 }
 
 static BOOL Hook_NtQueryObject_Init(PINIT_ONCE, PVOID, PVOID*)
@@ -54,26 +78,13 @@ static NTSTATUS Hook_NtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS Objec
         reinterpret_cast<appbox::winapi::NtQueryObject>(appbox::NtQueryObject.orig);
     NTSTATUS result = sys_NtQueryObject(Handle, ObjectInformationClass, ObjectInformation,
                                         ObjectInformationLength, ReturnLength);
-    if (!NT_SUCCESS(result))
+    if (!NT_SUCCESS(result) || ObjectInformationClass != ObjectNameInformation)
     {
         return result;
     }
 
-    switch (ObjectInformationClass)
-    {
-    case ObjectNameInformation:
-        return Hook_NtQueryObject_FixName(static_cast<UNICODE_STRING*>(ObjectInformation),
-                                          ObjectInformationLength, ReturnLength);
-
-    case ObjectBasicInformation:
-    case ObjectTypeInformation:
-    case ObjectAllTypesInformation:
-    case ObjectDataInformation:
-    default:
-        break;
-    }
-
-    return result;
+    return Hook_NtQueryObject_FixName(static_cast<UNICODE_STRING*>(ObjectInformation),
+                                      ObjectInformationLength, ReturnLength);
 }
 
 appbox::Detour appbox::NtQueryObject = {

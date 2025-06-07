@@ -19,11 +19,25 @@ public:
     FolderConv();
 
     /**
+     * Decodes the given string using the folder map. The method performs substitutions
+     * until no further decoding operations are needed or possible. The mappings for
+     * decoding are maintained within the class.
      *
+     * @param[in] str The input string to be decoded.
+     * @return The fully decoded string after applying all applicable substitutions.
      */
     std::wstring Decode(const std::wstring& str);
 
 protected:
+    /**
+     * Processes the input string, attempting to decode a single substitution based on
+     * the folder map. The method searches for encoded patterns and replaces them with their
+     * corresponding decoded values if a match is found.
+     *
+     * @param[in,out] str The string to process for decoding. This string is modified
+     *                    in place if a substitution occurs.
+     * @return True if a substitution was performed, false otherwise.
+     */
     bool DecodeOnce(std::wstring& str);
 
 private:
@@ -37,54 +51,54 @@ inline FolderConv::FolderConv()
      * @see https://learn.microsoft.com/en-us/windows/win32/shell/knownfolderid
      */
     const appbox::Pair<const wchar_t*, const KNOWNFOLDERID*> folders[] = {
-        { L"@FOLDERID_AppDataDesktop@",         &FOLDERID_AppDataDesktop         },
-        { L"@FOLDERID_AppDataDocuments@",       &FOLDERID_AppDataDocuments       },
-        { L"@FOLDERID_AppDataProgramData@",     &FOLDERID_AppDataProgramData     },
-        { L"@FOLDERID_ApplicationShortcuts@",   &FOLDERID_ApplicationShortcuts   },
-        { L"@FOLDERID_CommonStartup@",          &FOLDERID_CommonStartup          },
-        { L"@FOLDERID_Cookies@",                &FOLDERID_Cookies                },
-        { L"@FOLDERID_Desktop@",                &FOLDERID_Desktop                },
-        { L"@FOLDERID_Documents@",              &FOLDERID_Documents              },
-        { L"@FOLDERID_Downloads@",              &FOLDERID_Downloads              },
-        { L"@FOLDERID_Favorites@",              &FOLDERID_Favorites              },
-        { L"@FOLDERID_Fonts@",                  &FOLDERID_Fonts                  },
-        { L"@FOLDERID_History@",                &FOLDERID_History                },
-        { L"@FOLDERID_InternetCache@",          &FOLDERID_InternetCache          },
-        { L"@FOLDERID_InternetFolder@",         &FOLDERID_InternetFolder         },
-        { L"@FOLDERID_LocalAppData@",           &FOLDERID_LocalAppData           },
-        { L"@FOLDERID_LocalAppDataLow@",        &FOLDERID_LocalAppDataLow        },
-        { L"@FOLDERID_LocalizedResourcesDir@",  &FOLDERID_LocalizedResourcesDir  },
-        { L"@FOLDERID_Music@",                  &FOLDERID_Music                  },
-        { L"@FOLDERID_Pictures@",               &FOLDERID_Pictures               },
-        { L"@FOLDERID_Profile@",                &FOLDERID_Profile                },
-        { L"@FOLDERID_ProgramData@",            &FOLDERID_ProgramData            },
-        { L"@FOLDERID_ProgramFiles@",           &FOLDERID_ProgramFiles           },
-        { L"@FOLDERID_ProgramFilesX64@",        &FOLDERID_ProgramFilesX64        },
-        { L"@FOLDERID_ProgramFilesX86@",        &FOLDERID_ProgramFilesX86        },
-        { L"@FOLDERID_ProgramFilesCommon@",     &FOLDERID_ProgramFilesCommon     },
-        { L"@FOLDERID_ProgramFilesCommonX64@",  &FOLDERID_ProgramFilesCommonX64  },
-        { L"@FOLDERID_ProgramFilesCommonX86@",  &FOLDERID_ProgramFilesCommonX86  },
-        { L"@FOLDERID_Programs@",               &FOLDERID_Programs               },
-        { L"@FOLDERID_Public@",                 &FOLDERID_Public                 },
-        { L"@FOLDERID_PublicDesktop@",          &FOLDERID_PublicDesktop          },
-        { L"@FOLDERID_PublicDocuments@",        &FOLDERID_PublicDocuments        },
-        { L"@FOLDERID_PublicDownloads@",        &FOLDERID_PublicDownloads        },
-        { L"@FOLDERID_PublicMusic@",            &FOLDERID_PublicMusic            },
-        { L"@FOLDERID_PublicPictures@",         &FOLDERID_PublicPictures         },
-        { L"@FOLDERID_PublicVideos@",           &FOLDERID_PublicVideos           },
-        { L"@FOLDERID_QuickLaunch@",            &FOLDERID_QuickLaunch            },
-        { L"@FOLDERID_Recent@",                 &FOLDERID_Recent                 },
-        { L"@FOLDERID_RoamingAppData@",         &FOLDERID_RoamingAppData         },
-        { L"@FOLDERID_Screenshots@",            &FOLDERID_Screenshots            },
-        { L"@FOLDERID_SendTo@",                 &FOLDERID_SendTo                 },
-        { L"@FOLDERID_StartMenu@",              &FOLDERID_StartMenu              },
-        { L"@FOLDERID_Startup@",                &FOLDERID_Startup                },
-        { L"@FOLDERID_System@",                 &FOLDERID_System                 },
-        { L"@FOLDERID_SystemX86@",              &FOLDERID_SystemX86              },
-        { L"@FOLDERID_UserProfiles@",           &FOLDERID_UserProfiles           },
-        { L"@FOLDERID_UserProgramFiles@",       &FOLDERID_UserProgramFiles       },
-        { L"@FOLDERID_UserProgramFilesCommon@", &FOLDERID_UserProgramFilesCommon },
-        { L"@FOLDERID_Windows@",                &FOLDERID_Windows                },
+        { L"@AppDataDesktop@",         &FOLDERID_AppDataDesktop         },
+        { L"@AppDataDocuments@",       &FOLDERID_AppDataDocuments       },
+        { L"@AppDataProgramData@",     &FOLDERID_AppDataProgramData     },
+        { L"@ApplicationShortcuts@",   &FOLDERID_ApplicationShortcuts   },
+        { L"@CommonStartup@",          &FOLDERID_CommonStartup          },
+        { L"@Cookies@",                &FOLDERID_Cookies                },
+        { L"@Desktop@",                &FOLDERID_Desktop                },
+        { L"@Documents@",              &FOLDERID_Documents              },
+        { L"@Downloads@",              &FOLDERID_Downloads              },
+        { L"@Favorites@",              &FOLDERID_Favorites              },
+        { L"@Fonts@",                  &FOLDERID_Fonts                  },
+        { L"@History@",                &FOLDERID_History                },
+        { L"@InternetCache@",          &FOLDERID_InternetCache          },
+        { L"@InternetFolder@",         &FOLDERID_InternetFolder         },
+        { L"@LocalAppData@",           &FOLDERID_LocalAppData           },
+        { L"@LocalAppDataLow@",        &FOLDERID_LocalAppDataLow        },
+        { L"@LocalizedResourcesDir@",  &FOLDERID_LocalizedResourcesDir  },
+        { L"@Music@",                  &FOLDERID_Music                  },
+        { L"@Pictures@",               &FOLDERID_Pictures               },
+        { L"@Profile@",                &FOLDERID_Profile                },
+        { L"@ProgramData@",            &FOLDERID_ProgramData            },
+        { L"@ProgramFiles@",           &FOLDERID_ProgramFiles           },
+        { L"@ProgramFilesX64@",        &FOLDERID_ProgramFilesX64        },
+        { L"@ProgramFilesX86@",        &FOLDERID_ProgramFilesX86        },
+        { L"@ProgramFilesCommon@",     &FOLDERID_ProgramFilesCommon     },
+        { L"@ProgramFilesCommonX64@",  &FOLDERID_ProgramFilesCommonX64  },
+        { L"@ProgramFilesCommonX86@",  &FOLDERID_ProgramFilesCommonX86  },
+        { L"@Programs@",               &FOLDERID_Programs               },
+        { L"@Public@",                 &FOLDERID_Public                 },
+        { L"@PublicDesktop@",          &FOLDERID_PublicDesktop          },
+        { L"@PublicDocuments@",        &FOLDERID_PublicDocuments        },
+        { L"@PublicDownloads@",        &FOLDERID_PublicDownloads        },
+        { L"@PublicMusic@",            &FOLDERID_PublicMusic            },
+        { L"@PublicPictures@",         &FOLDERID_PublicPictures         },
+        { L"@PublicVideos@",           &FOLDERID_PublicVideos           },
+        { L"@QuickLaunch@",            &FOLDERID_QuickLaunch            },
+        { L"@Recent@",                 &FOLDERID_Recent                 },
+        { L"@RoamingAppData@",         &FOLDERID_RoamingAppData         },
+        { L"@Screenshots@",            &FOLDERID_Screenshots            },
+        { L"@SendTo@",                 &FOLDERID_SendTo                 },
+        { L"@StartMenu@",              &FOLDERID_StartMenu              },
+        { L"@Startup@",                &FOLDERID_Startup                },
+        { L"@System@",                 &FOLDERID_System                 },
+        { L"@SystemX86@",              &FOLDERID_SystemX86              },
+        { L"@UserProfiles@",           &FOLDERID_UserProfiles           },
+        { L"@UserProgramFiles@",       &FOLDERID_UserProgramFiles       },
+        { L"@UserProgramFilesCommon@", &FOLDERID_UserProgramFilesCommon },
+        { L"@Windows@",                &FOLDERID_Windows                },
     };
 
     CComPtr<IKnownFolderManager> pManager;
