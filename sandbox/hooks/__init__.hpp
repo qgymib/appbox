@@ -9,12 +9,10 @@ namespace appbox
  */
 struct Detour
 {
-    const wchar_t* name; /* The function name. */
-    void (*init)();      /* Detour initialize point. */
-#if 0
-    void* OrigAddr;      /* The function address. */
-    void* HookAddr;      /* The hook function address. */
-#endif
+    const char*    name; /* The function name. */
+    const wchar_t* dll;  /* DLL to hook. */
+    void*          hook; /* Hook function. */
+    void*          orig; /* Original function. */
 };
 
 extern Detour CreateProcessInternalW; /* DLL:Kernel32 */

@@ -5,39 +5,53 @@
 #include <detours.h>
 #include <spdlog/spdlog.h>
 
-struct HookCreateProcessInternalW
+struct HookCreateProcessInternalCtx
 {
-    appbox::winapi::CreateProcessInternalW orig;       /* Original function entrypoint. */
-    std::string                            injectData; /* Inject data. */
-    CRITICAL_SECTION                       lock;       /* Global lock for arguments sync. */
-    HANDLE  hTmpToken;    /* first argument for CreateProcessInternalW() */
-    HANDLE* hTmpNewToken; /* Last argument for CreateProcessInternalW() */
+    std::string      injectData;   /* Inject data. */
+    CRITICAL_SECTION lock;         /* Global lock for arguments sync. */
+    HANDLE           hTmpToken;    /* first argument for CreateProcessInternalW() */
+    HANDLE*          hTmpNewToken; /* Last argument for CreateProcessInternalW() */
 };
 
-static HookCreateProcessInternalW* hook_CreateProcessInternalW = nullptr;
+static HookCreateProcessInternalCtx* hook_CreateProcessInternalCtx = nullptr;
 
-static BOOL WINAPI s_proxy_CREATE_PROCESS_ROUTINEW(LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
-                                                   LPSECURITY_ATTRIBUTES lpProcessAttributes,
-                                                   LPSECURITY_ATTRIBUTES lpThreadAttributes,
-                                                   BOOL bInheritHandles, DWORD dwCreationFlags,
-                                                   LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory,
-                                                   LPSTARTUPINFOW        lpStartupInfo,
-                                                   LPPROCESS_INFORMATION lpProcessInformation)
+static BOOL WINAPI Hook_CreateProcessInternalW_Proxy(
+    LPCWSTR lpApplicationName, LPWSTR lpCommandLine, LPSECURITY_ATTRIBUTES lpProcessAttributes,
+    LPSECURITY_ATTRIBUTES lpThreadAttributes, BOOL bInheritHandles, DWORD dwCreationFlags,
+    LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory, LPSTARTUPINFOW lpStartupInfo,
+    LPPROCESS_INFORMATION lpProcessInformation)
 {
-    HANDLE  hToken = hook_CreateProcessInternalW->hTmpToken;
-    HANDLE* hNewToken = hook_CreateProcessInternalW->hTmpNewToken;
-    return hook_CreateProcessInternalW->orig(
-        hToken, lpApplicationName, lpCommandLine, lpProcessAttributes, lpThreadAttributes,
-        bInheritHandles, dwCreationFlags, lpEnvironment, lpCurrentDirectory, lpStartupInfo,
-        lpProcessInformation, hNewToken);
+    HANDLE  hToken = hook_CreateProcessInternalCtx->hTmpToken;
+    HANDLE* hNewToken = hook_CreateProcessInternalCtx->hTmpNewToken;
+    auto    sys_CreateProcessInternalW =
+        static_cast<appbox::winapi::CreateProcessInternalW>(appbox::CreateProcessInternalW.orig);
+
+    return sys_CreateProcessInternalW(hToken, lpApplicationName, lpCommandLine, lpProcessAttributes,
+                                      lpThreadAttributes, bInheritHandles, dwCreationFlags,
+                                      lpEnvironment, lpCurrentDirectory, lpStartupInfo,
+                                      lpProcessInformation, hNewToken);
 }
 
-static BOOL s_hook_CreateProcessInternalW(
+static BOOL CALLBACK Hook_CreateProcessInternalW_Init(PINIT_ONCE, PVOID, PVOID*)
+{
+    hook_CreateProcessInternalCtx = new HookCreateProcessInternalCtx;
+    InitializeCriticalSection(&hook_CreateProcessInternalCtx->lock);
+
+    nlohmann::json injectJson = appbox::G->config;
+    hook_CreateProcessInternalCtx->injectData = injectJson.dump();
+
+    return TRUE;
+}
+
+static BOOL Hook_CreateProcessInternalW(
     HANDLE hToken, LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
     LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes,
     BOOL bInheritHandles, ULONG dwCreationFlags, LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory,
     LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation, PHANDLE hNewToken)
 {
+    static INIT_ONCE once_token = INIT_ONCE_STATIC_INIT;
+    InitOnceExecuteOnce(&once_token, Hook_CreateProcessInternalW_Init, nullptr, nullptr);
+
 #if defined(_WIN64)
     const std::string& tempDllPath = appbox::G->config.dllPath64;
 #else
@@ -45,30 +59,31 @@ static BOOL s_hook_CreateProcessInternalW(
 #endif
 
     BOOL result;
-    EnterCriticalSection(&hook_CreateProcessInternalW->lock);
+    EnterCriticalSection(&hook_CreateProcessInternalCtx->lock);
     do
     {
         /* Sync external arguments. */
-        hook_CreateProcessInternalW->hTmpToken = hToken;
-        hook_CreateProcessInternalW->hTmpNewToken = hNewToken;
+        hook_CreateProcessInternalCtx->hTmpToken = hToken;
+        hook_CreateProcessInternalCtx->hTmpNewToken = hNewToken;
 
         /* Create the process in suspended state. */
         result = DetourCreateProcessWithDllExW(
             lpApplicationName, lpCommandLine, lpProcessAttributes, lpThreadAttributes,
             bInheritHandles, dwCreationFlags | CREATE_SUSPENDED, lpEnvironment, lpCurrentDirectory,
             lpStartupInfo, lpProcessInformation, tempDllPath.c_str(),
-            s_proxy_CREATE_PROCESS_ROUTINEW);
+            Hook_CreateProcessInternalW_Proxy);
         if (!result)
         {
             break;
         }
 
         /* Inject data. */
-        const GUID guid = APPBOX_SANDBOX_GUID;
-        result = DetourCopyPayloadToProcess(lpProcessInformation->hProcess, guid,
-                                            hook_CreateProcessInternalW->injectData.c_str(),
-                                            (DWORD)hook_CreateProcessInternalW->injectData.size());
-        if (!result)
+        const GUID  guid = APPBOX_SANDBOX_GUID;
+        const void* injectData = hook_CreateProcessInternalCtx->injectData.c_str();
+        DWORD injectDataSize = static_cast<DWORD>(hook_CreateProcessInternalCtx->injectData.size());
+        result = DetourCopyPayloadToProcess(lpProcessInformation->hProcess, guid, injectData,
+                                            injectDataSize);
+        if (!NT_SUCCESS(result))
         {
             spdlog::error("DetourCopyPayloadToProcess() failed");
             TerminateProcess(lpProcessInformation->hProcess, EXIT_FAILURE);
@@ -83,42 +98,14 @@ static BOOL s_hook_CreateProcessInternalW(
             ResumeThread(lpProcessInformation->hThread);
         }
     } while (FALSE);
-    LeaveCriticalSection(&hook_CreateProcessInternalW->lock);
+    LeaveCriticalSection(&hook_CreateProcessInternalCtx->lock);
 
     return result;
 }
 
-static void s_init_CreateProcessInternalW()
-{
-    hook_CreateProcessInternalW = new HookCreateProcessInternalW;
-    InitializeCriticalSection(&hook_CreateProcessInternalW->lock);
-
-    hook_CreateProcessInternalW->orig = reinterpret_cast<appbox::winapi::CreateProcessInternalW>(
-        GetProcAddress(appbox::G->hKernelBase, "CreateProcessInternalW"));
-    if (hook_CreateProcessInternalW->orig == nullptr)
-    {
-        hook_CreateProcessInternalW->orig =
-            reinterpret_cast<appbox::winapi::CreateProcessInternalW>(
-                GetProcAddress(appbox::G->hKernel32, "CreateProcessInternalW"));
-    }
-    if (hook_CreateProcessInternalW->orig == nullptr)
-    {
-        throw std::runtime_error("GetProcAddress(CreateProcessInternalW) failed");
-    }
-
-    LONG status =
-        DetourAttach((void**)&hook_CreateProcessInternalW->orig, s_hook_CreateProcessInternalW);
-    if (status != NO_ERROR)
-    {
-        std::string s = fmt::format("DetourAttach(CreateProcessInternalW): %lu", status);
-        throw std::runtime_error(s);
-    }
-
-    nlohmann::json injectJson = appbox::G->config;
-    hook_CreateProcessInternalW->injectData = injectJson.dump();
-}
-
 appbox::Detour appbox::CreateProcessInternalW = {
-    L"CreateProcessInternalW",
-    s_init_CreateProcessInternalW,
+    "CreateProcessInternalW",
+    L"KernelBase.dll",
+    Hook_CreateProcessInternalW,
+    nullptr,
 };
