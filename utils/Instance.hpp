@@ -3,6 +3,7 @@
 
 #include "utils/winapi.hpp"
 #include <memory>
+#include <mutex>
 
 namespace appbox
 {
@@ -22,10 +23,6 @@ template <typename T>
 class Instance
 {
 public:
-    Instance() : mOnceToken(INIT_ONCE_STATIC_INIT)
-    {
-    }
-
     /**
      * @brief Provides a thread-safe mechanism to initialize and retrieve a singleton instance of
      * type T.
@@ -37,14 +34,7 @@ public:
      */
     T* Get()
     {
-        BOOL fPending = false;
-        InitOnceBeginInitialize(&mOnceToken, 0, &fPending, nullptr);
-        if (fPending)
-        {
-            mInstance = std::make_shared<T>();
-            InitOnceComplete(&mOnceToken, 0, nullptr);
-        }
-
+        std::call_once(mOnceToken, &Instance::Reset, this);
         return mInstance.get();
     }
 
@@ -62,8 +52,16 @@ public:
         return Get();
     }
 
+    /**
+     * @brief Reset instance.
+     */
+    void Reset()
+    {
+        mInstance = std::make_shared<T>();
+    }
+
 private:
-    INIT_ONCE          mOnceToken;
+    std::once_flag     mOnceToken;
     std::shared_ptr<T> mInstance;
 };
 
