@@ -41,9 +41,10 @@ struct SuperviseService : wxEvtHandler, wxThreadHelper
     std::wstring    mSelfPath;   /* Path to self. */
     appbox::Meta    mMeta;       /* Metadata. */
 
-    std::wstring   tempDll32Path;
-    std::wstring   tempDll64Path;
-    ProcHandleList procHandles;
+    appbox::InjectConfig injectConfig;  /* Inject configuration. */
+    std::wstring         tempDll32Path; /* Path to 32 bit dll. */
+    std::wstring         tempDll64Path; /* Path to 64 bit dll. */
+    ProcHandleList       procHandles;   /* Startup file process handle. */
 };
 
 SuperviseService::SuperviseService()
@@ -160,7 +161,7 @@ static void s_inflate_filesystem(SuperviseService* service, appbox::ZInflateStre
     appbox::CreateNestedDirectory(sandboxLocation.ToStdWstring());
 
     std::string cache;
-    while (1)
+    while (true)
     {
         appbox::PayloadNode node;
         try
@@ -173,13 +174,18 @@ static void s_inflate_filesystem(SuperviseService* service, appbox::ZInflateStre
         }
         memcpy(&node, cache.c_str(), sizeof(node));
         cache.erase(0, sizeof(node));
+        s_wait_cache(cache, is, node.path_len);
 
         /* Get file path. */
-        s_wait_cache(cache, is, node.path_len);
-        std::string filePath = cache.substr(0, node.path_len);
+        appbox::InjectFile injectFile;
+        injectFile.attributes = node.attribute;
+        injectFile.isolation = static_cast<appbox::IsolationMode>(node.isolation);
+        injectFile.path = cache.substr(0, node.path_len);
         cache.erase(0, node.path_len);
+        service->injectConfig.files.push_back(injectFile);
+
         std::string filePathSandbox =
-            appbox::GetPathInSandbox(service->mMeta.settings.sandboxLocation, filePath);
+            appbox::GetPathInSandbox(service->mMeta.settings.sandboxLocation, injectFile.path);
         std::wstring wFilePathSandbox = appbox::mbstowcs(filePathSandbox.c_str(), CP_UTF8);
 
         /* Get file payload. */
@@ -187,7 +193,7 @@ static void s_inflate_filesystem(SuperviseService* service, appbox::ZInflateStre
         std::string payload = cache.substr(0, node.payload_len);
         cache.erase(0, node.payload_len);
 
-        spdlog::info("Inflate {}", filePath);
+        spdlog::info("Inflate {}", injectFile.path);
         if (node.attribute & FILE_ATTRIBUTE_DIRECTORY)
         {
             appbox::CreateNestedDirectory(wFilePathSandbox);
@@ -262,10 +268,13 @@ static void s_process_payload(SuperviseService* service, HANDLE file)
 static void s_start_file(SuperviseService* service, const appbox::Meta& meta)
 {
 #if defined(_WIN64)
-    std::string tempDllPath = appbox::wcstombs(service->tempDll64Path.c_str(), CP_UTF8);
+    const std::string& tempDllPath = appbox::wcstombs(service->tempDll64Path.c_str(), CP_UTF8);
 #else
-    std::string tempDllPath = appbox::wcstombs(service->tempDll32Path.c_str(), CP_UTF8);
+    const std::string& tempDllPath = appbox::wcstombs(service->tempDll32Path.c_str(), CP_UTF8);
 #endif
+    const nlohmann::json injectJson = service->injectConfig;
+    const std::string    injectData = injectJson.dump();
+    const GUID           guid = APPBOX_SANDBOX_GUID;
 
     for (auto it = meta.settings.startupFiles.begin(); it != meta.settings.startupFiles.end(); ++it)
     {
@@ -287,14 +296,6 @@ static void s_start_file(SuperviseService* service, const appbox::Meta& meta)
             continue;
         }
 
-        appbox::InjectConfig inject;
-        inject.sandboxPath = service->mMeta.settings.sandboxLocation;
-        inject.dllPath32 = appbox::wcstombs(service->tempDll32Path.c_str(), CP_UTF8);
-        inject.dllPath64 = appbox::wcstombs(service->tempDll64Path.c_str(), CP_UTF8);
-        nlohmann::json injectJson = inject;
-        std::string    injectData = injectJson.dump();
-
-        const GUID guid = APPBOX_SANDBOX_GUID;
         if (!DetourCopyPayloadToProcess(processInfo.hProcess, guid, injectData.c_str(),
                                         injectData.size()))
         {
@@ -310,6 +311,13 @@ static void s_start_file(SuperviseService* service, const appbox::Meta& meta)
     }
 }
 
+static void s_generate_inject_data(SuperviseService* service)
+{
+    service->injectConfig.sandboxPath = service->mMeta.settings.sandboxLocation;
+    service->injectConfig.dllPath32 = appbox::wcstombs(service->tempDll32Path.c_str(), CP_UTF8);
+    service->injectConfig.dllPath64 = appbox::wcstombs(service->tempDll64Path.c_str(), CP_UTF8);
+}
+
 wxThread::ExitCode SuperviseService::Entry()
 {
     try
@@ -321,6 +329,7 @@ wxThread::ExitCode SuperviseService::Entry()
         s_process_payload(this, hFile.get());
         hFile.reset(); // close file.
 
+        s_generate_inject_data(this);
         s_start_file(this, mMeta);
     }
     catch (const std::runtime_error& e)
