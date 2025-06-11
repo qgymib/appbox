@@ -76,6 +76,15 @@ static void s_setup_log()
     spdlog::info(L"Inject={}, PID={}", processPath, pid);
 }
 
+static void s_setup_virtual_files()
+{
+    for (auto it = appbox::G->config.files.begin(); it != appbox::G->config.files.end(); ++it)
+    {
+        std::wstring wPath = appbox::mbstowcs(it->path.c_str(), CP_UTF8);
+        appbox::G->vFileTable[wPath] = *it;
+    }
+}
+
 static void s_on_process_attach(HINSTANCE hinstDLL)
 {
     /*
@@ -95,6 +104,8 @@ static void s_on_process_attach(HINSTANCE hinstDLL)
 
     appbox::G = new appbox::AppBox(hinstDLL);
     appbox::G->config = s_find_inject_config();
+    appbox::G->wSandboxPath = appbox::mbstowcs(appbox::G->config.sandboxPath.c_str(), CP_UTF8);
+    s_setup_virtual_files();
     s_setup_log();
 
     appbox::InitHook();
@@ -135,8 +146,6 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
         MessageBoxW(nullptr, msg.c_str(), L"AppBox Sandbox", MB_OK | MB_ICONERROR);
         return FALSE;
     }
-
-    // appbox::hook::Init();
 
     return TRUE;
 }

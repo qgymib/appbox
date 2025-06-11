@@ -116,17 +116,46 @@ static BOOL Hook_CreateProcessInternalW_InSandbox(
 static std::wstring ToHostPath(const std::wstring& path)
 {
     /* Get full path of target path. */
-    DWORD                     ret;
-    std::array<wchar_t, 8192> buff;
+    DWORD                                ret;
+    std::array<wchar_t, APPBOX_MAX_PATH> buff;
     ret = GetFullPathNameW(path.c_str(), buff.size(), buff.data(), nullptr);
     if (ret == 0 || ret == buff.size())
     {
         spdlog::error("GetFullPathNameW() failed");
         abort();
     }
-    std::wstring fullPath(buff.data(), ret);
 
+    /*
+     * The `fullPath` can have following conditions:
+     * 1. Path like `C:\foo\bar` if `path` is absolute path.
+     * 2. Path like `PathToSandbox\C\foo\bar` if `path` is relative path.
+     */
+    std::wstring wFullPath(buff.data(), ret);
 
+    /* If it is already real host path. */
+    if (appbox::StartWith(wFullPath, appbox::G->wSandboxPath))
+    {
+        return wFullPath;
+    }
+
+    /*
+     * + `C:\fo`
+     * + `C:\foo` <-- lower_bound
+     * + `C:\foo\a` <-- key
+     * + `C:\foo\bar`
+     */
+    auto it = appbox::G->vFileTable.lower_bound(wFullPath);
+    if (it == appbox::G->vFileTable.end())
+    {
+        return wFullPath;
+    }
+    if (appbox::StartWith(wFullPath, it->first))
+    {
+        if (wFullPath[it->first.size()] == L'\\')
+        {
+
+        }
+    }
 }
 
 /**

@@ -64,6 +64,25 @@ inline std::string wcstombs(const wchar_t* s, int codepage = CP_UTF8)
 }
 
 /**
+ * Checks whether a given string starts with a specified prefix.
+ *
+ * This function verifies if the initial characters of the input string
+ * match the sequence of characters in the given prefix.
+ *
+ * @param[in] str The input string to check.
+ * @param[in] prefix The prefix to search for at the start of the input string.
+ * @return True if the input string starts with the specified prefix, otherwise false.
+ */
+inline bool StartWith(const std::wstring& str, const std::wstring& prefix)
+{
+    if (prefix.size() > str.size())
+    {
+        return false;
+    }
+    return std::equal(prefix.begin(), prefix.end(), str.begin());
+}
+
+/**
  * @brief Splits the string \p str into substrings wherever \p sep occurs, and
  *   returns the list of those strings. If sep does not match anywhere in the
  *   string, it returns a single-element list containing this string.

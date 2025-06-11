@@ -5,6 +5,7 @@
 #include "utils/inject.hpp"
 #include "utils/Instance.hpp"
 #include "Utils/FolderConv.hpp"
+#include <map>
 
 namespace appbox
 {
@@ -12,7 +13,9 @@ namespace appbox
 struct AppBox
 {
     AppBox(HINSTANCE hinstDLL);
-    InjectConfig config; /* Inject configuration. */
+    InjectConfig                       config;       /* Inject configuration. */
+    std::wstring                       wSandboxPath; /* Path to sandbox folder in host. */
+    std::map<std::wstring, InjectFile> vFileTable;   /* Virtual file table. */
 
     HINSTANCE hinstDLL;    /* A handle to the DLL module. */
     HMODULE   hNtdll;      /* ntdll.dll */

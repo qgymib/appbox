@@ -53,7 +53,12 @@ public:
     }
 
     /**
-     * @brief Reset instance.
+     * @brief Resets the current state or configuration of the object to its initial or default
+     * values.
+     *
+     * This method is designed to clear any existing state or applied configurations,
+     * ensuring that the object returns to a pristine state. It is commonly used when reinitializing
+     * or reusing an object.
      */
     void Reset()
     {
