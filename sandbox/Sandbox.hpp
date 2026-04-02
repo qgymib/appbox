@@ -8,6 +8,8 @@ namespace appbox
 
 struct Sandbox
 {
+    Sandbox(HINSTANCE hinstDLL);
+
     HINSTANCE          hinstDLL;
     appbox::InjectData inject_data;
 };

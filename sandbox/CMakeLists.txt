@@ -9,7 +9,11 @@ endif ()
 
 set(sandbox_name ${PROJECT_NAME}${APPBOX_SANDBOX_SUFFIX})
 
-add_library(${sandbox_name}
+add_library(${sandbox_name} SHARED
+    "hook/__init__.cpp"
+    "hook/CreateProcessInternalW.cpp"
+    "hook/LdrQueryImageFileExecutionOptionsEx.cpp"
+    "hook/SetProcessMitigationPolicy.cpp"
     "Sandbox.cpp"
     "Sandbox.def"
 )
@@ -29,3 +33,4 @@ target_link_libraries(${sandbox_name} PRIVATE Detours)
 
 find_package(spdlog REQUIRED)
 target_link_libraries(${sandbox_name} PRIVATE spdlog::spdlog)
+target_compile_options(${sandbox_name} PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)

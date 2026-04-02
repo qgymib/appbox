@@ -17,3 +17,4 @@ target_link_libraries(${loader_name} PRIVATE Detours)
 
 find_package(spdlog REQUIRED)
 target_link_libraries(${loader_name} PRIVATE spdlog::spdlog)
+target_compile_options(${loader_name} PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)

@@ -4,24 +4,25 @@ if(TARGET Detours)
     return()
 endif()
 
-set(DETOURS_ROOT ${CMAKE_SOURCE_DIR}/third_party/Detours)
+set(_DETOURS_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../third_party/Detours")
+get_filename_component(_DETOURS_SOURCE_DIR "${_DETOURS_SOURCE_DIR}" ABSOLUTE)
 
 add_library(Detours STATIC
-    "${DETOURS_ROOT}/src/creatwth.cpp"
-    "${DETOURS_ROOT}/src/detours.cpp"
-    "${DETOURS_ROOT}/src/disasm.cpp"
-    "${DETOURS_ROOT}/src/disolarm.cpp"
-    "${DETOURS_ROOT}/src/disolarm64.cpp"
-    "${DETOURS_ROOT}/src/disolia64.cpp"
-    "${DETOURS_ROOT}/src/disolx64.cpp"
-    "${DETOURS_ROOT}/src/disolx86.cpp"
-    "${DETOURS_ROOT}/src/image.cpp"
-    "${DETOURS_ROOT}/src/modules.cpp"
+    "${_DETOURS_SOURCE_DIR}/src/creatwth.cpp"
+    "${_DETOURS_SOURCE_DIR}/src/detours.cpp"
+    "${_DETOURS_SOURCE_DIR}/src/disasm.cpp"
+    "${_DETOURS_SOURCE_DIR}/src/disolarm.cpp"
+    "${_DETOURS_SOURCE_DIR}/src/disolarm64.cpp"
+    "${_DETOURS_SOURCE_DIR}/src/disolia64.cpp"
+    "${_DETOURS_SOURCE_DIR}/src/disolx64.cpp"
+    "${_DETOURS_SOURCE_DIR}/src/disolx86.cpp"
+    "${_DETOURS_SOURCE_DIR}/src/image.cpp"
+    "${_DETOURS_SOURCE_DIR}/src/modules.cpp"
 )
 target_include_directories(Detours
     PUBLIC
         $<INSTALL_INTERFACE:include>
-        $<BUILD_INTERFACE:${DETOURS_ROOT}/src>
+        $<BUILD_INTERFACE:${_DETOURS_SOURCE_DIR}/src>
 )
 
 set(Detours_FOUND TRUE)

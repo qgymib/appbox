@@ -5,6 +5,7 @@
 #include <detours.h>
 #include <stdexcept>
 #include <spdlog/spdlog.h>
+#include "hook/__init__.hpp"
 #include "Sandbox.hpp"
 #include "Defines.hpp"
 
@@ -42,9 +43,9 @@ static void OnDllAttach(HINSTANCE hinstDLL)
     }
     DetourRestoreAfterWith();
 
-    appbox::g_sandbox = new appbox::Sandbox();
-    appbox::g_sandbox->hinstDLL = hinstDLL;
+    appbox::g_sandbox = new appbox::Sandbox(hinstDLL);
     LoadInjectData();
+    appbox::InitHook();
 }
 
 static void OnDllDetach()
@@ -54,6 +55,11 @@ static void OnDllDetach()
         delete appbox::g_sandbox;
         appbox::g_sandbox = nullptr;
     }
+}
+
+appbox::Sandbox::Sandbox(HINSTANCE hinstDLL)
+{
+    this->hinstDLL = hinstDLL;
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)

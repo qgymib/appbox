@@ -13,8 +13,12 @@ namespace appbox
 namespace winapi
 {
 
+/**
+ * @see
+ * wario.hezongjian.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessinternalw
+ */
 typedef BOOL (*CreateProcessInternalW)(
-    HANDLE hToken, LPCWSTR lpApplicationName, LPCWSTR lpCommandLine,
+    HANDLE hToken, LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
     LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes,
     BOOL bInheritHandles, ULONG dwCreationFlags, LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory,
     LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation, PHANDLE hNewToken);
@@ -25,6 +29,22 @@ typedef HANDLE (*CreateFileW)(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD d
                               HANDLE hTemplateFile);
 
 typedef HMODULE (*LoadLibraryW)(LPCWSTR lpLibFileName);
+
+/**
+ * @see
+ * https://www.geoffchappell.com/studies/windows/win32/ntdll/api/rtl/rtlexec/queryimagefileexecutionoptionsex.htm
+ */
+typedef NTSTATUS (*LdrQueryImageFileExecutionOptionsEx)(PUNICODE_STRING lpImageFile,
+                                                        PCWSTR lpszOption, ULONG dwType,
+                                                        PVOID lpData, ULONG cbData, ULONG* lpcbData,
+                                                        BOOLEAN bWow64);
+
+/**
+ * @see
+ * https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-setprocessmitigationpolicy
+ */
+typedef BOOL (*SetProcessMitigationPolicy)(PROCESS_MITIGATION_POLICY MitigationPolicy,
+                                           PVOID lpBuffer, SIZE_T dwLength);
 
 } // namespace winapi
 
