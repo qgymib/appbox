@@ -5,6 +5,7 @@ add_library(${PROJECT_NAME} STATIC
     "CRC32.cpp"
     "InjectData.cpp"
     "PipeServer.cpp"
+    "PipeSession.cpp"
     "WString.cpp"
 )
 appbox_setup_target_wall(${PROJECT_NAME})

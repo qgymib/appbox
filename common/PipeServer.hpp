@@ -13,8 +13,8 @@ class PipeServer : public std::enable_shared_from_this<PipeServer>
 {
 public:
     typedef std::function<void(uint64_t, const nlohmann::json&)> MethodCallback;
-    typedef std::shared_ptr<PipeServer>                Ptr;
-    typedef std::weak_ptr<PipeServer>                  WeakPtr;
+    typedef std::shared_ptr<PipeServer>                          Ptr;
+    typedef std::weak_ptr<PipeServer>                            WeakPtr;
 
     static Ptr Create(const std::wstring& pipe);
     virtual ~PipeServer();
@@ -32,7 +32,9 @@ public:
     void Start();
 
     struct Data;
-    Data* data_;
+    typedef std::shared_ptr<Data> DataPtr;
+
+    DataPtr data_;
 
 private:
     PipeServer();
