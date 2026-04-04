@@ -31,6 +31,11 @@ public:
      */
     void Start();
 
+    void SendResponse(uint64_t id, const nlohmann::json& result);
+
+    void SendError(uint64_t id, int errcode, const std::string& err_msg,
+                   const nlohmann::json& err_data = nullptr);
+
     struct Data;
     typedef std::shared_ptr<Data> DataPtr;
 

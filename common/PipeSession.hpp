@@ -8,9 +8,7 @@
 #include <windows.h>
 #include <asio.hpp>
 #include <memory>
-#include <list>
 #include <string>
-#include <mutex>
 #include <functional>
 
 namespace appbox
@@ -25,21 +23,23 @@ struct PipeProtocol
 class PipeSession : public std::enable_shared_from_this<PipeSession>
 {
 public:
-    typedef std::shared_ptr<PipeSession>            Ptr;
-    typedef std::shared_ptr<std::string>            DataPtr;
-    typedef std::function<void(const std::string&)> DataReceivedCallback;
+    typedef std::shared_ptr<PipeSession> Ptr;
+    typedef std::shared_ptr<std::string> MsgPtr;
+    typedef std::function<void(const asio::error_code&, MsgPtr)>  DataReceivedCallback;
 
     static Ptr Create(std::shared_ptr<asio::windows::stream_handle> pipe, DataReceivedCallback cb);
     ~PipeSession();
 
     void Start();
-    void Send(const std::string& data);
+    void Send(MsgPtr data);
+
+    struct Data;
+    std::shared_ptr<Data> data_;
 
 private:
     PipeSession();
 
-    std::list<DataPtr> send_queue;
-    std::mutex         send_queue_mutex;
+
 };
 
 } // namespace appbox
