@@ -4,6 +4,7 @@ project(common)
 add_library(${PROJECT_NAME} STATIC
     "CRC32.cpp"
     "InjectData.cpp"
+    "PipeClient.cpp"
     "PipeServer.cpp"
     "PipeSession.cpp"
     "WString.cpp"

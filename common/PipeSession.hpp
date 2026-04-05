@@ -23,9 +23,9 @@ struct PipeProtocol
 class PipeSession : public std::enable_shared_from_this<PipeSession>
 {
 public:
-    typedef std::shared_ptr<PipeSession> Ptr;
-    typedef std::shared_ptr<std::string> MsgPtr;
-    typedef std::function<void(const asio::error_code&, MsgPtr)>  DataReceivedCallback;
+    typedef std::shared_ptr<PipeSession>                         Ptr;
+    typedef std::shared_ptr<std::string>                         MsgPtr;
+    typedef std::function<void(const asio::error_code&, MsgPtr)> DataReceivedCallback;
 
     static Ptr Create(std::shared_ptr<asio::windows::stream_handle> pipe, DataReceivedCallback cb);
     ~PipeSession();
@@ -38,8 +38,6 @@ public:
 
 private:
     PipeSession();
-
-
 };
 
 } // namespace appbox
