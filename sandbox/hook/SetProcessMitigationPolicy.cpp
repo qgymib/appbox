@@ -17,7 +17,7 @@ static BOOL Hook_SetProcessMitigationPolicy(PROCESS_MITIGATION_POLICY Mitigation
 
 APPBOX_SANDBOX_INJECT(SetProcessMitigationPolicy)
 {
-    APPBOX_GET_PROC(sys.h_kernelbase, LdrQueryImageFileExecutionOptionsEx);
+    APPBOX_GET_PROC(sys.h_kernelbase, SetProcessMitigationPolicy);
 
     /* Windows 8 */
     if (appbox::sys.OSBuild >= 8400)

@@ -30,9 +30,9 @@ static BOOL Hook_CreateProcessInternalW(
     }
 
 #if defined(_WIN64)
-    LPCSTR lpDllName = appbox::g_sandbox->inject_data.sandbox64_path.c_str();
+    LPCSTR lpDllName = appbox::sandbox->inject_data.sandbox64_path.c_str();
 #else
-    LPCSTR lpDllName = appbox::g_sandbox->inject_data.sandbox32_path.c_str();
+    LPCSTR lpDllName = appbox::sandbox->inject_data.sandbox32_path.c_str();
 #endif
 
     /* Inject DLL */

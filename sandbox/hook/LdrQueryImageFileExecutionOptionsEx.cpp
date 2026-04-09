@@ -1,9 +1,9 @@
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
 #endif
+#define WIN32_NO_STATUS
 #include <windows.h>
 #include <detours.h>
-#include <Ntstatus.h>
 #include "__init__.hpp"
 
 static NTSTATUS Hook_LdrQueryImageFileExecutionOptionsEx(PUNICODE_STRING lpImageFile,
@@ -17,10 +17,10 @@ static NTSTATUS Hook_LdrQueryImageFileExecutionOptionsEx(PUNICODE_STRING lpImage
      * This hook causes CreateProcessInternalW to set PsAttributeChpe = 0 which
      * makes the kernel load the regular non hybrid version of ntdll into the new process.
      */
-    if (wcsicmp(lpszOption, L"LoadCHPEBinaries") == 0)
+    if (_wcsicmp(lpszOption, L"LoadCHPEBinaries") == 0)
     {
         *static_cast<ULONG*>(lpData) = 0;
-        return STATUS_SUCCESS;
+        return 0; /* STATUS_SUCCESS */
     }
 
     return appbox::sys.LdrQueryImageFileExecutionOptionsEx(lpImageFile, lpszOption, dwType, lpData,

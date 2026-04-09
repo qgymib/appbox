@@ -4,8 +4,23 @@
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
 #endif
-#include <Windows.h>
-#include <winternl.h>
+#include <windows.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct _UNICODE_STRING
+{
+    USHORT Length;
+    USHORT MaximumLength;
+    PWSTR  Buffer;
+} UNICODE_STRING;
+typedef UNICODE_STRING* PUNICODE_STRING;
+
+#ifdef __cplusplus
+}
+#endif
 
 namespace appbox
 {
@@ -47,7 +62,6 @@ typedef BOOL (*SetProcessMitigationPolicy)(PROCESS_MITIGATION_POLICY MitigationP
                                            PVOID lpBuffer, SIZE_T dwLength);
 
 } // namespace winapi
-
 } // namespace appbox
 
 #endif

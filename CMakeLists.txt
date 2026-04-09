@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
 project(appbox)
 
+option(APPBOX_BUILD_SANDBOX "Build sandbox" OFF)
+option(APPBOX_BUILD_LOADER "Build loader" OFF)
+option(APPBOX_BUILD_TESTS "Build tests" OFF)
+
 # Add cmake search path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -15,6 +19,26 @@ function(appbox_setup_target_wall name)
     endif ()
 endfunction()
 
-add_subdirectory(common)
-add_subdirectory(sandbox)
-add_subdirectory(loader)
+###############################################################################
+# Project products
+###############################################################################
+
+if (APPBOX_BUILD_SANDBOX OR APPBOX_BUILD_LOADER)
+    add_subdirectory(common)
+endif ()
+
+if (APPBOX_BUILD_SANDBOX)
+    add_subdirectory(sandbox)
+endif ()
+
+if (APPBOX_BUILD_LOADER)
+    add_subdirectory(loader)
+endif ()
+
+###############################################################################
+# Project products
+###############################################################################
+
+if (APPBOX_BUILD_TESTS)
+    add_subdirectory(test)
+endif ()

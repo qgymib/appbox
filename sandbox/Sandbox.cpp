@@ -6,10 +6,11 @@
 #include <stdexcept>
 #include <spdlog/spdlog.h>
 #include "hook/__init__.hpp"
+#include "utils/RemoteLog.hpp"
 #include "Sandbox.hpp"
 #include "Defines.hpp"
 
-appbox::Sandbox* appbox::g_sandbox = nullptr;
+appbox::Sandbox* appbox::sandbox = nullptr;
 
 static void LoadInjectData()
 {
@@ -32,7 +33,7 @@ static void LoadInjectData()
     }
 
     std::string inject_string(static_cast<const char*>(inject_data), inject_data_sz);
-    appbox::g_sandbox->inject_data = nlohmann::json::parse(inject_string);
+    appbox::sandbox->inject_data = nlohmann::json::parse(inject_string);
 }
 
 static void OnDllAttach(HINSTANCE hinstDLL)
@@ -43,17 +44,26 @@ static void OnDllAttach(HINSTANCE hinstDLL)
     }
     DetourRestoreAfterWith();
 
-    appbox::g_sandbox = new appbox::Sandbox(hinstDLL);
+    appbox::sandbox = new appbox::Sandbox(hinstDLL);
     LoadInjectData();
+
+    appbox::sandbox->task_queue = appbox::TaskQueue::Create();
+    appbox::sandbox->client = appbox::AsyncInstance<appbox::RemoteClient>::Create([]() {
+        auto client = appbox::RemoteClient::Create(appbox::sandbox->inject_data.pipe_path);
+        client->Start();
+        return client;
+    });
+
     appbox::InitHook();
+    appbox::RemoteLogInit();
 }
 
 static void OnDllDetach()
 {
-    if (appbox::g_sandbox != nullptr)
+    if (appbox::sandbox != nullptr)
     {
-        delete appbox::g_sandbox;
-        appbox::g_sandbox = nullptr;
+        delete appbox::sandbox;
+        appbox::sandbox = nullptr;
     }
 }
 
