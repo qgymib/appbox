@@ -8,6 +8,8 @@
 #include <chrono>
 #include "WString.hpp"
 #include "Defines.hpp"
+#include "BuildCommandLine.hpp"
+#include "SetLogLevel.hpp"
 #include "Loader.hpp"
 
 int MainLoader()
@@ -27,10 +29,13 @@ int MainLoader()
     PROCESS_INFORMATION processInfo;
     memset(&processInfo, 0, sizeof(processInfo));
 
-    auto wExePath = appbox::UTF8ToWide(appbox::loader->executable_path.c_str());
-    if (!DetourCreateProcessWithDllExW(wExePath.c_str(), nullptr, nullptr, nullptr, FALSE,
-                                       CREATE_SUSPENDED, nullptr, nullptr, &startupInfo,
-                                       &processInfo, sandbox_dll_path.c_str(), nullptr))
+    auto cmdline = appbox::BuildCommandLine(appbox::loader->exe_path, appbox::loader->exe_args);
+    SPDLOG_TRACE(L"cmd: {}", cmdline);
+
+    if (!DetourCreateProcessWithDllExW(appbox::loader->exe_path.c_str(), cmdline.data(), nullptr,
+                                       nullptr, FALSE, CREATE_SUSPENDED, nullptr, nullptr,
+                                       &startupInfo, &processInfo, sandbox_dll_path.c_str(),
+                                       nullptr))
     {
         SPDLOG_ERROR("DetourCreateProcessWithDllExW(): failed");
         exit(EXIT_FAILURE);
@@ -38,7 +43,7 @@ int MainLoader()
 
     std::string inject_data = nlohmann::json(appbox::loader->inject_data).dump();
     if (!DetourCopyPayloadToProcess(processInfo.hProcess, guid, inject_data.c_str(),
-                                    (DWORD)inject_data.size()))
+                                    static_cast<DWORD>(inject_data.size())))
     {
         SPDLOG_ERROR("DetourCopyPayloadToProcess(): failed");
         exit(EXIT_FAILURE);
@@ -59,18 +64,27 @@ int MainLoader()
 
 int wmain(int argc, wchar_t* argv[])
 {
+    CLI::App app;
+    app.prefix_command();
+    app.add_option_function<std::wstring>("--log-level", appbox::SetLogLevel,
+                                          "Set application log level");
+
     appbox::InitLoader();
     atexit(appbox::ExitLoader);
 
-    CLI::App app;
-    app.add_option("--sandbox32", appbox::loader->inject_data.sandbox32_path,
-                   "Path to 32-bit sandbox dll")
-        ->required();
-    app.add_option("--sandbox64", appbox::loader->inject_data.sandbox64_path,
-                   "Path to 64-bit sandbox dll")
-        ->required();
-    app.add_option("executable", appbox::loader->executable_path, "Path to executable")->required();
     CLI11_PARSE(app, argc, argv);
+
+    /* Parse executable and arguments. */
+    {
+        auto remaining = app.remaining();
+        appbox::loader->exe_path = CLI::widen(remaining[0]);
+
+        remaining.erase(remaining.begin());
+        for (auto& arg : remaining)
+        {
+            appbox::loader->exe_args.push_back(CLI::widen(arg));
+        }
+    }
 
     return MainLoader();
 }

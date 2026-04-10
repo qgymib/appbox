@@ -9,6 +9,7 @@ namespace appbox::test
 struct CmdParam
 {
     std::wstring loader_path; /* Path to loader */
+    std::wstring log_level = L"info";
 };
 
 extern CmdParam cmd_param;

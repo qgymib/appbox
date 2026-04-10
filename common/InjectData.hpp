@@ -8,9 +8,9 @@ namespace appbox
 
 struct InjectData
 {
-    std::string pipe_path;      /* Named pipe path. */
-    std::string sandbox32_path; /* Path to 32-bit sandbox dll path. */
-    std::string sandbox64_path; /* Path to 64-bit sandbox dll path. */
+    std::string pipe_path;      /* Named pipe path. Encoding in UTF-8. */
+    std::string sandbox32_path; /* Path to 32-bit sandbox dll path. Encoding in UTF-8. */
+    std::string sandbox64_path; /* Path to 64-bit sandbox dll path. Encoding in UTF-8. */
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(InjectData, pipe_path, sandbox32_path, sandbox64_path)
 };

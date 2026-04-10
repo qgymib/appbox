@@ -12,6 +12,6 @@ set(JSON_BuildTests OFF)
 set(JSON_Install OFF)
 
 # Build the third-party library (specify the binary directory to avoid conflicts)
-add_subdirectory("${_NLOHMANN_JSON_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/_deps/nlohmann_json-build")
+add_subdirectory("${_NLOHMANN_JSON_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/third_party/nlohmann_json-build")
 
 set(nlohmann_json_FOUND TRUE)

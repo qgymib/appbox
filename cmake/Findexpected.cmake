@@ -14,6 +14,6 @@ set(EXPECTED_BUILD_PACKAGE OFF)
 set(EXPECTED_BUILD_TESTS OFF)
 
 # Build the third-party library (specify the binary directory to avoid conflicts)
-add_subdirectory("${_EXPECTED_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/third_party/expected-build")
+add_subdirectory("${_EXPECTED_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/third_party/expected-build" EXCLUDE_FROM_ALL)
 
 set(expected_FOUND TRUE)

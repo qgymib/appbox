@@ -1,18 +1,25 @@
 cmake_minimum_required(VERSION 3.15)
 project(AppBoxCommon)
 
+# Add cmake search path
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake")
+
+include(SetupTargetWall)
+
 ###############################################################################
 # Export library
 ###############################################################################
 add_library(${PROJECT_NAME} STATIC
+    "BuildCommandLine.cpp"
     "CRC32.cpp"
     "InjectData.cpp"
     "RemoteClient.cpp"
     "RemoteServer.cpp"
     "RemoteSession.cpp"
+    "SetLogLevel.cpp"
     "WString.cpp"
 )
-appbox_setup_target_wall(${PROJECT_NAME})
+setup_target_wall(${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC

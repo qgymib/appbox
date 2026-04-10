@@ -1,9 +1,9 @@
 
-include (CTest)
-
 add_executable(AppBoxTests
-    "cases/RemoteServer.cpp"
+    "cases/ArugmentsPassthrough.cpp"
+    "cases/RPC.cpp"
     "probe/__init__.cpp"
+    "probe/HelloWorld.cpp"
     "Test.cpp"
     "main.cpp"
 )
@@ -17,7 +17,7 @@ target_include_directories(AppBoxTests
 ###############################################################################
 # Dependency
 ###############################################################################
-target_link_libraries(AppBoxTests PRIVATE AppBoxCommon AppBoxSandbox64)
+target_link_libraries(AppBoxTests PRIVATE AppBoxCommon)
 
 find_package(CLI11 REQUIRED)
 target_link_libraries(AppBoxTests PRIVATE CLI11::CLI11)

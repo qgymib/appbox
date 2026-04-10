@@ -20,6 +20,6 @@ set(CLI11_BUILD_EXAMPLES_JSON OFF)
 set(CLI11_INSTALL OFF)
 
 # Build the third-party library (specify the binary directory to avoid conflicts)
-add_subdirectory("${_CLI11_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/_deps/CLI11-build")
+add_subdirectory("${_CLI11_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/third_party/CLI11-build")
 
 set(CLI11_FOUND TRUE)
