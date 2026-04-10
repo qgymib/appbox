@@ -10,6 +10,7 @@
 #define APPBOX_SANDBOX_HOOKS(xx)            \
     xx(CreateProcessInternalW)              \
     xx(LdrQueryImageFileExecutionOptionsEx) \
+    xx(NtCreateFile)                        \
     xx(SetProcessMitigationPolicy)
 /* clang-format on */
 
