@@ -28,3 +28,8 @@ std::string appbox::WideToUTF8(const wchar_t* s)
     delete[] new_str;
     return dst;
 }
+
+bool appbox::StartsWith(const std::wstring& str, const std::wstring& prefix)
+{
+    return str.size() >= prefix.size() && str.compare(0, prefix.size(), prefix) == 0;
+}

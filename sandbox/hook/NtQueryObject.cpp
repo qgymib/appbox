@@ -5,6 +5,7 @@
 #include <detours.h>
 #include <string>
 #include "WinAPI.hpp"
+#include "WString.hpp"
 #include "__init__.hpp"
 #include "Sandbox.hpp"
 
@@ -32,12 +33,13 @@ static NTSTATUS Hook_NtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS Objec
         return status;
     }
     std::wstring returnedPath(nameInfo->Name.Buffer, nameInfo->Name.Length / sizeof(WCHAR));
-    if (!returnedPath.starts_with(appbox::sandbox->sandbox_path))
+    if (!appbox::StartsWith(returnedPath, appbox::sandbox->sandbox_path))
     {
         return status;
     }
 
     // TODO: Replace as native system path.
+    return status;
 }
 
 APPBOX_SANDBOX_INJECT(NtQueryObject)

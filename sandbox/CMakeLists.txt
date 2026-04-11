@@ -24,6 +24,7 @@ add_library(${sandbox_name} MODULE
     "hook/NtCreateFile.cpp"
     "hook/NtQueryObject.cpp"
     "hook/SetProcessMitigationPolicy.cpp"
+    "utils/Path.cpp"
     "utils/RemoteLog.cpp"
     "utils/Task.cpp"
     "Sandbox.cpp"
