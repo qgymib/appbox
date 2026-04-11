@@ -42,7 +42,7 @@ APPBOX_LOADER_RPC_METHODS(APPBOX_LOADER_RPC_METHODS_EXPAND)
 /**
  * @brief Initialize RPC methods.
  */
-void RpcInit();
+void RpcInit(RemoteServer::Ptr s);
 
 } // namespace appbox
 

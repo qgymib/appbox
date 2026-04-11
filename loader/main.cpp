@@ -5,14 +5,23 @@
 #include <CLI/CLI.hpp>
 #include <detours.h>
 #include <spdlog/spdlog.h>
+#include <filesystem>
 #include <chrono>
 #include "WString.hpp"
 #include "Defines.hpp"
 #include "BuildCommandLine.hpp"
 #include "SetLogLevel.hpp"
+#include "GetExecutablePath.hpp"
 #include "Loader.hpp"
 
-int MainLoader()
+struct LoaderParam
+{
+    std::wstring              sandbox_path; /* Sandbox path */
+    std::wstring              exe_path;     /* Main executable path */
+    std::vector<std::wstring> exe_args;     /* Main executable arguments */
+};
+
+int MainLoader(const LoaderParam& param)
 {
 #if defined(_WIN64)
     auto& sandbox_dll_path = appbox::loader->inject_data.sandbox64_path;
@@ -29,13 +38,12 @@ int MainLoader()
     PROCESS_INFORMATION processInfo;
     memset(&processInfo, 0, sizeof(processInfo));
 
-    auto cmdline = appbox::BuildCommandLine(appbox::loader->exe_path, appbox::loader->exe_args);
+    auto cmdline = appbox::BuildCommandLine(param.exe_path, param.exe_args);
     SPDLOG_TRACE(L"cmd: {}", cmdline);
 
-    if (!DetourCreateProcessWithDllExW(appbox::loader->exe_path.c_str(), cmdline.data(), nullptr,
-                                       nullptr, FALSE, CREATE_SUSPENDED, nullptr, nullptr,
-                                       &startupInfo, &processInfo, sandbox_dll_path.c_str(),
-                                       nullptr))
+    if (!DetourCreateProcessWithDllExW(param.exe_path.c_str(), cmdline.data(), nullptr, nullptr,
+                                       FALSE, CREATE_SUSPENDED, nullptr, nullptr, &startupInfo,
+                                       &processInfo, sandbox_dll_path.c_str(), nullptr))
     {
         SPDLOG_ERROR("DetourCreateProcessWithDllExW(): failed");
         exit(EXIT_FAILURE);
@@ -64,27 +72,34 @@ int MainLoader()
 
 int wmain(int argc, wchar_t* argv[])
 {
+    LoaderParam param;
+    param.sandbox_path = std::filesystem::path(appbox::GetExecutableDir()) / L"sandbox";
+
     CLI::App app;
     app.prefix_command();
     app.add_option_function<std::wstring>("--log-level", appbox::SetLogLevel,
                                           "Set application log level");
-
-    appbox::InitLoader();
-    atexit(appbox::ExitLoader);
-
+    app.add_option(
+        "--sandbox", param.sandbox_path,
+        CLI::narrow(fmt::format(L"Path to sandbox directory. Default: {}", param.sandbox_path)));
     CLI11_PARSE(app, argc, argv);
+
+    /* canonical requires the path actually exists. */
+    std::filesystem::create_directories(param.sandbox_path);
+    param.sandbox_path = std::filesystem::canonical(param.sandbox_path);
 
     /* Parse executable and arguments. */
     {
         auto remaining = app.remaining();
-        appbox::loader->exe_path = CLI::widen(remaining[0]);
+        param.exe_path = CLI::widen(remaining[0]);
 
         remaining.erase(remaining.begin());
         for (auto& arg : remaining)
         {
-            appbox::loader->exe_args.push_back(CLI::widen(arg));
+            param.exe_args.push_back(CLI::widen(arg));
         }
     }
 
-    return MainLoader();
+    appbox::loader = appbox::Loader::Create(param.sandbox_path);
+    return MainLoader(param);
 }

@@ -1,8 +1,10 @@
 #include <spdlog/spdlog.h>
+#include <memory>
 #include <sstream>
 #include <chrono>
 #include <random>
 #include "rpc/__init__.hpp"
+#include "WString.hpp"
 #include "Loader.hpp"
 
 extern "C" {
@@ -12,9 +14,9 @@ extern uint8_t dll_sandbox_x64_data[];
 extern size_t  dll_sandbox_x64_size;
 }
 
-appbox::Loader* appbox::loader = nullptr;
+appbox::Loader::Ptr appbox::loader;
 
-std::string GenerateRandomString(size_t length)
+static std::string GenerateRandomString(size_t length)
 {
     const char chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
@@ -31,57 +33,57 @@ std::string GenerateRandomString(size_t length)
     return result;
 }
 
-appbox::Loader::Loader()
-{
-    std::time_t timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    auto        random_str = GenerateRandomString(16);
-    auto        unique_path = fmt::format("appbox-{}-{}", timestamp, random_str);
-
-    this->inject_data.pipe_path = fmt::format(R"(\\.\pipe\{})", unique_path);
-    this->temp_dir = std::filesystem::temp_directory_path() / unique_path;
-
-    this->pipe_server = RemoteServer::Create(this->inject_data.pipe_path);
-    std::filesystem::create_directory(this->temp_dir);
-
-    this->inject_data.sandbox32_path = (this->temp_dir / "sandbox32.dll").string();
-    {
-        std::ofstream ofs(this->inject_data.sandbox32_path, std::ios::binary);
-        ofs.write(reinterpret_cast<const char*>(dll_sandbox_x86_data),
-                  static_cast<std::streamsize>(dll_sandbox_x86_size));
-    }
-
-    this->inject_data.sandbox64_path = (this->temp_dir / "sandbox64.dll").string();
-    {
-        std::ofstream ofs(this->inject_data.sandbox64_path, std::ios::binary);
-        ofs.write(reinterpret_cast<const char*>(dll_sandbox_x64_data),
-                  static_cast<std::streamsize>(dll_sandbox_x64_size));
-    }
-}
-
 appbox::Loader::~Loader()
 {
     this->pipe_server.reset();
     std::filesystem::remove_all(this->temp_dir);
 }
 
-void appbox::InitLoader()
+static appbox::InjectData GenerateInjectData(const std::filesystem::path& tmp_path,
+                                             const std::string&           unique_path,
+                                             const std::wstring&          sandbox_path)
 {
-    if (loader != nullptr)
-    {
-        return;
-    }
-    loader = new Loader();
+    appbox::InjectData data;
+    data.pipe_path = fmt::format(R"(\\.\pipe\{})", unique_path);
+    data.sandbox_path = appbox::WideToUTF8(sandbox_path.c_str());
+    data.sandbox32_path = (tmp_path / "sandbox32.dll").string();
+    data.sandbox64_path = (tmp_path / "sandbox64.dll").string();
 
-    /* Start pipe server */
-    loader->pipe_server = RemoteServer::Create(loader->inject_data.pipe_path);
-
-    /* Methods must register before rpc server start. */
-    appbox::RpcInit();
-    loader->pipe_server->Start();
+    return data;
 }
 
-void appbox::ExitLoader()
+appbox::Loader::Ptr appbox::Loader::Create(const std::wstring& sandbox_path)
 {
-    delete loader;
-    loader = nullptr;
+    auto obj = std::make_shared<Loader>();
+
+    std::time_t timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    auto        random_str = GenerateRandomString(8);
+    auto        unique_path = fmt::format("appbox-{}-{}", timestamp, random_str);
+
+    obj->temp_dir = std::filesystem::path(sandbox_path) / unique_path;
+    std::filesystem::create_directory(obj->temp_dir);
+
+    obj->inject_data = GenerateInjectData(obj->temp_dir, unique_path, sandbox_path);
+    obj->pipe_server = RemoteServer::Create(obj->inject_data.pipe_path);
+
+    {
+        std::ofstream ofs(obj->inject_data.sandbox32_path, std::ios::binary);
+        ofs.write(reinterpret_cast<const char*>(dll_sandbox_x86_data),
+                  static_cast<std::streamsize>(dll_sandbox_x86_size));
+    }
+
+    {
+        std::ofstream ofs(obj->inject_data.sandbox64_path, std::ios::binary);
+        ofs.write(reinterpret_cast<const char*>(dll_sandbox_x64_data),
+                  static_cast<std::streamsize>(dll_sandbox_x64_size));
+    }
+
+    /* Start pipe server */
+    obj->pipe_server = RemoteServer::Create(obj->inject_data.pipe_path);
+
+    /* Methods must register before rpc server start. */
+    appbox::RpcInit(obj->pipe_server);
+    obj->pipe_server->Start();
+
+    return obj;
 }

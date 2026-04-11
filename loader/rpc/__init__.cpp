@@ -12,10 +12,10 @@ static const RpcMethodRecord s_methods[] = {
 };
 #undef EXPAND_AS_METHOD
 
-void appbox::RpcInit()
+void appbox::RpcInit(RemoteServer::Ptr s)
 {
     for (auto m : s_methods)
     {
-        m.fn(appbox::loader->pipe_server);
+        m.fn(s);
     }
 }

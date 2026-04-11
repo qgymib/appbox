@@ -9,6 +9,7 @@ namespace appbox
 struct InjectData
 {
     std::string pipe_path;      /* Named pipe path. Encoding in UTF-8. */
+    std::string sandbox_path;   /* Path to sandbox root. Encoding in UTF-8. */
     std::string sandbox32_path; /* Path to 32-bit sandbox dll path. Encoding in UTF-8. */
     std::string sandbox64_path; /* Path to 64-bit sandbox dll path. Encoding in UTF-8. */
 

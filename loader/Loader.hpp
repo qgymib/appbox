@@ -2,6 +2,7 @@
 #define APPBOX_LOADER_HPP
 
 #include <filesystem>
+#include <memory>
 #include "InjectData.hpp"
 #include "RemoteServer.hpp"
 
@@ -10,11 +11,10 @@ namespace appbox
 
 struct Loader
 {
-    Loader();
+    typedef std::shared_ptr<Loader> Ptr;
     ~Loader();
 
-    std::wstring              exe_path;      /* Main executable path */
-    std::vector<std::wstring> exe_args; /* Main executable arguments */
+    static Ptr Create(const std::wstring& sandbox_path);
 
     std::filesystem::path temp_dir;    /* Temporary directory for loader operations */
     InjectData            inject_data; /* Inject data information */
@@ -24,10 +24,7 @@ struct Loader
 /**
  * @brief Global loader context.
  */
-extern Loader* loader;
-
-void InitLoader();
-void ExitLoader();
+extern Loader::Ptr loader;
 
 } // namespace appbox
 
