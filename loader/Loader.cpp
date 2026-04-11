@@ -46,8 +46,8 @@ static appbox::InjectData GenerateInjectData(const std::filesystem::path& tmp_pa
     appbox::InjectData data;
     data.pipe_path = fmt::format(R"(\\.\pipe\{})", unique_path);
     data.sandbox_path = appbox::WideToUTF8(sandbox_path.c_str());
-    data.sandbox32_path = (tmp_path / "sandbox32.dll").string();
-    data.sandbox64_path = (tmp_path / "sandbox64.dll").string();
+    data.sandbox32_dll_path = (tmp_path / "sandbox32.dll").string();
+    data.sandbox64_dll_path = (tmp_path / "sandbox64.dll").string();
 
     return data;
 }
@@ -67,13 +67,13 @@ appbox::Loader::Ptr appbox::Loader::Create(const std::wstring& sandbox_path)
     obj->pipe_server = RemoteServer::Create(obj->inject_data.pipe_path);
 
     {
-        std::ofstream ofs(obj->inject_data.sandbox32_path, std::ios::binary);
+        std::ofstream ofs(obj->inject_data.sandbox32_dll_path, std::ios::binary);
         ofs.write(reinterpret_cast<const char*>(dll_sandbox_x86_data),
                   static_cast<std::streamsize>(dll_sandbox_x86_size));
     }
 
     {
-        std::ofstream ofs(obj->inject_data.sandbox64_path, std::ios::binary);
+        std::ofstream ofs(obj->inject_data.sandbox64_dll_path, std::ios::binary);
         ofs.write(reinterpret_cast<const char*>(dll_sandbox_x64_data),
                   static_cast<std::streamsize>(dll_sandbox_x64_size));
     }

@@ -24,9 +24,9 @@ struct LoaderParam
 int MainLoader(const LoaderParam& param)
 {
 #if defined(_WIN64)
-    auto& sandbox_dll_path = appbox::loader->inject_data.sandbox64_path;
+    auto& sandbox_dll_path = appbox::loader->inject_data.sandbox64_dll_path;
 #else
-    auto& sandbox_dll_path = appbox::loader->inject_data.sandbox32_path;
+    auto& sandbox_dll_path = appbox::loader->inject_data.sandbox32_dll_path;
 #endif
 
     const GUID guid = SANDBOX_GUID;
