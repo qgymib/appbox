@@ -9,10 +9,11 @@
 #include "utils/RemoteLog.hpp"
 #include "Sandbox.hpp"
 #include "Defines.hpp"
+#include "WString.hpp"
 
-appbox::Sandbox* appbox::sandbox = nullptr;
+appbox::Sandbox::Ptr appbox::sandbox;
 
-static void LoadInjectData()
+static appbox::InjectData LoadInjectData()
 {
     const GUID guid = SANDBOX_GUID;
     DWORD      inject_data_sz = 0;
@@ -33,7 +34,22 @@ static void LoadInjectData()
     }
 
     std::string inject_string(static_cast<const char*>(inject_data), inject_data_sz);
-    appbox::sandbox->inject_data = nlohmann::json::parse(inject_string);
+    return nlohmann::json::parse(inject_string);
+}
+
+appbox::Sandbox::Ptr appbox::Sandbox::Create(HINSTANCE hinstDLL)
+{
+    auto obj = std::make_shared<appbox::Sandbox>();
+    obj->hinstDLL = hinstDLL;
+
+    auto inject_data = LoadInjectData();
+    obj->pipe_path = inject_data.pipe_path;
+    obj->sandbox_path = appbox::UTF8ToWide(inject_data.sandbox_path.c_str());
+    obj->sandbox32_dll_path = inject_data.sandbox32_dll_path;
+    obj->sandbox64_dll_path = inject_data.sandbox64_dll_path;
+
+    obj->task_queue = appbox::TaskQueue::Create();
+    return obj;
 }
 
 static void OnDllAttach(HINSTANCE hinstDLL)
@@ -44,14 +60,12 @@ static void OnDllAttach(HINSTANCE hinstDLL)
     }
     DetourRestoreAfterWith();
 
-    appbox::sandbox = new appbox::Sandbox(hinstDLL);
-    LoadInjectData();
+    appbox::sandbox = appbox::Sandbox::Create(hinstDLL);
 
-    appbox::sandbox->task_queue = appbox::TaskQueue::Create();
     appbox::sandbox->client = appbox::AsyncInstance<appbox::RemoteClient>::Create([]() {
-        auto client = appbox::RemoteClient::Create(appbox::sandbox->inject_data.pipe_path);
-        client->Start();
-        return client;
+        auto c = appbox::RemoteClient::Create(appbox::sandbox->pipe_path);
+        c->Start();
+        return c;
     });
 
     appbox::InitHook();
@@ -60,16 +74,7 @@ static void OnDllAttach(HINSTANCE hinstDLL)
 
 static void OnDllDetach()
 {
-    if (appbox::sandbox != nullptr)
-    {
-        delete appbox::sandbox;
-        appbox::sandbox = nullptr;
-    }
-}
-
-appbox::Sandbox::Sandbox(HINSTANCE hinstDLL)
-{
-    this->hinstDLL = hinstDLL;
+    appbox::sandbox.reset();
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)

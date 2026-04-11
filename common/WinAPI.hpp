@@ -6,15 +6,19 @@
 #endif
 #include <windows.h>
 
+#ifndef NT_SUCCESS
+#define NT_SUCCESS(Status) ((NTSTATUS)(Status) >= 0)
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef enum _OBJECT_INFORMATION_CLASS
 {
-    ObjectBasicInformation,
+    ObjectBasicInformation = 0,
     ObjectNameInformation,
-    ObjectTypeInformation,
+    ObjectTypeInformation = 2,
     ObjectAllTypesInformation,
     ObjectDataInformation
 } OBJECT_INFORMATION_CLASS;
@@ -45,6 +49,10 @@ typedef struct _IO_STATUS_BLOCK
     };
     ULONG_PTR Information;
 } IO_STATUS_BLOCK, *PIO_STATUS_BLOCK;
+
+typedef struct _OBJECT_NAME_INFORMATION {
+    UNICODE_STRING Name;
+} OBJECT_NAME_INFORMATION, *POBJECT_NAME_INFORMATION;
 
 #ifdef __cplusplus
 }
