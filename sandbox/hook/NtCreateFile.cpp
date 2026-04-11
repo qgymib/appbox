@@ -11,6 +11,10 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
                                   ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition,
                                   ULONG CreateOptions, PVOID EaBuffer, ULONG EaLength)
 {
+    // TODO
+    return appbox::sys.NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock,
+                                    AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
+                                    CreateOptions, EaBuffer, EaLength);
 }
 
 APPBOX_SANDBOX_INJECT(NtCreateFile)

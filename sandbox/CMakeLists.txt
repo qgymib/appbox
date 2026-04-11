@@ -22,6 +22,7 @@ add_library(${sandbox_name} MODULE
     "hook/CreateProcessInternalW.cpp"
     "hook/LdrQueryImageFileExecutionOptionsEx.cpp"
     "hook/NtCreateFile.cpp"
+    "hook/NtQueryObject.cpp"
     "hook/SetProcessMitigationPolicy.cpp"
     "utils/RemoteLog.cpp"
     "utils/Task.cpp"

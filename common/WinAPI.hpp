@@ -10,6 +10,15 @@
 extern "C" {
 #endif
 
+typedef enum _OBJECT_INFORMATION_CLASS
+{
+    ObjectBasicInformation,
+    ObjectNameInformation,
+    ObjectTypeInformation,
+    ObjectAllTypesInformation,
+    ObjectDataInformation
+} OBJECT_INFORMATION_CLASS;
+
 typedef struct _UNICODE_STRING
 {
     USHORT Length;
@@ -65,6 +74,13 @@ typedef NTSTATUS (*NtCreateFile)(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
                                  PIO_STATUS_BLOCK IoStatusBlock, PLARGE_INTEGER AllocationSize,
                                  ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition,
                                  ULONG CreateOptions, PVOID EaBuffer, ULONG EaLength);
+
+/**
+ * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntqueryobject
+ */
+typedef NTSTATUS (*NtQueryObject)(HANDLE Handle, OBJECT_INFORMATION_CLASS ObjectInformationClass,
+                                  PVOID ObjectInformation, ULONG ObjectInformationLength,
+                                  PULONG ReturnLength);
 
 /**
  * @see

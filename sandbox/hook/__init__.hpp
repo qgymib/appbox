@@ -11,6 +11,7 @@
     xx(CreateProcessInternalW)              \
     xx(LdrQueryImageFileExecutionOptionsEx) \
     xx(NtCreateFile)                        \
+    xx(NtQueryObject)                       \
     xx(SetProcessMitigationPolicy)
 /* clang-format on */
 
