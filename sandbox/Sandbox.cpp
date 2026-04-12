@@ -7,6 +7,8 @@
 #include <spdlog/spdlog.h>
 #include "hook/__init__.hpp"
 #include "utils/RemoteLog.hpp"
+#include "utils/Path.hpp"
+#include "InjectData.hpp"
 #include "Sandbox.hpp"
 #include "Defines.hpp"
 #include "WString.hpp"
@@ -44,9 +46,10 @@ appbox::Sandbox::Ptr appbox::Sandbox::Create(HINSTANCE hinstDLL)
 
     auto inject_data = LoadInjectData();
     obj->pipe_path = inject_data.pipe_path;
-    obj->sandbox_path = appbox::UTF8ToWide(inject_data.sandbox_path.c_str());
-    obj->sandbox32_dll_path = inject_data.sandbox32_dll_path;
-    obj->sandbox64_dll_path = inject_data.sandbox64_dll_path;
+    obj->sandbox_path_dos = UTF8ToWide(inject_data.sandbox_path.c_str());
+    obj->sandbox_path_nt = DosPathToNt(obj->sandbox_path_dos);
+    obj->sandbox32_dll_path_dos = inject_data.sandbox32_dll_path;
+    obj->sandbox64_dll_path_dos = inject_data.sandbox64_dll_path;
 
     obj->task_queue = appbox::TaskQueue::Create();
     return obj;

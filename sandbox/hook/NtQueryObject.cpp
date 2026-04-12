@@ -32,9 +32,9 @@ static NTSTATUS Hook_NtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS Objec
     {
         return status;
     }
-    std::wstring returnedPath(nameInfo->Name.Buffer, nameInfo->Name.Length / sizeof(WCHAR));
-    if (!appbox::StartsWith(returnedPath, appbox::sandbox->sandbox_path))
-    {
+    std::wstring nt_path(nameInfo->Name.Buffer, nameInfo->Name.Length / sizeof(WCHAR));
+    if (!appbox::StartsWith(nt_path, appbox::sandbox->sandbox_path_nt))
+    { /* For a path outside sandbox, do nothing. */
         return status;
     }
 
