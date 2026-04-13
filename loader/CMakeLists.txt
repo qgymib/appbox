@@ -79,6 +79,7 @@ ExternalProject_Add(sandbox_x86_build
         ${X86_CMAKE_EXTRA_ARGS}
         ${FWD_BUILD_TYPE}
         -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/sandbox
+    BUILD_ALWAYS ON
     BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/sandbox/lib/AppBoxSandbox32.dll
 )
 
@@ -89,6 +90,7 @@ ExternalProject_Add(sandbox_x64_build
         ${X64_CMAKE_EXTRA_ARGS}
         ${FWD_BUILD_TYPE}
         -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/sandbox
+    BUILD_ALWAYS ON
     BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/sandbox/lib/AppBoxSandbox64.dll
 )
 

@@ -31,7 +31,7 @@ struct MsgLog
     struct Rsp
     {
         int _ = 0; /* Ignore */
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, _)
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE(Rsp, _)
     };
 };
 

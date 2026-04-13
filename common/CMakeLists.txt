@@ -12,6 +12,7 @@ include(SetupTargetWall)
 add_library(${PROJECT_NAME} STATIC
     "BuildCommandLine.cpp"
     "CRC32.cpp"
+    "GetExecutablePath.cpp"
     "InjectData.cpp"
     "RemoteClient.cpp"
     "RemoteServer.cpp"

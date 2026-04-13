@@ -6,9 +6,22 @@
 #endif
 #include <windows.h>
 
+#ifndef NT_SUCCESS
+#define NT_SUCCESS(Status) ((NTSTATUS)(Status) >= 0)
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum _OBJECT_INFORMATION_CLASS
+{
+    ObjectBasicInformation = 0,
+    ObjectNameInformation,
+    ObjectTypeInformation = 2,
+    ObjectAllTypesInformation,
+    ObjectDataInformation
+} OBJECT_INFORMATION_CLASS;
 
 typedef struct _UNICODE_STRING
 {
@@ -17,6 +30,29 @@ typedef struct _UNICODE_STRING
     PWSTR  Buffer;
 } UNICODE_STRING;
 typedef UNICODE_STRING* PUNICODE_STRING;
+
+typedef struct _OBJECT_ATTRIBUTES
+{
+    ULONG           Length;
+    HANDLE          RootDirectory;
+    PUNICODE_STRING ObjectName;
+    ULONG           Attributes;
+    PVOID           SecurityDescriptor;       // Points to type SECURITY_DESCRIPTOR
+    PVOID           SecurityQualityOfService; // Points to type SECURITY_QUALITY_OF_SERVICE
+} OBJECT_ATTRIBUTES, *POBJECT_ATTRIBUTES;
+
+typedef struct _IO_STATUS_BLOCK
+{
+    union {
+        NTSTATUS Status;
+        PVOID    Pointer;
+    };
+    ULONG_PTR Information;
+} IO_STATUS_BLOCK, *PIO_STATUS_BLOCK;
+
+typedef struct _OBJECT_NAME_INFORMATION {
+    UNICODE_STRING Name;
+} OBJECT_NAME_INFORMATION, *POBJECT_NAME_INFORMATION;
 
 #ifdef __cplusplus
 }
@@ -38,12 +74,21 @@ typedef BOOL (*CreateProcessInternalW)(
     BOOL bInheritHandles, ULONG dwCreationFlags, LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory,
     LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation, PHANDLE hNewToken);
 
-typedef HANDLE (*CreateFileW)(LPCWSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
-                              LPSECURITY_ATTRIBUTES lpSecurityAttributes,
-                              DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes,
-                              HANDLE hTemplateFile);
+/**
+ * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile
+ */
+typedef NTSTATUS (*NtCreateFile)(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
+                                 POBJECT_ATTRIBUTES ObjectAttributes,
+                                 PIO_STATUS_BLOCK IoStatusBlock, PLARGE_INTEGER AllocationSize,
+                                 ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition,
+                                 ULONG CreateOptions, PVOID EaBuffer, ULONG EaLength);
 
-typedef HMODULE (*LoadLibraryW)(LPCWSTR lpLibFileName);
+/**
+ * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntqueryobject
+ */
+typedef NTSTATUS (*NtQueryObject)(HANDLE Handle, OBJECT_INFORMATION_CLASS ObjectInformationClass,
+                                  PVOID ObjectInformation, ULONG ObjectInformationLength,
+                                  PULONG ReturnLength);
 
 /**
  * @see

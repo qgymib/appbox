@@ -30,11 +30,17 @@ std::wstring UTF8ToWide(const char* s);
  * on the provided parameters.
  *
  * @param[in] s The wide string to convert.
- * @param[in] codepage The code page used for the conversion. Defaults to CP_UTF8 if not explicitly
- * provided.
  * @return A multibyte string representation of the specified portion of the input wide string.
  */
 std::string WideToUTF8(const wchar_t* s);
+
+/**
+ * @brief Check if a wide string starts with a given prefix.
+ * @param[in] str The wide string to check.
+ * @param[in] prefix The prefix to look for.
+ * @return True if the string starts with the prefix, false otherwise.
+ */
+bool StartsWith(const std::wstring& str, const std::wstring& prefix);
 
 } // namespace appbox
 
