@@ -7,11 +7,12 @@
 #include "__init__.hpp"
 #include "Sandbox.hpp"
 
-static BOOL Hook_CreateProcessInternalW(
-    HANDLE hToken, LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
-    LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes,
-    BOOL bInheritHandles, ULONG dwCreationFlags, LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory,
-    LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation, PHANDLE hNewToken)
+static BOOL Hook_CreateProcessInternalW(HANDLE hToken, LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
+                                        LPSECURITY_ATTRIBUTES lpProcessAttributes,
+                                        LPSECURITY_ATTRIBUTES lpThreadAttributes, BOOL bInheritHandles,
+                                        ULONG dwCreationFlags, LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory,
+                                        LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation,
+                                        PHANDLE hNewToken)
 {
     PROCESS_INFORMATION backup;
     if (lpProcessInformation == nullptr)
@@ -21,18 +22,18 @@ static BOOL Hook_CreateProcessInternalW(
     }
 
     /* Create process */
-    if (!appbox::sys.CreateProcessInternalW(
-            hToken, lpApplicationName, lpCommandLine, lpProcessAttributes, lpThreadAttributes,
-            bInheritHandles, dwCreationFlags | CREATE_SUSPENDED, lpEnvironment, lpCurrentDirectory,
-            lpStartupInfo, lpProcessInformation, hNewToken))
+    if (!appbox::sys.CreateProcessInternalW(hToken, lpApplicationName, lpCommandLine, lpProcessAttributes,
+                                            lpThreadAttributes, bInheritHandles, dwCreationFlags | CREATE_SUSPENDED,
+                                            lpEnvironment, lpCurrentDirectory, lpStartupInfo, lpProcessInformation,
+                                            hNewToken))
     {
         return FALSE;
     }
 
 #if defined(_WIN64)
-    LPCSTR lpDllName = appbox::sandbox->sandbox64_dll_path.c_str();
+    LPCSTR lpDllName = appbox::sandbox->sandbox64_dll_path_dos.c_str();
 #else
-    LPCSTR lpDllName = appbox::sandbox->sandbox32_dll_path.c_str();
+    LPCSTR lpDllName = appbox::sandbox->sandbox32_dll_path_dos.c_str();
 #endif
 
     /* Inject DLL */

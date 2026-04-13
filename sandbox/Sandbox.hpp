@@ -22,12 +22,12 @@ struct Sandbox
      */
     static Ptr Create(HINSTANCE hinstDLL);
 
-    HINSTANCE    hinstDLL;              /* Dll instance */
-    std::string  pipe_path;             /* Named pipe path */
-    std::wstring sandbox_path_dos;      /* Absolute path of sandbox directory */
-    std::wstring sandbox_path_nt;       /* Absolute path of sandbox in NT format */
-    std::string sandbox32_dll_path_dos; /* Absolute path of 32-bit sandbox dll, encoding in UTF-8 */
-    std::string sandbox64_dll_path_dos; /* Absolute path of 64-bit sandbox dll, encoding in UTF-8 */
+    HINSTANCE    hinstDLL;               /* Dll instance */
+    std::string  pipe_path;              /* Named pipe path */
+    std::wstring sandbox_path_dos;       /* Absolute path of sandbox directory */
+    std::wstring sandbox_path_nt;        /* Absolute path of sandbox in NT format */
+    std::string  sandbox32_dll_path_dos; /* Absolute path of 32-bit sandbox dll, encoding in UTF-8 */
+    std::string  sandbox64_dll_path_dos; /* Absolute path of 64-bit sandbox dll, encoding in UTF-8 */
 
     TaskQueue::Ptr                   task_queue; /* Task queue */
     AsyncInstance<RemoteClient>::Ptr client;     /* RPC client */

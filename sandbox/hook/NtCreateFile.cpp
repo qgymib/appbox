@@ -3,18 +3,29 @@
 #endif
 #include <windows.h>
 #include <detours.h>
+#include <string>
+#include "utils/Log.hpp"
 #include "__init__.hpp"
 
-static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
-                                  POBJECT_ATTRIBUTES ObjectAttributes,
-                                  PIO_STATUS_BLOCK IoStatusBlock, PLARGE_INTEGER AllocationSize,
-                                  ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition,
-                                  ULONG CreateOptions, PVOID EaBuffer, ULONG EaLength)
+static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes,
+                                  PIO_STATUS_BLOCK IoStatusBlock, PLARGE_INTEGER AllocationSize, ULONG FileAttributes,
+                                  ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer,
+                                  ULONG EaLength)
 {
-    // TODO
-    return appbox::sys.NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock,
-                                    AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
-                                    CreateOptions, EaBuffer, EaLength);
+    auto result =
+        appbox::sys.NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
+                                 FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
+
+    LOG_T(L"NtCreateFile(FileHandle={}, DesiredAccess={}, ObjectAttributes={ Length={}, RootDirectory={}, "
+          "ObjectName={}, Attributes={} }, IoStatusBlock={}, AllocationSize={}, FileAttributes={}, ShareAccess={}, "
+          "CreateDisposition={}, CreateOptions={}, EaBuffer={}, EaLength={})={}",
+          static_cast<void*>(FileHandle), DesiredAccess, ObjectAttributes->Length, ObjectAttributes->RootDirectory,
+          ObjectAttributes->ObjectName == nullptr ? L"nullptr" : ObjectAttributes->ObjectName->Buffer,
+          ObjectAttributes->Attributes, static_cast<void*>(IoStatusBlock),
+          AllocationSize == nullptr ? L"nullptr" : std::to_wstring(AllocationSize->QuadPart), FileAttributes,
+          ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength, result);
+
+    return result;
 }
 
 APPBOX_SANDBOX_INJECT(NtCreateFile)
