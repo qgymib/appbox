@@ -1,16 +1,12 @@
 #include <spdlog/spdlog.h>
+#include <cmrc/cmrc.hpp>
 #include <sstream>
 #include <chrono>
 #include <random>
 #include "rpc/__init__.hpp"
 #include "Loader.hpp"
 
-extern "C" {
-extern uint8_t dll_sandbox_x86_data[];
-extern size_t  dll_sandbox_x86_size;
-extern uint8_t dll_sandbox_x64_data[];
-extern size_t  dll_sandbox_x64_size;
-}
+CMRC_DECLARE(sandbox_resource);
 
 appbox::Loader* appbox::loader = nullptr;
 
@@ -44,17 +40,19 @@ appbox::Loader::Loader()
     std::filesystem::create_directory(this->temp_dir);
 
     this->inject_data.sandbox32_path = (this->temp_dir / "sandbox32.dll").string();
-    {
-        std::ofstream ofs(this->inject_data.sandbox32_path, std::ios::binary);
-        ofs.write(reinterpret_cast<const char*>(dll_sandbox_x86_data),
-                  static_cast<std::streamsize>(dll_sandbox_x86_size));
-    }
-
     this->inject_data.sandbox64_path = (this->temp_dir / "sandbox64.dll").string();
+
+    auto fs = cmrc::sandbox_resource::get_filesystem();
     {
+        auto dll = fs.open("lib/AppBoxSandbox32.dll");
+
+        std::ofstream ofs(this->inject_data.sandbox32_path, std::ios::binary);
+        ofs.write(dll.begin(), dll.size());
+    }
+    {
+        auto          dll = fs.open("lib/AppBoxSandbox64.dll");
         std::ofstream ofs(this->inject_data.sandbox64_path, std::ios::binary);
-        ofs.write(reinterpret_cast<const char*>(dll_sandbox_x64_data),
-                  static_cast<std::streamsize>(dll_sandbox_x64_size));
+        ofs.write(dll.begin(), dll.size());
     }
 }
 

@@ -5,12 +5,13 @@
 #include <CLI/CLI.hpp>
 #include <detours.h>
 #include <spdlog/spdlog.h>
-#include <chrono>
-#include "WString.hpp"
+
 #include "Defines.hpp"
 #include "BuildCommandLine.hpp"
 #include "SetLogLevel.hpp"
 #include "Loader.hpp"
+
+
 
 int MainLoader()
 {

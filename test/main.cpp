@@ -28,15 +28,17 @@ static void SetLogLevelFromEnv()
 
 int wmain(int argc, wchar_t* argv[])
 {
+    SetLogLevelFromEnv();
+
     CLI::App app("AppBox unit tests");
     app.add_option("--loader", appbox::test::cmd_param.loader_path);
     app.add_option_function<std::wstring>("--log-level", ::SetLogLevel);
+
     appbox::test::ProbeInit(app);
-
     testing::InitGoogleTest(&argc, argv);
-    CLI11_PARSE(app, argc, argv);
 
-    SetLogLevelFromEnv();
+    SPDLOG_DEBUG("test suit start");
+    CLI11_PARSE(app, argc, argv);
 
     return RUN_ALL_TESTS();
 }
