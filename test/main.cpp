@@ -18,8 +18,7 @@ static void SetLogLevel(const std::wstring& level)
 static void SetLogLevelFromEnv()
 {
     wchar_t log_level[256];
-    DWORD   size = GetEnvironmentVariableW(L"APPBOX_LOG_LEVEL", log_level,
-                                           sizeof(log_level) / sizeof(wchar_t));
+    DWORD   size = GetEnvironmentVariableW(L"APPBOX_LOG_LEVEL", log_level, sizeof(log_level) / sizeof(wchar_t));
     if (size > 0)
     {
         ::SetLogLevel(std::wstring(log_level, size));
@@ -42,3 +41,18 @@ int wmain(int argc, wchar_t* argv[])
 
     return RUN_ALL_TESTS();
 }
+
+#if defined(__MINGW32__)
+
+int main()
+{
+    int     wargc;
+    LPWSTR* wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+
+    int ret = wmain(wargc, wargv);
+    LocalFree(wargv);
+
+    return ret;
+}
+
+#endif

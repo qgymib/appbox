@@ -14,6 +14,7 @@ set(SPDLOG_WCHAR_SUPPORT ON)
 set(SPDLOG_WCHAR_FILENAMES ON)
 set(SPDLOG_WCHAR_CONSOLE ON)
 
+
 # Build the third-party library (specify the binary directory to avoid conflicts)
 add_subdirectory("${_SPDLOG_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/third_party/spdlog-build")
 

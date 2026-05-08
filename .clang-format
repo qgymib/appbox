@@ -1,6 +1,6 @@
 ﻿---
 BasedOnStyle: Microsoft
-ColumnLimit: 100
+ColumnLimit: 120
 AccessModifierOffset: '-4'
 SortIncludes: false
 AlignArrayOfStructures: Left

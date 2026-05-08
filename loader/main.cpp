@@ -11,8 +11,6 @@
 #include "SetLogLevel.hpp"
 #include "Loader.hpp"
 
-
-
 int MainLoader()
 {
 #if defined(_WIN64)
@@ -33,10 +31,9 @@ int MainLoader()
     auto cmdline = appbox::BuildCommandLine(appbox::loader->exe_path, appbox::loader->exe_args);
     SPDLOG_TRACE(L"cmd: {}", cmdline);
 
-    if (!DetourCreateProcessWithDllExW(appbox::loader->exe_path.c_str(), cmdline.data(), nullptr,
-                                       nullptr, FALSE, CREATE_SUSPENDED, nullptr, nullptr,
-                                       &startupInfo, &processInfo, sandbox_dll_path.c_str(),
-                                       nullptr))
+    if (!DetourCreateProcessWithDllExW(appbox::loader->exe_path.c_str(), cmdline.data(), nullptr, nullptr, FALSE,
+                                       CREATE_SUSPENDED, nullptr, nullptr, &startupInfo, &processInfo,
+                                       sandbox_dll_path.c_str(), nullptr))
     {
         SPDLOG_ERROR("DetourCreateProcessWithDllExW(): failed");
         exit(EXIT_FAILURE);
@@ -67,8 +64,7 @@ int wmain(int argc, wchar_t* argv[])
 {
     CLI::App app;
     app.prefix_command();
-    app.add_option_function<std::wstring>("--log-level", appbox::SetLogLevel,
-                                          "Set application log level");
+    app.add_option_function<std::wstring>("--log-level", appbox::SetLogLevel, "Set application log level");
 
     appbox::InitLoader();
     atexit(appbox::ExitLoader);
@@ -89,3 +85,18 @@ int wmain(int argc, wchar_t* argv[])
 
     return MainLoader();
 }
+
+#if defined(__MINGW32__)
+
+int main()
+{
+    int     wargc;
+    LPWSTR* wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+
+    int ret = wmain(wargc, wargv);
+    LocalFree(wargv);
+
+    return ret;
+}
+
+#endif
