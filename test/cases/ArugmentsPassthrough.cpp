@@ -4,10 +4,14 @@
 #include <windows.h>
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
+#include <CLI/Encoding.hpp>
+#include <base64.hpp>
+#include "utils/Semaphore.hpp"
 #include "RemoteServer.hpp"
 #include "BuildCommandLine.hpp"
 #include "Test.hpp"
-#include "CLI/Encoding.hpp"
+#include "loader/Config.hpp"
+#include "WString.hpp"
 
 struct TestArgumentsPassthrough : testing::Test
 {
@@ -30,28 +34,43 @@ static std::wstring GetExePath()
 
 TEST_F(TestArgumentsPassthrough, Hello)
 {
-    const char* method = "TestArgumentsPassthrough";
-    const char* pipe_path = R"(\\.\pipe\159c7c67-e4e2-41a4-bbcb-a68e788fd6c8)";
-    auto        srv = appbox::RemoteServer::Create(pipe_path);
+    const uint32_t timeout_ms = 10 * 1000;
+    const char*    method = "TestArgumentsPassthrough";
+    const char*    pipe_path = R"(\\.\pipe\159c7c67-e4e2-41a4-bbcb-a68e788fd6c8)";
+    auto           srv = appbox::RemoteServer::Create(pipe_path);
 
-    bool  msg_received = false;
-    bool* p_msg_received = &msg_received;
-
-    srv->RegisterMethod(method, [srv, p_msg_received](uint64_t id, const nlohmann::json& param) {
-        SPDLOG_TRACE("message received");
-
+    appbox::Semaphore sem;
+    srv->RegisterMethod(method, [&sem, srv](uint64_t id, const nlohmann::json& param) {
         auto msg = param.get<std::string>();
         EXPECT_EQ(msg, "Hello");
 
-        *p_msg_received = true;
         srv->SendResponse(id, "World");
+        sem.Release();
     });
     srv->Start();
 
-    auto cmd = appbox::BuildCommandLine(
-        appbox::test::cmd_param.loader_path,
-        { L"--log-level", appbox::test::cmd_param.log_level, GetExePath(), L"probe", L"--connect",
-          CLI::widen(pipe_path), L"HelloWorld", L"--method", CLI::widen(method) });
+    std::wstring cmd;
+    {
+        appbox::LoaderConfig config;
+        auto                 exe_path = GetExePath();
+        config.launch.executable = appbox::WideToUTF8(exe_path.c_str());
+
+        nlohmann::json j_config = config;
+        auto           base64_config = base64::to_base64(j_config.dump());
+
+        /* clang-format off */
+        cmd = appbox::BuildCommandLine(appbox::test::cmd_param.loader_path,
+            {
+                L"--X-AppBox-LogLevel", appbox::test::cmd_param.log_level,
+                L"--X-AppBox-ConfigBase64", CLI::widen(base64_config),
+                L"probe",
+                L"--connect", CLI::widen(pipe_path),
+                L"HelloWorld",
+                L"--method", CLI::widen(method)
+            }
+        );
+        /* clang-format on */
+    }
 
     STARTUPINFOW startupInfo;
     memset(&startupInfo, 0, sizeof(startupInfo));
@@ -61,11 +80,11 @@ TEST_F(TestArgumentsPassthrough, Hello)
     memset(&processInfo, 0, sizeof(processInfo));
 
     SPDLOG_TRACE(L"start process: {}", cmd);
-    ASSERT_TRUE(CreateProcessW(appbox::test::cmd_param.loader_path.c_str(), cmd.data(), nullptr,
-                               nullptr, FALSE, 0, nullptr, nullptr, &startupInfo, &processInfo));
-    WaitForSingleObject(processInfo.hProcess, INFINITE);
+    ASSERT_TRUE(CreateProcessW(appbox::test::cmd_param.loader_path.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0,
+                               nullptr, nullptr, &startupInfo, &processInfo));
+    ASSERT_EQ(WaitForSingleObject(processInfo.hProcess, timeout_ms), WAIT_OBJECT_0);
     CloseHandle(processInfo.hProcess);
     CloseHandle(processInfo.hThread);
 
-    ASSERT_TRUE(msg_received);
+    ASSERT_TRUE(sem.Acquire(timeout_ms));
 }

@@ -51,7 +51,15 @@ appbox::Sys appbox::sys;
 
 void appbox::InitHook()
 {
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
     sys.OSBuild = GET_PEB_IMAGE_BUILD;
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic pop
+#endif
+
     sys.h_ntdll = GetModuleHandleW(L"ntdll.dll");
     sys.h_kernel32 = GetModuleHandleW(L"kernel32.dll");
     sys.h_kernelbase = GetModuleHandleW(L"kernelbase.dll");

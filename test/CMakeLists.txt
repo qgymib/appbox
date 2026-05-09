@@ -4,6 +4,7 @@ add_executable(AppBoxTests
     "cases/RPC.cpp"
     "probe/__init__.cpp"
     "probe/HelloWorld.cpp"
+    "utils/Semaphore.cpp"
     "Test.cpp"
     "main.cpp"
 )
@@ -12,12 +13,16 @@ appbox_setup_target_wall(AppBoxTests)
 target_include_directories(AppBoxTests
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 
 ###############################################################################
 # Dependency
 ###############################################################################
 target_link_libraries(AppBoxTests PRIVATE AppBoxCommon)
+
+find_package(base64 REQUIRED)
+target_link_libraries(AppBoxTests PRIVATE base64)
 
 find_package(CLI11 REQUIRED)
 target_link_libraries(AppBoxTests PRIVATE CLI11::CLI11)

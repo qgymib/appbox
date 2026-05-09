@@ -1,3 +1,4 @@
+#include <wx/wx.h>
 #include <spdlog/spdlog.h>
 #include <cmrc/cmrc.hpp>
 #include <sstream>
@@ -7,16 +8,15 @@
 #include "Loader.hpp"
 
 CMRC_DECLARE(sandbox_resource);
+wxDEFINE_EVENT(APPBOX_EXIT_APPLICATION_IF_NO_GUI, wxCommandEvent);
 
-appbox::Loader* appbox::loader = nullptr;
-
-std::string GenerateRandomString(size_t length)
+static std::string GenerateRandomString(size_t length)
 {
-    const char chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    static const char chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
     std::random_device                    rd; // 真随机种子
     std::mt19937                          gen(rd());
-    std::uniform_int_distribution<size_t> dis(0, std::size(chars) - 1);
+    std::uniform_int_distribution<size_t> dis(0, std::size(chars) - 2);
 
     std::string result;
     for (size_t i = 0; i < length; ++i)
@@ -27,7 +27,7 @@ std::string GenerateRandomString(size_t length)
     return result;
 }
 
-appbox::Loader::Loader()
+AppBoxLoaderRuntime::AppBoxLoaderRuntime()
 {
     std::time_t timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     auto        random_str = GenerateRandomString(16);
@@ -35,8 +35,8 @@ appbox::Loader::Loader()
 
     this->inject_data.pipe_path = fmt::format(R"(\\.\pipe\{})", unique_path);
     this->temp_dir = std::filesystem::temp_directory_path() / unique_path;
+    SPDLOG_INFO("temp_dir: {}", this->temp_dir.string());
 
-    this->pipe_server = RemoteServer::Create(this->inject_data.pipe_path);
     std::filesystem::create_directory(this->temp_dir);
 
     this->inject_data.sandbox32_path = (this->temp_dir / "sandbox32.dll").string();
@@ -54,32 +54,18 @@ appbox::Loader::Loader()
         std::ofstream ofs(this->inject_data.sandbox64_path, std::ios::binary);
         ofs.write(dll.begin(), dll.size());
     }
-}
 
-appbox::Loader::~Loader()
-{
-    this->pipe_server.reset();
-    std::filesystem::remove_all(this->temp_dir);
-}
-
-void appbox::InitLoader()
-{
-    if (loader != nullptr)
-    {
-        return;
-    }
-    loader = new Loader();
-
-    /* Start pipe server */
-    loader->pipe_server = RemoteServer::Create(loader->inject_data.pipe_path);
+#if 0
+    this->pipe_server = RemoteServer::Create(this->inject_data.pipe_path);
 
     /* Methods must register before rpc server start. */
     appbox::RpcInit();
     loader->pipe_server->Start();
+#endif
 }
 
-void appbox::ExitLoader()
+AppBoxLoaderRuntime::~AppBoxLoaderRuntime()
 {
-    delete loader;
-    loader = nullptr;
+    this->pipe_server.reset();
+    std::filesystem::remove_all(this->temp_dir);
 }

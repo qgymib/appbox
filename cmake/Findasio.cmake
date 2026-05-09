@@ -11,7 +11,7 @@ get_filename_component(_ASIO_SOURCE_DIR "${_ASIO_SOURCE_DIR}" ABSOLUTE)
 add_library(asio INTERFACE)
 target_include_directories(asio
     INTERFACE
-        ${_ASIO_SOURCE_DIR}/asio/include
+        ${_ASIO_SOURCE_DIR}/include
 )
 
 set(asio_FOUND TRUE)

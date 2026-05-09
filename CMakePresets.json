@@ -14,7 +14,8 @@
   "buildPresets": [
     {
       "name": "Debug",
-      "configurePreset": "Debug"
+      "configurePreset": "Debug",
+      "jobs": 8
     }
   ],
   "testPresets": [

@@ -1,11 +1,14 @@
 cmake_minimum_required(VERSION 3.15)
 project(AppBoxLoader)
 
-add_executable(${PROJECT_NAME}
+add_executable(${PROJECT_NAME} WIN32
     "rpc/__init__.cpp"
     "rpc/Log.cpp"
+    "utils/GetExecutableDir.cpp"
+    "widget/MainFrame.cpp"
     "Loader.cpp"
     "main.cpp"
+    "resource.rc"
 )
 appbox_setup_target_wall(${PROJECT_NAME})
 
@@ -30,6 +33,9 @@ if (NOT TARGET AppBoxCommon)
 endif ()
 target_link_libraries(${PROJECT_NAME} PRIVATE AppBoxCommon)
 
+find_package(base64 REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE base64)
+
 find_package(CLI11 REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE CLI11::CLI11)
 
@@ -40,7 +46,8 @@ find_package(spdlog REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
 target_compile_options(${PROJECT_NAME} PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
 
-
+find_package(wxWidgets REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE wx::core wx::base)
 
 ###############################################################################
 # Embed Sandbox

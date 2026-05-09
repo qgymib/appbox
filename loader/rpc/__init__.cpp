@@ -7,15 +7,13 @@ struct RpcMethodRecord
 };
 
 #define EXPAND_AS_METHOD(NAME) { appbox::RegisterRpcMethod_##NAME },
-static const RpcMethodRecord s_methods[] = {
-    APPBOX_LOADER_RPC_METHODS(EXPAND_AS_METHOD)
-};
+static const RpcMethodRecord s_methods[] = { APPBOX_LOADER_RPC_METHODS(EXPAND_AS_METHOD) };
 #undef EXPAND_AS_METHOD
 
 void appbox::RpcInit()
 {
     for (auto m : s_methods)
     {
-        m.fn(appbox::loader->pipe_server);
+        m.fn(wxGetApp().runtime->pipe_server);
     }
 }
