@@ -27,7 +27,7 @@
     }                                                                                              \
     void ::appbox::RegisterRpcMethod_##NAME(::appbox::RemoteServer::Ptr s)                         \
     {                                                                                              \
-        s->RegisterMethod(::appbox::NAME::method, RpcMethod_##NAME##_Wrap);                        \
+        s->RegisterMethod(::appbox::NAME::Method, RpcMethod_##NAME##_Wrap);                        \
     }                                                                                              \
     static void RpcMethod_##NAME(uint64_t ID, const ::appbox::NAME::Req& PARAM)
 

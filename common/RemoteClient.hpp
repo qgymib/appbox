@@ -43,7 +43,7 @@ public:
         nlohmann::json param = req;
 
         /*  RPC call*/
-        auto future = Call(T::method, param);
+        auto future = Call(T::Method, param);
 
         /* Wrap */
         return std::async(

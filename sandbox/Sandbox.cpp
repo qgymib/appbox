@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <spdlog/spdlog.h>
 #include "hook/__init__.hpp"
-#include "utils/RemoteLog.hpp"
+#include "utils/Log.hpp"
 #include "Sandbox.hpp"
 #include "Defines.hpp"
 
@@ -55,7 +55,6 @@ static void OnDllAttach(HINSTANCE hinstDLL)
     });
 
     appbox::InitHook();
-    appbox::RemoteLogInit();
 }
 
 static void OnDllDetach()

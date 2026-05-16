@@ -3,9 +3,12 @@
 #endif
 #include <windows.h>
 #include <exception>
-#include <spdlog/spdlog.h>
 #include <detours.h>
+#include "utils/Log.hpp"
 #include "__init__.hpp"
+#include "CreateProcessInternalW.hpp"
+#include "LdrQueryImageFileExecutionOptionsEx.hpp"
+#include "SetProcessMitigationPolicy.hpp"
 
 #ifdef _M_ARM64
 #define NtCurrentPeb() (*((ULONG_PTR*)(__getReg(18) + 0x60)))
@@ -43,21 +46,23 @@ struct SandboxHook
     void (*fn)();     /* Register function */
 };
 
-#define EXPAND_HOOK_AS_FUNC(NAME) { #NAME, &appbox::Register_##NAME },
-static const SandboxHook s_hooks[] = { APPBOX_SANDBOX_HOOKS(EXPAND_HOOK_AS_FUNC) };
-#undef EXPAND_HOOK_AS_FUNC
+static const SandboxHook s_hooks[] = {
+    { "CreateProcessInternalW",              appbox::InjectCreateProcessInternalW              },
+    { "LdrQueryImageFileExecutionOptionsEx", appbox::InjectLdrQueryImageFileExecutionOptionsEx },
+    { "SetProcessMitigationPolicy",          appbox::InjectSetProcessMitigationPolicy          },
+};
 
 appbox::Sys appbox::sys;
 
 void appbox::InitHook()
 {
 #if defined(__GNUC__) && !defined(__clang__)
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Warray-bounds"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
 #endif
     sys.OSBuild = GET_PEB_IMAGE_BUILD;
 #if defined(__GNUC__) && !defined(__clang__)
-#  pragma GCC diagnostic pop
+#pragma GCC diagnostic pop
 #endif
 
     sys.h_ntdll = GetModuleHandleW(L"ntdll.dll");
@@ -75,7 +80,7 @@ void appbox::InitHook()
         }
         catch (const std::exception& e)
         {
-            spdlog::error("Sandbox hook {} failed: {}", hook.name, e.what());
+            LOG_E("Sandbox hook {} failed: {}", hook.name, e.what());
         }
     }
 

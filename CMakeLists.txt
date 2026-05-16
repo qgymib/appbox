@@ -58,6 +58,7 @@ ExternalProject_Add(sandbox_x86_build
         ${X86_FWD_TOOLCHAIN_FILE}
         -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/resource
     BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/resource/lib/AppBoxSandbox32.dll
+    BUILD_ALWAYS ON
 )
 
 ExternalProject_Add(sandbox_x64_build
@@ -69,6 +70,7 @@ ExternalProject_Add(sandbox_x64_build
         ${X64_FWD_TOOLCHAIN_FILE}
         -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/resource
     BUILD_BYPRODUCTS ${CMAKE_BINARY_DIR}/resource/lib/AppBoxSandbox64.dll
+    BUILD_ALWAYS ON
 )
 
 cmrc_add_resource_library(sandbox_resource

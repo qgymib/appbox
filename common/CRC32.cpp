@@ -1,4 +1,7 @@
-#include "WinAPI.hpp"
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
+#include <windows.h>
 #include "CRC32.hpp"
 
 static uint32_t crc32_table[256];

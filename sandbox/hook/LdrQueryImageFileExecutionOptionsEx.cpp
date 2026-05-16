@@ -5,11 +5,12 @@
 #include <windows.h>
 #include <detours.h>
 #include "__init__.hpp"
+#include "LdrQueryImageFileExecutionOptionsEx.hpp"
 
-static NTSTATUS Hook_LdrQueryImageFileExecutionOptionsEx(PUNICODE_STRING lpImageFile,
-                                                         PCWSTR lpszOption, ULONG dwType,
-                                                         PVOID lpData, ULONG cbData,
-                                                         ULONG* lpcbData, BOOLEAN bWow64)
+T_LdrQueryImageFileExecutionOptionsEx sys_LdrQueryImageFileExecutionOptionsEx = nullptr;
+
+static NTSTATUS Hook_LdrQueryImageFileExecutionOptionsEx(PUNICODE_STRING lpImageFile, PCWSTR lpszOption, ULONG dwType,
+                                                         PVOID lpData, ULONG cbData, ULONG* lpcbData, BOOLEAN bWow64)
 {
     /*
      * Sandbox on ARM64 requires x86 applications NOT to use the CHPE binaries.
@@ -23,18 +24,17 @@ static NTSTATUS Hook_LdrQueryImageFileExecutionOptionsEx(PUNICODE_STRING lpImage
         return 0; /* STATUS_SUCCESS */
     }
 
-    return appbox::sys.LdrQueryImageFileExecutionOptionsEx(lpImageFile, lpszOption, dwType, lpData,
-                                                           cbData, lpcbData, bWow64);
+    return sys_LdrQueryImageFileExecutionOptionsEx(lpImageFile, lpszOption, dwType, lpData, cbData, lpcbData, bWow64);
 }
 
-APPBOX_SANDBOX_INJECT(LdrQueryImageFileExecutionOptionsEx)
+void appbox::InjectLdrQueryImageFileExecutionOptionsEx()
 {
-    APPBOX_GET_PROC(sys.h_ntdll, LdrQueryImageFileExecutionOptionsEx);
+    auto addr = GetProcAddress(sys.h_ntdll, "LdrQueryImageFileExecutionOptionsEx");
+    sys_LdrQueryImageFileExecutionOptionsEx = reinterpret_cast<T_LdrQueryImageFileExecutionOptionsEx>(addr);
 
     /* Windows 10 */
     if (appbox::sys.OSBuild >= 14942)
     {
-        DetourAttach(&appbox::sys.LdrQueryImageFileExecutionOptionsEx,
-                     Hook_LdrQueryImageFileExecutionOptionsEx);
+        DetourAttach(&sys_LdrQueryImageFileExecutionOptionsEx, Hook_LdrQueryImageFileExecutionOptionsEx);
     }
 }

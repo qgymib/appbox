@@ -6,22 +6,26 @@
 namespace appbox
 {
 
+enum MsgLogLevel
+{
+    LOGLEVEL_DEBUG = 0,
+    LOGLEVEL_INFO = 1,
+    LOGLEVEL_WARN = 2,
+    LOGLEVEL_ERROR = 3,
+};
+
 struct MsgLog
 {
-    static constexpr const char* method = "Log";
+    static constexpr const char* Method = "Log";
 
     struct Req
     {
-        std::string logger_name;
-        int         level;
-        uint64_t    time;
-        size_t      thread_id;
-        std::string filename;
+        MsgLogLevel level;
+        int64_t     time;
+        std::string file;
         int         line;
-        std::string funcname;
         std::string payload;
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(Req, logger_name, level, time, thread_id, filename, line,
-                                       funcname, payload);
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE(Req, level, time, file, line, payload);
     };
 
     struct Rsp

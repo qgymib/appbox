@@ -7,22 +7,26 @@
   },
   "configurePresets": [
     {
-      "name": "Debug",
-      "binaryDir": "${sourceDir}/build/debug"
+      "name": "RelWithDebInfo",
+      "binaryDir": "${sourceDir}/build/RelWithDebInfo",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
     }
   ],
   "buildPresets": [
     {
-      "name": "Debug",
-      "configurePreset": "Debug",
+      "name": "RelWithDebInfo",
+      "configurePreset": "RelWithDebInfo",
+      "configuration": "RelWithDebInfo",
       "jobs": 8
     }
   ],
   "testPresets": [
     {
-      "name": "Debug",
-      "configurePreset": "Debug",
-      "configuration": "Debug",
+      "name": "RelWithDebInfo",
+      "configurePreset": "RelWithDebInfo",
+      "configuration": "RelWithDebInfo",
       "environment": {
         "APPBOX_LOG_LEVEL": "info"
       },
@@ -37,19 +41,19 @@
   ],
   "workflowPresets": [
     {
-      "name": "Debug",
+      "name": "RelWithDebInfo",
       "steps": [
         {
           "type": "configure",
-          "name": "Debug"
+          "name": "RelWithDebInfo"
         },
         {
           "type": "build",
-          "name": "Debug"
+          "name": "RelWithDebInfo"
         },
         {
           "type": "test",
-          "name": "Debug"
+          "name": "RelWithDebInfo"
         }
       ]
     }

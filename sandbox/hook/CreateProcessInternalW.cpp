@@ -3,15 +3,19 @@
 #endif
 #include <windows.h>
 #include <detours.h>
-#include <spdlog/spdlog.h>
+#include "utils/Log.hpp"
 #include "__init__.hpp"
 #include "Sandbox.hpp"
+#include "CreateProcessInternalW.hpp"
 
-static BOOL Hook_CreateProcessInternalW(
-    HANDLE hToken, LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
-    LPSECURITY_ATTRIBUTES lpProcessAttributes, LPSECURITY_ATTRIBUTES lpThreadAttributes,
-    BOOL bInheritHandles, ULONG dwCreationFlags, LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory,
-    LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation, PHANDLE hNewToken)
+T_CreateProcessInternalW sys_CreateProcessInternalW = nullptr;
+
+static BOOL Hook_CreateProcessInternalW(HANDLE hToken, LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
+                                        LPSECURITY_ATTRIBUTES lpProcessAttributes,
+                                        LPSECURITY_ATTRIBUTES lpThreadAttributes, BOOL bInheritHandles,
+                                        ULONG dwCreationFlags, LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory,
+                                        LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation,
+                                        PHANDLE hNewToken)
 {
     PROCESS_INFORMATION backup;
     if (lpProcessInformation == nullptr)
@@ -21,10 +25,9 @@ static BOOL Hook_CreateProcessInternalW(
     }
 
     /* Create process */
-    if (!appbox::sys.CreateProcessInternalW(
-            hToken, lpApplicationName, lpCommandLine, lpProcessAttributes, lpThreadAttributes,
-            bInheritHandles, dwCreationFlags | CREATE_SUSPENDED, lpEnvironment, lpCurrentDirectory,
-            lpStartupInfo, lpProcessInformation, hNewToken))
+    if (!sys_CreateProcessInternalW(hToken, lpApplicationName, lpCommandLine, lpProcessAttributes, lpThreadAttributes,
+                                    bInheritHandles, dwCreationFlags | CREATE_SUSPENDED, lpEnvironment,
+                                    lpCurrentDirectory, lpStartupInfo, lpProcessInformation, hNewToken))
     {
         return FALSE;
     }
@@ -59,19 +62,23 @@ static BOOL Hook_CreateProcessInternalW(
     return TRUE;
 }
 
-APPBOX_SANDBOX_INJECT(CreateProcessInternalW)
+void appbox::InjectCreateProcessInternalW()
 {
-    APPBOX_GET_PROC(sys.h_kernelbase, CreateProcessInternalW);
-    if (sys.CreateProcessInternalW == nullptr)
+    auto addr = GetProcAddress(sys.h_kernelbase, "CreateProcessInternalW");
+    if (addr == nullptr)
     {
-        APPBOX_GET_PROC(sys.h_kernel32, CreateProcessInternalW);
+        addr = GetProcAddress(sys.h_kernel32, "CreateProcessInternalW");
     }
 
-    if (sys.CreateProcessInternalW == nullptr)
+    if (addr == nullptr)
     {
-        SPDLOG_ERROR("hook CreateProcessInternalW failed");
-        throw std::runtime_error("hook CreateProcessInternalW failed");
+        THROW_LOG("hook CreateProcessInternalW failed");
     }
+    sys_CreateProcessInternalW = reinterpret_cast<T_CreateProcessInternalW>(addr);
 
-    DetourAttach(&appbox::sys.CreateProcessInternalW, Hook_CreateProcessInternalW);
+    auto ret = DetourAttach(&sys_CreateProcessInternalW, Hook_CreateProcessInternalW);
+    if (ret != NO_ERROR)
+    {
+        THROW_LOG("DetourAttach(CreateProcessInternalW) failed");
+    }
 }
