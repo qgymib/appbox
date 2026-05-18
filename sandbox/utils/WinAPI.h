@@ -6,17 +6,32 @@
 #endif
 #include <windows.h>
 
+#define FILE_OPEN_BY_FILE_ID 0x00002000
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum _OBJECT_INFORMATION_CLASS
+{
+    ObjectBasicInformation,
+    ObjectNameInformation,
+    ObjectTypeInformation,
+    ObjectAllTypesInformation,
+    ObjectDataInformation
+} OBJECT_INFORMATION_CLASS;
 
 typedef struct _UNICODE_STRING
 {
     USHORT Length;
     USHORT MaximumLength;
     PWSTR  Buffer;
-} UNICODE_STRING;
-typedef UNICODE_STRING* PUNICODE_STRING;
+} UNICODE_STRING, *PUNICODE_STRING;
+
+typedef struct _OBJECT_NAME_INFORMATION
+{
+    UNICODE_STRING Name;
+} OBJECT_NAME_INFORMATION, *POBJECT_NAME_INFORMATION;
 
 typedef struct _OBJECT_ATTRIBUTES
 {

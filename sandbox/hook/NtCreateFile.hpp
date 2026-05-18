@@ -16,7 +16,7 @@ typedef NTSTATUS (*T_NtCreateFile)(PHANDLE FileHandle, ACCESS_MASK DesiredAccess
                                    ULONG EaLength);
 
 /**
- * @brief NtCreateFile() without hook.
+ * @brief NtCreateFile() direct call.
  */
 extern T_NtCreateFile sys_NtCreateFile;
 
