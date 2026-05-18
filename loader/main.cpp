@@ -89,7 +89,8 @@ static void LoadConfig()
     /* Parse configuration file. */
     {
         auto dir = appbox::GetExecutableDir();
-        auto path = std::filesystem::path(dir) / L"AppBoxLoader.json";
+        auto cfg_name = appbox::GetExecutableName() + L".json";
+        auto path = std::filesystem::path(dir) / cfg_name;
 
         std::ifstream  f(path);
         nlohmann::json config = nlohmann::json::parse(f);

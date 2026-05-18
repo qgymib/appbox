@@ -5,7 +5,7 @@
 #include <filesystem>
 #include "GetExecutableDir.hpp"
 
-std::wstring appbox::GetExecutableDir()
+std::wstring appbox::GetExecutablePath()
 {
     std::wstring buf(MAX_PATH, L'\0');
     DWORD        len;
@@ -17,5 +17,17 @@ std::wstring appbox::GetExecutableDir()
         buf.resize(buf.size() * 2);
     }
     buf.resize(len);
-    return std::filesystem::path(buf).parent_path();
+    return buf;
+}
+
+std::wstring appbox::GetExecutableDir()
+{
+    auto path = GetExecutablePath();
+    return std::filesystem::path(path).parent_path();
+}
+
+std::wstring appbox::GetExecutableName()
+{
+    auto path = GetExecutablePath();
+    return std::filesystem::path(path).stem();
 }

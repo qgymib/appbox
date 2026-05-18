@@ -12,6 +12,18 @@ namespace appbox
  */
 std::wstring GetExecutableDir();
 
-}
+/**
+ * @brief Get full path of executable.
+ * @return Full path of executable
+ */
+std::wstring GetExecutablePath();
+
+/**
+ * @brief Get executable name without extension.
+ * @return Executable name.
+ */
+std::wstring GetExecutableName();
+
+} // namespace appbox
 
 #endif
