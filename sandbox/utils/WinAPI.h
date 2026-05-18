@@ -1,6 +1,10 @@
 #ifndef APPBOX_SANDBOX_UTILS_WINAPI_H
 #define APPBOX_SANDBOX_UTILS_WINAPI_H
 
+#include <ntstatus.h>
+#define WIN32_NO_STATUS
+#define NT_SUCCESS(Status) ((NTSTATUS)(Status) >= 0)
+
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
 #endif
@@ -11,6 +15,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef long NTSTATUS;
 
 typedef enum _OBJECT_INFORMATION_CLASS
 {

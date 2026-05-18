@@ -1,8 +1,4 @@
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0600
-#endif
-#define WIN32_NO_STATUS
-#include <windows.h>
+#include "utils/WinAPI.h" /* Must be first include file */
 #include <detours.h>
 #include "__init__.hpp"
 #include "LdrQueryImageFileExecutionOptionsEx.hpp"
