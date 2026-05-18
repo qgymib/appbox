@@ -15,6 +15,9 @@ typedef NTSTATUS (*T_NtCreateFile)(PHANDLE FileHandle, ACCESS_MASK DesiredAccess
                                    ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer,
                                    ULONG EaLength);
 
+/**
+ * @brief NtCreateFile() without hook.
+ */
 extern T_NtCreateFile sys_NtCreateFile;
 
 #ifdef __cplusplus
@@ -24,8 +27,11 @@ extern T_NtCreateFile sys_NtCreateFile;
 namespace appbox
 {
 
+/**
+ * @brief Inject NtCreateFile() hook.
+ */
 void InjectNtCreateFile();
 
-}
+} // namespace appbox
 
 #endif // APPBOX_SANDBOX_HOOK_NTCREATEFILE_HPP
