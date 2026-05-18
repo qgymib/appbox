@@ -201,23 +201,43 @@ static void RunSelfAsProbe(const std::string& key)
     PROCESS_INFORMATION process_info;
     ZeroMemory(&process_info, sizeof(process_info));
 
-    auto create_ret = CreateProcessW(appbox::test::cmd_param.loader_path.c_str(), cmd.data(), nullptr, nullptr, FALSE,
-                                     0, nullptr, nullptr, &startup_info, &process_info);
-    if (!create_ret)
+    if (!CreateProcessW(appbox::test::cmd_param.loader_path.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr,
+                        nullptr, &startup_info, &process_info))
     {
         auto msg = fmt::format("CreateProcessW failed: {}", GetLastError());
         SPDLOG_ERROR(msg);
         throw std::runtime_error(msg);
     }
-
-    WaitForSingleObject(process_info.hProcess, INFINITE);
-    CloseHandle(process_info.hProcess);
     CloseHandle(process_info.hThread);
+
+    auto wait_ret = WaitForSingleObject(process_info.hProcess, INFINITE);
+    if (wait_ret != WAIT_OBJECT_0)
+    {
+        auto msg = fmt::format("WaitForSingleObject failed: {}", wait_ret);
+        SPDLOG_ERROR(msg);
+        throw std::runtime_error(msg);
+    }
+
+    DWORD exit_code = 0;
+    if (!GetExitCodeProcess(process_info.hProcess, &exit_code))
+    {
+        auto msg = fmt::format("GetExitCodeProcess failed: {}", GetLastError());
+        SPDLOG_ERROR(msg);
+        throw std::runtime_error(msg);
+    }
+
+    CloseHandle(process_info.hProcess);
+
+    if (exit_code != 0)
+    {
+        auto msg = fmt::format("Probe exited with code {}", exit_code);
+        SPDLOG_ERROR(msg);
+        throw std::runtime_error(msg);
+    }
 }
 
 nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::json& data)
 {
-    SPDLOG_INFO("Init probe server");
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
 
