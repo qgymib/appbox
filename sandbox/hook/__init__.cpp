@@ -8,6 +8,7 @@
 #include "__init__.hpp"
 #include "CreateProcessInternalW.hpp"
 #include "LdrQueryImageFileExecutionOptionsEx.hpp"
+#include "NtCreateFile.hpp"
 #include "SetProcessMitigationPolicy.hpp"
 
 #ifdef _M_ARM64
@@ -50,6 +51,7 @@ static const SandboxHook s_hooks[] = {
     { "CreateProcessInternalW",              appbox::InjectCreateProcessInternalW              },
     { "LdrQueryImageFileExecutionOptionsEx", appbox::InjectLdrQueryImageFileExecutionOptionsEx },
     { "SetProcessMitigationPolicy",          appbox::InjectSetProcessMitigationPolicy          },
+    { "NtCreateFile", appbox::InjectNtCreateFile },
 };
 
 appbox::Sys appbox::sys;

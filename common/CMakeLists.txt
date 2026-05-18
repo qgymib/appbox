@@ -13,6 +13,7 @@ add_library(${PROJECT_NAME} STATIC
     "BuildCommandLine.cpp"
     "CRC32.cpp"
     "InjectData.cpp"
+    "Random.cpp"
     "RemoteClient.cpp"
     "RemoteServer.cpp"
     "RemoteSession.cpp"

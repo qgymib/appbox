@@ -3,34 +3,17 @@
 #include <cmrc/cmrc.hpp>
 #include <sstream>
 #include <chrono>
-#include <random>
+#include "Random.hpp"
 #include "rpc/__init__.hpp"
 #include "Loader.hpp"
 
 CMRC_DECLARE(sandbox_resource);
 wxDEFINE_EVENT(APPBOX_EXIT_APPLICATION_IF_NO_GUI, wxCommandEvent);
 
-static std::string GenerateRandomString(size_t length)
-{
-    static const char chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-
-    std::random_device                    rd; // 真随机种子
-    std::mt19937                          gen(rd());
-    std::uniform_int_distribution<size_t> dis(0, std::size(chars) - 2);
-
-    std::string result;
-    for (size_t i = 0; i < length; ++i)
-    {
-        result += chars[dis(gen)];
-    }
-
-    return result;
-}
-
 AppBoxLoaderRuntime::AppBoxLoaderRuntime()
 {
     std::time_t timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    auto        random_str = GenerateRandomString(16);
+    auto        random_str = appbox::RandomString(16);
     auto        unique_path = fmt::format("appbox-{}-{}", timestamp, random_str);
 
     this->inject_data.pipe_path = fmt::format(R"(\\.\pipe\{})", unique_path);

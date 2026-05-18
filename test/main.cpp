@@ -5,6 +5,7 @@
 #include <gtest/gtest.h>
 #include <CLI/CLI.hpp>
 #include <spdlog/spdlog.h>
+#include <base64.hpp>
 #include "probe/__init__.hpp"
 #include "SetLogLevel.hpp"
 #include "Test.hpp"
@@ -28,13 +29,12 @@ static void SetLogLevelFromEnv()
 int wmain(int argc, wchar_t* argv[])
 {
     SetLogLevelFromEnv();
+    testing::InitGoogleTest(&argc, argv);
 
     CLI::App app("AppBox unit tests");
     app.add_option("--loader", appbox::test::cmd_param.loader_path);
     app.add_option_function<std::wstring>("--log-level", ::SetLogLevel);
-
     appbox::test::ProbeInit(app);
-    testing::InitGoogleTest(&argc, argv);
 
     SPDLOG_DEBUG("test suit start");
     CLI11_PARSE(app, argc, argv);
@@ -44,15 +44,27 @@ int wmain(int argc, wchar_t* argv[])
 
 #if defined(__MINGW32__)
 
+struct CommandLine
+{
+    CommandLine()
+    {
+        wargc = 0;
+        wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+    }
+
+    ~CommandLine()
+    {
+        LocalFree(wargv);
+    }
+
+    int     wargc;
+    LPWSTR* wargv;
+};
+
 int main()
 {
-    int     wargc;
-    LPWSTR* wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
-
-    int ret = wmain(wargc, wargv);
-    LocalFree(wargv);
-
-    return ret;
+    CommandLine cmd;
+    return wmain(cmd.wargc, cmd.wargv);
 }
 
 #endif

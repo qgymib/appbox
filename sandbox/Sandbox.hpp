@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_HPP
 #define APPBOX_SANDBOX_HPP
 
-#include "utils/WinAPI.hpp"
+#include "utils/WinAPI.h"
 #include "utils/Task.hpp"
 #include "utils/AsyncInstance.hpp"
 #include "InjectData.hpp"

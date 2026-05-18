@@ -3,7 +3,7 @@ add_executable(AppBoxTests
     "cases/ArugmentsPassthrough.cpp"
     "cases/RPC.cpp"
     "probe/__init__.cpp"
-    "probe/HelloWorld.cpp"
+    "probe/Server.cpp"
     "utils/Semaphore.cpp"
     "Test.cpp"
     "main.cpp"
@@ -29,6 +29,9 @@ target_link_libraries(AppBoxTests PRIVATE CLI11::CLI11)
 
 find_package(googletest REQUIRED)
 target_link_libraries(AppBoxTests PRIVATE googletest::gtest)
+
+find_package(nlohmann_json REQUIRED)
+target_link_libraries(AppBoxTests PRIVATE nlohmann_json::nlohmann_json)
 
 find_package(spdlog REQUIRED)
 target_link_libraries(AppBoxTests PRIVATE spdlog::spdlog)

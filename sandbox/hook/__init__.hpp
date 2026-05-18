@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_HOOK_INIT_HPP
 #define APPBOX_SANDBOX_HOOK_INIT_HPP
 
-#include "utils/WinAPI.hpp"
+#include "utils/WinAPI.h"
 
 namespace appbox
 {
