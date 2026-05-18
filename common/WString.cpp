@@ -22,6 +22,11 @@ std::wstring appbox::UTF8ToWide(const char* s)
     return dst;
 }
 
+std::wstring appbox::UTF8ToWide(const std::string& s)
+{
+    return UTF8ToWide(s.c_str());
+}
+
 std::string appbox::WideToUTF8(const wchar_t* s)
 {
     int   size_need = WideCharToMultiByte(CP_UTF8, 0, s, -1, nullptr, 0, nullptr, nullptr);
@@ -30,4 +35,9 @@ std::string appbox::WideToUTF8(const wchar_t* s)
     std::string dst(new_str);
     delete[] new_str;
     return dst;
+}
+
+std::string appbox::WideToUTF8(const std::wstring& s)
+{
+    return WideToUTF8(s.c_str());
 }

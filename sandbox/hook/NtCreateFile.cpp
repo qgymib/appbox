@@ -8,6 +8,7 @@
 
 T_NtCreateFile sys_NtCreateFile = nullptr;
 
+#if 0
 /**
  * @brief Get NT path by handle
  * @param[in] handle Handle to query
@@ -51,12 +52,19 @@ static NTSTATUS GetNtPathByHandle(HANDLE handle, std::wstring& path)
     path.assign(objectNameInfo->Name.Buffer, objectNameInfo->Name.Length / sizeof(WCHAR));
     return 0;
 }
+#endif
 
 static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes,
                                   PIO_STATUS_BLOCK IoStatusBlock, PLARGE_INTEGER AllocationSize, ULONG FileAttributes,
                                   ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer,
                                   ULONG EaLength)
 {
+    if (ObjectAttributes->RootDirectory != nullptr)
+    {
+        return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
+                                FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
+    }
+
     return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes,
                             ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
 }

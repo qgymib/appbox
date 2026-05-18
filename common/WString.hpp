@@ -19,6 +19,7 @@ namespace appbox
  * @return A wide string representation of the specified portion of the input multibyte string.
  */
 std::wstring UTF8ToWide(const char* s);
+std::wstring UTF8ToWide(const std::string& s);
 
 /**
  * Converts a wide string to a multibyte string using the specified code page,
@@ -35,6 +36,7 @@ std::wstring UTF8ToWide(const char* s);
  * @return A multibyte string representation of the specified portion of the input wide string.
  */
 std::string WideToUTF8(const wchar_t* s);
+std::string WideToUTF8(const std::wstring& s);
 
 } // namespace appbox
 

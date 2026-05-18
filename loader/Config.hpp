@@ -46,6 +46,16 @@ struct LoaderConfig
     bool enable_admin_ui = false;
 
     /**
+     * @brief Base filesystem.
+     */
+    std::string base_fs = "app";
+
+    /**
+     * @brief overlay filesystem.
+     */
+    std::string overlay_fs = "data";
+
+    /**
      * @brief Launch configuration.
      */
     LoaderLaunch launch;
@@ -55,7 +65,7 @@ struct LoaderConfig
      */
     std::vector<LoaderEnvironment> environment;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderConfig, enable_admin_ui, launch, environment)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderConfig, enable_admin_ui, base_fs, overlay_fs, launch, environment)
 };
 
 } // namespace appbox

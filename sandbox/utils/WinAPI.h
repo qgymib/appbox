@@ -58,6 +58,9 @@ typedef struct _IO_STATUS_BLOCK
     ULONG_PTR Information;
 } IO_STATUS_BLOCK, *PIO_STATUS_BLOCK;
 
+__declspec(dllimport) NTSTATUS __stdcall RtlInitUnicodeString(PUNICODE_STRING DestinationString,
+                                                              const WCHAR*    SourceString);
+
 #ifdef __cplusplus
 }
 #endif

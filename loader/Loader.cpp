@@ -5,10 +5,26 @@
 #include <chrono>
 #include "Random.hpp"
 #include "rpc/__init__.hpp"
+#include "utils/GetExecutableDir.hpp"
+#include "WString.hpp"
 #include "Loader.hpp"
 
 CMRC_DECLARE(sandbox_resource);
 wxDEFINE_EVENT(APPBOX_EXIT_APPLICATION_IF_NO_GUI, wxCommandEvent);
+
+static std::string GetAbsPathAsConfig(const std::string& path)
+{
+    std::filesystem::path p(path);
+    if (p.is_absolute())
+    {
+        return path;
+    }
+
+    auto w_exe_dir = appbox::GetExecutableDir();
+    auto ret = std::filesystem::path(w_exe_dir) / p;
+
+    return ret.string();
+}
 
 AppBoxLoaderRuntime::AppBoxLoaderRuntime()
 {
@@ -24,6 +40,8 @@ AppBoxLoaderRuntime::AppBoxLoaderRuntime()
 
     this->inject_data.sandbox32_path = (this->temp_dir / "sandbox32.dll").string();
     this->inject_data.sandbox64_path = (this->temp_dir / "sandbox64.dll").string();
+    this->inject_data.base_path = GetAbsPathAsConfig(wxGetApp().config.base_fs);
+    this->inject_data.overlay_path = GetAbsPathAsConfig(wxGetApp().config.overlay_fs);
 
     auto fs = cmrc::sandbox_resource::get_filesystem();
     {
