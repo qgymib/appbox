@@ -1,14 +1,25 @@
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0600
-#endif
-#include <windows.h>
+#include "utils/WinAPI.h" /* Must be first include file */
 #include <detours.h>
 #include <stdexcept>
 #include <spdlog/spdlog.h>
 #include "hook/__init__.hpp"
+#include "hook/NtCreateFile.hpp"
 #include "utils/Log.hpp"
 #include "Sandbox.hpp"
 #include "Defines.hpp"
+
+struct LogGuard
+{
+    LogGuard()
+    {
+        appbox::LogEnable(false);
+    }
+
+    ~LogGuard()
+    {
+        appbox::LogEnable(true);
+    }
+};
 
 appbox::Sandbox* appbox::sandbox = nullptr;
 
@@ -48,13 +59,15 @@ static void OnDllAttach(HINSTANCE hinstDLL)
     LoadInjectData();
 
     appbox::sandbox->task_queue = appbox::TaskQueue::Create();
-    appbox::sandbox->client = appbox::AsyncInstance<appbox::RemoteClient>::Create([]() {
-        auto client = appbox::RemoteClient::Create(appbox::sandbox->inject_data.pipe_path);
-        client->Start();
-        return client;
-    });
+
+    appbox::sandbox->client = std::make_shared<appbox::PipeClient>(appbox::sandbox->inject_data.pipe_path);
+    if (!appbox::sandbox->client->Start())
+    {
+        throw std::runtime_error("failed to start rpc client");
+    }
 
     appbox::InitHook();
+    LOG_I("AppBox Sandbox initialized");
 }
 
 static void OnDllDetach()
@@ -95,6 +108,5 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
         SPDLOG_ERROR("Sandbox DllMain error: {}", e.what());
         return FALSE;
     }
-
     return TRUE;
 }

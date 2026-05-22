@@ -32,11 +32,14 @@ struct Probe
      * @brief Call the probe function.
      * The probe function is called in subprocess hooked by sandbox.
      * @param[in] data The data to be passed to the probe function.
+     * @param[in] cwd The current working directory.
+     * @param[in] config The loader configuration.
      * @return The result of the probe function.
      */
-    nlohmann::json Call(const nlohmann::json& data)
+    nlohmann::json Call(const nlohmann::json& data, const std::wstring& cwd,
+                        const LoaderConfig& config = LoaderConfig())
     {
-        return ProbeCall(name, data);
+        return ProbeCall(name, data, cwd, config);
     }
 
     static Map& GetMap()

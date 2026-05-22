@@ -3,13 +3,10 @@
 
 #include "utils/WinAPI.h"
 
-#ifdef __cplusplus
 extern "C" {
-#endif
-
 /**
  * @see
- * wario.hezongjian.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessinternalw
+ * http://a-twisted-world.blogspot.com/2008/03/createprocessinternal-function.html
  */
 typedef BOOL (*T_CreateProcessInternalW)(HANDLE hToken, LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
                                          LPSECURITY_ATTRIBUTES lpProcessAttributes,
@@ -18,17 +15,20 @@ typedef BOOL (*T_CreateProcessInternalW)(HANDLE hToken, LPCWSTR lpApplicationNam
                                          LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation,
                                          PHANDLE hNewToken);
 
+/**
+ * @brief CreateProcessInternalW() direct call.
+ */
 extern T_CreateProcessInternalW sys_CreateProcessInternalW;
-
-#ifdef __cplusplus
 }
-#endif
 
 namespace appbox
 {
 
+/**
+ * @brief Inject CreateProcessInternalW() hook.
+ */
 void InjectCreateProcessInternalW();
 
-}
+} // namespace appbox
 
 #endif

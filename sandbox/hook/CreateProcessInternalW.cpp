@@ -1,14 +1,45 @@
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0600
-#endif
-#include <windows.h>
+#include "utils/WinAPI.h" /* Must be first include file */
 #include <detours.h>
 #include "utils/Log.hpp"
 #include "__init__.hpp"
 #include "Sandbox.hpp"
 #include "CreateProcessInternalW.hpp"
+#include "WString.hpp"
 
 T_CreateProcessInternalW sys_CreateProcessInternalW = nullptr;
+
+static nlohmann::json CreateProcessInternalWLogParam(HANDLE hToken, LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
+                                                     LPSECURITY_ATTRIBUTES lpProcessAttributes,
+                                                     LPSECURITY_ATTRIBUTES lpThreadAttributes, BOOL bInheritHandles,
+                                                     ULONG dwCreationFlags, LPVOID lpEnvironment,
+                                                     LPCWSTR lpCurrentDirectory, LPSTARTUPINFOW lpStartupInfo,
+                                                     LPPROCESS_INFORMATION lpProcessInformation, PHANDLE hNewToken)
+{
+    nlohmann::json param;
+    param["hToken"] = appbox::PointerToString(hToken);
+    if (lpApplicationName != nullptr)
+    {
+        param["lpApplicationName"] = appbox::WideToUTF8(lpApplicationName);
+    }
+    if (lpCommandLine != nullptr)
+    {
+        param["lpCommandLine"] = appbox::WideToUTF8(lpCommandLine);
+    }
+    param["lpProcessAttributes"] = appbox::PointerToString(lpProcessAttributes);
+    param["lpThreadAttributes"] = appbox::PointerToString(lpThreadAttributes);
+    param["bInheritHandles"] = bInheritHandles;
+    param["dwCreationFlags"] = dwCreationFlags;
+    param["lpEnvironment"] = appbox::PointerToString(lpEnvironment);
+    if (lpCurrentDirectory != nullptr)
+    {
+        param["lpCurrentDirectory"] = appbox::WideToUTF8(lpCurrentDirectory);
+    }
+    param["lpStartupInfo"] = appbox::PointerToString(lpStartupInfo);
+    param["lpProcessInformation"] = appbox::PointerToString(lpProcessInformation);
+    param["hNewToken"] = appbox::PointerToString(hNewToken);
+    return param;
+}
+static appbox::LoggerF logger("CreateProcessInternalW", CreateProcessInternalWLogParam);
 
 static BOOL Hook_CreateProcessInternalW(HANDLE hToken, LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
                                         LPSECURITY_ATTRIBUTES lpProcessAttributes,
@@ -17,6 +48,9 @@ static BOOL Hook_CreateProcessInternalW(HANDLE hToken, LPCWSTR lpApplicationName
                                         LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation,
                                         PHANDLE hNewToken)
 {
+    logger.Log(hToken, lpApplicationName, lpCommandLine, lpProcessAttributes, lpThreadAttributes, bInheritHandles,
+               dwCreationFlags, lpEnvironment, lpCurrentDirectory, lpStartupInfo, lpProcessInformation, hNewToken);
+
     PROCESS_INFORMATION backup;
     if (lpProcessInformation == nullptr)
     {
@@ -33,9 +67,9 @@ static BOOL Hook_CreateProcessInternalW(HANDLE hToken, LPCWSTR lpApplicationName
     }
 
 #if defined(_WIN64)
-    LPCSTR lpDllName = appbox::sandbox->inject_data.sandbox64_path.c_str();
+    LPCSTR lpDllName = appbox::sandbox->inject_data.sandbox64_dos_path.c_str();
 #else
-    LPCSTR lpDllName = appbox::sandbox->inject_data.sandbox32_path.c_str();
+    LPCSTR lpDllName = appbox::sandbox->inject_data.sandbox32_dos_path.c_str();
 #endif
 
     /* Inject DLL */
@@ -70,15 +104,6 @@ void appbox::InjectCreateProcessInternalW()
         addr = GetProcAddress(sys.h_kernel32, "CreateProcessInternalW");
     }
 
-    if (addr == nullptr)
-    {
-        THROW_LOG("hook CreateProcessInternalW failed");
-    }
     sys_CreateProcessInternalW = reinterpret_cast<T_CreateProcessInternalW>(addr);
-
-    auto ret = DetourAttach(&sys_CreateProcessInternalW, Hook_CreateProcessInternalW);
-    if (ret != NO_ERROR)
-    {
-        THROW_LOG("DetourAttach(CreateProcessInternalW) failed");
-    }
+    DetourAttach(&sys_CreateProcessInternalW, Hook_CreateProcessInternalW);
 }

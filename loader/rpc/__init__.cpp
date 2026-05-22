@@ -10,10 +10,10 @@ struct RpcMethodRecord
 static const RpcMethodRecord s_methods[] = { APPBOX_LOADER_RPC_METHODS(EXPAND_AS_METHOD) };
 #undef EXPAND_AS_METHOD
 
-void appbox::RpcInit()
+void appbox::RpcInit(appbox::RemoteServer::Ptr srv)
 {
     for (auto m : s_methods)
     {
-        m.fn(wxGetApp().runtime->pipe_server);
+        m.fn(srv);
     }
 }

@@ -38,8 +38,7 @@ struct appbox::RemoteServer::Data : std::enable_shared_from_this<Data>
     void OnConnected(asio::error_code ec, std::shared_ptr<asio::windows::stream_handle> pipe);
     void OnDataReceived(uint64_t session_id, RemoteSession::MsgPtr data);
     void SendResponse(uint64_t id, const nlohmann::json& result);
-    void SendError(uint64_t id, int errcode, const std::string& err_msg,
-                   const nlohmann::json& err_data = nullptr);
+    void SendError(uint64_t id, int errcode, const std::string& err_msg, const nlohmann::json& err_data = nullptr);
 
     WeakPtr           owner;
     std::string       pipe_path;
@@ -85,14 +84,12 @@ static HANDLE CreatePipeInstance(const std::string& pipe_name)
 
     if (h == INVALID_HANDLE_VALUE)
     {
-        throw std::system_error(static_cast<int>(::GetLastError()), std::system_category(),
-                                "CreateNamedPipe() failed");
+        throw std::system_error(static_cast<int>(::GetLastError()), std::system_category(), "CreateNamedPipe() failed");
     }
     return h;
 }
 
-static void SendResponseMsg(appbox::RemoteServer::Data* ctx, uint64_t id,
-                            std::shared_ptr<nlohmann::json> msg)
+static void SendResponseMsg(appbox::RemoteServer::Data* ctx, uint64_t id, std::shared_ptr<nlohmann::json> msg)
 {
     IncomingRequest::Ptr req;
     {
@@ -134,11 +131,9 @@ void appbox::RemoteServer::Data::Thread()
 void appbox::RemoteServer::Data::AcceptNext()
 {
     auto self = shared_from_this();
-    auto pipe =
-        std::make_shared<asio::windows::stream_handle>(io_context, CreatePipeInstance(pipe_path));
-    asio::windows::overlapped_ptr ov(io_context, [self, pipe](asio::error_code ec, std::size_t) {
-        self->OnConnected(ec, pipe);
-    });
+    auto pipe = std::make_shared<asio::windows::stream_handle>(io_context, CreatePipeInstance(pipe_path));
+    asio::windows::overlapped_ptr ov(io_context,
+                                     [self, pipe](asio::error_code ec, std::size_t) { self->OnConnected(ec, pipe); });
 
     BOOL  ok = ConnectNamedPipe(pipe->native_handle(), ov.get());
     DWORD err = GetLastError();
@@ -165,8 +160,7 @@ void appbox::RemoteServer::Data::AcceptNext()
     ov.complete(asio::error_code(err, std::system_category()), 0);
 }
 
-void appbox::RemoteServer::Data::OnConnected(asio::error_code                              ec,
-                                           std::shared_ptr<asio::windows::stream_handle> pipe)
+void appbox::RemoteServer::Data::OnConnected(asio::error_code ec, std::shared_ptr<asio::windows::stream_handle> pipe)
 {
     if (ec)
     {
@@ -178,14 +172,13 @@ void appbox::RemoteServer::Data::OnConnected(asio::error_code                   
     auto self = shared_from_this();
 
     uint64_t session_id = uid_gen++;
-    SPDLOG_DEBUG("[HANDLE: {}] server accept success: session_id={}", pipe->native_handle(),
-                 session_id);
+    SPDLOG_DEBUG("[HANDLE: {}] server accept success: session_id={}", pipe->native_handle(), session_id);
 
     auto session = RemoteSession::Create(
         std::move(pipe), [self, session_id](const asio::error_code& ec, RemoteSession::MsgPtr data) {
             if (ec)
             {
-                SPDLOG_ERROR("[SESSION: {}] session closed: {}", session_id, ec.message());
+                SPDLOG_DEBUG("[SESSION: {}] session closed: {}", session_id, ec.message());
                 self->session_map.erase(session_id);
                 return;
             }
@@ -198,13 +191,12 @@ void appbox::RemoteServer::Data::OnConnected(asio::error_code                   
         session_map.insert(SessionMap::value_type(session_id, session));
     }
 
+    AcceptNext();
     session->Start();
 }
 
 void appbox::RemoteServer::Data::OnDataReceived(uint64_t session_id, RemoteSession::MsgPtr data)
 {
-    SPDLOG_TRACE("data recv");
-
     auto req = std::make_shared<IncomingRequest>(uid_gen++, session_id);
     req->request = nlohmann::json::parse(*data);
     req->method = req->request["method"].get<std::string>();
@@ -219,6 +211,7 @@ void appbox::RemoteServer::Data::OnDataReceived(uint64_t session_id, RemoteSessi
     auto it = method_callbacks.find(req->method);
     if (it == method_callbacks.end())
     {
+        SPDLOG_ERROR("method not found: {}", req->method);
         SendError(req->uid, -32601, "Method not found");
         return;
     }
@@ -238,7 +231,7 @@ void appbox::RemoteServer::Data::SendResponse(uint64_t id, const nlohmann::json&
 }
 
 void appbox::RemoteServer::Data::SendError(uint64_t id, int errcode, const std::string& err_msg,
-                                         const nlohmann::json& err_data)
+                                           const nlohmann::json& err_data)
 {
     nlohmann::json err;
     err["code"] = errcode;

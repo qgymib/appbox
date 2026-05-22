@@ -3,6 +3,7 @@
 
 #include <string>
 #include <nlohmann/json.hpp>
+#include "loader/Config.hpp"
 
 namespace appbox::test
 {
@@ -47,9 +48,11 @@ struct ProbeResponse
  * @brief Call a probe function.
  * @param[in] name The name of the probe function, encoding in UTF-8.
  * @param[in] data The data to pass to the probe function.
+ * @param[in] cwd The current working directory.
+ * @param[in] config The loader configuration.
  * @return The result of the probe function.
  */
-nlohmann::json ProbeCall(const std::string& name, const nlohmann::json& data);
+nlohmann::json ProbeCall(const std::string& name, const nlohmann::json& data, const std::wstring& cwd, const LoaderConfig& config);
 
 } // namespace appbox::test
 

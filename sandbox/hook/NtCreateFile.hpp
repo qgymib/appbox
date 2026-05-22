@@ -2,11 +2,9 @@
 #define APPBOX_SANDBOX_HOOK_NTCREATEFILE_HPP
 
 #include "utils/WinAPI.h"
+#include <nlohmann/json.hpp>
 
-#ifdef __cplusplus
 extern "C" {
-#endif
-
 /**
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile
  */
@@ -15,17 +13,34 @@ typedef NTSTATUS (*T_NtCreateFile)(PHANDLE FileHandle, ACCESS_MASK DesiredAccess
                                    ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer,
                                    ULONG EaLength);
 
+/**
+ * @brief NtCreateFile() direct call.
+ */
 extern T_NtCreateFile sys_NtCreateFile;
-
-#ifdef __cplusplus
 }
-#endif
 
 namespace appbox
 {
 
+struct NtCreateFileLock
+{
+    NtCreateFileLock();
+    ~NtCreateFileLock();
+};
+
+/**
+ * @brief Inject NtCreateFile() hook.
+ */
 void InjectNtCreateFile();
 
-}
+/**
+ * @brief Convert POBJECT_ATTRIBUTES to json.
+ * @param[in] ObjectAttributes Object attributes.
+ * @param[in] CreateOptions Create options.
+ * @return Json object.
+ */
+nlohmann::json ToJson(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG CreateOptions);
+
+} // namespace appbox
 
 #endif // APPBOX_SANDBOX_HOOK_NTCREATEFILE_HPP

@@ -14,16 +14,10 @@
 namespace appbox
 {
 
-struct RemoteProtocol
-{
-    uint32_t magic = 0x424F583A;
-    uint32_t length = 0;
-};
-
 class RemoteSession : public std::enable_shared_from_this<RemoteSession>
 {
 public:
-    typedef std::shared_ptr<RemoteSession>                         Ptr;
+    typedef std::shared_ptr<RemoteSession>                       Ptr;
     typedef std::shared_ptr<std::string>                         MsgPtr;
     typedef std::function<void(const asio::error_code&, MsgPtr)> DataReceivedCallback;
 

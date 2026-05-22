@@ -40,7 +40,7 @@ static nlohmann::json GetProbeRequest(std::string& name)
     if (!rsp.has_value())
     {
         SPDLOG_ERROR("ProbeRequest failed");
-        exit(EXIT_FAILURE);
+        throw CLI::RuntimeError(EXIT_FAILURE);
     }
 
     name = rsp->name;
@@ -71,6 +71,7 @@ static void ProbeRun()
     ret.result = ProbeCallLocal(name, data);
 
     s_probe_ctx->rpc_client->Call<appbox::test::ProbeResponse>(ret);
+    throw CLI::Success();
 }
 
 void appbox::test::ProbeInit(CLI::App& app)

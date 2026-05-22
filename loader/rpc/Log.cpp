@@ -45,13 +45,16 @@ APPBOX_LOADER_RPC_DEFINE(MsgLog, id, param)
 
     switch (param.level)
     {
-    case appbox::LOGLEVEL_DEBUG:
+    case appbox::LOG_LEVEL_TRACE:
+        spdlog::trace("{}", msg);
+        break;
+    case appbox::LOG_LEVEL_DEBUG:
         spdlog::debug("{}", msg);
         break;
-    case appbox::LOGLEVEL_WARN:
+    case appbox::LOG_LEVEL_WARN:
         spdlog::warn("{}", msg);
         break;
-    case appbox::LOGLEVEL_ERROR:
+    case appbox::LOG_LEVEL_ERROR:
         spdlog::error("{}", msg);
         break;
     default:

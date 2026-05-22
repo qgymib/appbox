@@ -3,28 +3,28 @@
 
 #include "utils/WinAPI.h"
 
-#ifdef __cplusplus
 extern "C" {
-#endif
-
 /**
  * @see
  * https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-setprocessmitigationpolicy
  */
-typedef BOOL (*T_SetProcessMitigationPolicy)(PROCESS_MITIGATION_POLICY MitigationPolicy,
-                                           PVOID lpBuffer, SIZE_T dwLength);
+typedef BOOL (*T_SetProcessMitigationPolicy)(PROCESS_MITIGATION_POLICY MitigationPolicy, PVOID lpBuffer,
+                                             SIZE_T dwLength);
 
+/**
+ * @brief SetProcessMitigationPolicy() direct call.
+ */
 extern T_SetProcessMitigationPolicy sys_SetProcessMitigationPolicy;
-
-#ifdef __cplusplus
 }
-#endif
 
 namespace appbox
 {
 
+/**
+ * @brief Inject SetProcessMitigationPolicy() hook.
+ */
 void InjectSetProcessMitigationPolicy();
 
-}
+} // namespace appbox
 
 #endif

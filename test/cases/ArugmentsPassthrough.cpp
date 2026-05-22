@@ -13,12 +13,23 @@
 #include "Test.hpp"
 #include "loader/Config.hpp"
 #include "WString.hpp"
+#include "__init__.hpp"
 
 struct TestArgumentsPassthrough : testing::Test
 {
+    TestArgumentsPassthrough()
+    {
+        cwd_ = appbox::test::CWD::Create(L"TestArgumentsPassthrough");
+    }
+    ~TestArgumentsPassthrough() override
+    {
+        cwd_->NoCleanup(HasFailure());
+    }
+
+    appbox::test::CWD::Ptr cwd_;
 };
 
-nlohmann::json ProbeHelloWorld(const nlohmann::json& data)
+static nlohmann::json ProbeHelloWorld(const nlohmann::json& data)
 {
     std::string v = data.get<std::string>();
     return v + "World";
@@ -27,6 +38,6 @@ static appbox::test::Probe probe("HelloWorld", ProbeHelloWorld);
 
 TEST_F(TestArgumentsPassthrough, Hello)
 {
-    auto ret = probe.Call("Hello").get<std::string>();
+    auto ret = probe.Call("Hello", cwd_->WString()).get<std::string>();
     ASSERT_EQ(ret, "HelloWorld");
 }

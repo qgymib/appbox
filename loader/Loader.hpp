@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <memory>
 #include "widget/MainFrame.hpp"
-#include "InjectData.hpp"
+#include "sandbox/Config.hpp"
 #include "RemoteServer.hpp"
 #include "Config.hpp"
 
@@ -17,8 +17,7 @@ struct AppBoxLoaderRuntime
     AppBoxLoaderRuntime();
     ~AppBoxLoaderRuntime();
 
-    std::filesystem::path     temp_dir;    /* Temporary directory for loader operations */
-    appbox::InjectData        inject_data; /* Inject data information */
+    appbox::SandboxConfig     inject_data; /* Inject data information */
     appbox::RemoteServer::Ptr pipe_server; /* Pipe server for remote communication */
 };
 
@@ -26,13 +25,14 @@ struct AppBoxLoader : wxApp
 {
     bool OnInit() override;
     int  OnExit() override;
+    int  OnRun() override;
     void HandleEventExitApplicationNoGUI(wxCommandEvent&);
 
-    appbox::LoaderConfig      config;                   /* Loader configuration */
-    std::vector<std::wstring> exe_args;                 /* Main executable arguments */
-    AppBoxLoaderRuntime::Ptr  runtime;                  /* Runtime information */
-    MainFrame*                main_frame = nullptr;     /* Main frame */
-    std::thread*              working_thread = nullptr; /* Working thread */
+    appbox::LoaderConfig     loader_config;            /* Loader configuration */
+    AppBoxLoaderRuntime::Ptr runtime;                  /* Runtime information */
+    MainFrame*               main_frame = nullptr;     /* Main frame */
+    std::thread*             working_thread = nullptr; /* Working thread */
+    DWORD                    exit_code = 0;            /* Exit code */
 };
 wxDECLARE_APP(AppBoxLoader);
 

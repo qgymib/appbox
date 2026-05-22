@@ -7,6 +7,7 @@
 #include <spdlog/spdlog.h>
 #include <list>
 #include <array>
+#include "sandbox/utils/RemoteProtocol.hpp"
 #include "RemoteSession.hpp"
 
 struct appbox::RemoteSession::Data : std::enable_shared_from_this<Data>
@@ -42,7 +43,6 @@ void appbox::RemoteSession::Data::WantWrite()
 
     auto self = shared_from_this();
     auto msg = send_queue.front();
-    SPDLOG_TRACE("[HANDLE: {}] asio::async_write(): {}", pipe->native_handle(), *msg);
 
     self->in_write = true;
     asio::async_write(*pipe, asio::buffer(*msg), [self](const asio::error_code& ec, std::size_t) {
@@ -50,11 +50,9 @@ void appbox::RemoteSession::Data::WantWrite()
         self->send_queue.pop_front();
         if (ec)
         { /* write failed */
-            SPDLOG_ERROR("[HANDLE: {}] write pipe failed: {}", self->pipe->native_handle(),
-                         ec.message());
+            SPDLOG_ERROR("[HANDLE: {}] write pipe failed: {}", self->pipe->native_handle(), ec.message());
             return;
         }
-        SPDLOG_TRACE("[HANDLE: {}] write pipe success", self->pipe->native_handle());
 
         self->WantWrite();
     });
@@ -66,8 +64,7 @@ void appbox::RemoteSession::Data::WantRead()
     auto fn = [self](const asio::error_code& ec, std::size_t n) {
         if (ec)
         {
-            SPDLOG_ERROR("[HANDLE: {}] read pipe failed: {}", self->pipe->native_handle(),
-                         ec.message());
+            SPDLOG_DEBUG("[HANDLE: {}] read pipe failed: {}", self->pipe->native_handle(), ec.message());
             self->cb(ec, MsgPtr());
             return;
         }
@@ -76,14 +73,11 @@ void appbox::RemoteSession::Data::WantRead()
         size_t new_sz = old_sz + n;
         self->recv_data.resize(new_sz);
         memcpy(self->recv_data.data() + old_sz, self->recv_buff.data(), n);
-        SPDLOG_TRACE("[HANDLE: {}] read pipe success, total bytes: {}", self->pipe->native_handle(),
-                     new_sz);
 
         self->OnRead();
         self->WantRead();
     };
 
-    SPDLOG_TRACE("[HANDLE: {}] WantRead()", pipe->native_handle());
     asio::async_read(*pipe, asio::buffer(recv_buff), asio::transfer_at_least(1), fn);
 }
 
@@ -114,7 +108,6 @@ void appbox::RemoteSession::Data::OnRead()
     memmove(recv_data.data(), recv_data.data() + total_msg_bytes, left_bytes);
     recv_data.resize(left_bytes);
 
-    SPDLOG_TRACE("msg: {}", *msg);
     cb(asio::error_code(), msg);
 }
 
@@ -128,8 +121,8 @@ appbox::RemoteSession::~RemoteSession()
     data_.reset();
 }
 
-appbox::RemoteSession::Ptr appbox::RemoteSession::Create(
-    std::shared_ptr<asio::windows::stream_handle> pipe, DataReceivedCallback cb)
+appbox::RemoteSession::Ptr appbox::RemoteSession::Create(std::shared_ptr<asio::windows::stream_handle> pipe,
+                                                         DataReceivedCallback                          cb)
 {
     Ptr session(new RemoteSession);
     session->data_->pipe = std::move(pipe);
@@ -145,8 +138,6 @@ void appbox::RemoteSession::Start()
 
 void appbox::RemoteSession::Send(MsgPtr data)
 {
-    SPDLOG_TRACE("Send(): queue: {}", *data);
-
     RemoteProtocol head;
     head.length = static_cast<uint32_t>(data->size());
 

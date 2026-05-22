@@ -31,7 +31,8 @@
         "APPBOX_LOG_LEVEL": "info"
       },
       "output": {
-        "outputOnFailure": true
+        "outputOnFailure": true,
+        "verbosity": "verbose"
       },
       "execution": {
         "noTestsAction": "error",

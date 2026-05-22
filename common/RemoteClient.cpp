@@ -190,6 +190,7 @@ bool appbox::RemoteClient::Start()
     data_->thread->join();
     delete data_->thread;
     data_->thread = nullptr;
+
     if (data_->session.get() == nullptr)
     {
         SPDLOG_ERROR("connect failed");

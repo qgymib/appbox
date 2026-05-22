@@ -3,10 +3,7 @@
 
 #include "utils/WinAPI.h"
 
-#ifdef __cplusplus
 extern "C" {
-#endif
-
 /**
  * @see
  * https://www.geoffchappell.com/studies/windows/win32/ntdll/api/rtl/rtlexec/queryimagefileexecutionoptionsex.htm
@@ -15,10 +12,7 @@ typedef NTSTATUS (*T_LdrQueryImageFileExecutionOptionsEx)(PUNICODE_STRING lpImag
                                                           PVOID lpData, ULONG cbData, ULONG* lpcbData, BOOLEAN bWow64);
 
 extern T_LdrQueryImageFileExecutionOptionsEx sys_LdrQueryImageFileExecutionOptionsEx;
-
-#ifdef __cplusplus
 }
-#endif
 
 namespace appbox
 {

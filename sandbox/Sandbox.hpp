@@ -4,8 +4,8 @@
 #include "utils/WinAPI.h"
 #include "utils/Task.hpp"
 #include "utils/AsyncInstance.hpp"
-#include "InjectData.hpp"
-#include "RemoteClient.hpp"
+#include "utils/PipeClient.hpp"
+#include "Config.hpp"
 
 namespace appbox
 {
@@ -14,10 +14,10 @@ struct Sandbox
 {
     Sandbox(HINSTANCE hinstDLL);
 
-    HINSTANCE                        hinstDLL;    /* Dll instance */
-    appbox::InjectData               inject_data; /* Inject data */
-    TaskQueue::Ptr                   task_queue;  /* Task queue */
-    AsyncInstance<RemoteClient>::Ptr client;      /* RPC client */
+    HINSTANCE                           hinstDLL;    /* Dll instance */
+    appbox::SandboxConfig               inject_data; /* Inject data */
+    TaskQueue::Ptr                      task_queue;  /* Task queue */
+    std::shared_ptr<appbox::PipeClient> client;      /* RPC client */
 };
 
 /**

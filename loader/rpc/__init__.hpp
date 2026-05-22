@@ -19,30 +19,30 @@
  * @param[in] ID Request ID name.
  * @param[in] PARAM Parameter name.
  */
-#define APPBOX_LOADER_RPC_DEFINE(NAME, ID, PARAM)                                                  \
-    static void RpcMethod_##NAME(uint64_t ID, const ::appbox::NAME::Req& PARAM);                   \
-    static void RpcMethod_##NAME##_Wrap(uint64_t id, const nlohmann::json& param)                  \
-    {                                                                                              \
-        RpcMethod_##NAME(id, param);                                                               \
-    }                                                                                              \
-    void ::appbox::RegisterRpcMethod_##NAME(::appbox::RemoteServer::Ptr s)                         \
-    {                                                                                              \
-        s->RegisterMethod(::appbox::NAME::Method, RpcMethod_##NAME##_Wrap);                        \
-    }                                                                                              \
+#define APPBOX_LOADER_RPC_DEFINE(NAME, ID, PARAM)                                                                      \
+    static void RpcMethod_##NAME(uint64_t ID, const ::appbox::NAME::Req& PARAM);                                       \
+    static void RpcMethod_##NAME##_Wrap(uint64_t id, const nlohmann::json& param)                                      \
+    {                                                                                                                  \
+        RpcMethod_##NAME(id, param);                                                                                   \
+    }                                                                                                                  \
+    void ::appbox::RegisterRpcMethod_##NAME(::appbox::RemoteServer::Ptr s)                                             \
+    {                                                                                                                  \
+        s->RegisterMethod(::appbox::NAME::Method, RpcMethod_##NAME##_Wrap);                                            \
+    }                                                                                                                  \
     static void RpcMethod_##NAME(uint64_t ID, const ::appbox::NAME::Req& PARAM)
 
 namespace appbox
 {
 
-#define APPBOX_LOADER_RPC_METHODS_EXPAND(NAME)                                                     \
-    void RegisterRpcMethod_##NAME(::appbox::RemoteServer::Ptr);
+#define APPBOX_LOADER_RPC_METHODS_EXPAND(NAME) void RegisterRpcMethod_##NAME(::appbox::RemoteServer::Ptr);
 APPBOX_LOADER_RPC_METHODS(APPBOX_LOADER_RPC_METHODS_EXPAND)
 #undef APPBOX_LOADER_RPC_METHODS_EXPAND
 
 /**
  * @brief Initialize RPC methods.
+ * @param[in] srv RPC server.
  */
-void RpcInit();
+void RpcInit(appbox::RemoteServer::Ptr srv);
 
 } // namespace appbox
 

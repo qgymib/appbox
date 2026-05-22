@@ -1,15 +1,25 @@
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0600
-#endif
-#include <windows.h>
+#include "utils/WinAPI.h" /* Must be first include file */
+#include "utils/Log.hpp"
+#include "hook/CreateProcessInternalW.hpp"
+#include "hook/LdrQueryImageFileExecutionOptionsEx.hpp"
+#include "hook/NtClose.hpp"
+#include "hook/NtCreateFile.hpp"
+#include "hook/NtDeleteFile.hpp"
+#include "hook/NtOpenFile.hpp"
+#include "hook/NtQueryAttributesFile.hpp"
+#include "hook/NtQueryDirectoryFile.hpp"
+#include "hook/NtQueryDirectoryFileEx.hpp"
+#include "hook/NtQueryFullAttributesFile.hpp"
+#include "hook/NtQueryInformationFile.hpp"
+#include "hook/NtQueryObject.hpp"
+#include "hook/NtReadFile.hpp"
+#include "hook/NtSetInformationFile.hpp"
+#include "hook/NtWriteFile.hpp"
+#include "hook/RtlInitUnicodeString.hpp"
+#include "hook/SetProcessMitigationPolicy.hpp"
+#include "__init__.hpp"
 #include <exception>
 #include <detours.h>
-#include "utils/Log.hpp"
-#include "__init__.hpp"
-#include "CreateProcessInternalW.hpp"
-#include "LdrQueryImageFileExecutionOptionsEx.hpp"
-#include "NtCreateFile.hpp"
-#include "SetProcessMitigationPolicy.hpp"
 
 #ifdef _M_ARM64
 #define NtCurrentPeb() (*((ULONG_PTR*)(__getReg(18) + 0x60)))
@@ -50,8 +60,21 @@ struct SandboxHook
 static const SandboxHook s_hooks[] = {
     { "CreateProcessInternalW",              appbox::InjectCreateProcessInternalW              },
     { "LdrQueryImageFileExecutionOptionsEx", appbox::InjectLdrQueryImageFileExecutionOptionsEx },
+    { "NtClose",                             appbox::InjectNtClose                             },
+    { "NtCreateFile",                        appbox::InjectNtCreateFile                        },
+    { "NtDeleteFile",                        appbox::InjectNtDeleteFile                        },
+    { "NtOpenFile",                          appbox::InjectNtOpenFile                          },
+    { "NtQueryAttributesFile",               appbox::InjectNtQueryAttributesFile               },
+    { "NtQueryDirectoryFile",                appbox::InjectNtQueryDirectoryFile                },
+    { "NtQueryDirectoryFileEx",              appbox::InjectNtQueryDirectoryFileEx              },
+    { "NtQueryFullAttributesFile",           appbox::InjectNtQueryFullAttributesFile           },
+    { "NtQueryInformationFile",              appbox::InjectNtQueryInformationFile              },
+    { "NtQueryObject",                       appbox::InjectNtQueryObject                       },
+    { "NtReadFile",                          appbox::InjectNtReadFile                          },
+    { "NtSetInformationFile",                appbox::InjectNtSetInformationFile                },
+    { "NtWriteFile",                         appbox::InjectNtWriteFile                         },
+    { "RtlInitUnicodeString",                appbox::InjectRtlInitUnicodeString                },
     { "SetProcessMitigationPolicy",          appbox::InjectSetProcessMitigationPolicy          },
-    { "NtCreateFile", appbox::InjectNtCreateFile },
 };
 
 appbox::Sys appbox::sys;
@@ -76,14 +99,7 @@ void appbox::InitHook()
 
     for (const auto& hook : s_hooks)
     {
-        try
-        {
-            hook.fn();
-        }
-        catch (const std::exception& e)
-        {
-            LOG_E("Sandbox hook {} failed: {}", hook.name, e.what());
-        }
+        hook.fn();
     }
 
     DetourTransactionCommit();

@@ -8,10 +8,11 @@ namespace appbox
 
 enum MsgLogLevel
 {
-    LOGLEVEL_DEBUG = 0,
-    LOGLEVEL_INFO = 1,
-    LOGLEVEL_WARN = 2,
-    LOGLEVEL_ERROR = 3,
+    LOG_LEVEL_TRACE,
+    LOG_LEVEL_DEBUG,
+    LOG_LEVEL_INFO,
+    LOG_LEVEL_WARN,
+    LOG_LEVEL_ERROR,
 };
 
 struct MsgLog

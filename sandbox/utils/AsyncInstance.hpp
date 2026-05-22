@@ -4,7 +4,7 @@
 #include <memory>
 #include <functional>
 #include <mutex>
-#include <thread>
+#include <iostream>
 
 namespace appbox
 {
@@ -27,17 +27,15 @@ public:
 
     T* operator->()
     {
-        std::call_once(once_, [this]() { this->AsyncCreate(); });
+        std::call_once(once_, [this]() {
+            std::cout << "before init" << std::endl;
+            this->obj_ = this->factory_();
+            std::cout << "after init" << std::endl;
+        });
         return obj_.get();
     }
 
 private:
-    void AsyncCreate()
-    {
-        std::thread t([this]() { this->obj_ = this->factory_(); });
-        t.join();
-    }
-
     InstanceFactory    factory_;
     std::once_flag     once_;
     std::shared_ptr<T> obj_;

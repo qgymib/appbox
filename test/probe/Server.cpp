@@ -171,21 +171,35 @@ ProbeKey::~ProbeKey()
     s_probe_srv->context_map.erase(key);
 }
 
-static void RunSelfAsProbe(const std::string& key)
+static appbox::LoaderConfig OverrideConfig(const appbox::LoaderConfig& config)
 {
+    appbox::LoaderConfig copy_config = config;
+    copy_config.launch.executable = s_probe_srv->exe_path;
+    return copy_config;
+}
+
+static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, const appbox::LoaderConfig& config)
+{
+    std::filesystem::path cfg_path;
+    {
+        nlohmann::json j_config = config;
+        auto           data = j_config.dump(2);
+
+        cfg_path = std::filesystem::path(cwd) / "config.json";
+        std::ofstream ofs(cfg_path, std::ios::binary | std::ios::trunc);
+        ofs.write(data.data(), data.size());
+    }
+
+    auto log_path = std::filesystem::path(cwd) / "log.txt";
+
     std::wstring cmd;
     {
-        appbox::LoaderConfig config;
-        config.launch.executable = s_probe_srv->exe_path;
-
-        nlohmann::json j_config = config;
-        auto           b_config = base64::to_base64(j_config.dump());
-
         /* clang-format off */
         cmd = appbox::BuildCommandLine(appbox::test::cmd_param.loader_path,
             {
+                L"--X-AppBox-ConfigFile", cfg_path.wstring(),
                 L"--X-AppBox-LogLevel", appbox::test::cmd_param.log_level,
-                L"--X-AppBox-ConfigBase64", CLI::widen(b_config),
+                L"--X-AppBox-LogFile", log_path.wstring(),
                 L"probe",
                 L"--probe_pipe", CLI::widen(s_probe_srv->pipe_path),
                 L"--probe_key", CLI::widen(key),
@@ -236,13 +250,16 @@ static void RunSelfAsProbe(const std::string& key)
     }
 }
 
-nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::json& data)
+nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::json& data, const std::wstring& cwd,
+                                       const LoaderConfig& config)
 {
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
 
+    auto copy_config = OverrideConfig(config);
+
     ProbeKey key(name, data);
-    RunSelfAsProbe(key.key);
+    RunSelfAsProbe(key.key, cwd, copy_config);
 
     key.ctx->sem.Acquire();
     return key.ctx->result;

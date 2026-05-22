@@ -6,6 +6,18 @@
 namespace appbox
 {
 
+struct ThreadLocal
+{
+    static ThreadLocal& Get()
+    {
+        static thread_local ThreadLocal s_local;
+        return s_local;
+    }
+
+    bool disable_NtCreateFile_hook = true;
+    bool disable_NtQueryObject_hook = true;
+};
+
 /**
  * @brief System informations.
  */
