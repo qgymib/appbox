@@ -7,28 +7,28 @@
   },
   "configurePresets": [
     {
-      "name": "RelWithDebInfo",
-      "binaryDir": "${sourceDir}/build/RelWithDebInfo",
+      "name": "Release",
+      "binaryDir": "${sourceDir}/build/Release",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "RelWithDebInfo",
-      "configurePreset": "RelWithDebInfo",
-      "configuration": "RelWithDebInfo",
+      "name": "Release",
+      "configurePreset": "Release",
+      "configuration": "Release",
       "jobs": 8
     }
   ],
   "testPresets": [
     {
-      "name": "RelWithDebInfo",
-      "configurePreset": "RelWithDebInfo",
-      "configuration": "RelWithDebInfo",
+      "name": "Release",
+      "configurePreset": "Release",
+      "configuration": "Release",
       "environment": {
-        "APPBOX_LOG_LEVEL": "info"
+        "APPBOX_LOG_LEVEL": "trace"
       },
       "output": {
         "outputOnFailure": true,
@@ -40,21 +40,34 @@
       }
     }
   ],
+  "packagePresets": [
+    {
+      "name": "Release",
+      "configurePreset": "Release",
+      "generators": [
+        "ZIP"
+      ]
+    }
+  ],
   "workflowPresets": [
     {
-      "name": "RelWithDebInfo",
+      "name": "Release",
       "steps": [
         {
           "type": "configure",
-          "name": "RelWithDebInfo"
+          "name": "Release"
         },
         {
           "type": "build",
-          "name": "RelWithDebInfo"
+          "name": "Release"
         },
         {
           "type": "test",
-          "name": "RelWithDebInfo"
+          "name": "Release"
+        },
+        {
+          "type": "package",
+          "name": "Release"
         }
       ]
     }

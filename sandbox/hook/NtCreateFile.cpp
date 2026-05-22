@@ -482,11 +482,18 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
     }
 
     /* Get file path in sandbox */
-    std::wstring nativate_fs_path;
-    if (!ConvertToFullNtPath(ObjectAttributes, CreateOptions, nativate_fs_path) ||
-        !appbox::MappingAsDosNtPath(nativate_fs_path, nativate_fs_path))
+    std::wstring nativate_fs_nt_path;
+    if (!ConvertToFullNtPath(ObjectAttributes, CreateOptions, nativate_fs_nt_path))
     {
-        LOG_E("ConvertToFullNtPath failed");
+        LOG_W("ConvertToFullNtPath failed");
+        return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
+                                FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
+    }
+
+    std::wstring nativate_fs_path;
+    if (!appbox::MappingAsDosNtPath(nativate_fs_nt_path, nativate_fs_path))
+    {
+        LOG_W(L"MappingAsDosNtPath failed: {}", nativate_fs_nt_path);
         return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
                                 FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
     }
@@ -499,16 +506,17 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
     std::wstring file_path_in_overlay_fs;
     if (!appbox::MappingPathInSandbox(nativate_fs_path, w_overlay_fs, file_path_in_overlay_fs))
     {
+        LOG_W("MappingPathInSandbox() for overlay_fs failed");
         return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
                                 FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
     }
+    LOG_D(L"file_path_in_overlay_fs: {}", file_path_in_overlay_fs);
     if (appbox::CheckFileExist(file_path_in_overlay_fs))
     {
         return NtCreateFileOpenFS(file_path_in_overlay_fs, ObjectAttributes->Attributes, FileHandle, DesiredAccess,
                                   IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
                                   CreateOptions, EaBuffer, EaLength);
     }
-    LOG_D(L"file_path_in_overlay_fs: {}", file_path_in_overlay_fs);
 
     /*
      * IF file exist in base fs:
@@ -519,9 +527,11 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
     std::wstring file_path_in_base_fs;
     if (!appbox::MappingPathInSandbox(nativate_fs_path, w_base_fs, file_path_in_base_fs))
     {
+        LOG_W("MappingPathInSandbox() for base_fs failed");
         return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
                                 FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
     }
+    LOG_D(L"file_path_in_base_fs: {}", file_path_in_base_fs);
     if (appbox::CheckFileExist(file_path_in_base_fs))
     {
         if (DesiredAccess & GENERIC_WRITE)
@@ -536,7 +546,6 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
                                   IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
                                   CreateOptions, EaBuffer, EaLength);
     }
-    LOG_D(L"file_path_in_base_fs: {}", file_path_in_base_fs);
 
     /*
      * If file exist in nativate fs:

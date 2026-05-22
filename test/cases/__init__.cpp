@@ -17,7 +17,7 @@ appbox::test::CWD::Ptr appbox::test::CWD::Create(const std::wstring& id, bool cl
 
     obj->cleanup_ = cleanup;
     obj->cwd_ = std::filesystem::current_path();
-    obj->cwd_ = obj->cwd_ / fmt::format("{}-{}", appbox::WideToUTF8(id), appbox::RandomString(16));
+    obj->cwd_ = obj->cwd_ / fmt::format("Test-{}-{}", appbox::WideToUTF8(id), appbox::RandomString(16));
 
     std::filesystem::create_directories(obj->cwd_);
     return obj;
