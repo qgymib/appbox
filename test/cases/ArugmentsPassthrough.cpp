@@ -3,13 +3,7 @@
 #endif
 #include <windows.h>
 #include <gtest/gtest.h>
-#include <spdlog/spdlog.h>
-#include <CLI/Encoding.hpp>
-#include <base64.hpp>
 #include "probe/__init__.hpp"
-#include "utils/Semaphore.hpp"
-#include "RemoteServer.hpp"
-#include "BuildCommandLine.hpp"
 #include "Test.hpp"
 #include "loader/Config.hpp"
 #include "WString.hpp"
@@ -19,7 +13,7 @@ struct TestArgumentsPassthrough : testing::Test
 {
     TestArgumentsPassthrough()
     {
-        cwd_ = appbox::test::CWD::Create(L"TestArgumentsPassthrough");
+        cwd_ = appbox::test::CWD::Create();
     }
     ~TestArgumentsPassthrough() override
     {

@@ -28,7 +28,7 @@
       "configurePreset": "Release",
       "configuration": "Release",
       "environment": {
-        "APPBOX_LOG_LEVEL": "trace"
+        "APPBOX_TEST_LOG_LEVEL": "trace"
       },
       "output": {
         "outputOnFailure": true,

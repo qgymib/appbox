@@ -1,9 +1,11 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
-#include "NtCreateFile.hpp"
-#include "NtQueryObject.hpp"
+#include "hook/NtCreateFile.hpp"
+#include "hook/NtQueryObject.hpp"
 #include "__init__.hpp"
 #include <detours.h>
+
+T_NtQueryObject sys_NtQueryObject = nullptr;
 
 static nlohmann::json NtQueryObjectLogParam(HANDLE Handle, OBJECT_INFORMATION_CLASS ObjectInformationClass,
                                             PVOID ObjectInformation, ULONG ObjectInformationLength, PULONG ReturnLength)
@@ -17,7 +19,6 @@ static nlohmann::json NtQueryObjectLogParam(HANDLE Handle, OBJECT_INFORMATION_CL
     return json;
 }
 
-T_NtQueryObject        sys_NtQueryObject = nullptr;
 static appbox::LoggerF logger("NtQueryObject", NtQueryObjectLogParam);
 
 static NTSTATUS Hook_NtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS ObjectInformationClass,

@@ -49,10 +49,11 @@ struct ProbeResponse
  * @param[in] name The name of the probe function, encoding in UTF-8.
  * @param[in] data The data to pass to the probe function.
  * @param[in] cwd The current working directory.
- * @param[in] config The loader configuration.
+ * @param[in] loader_config The loader configuration.
  * @return The result of the probe function.
  */
-nlohmann::json ProbeCall(const std::string& name, const nlohmann::json& data, const std::wstring& cwd, const LoaderConfig& config);
+nlohmann::json ProbeCall(const std::string& name, const nlohmann::json& data, const std::wstring& cwd,
+                         const LoaderConfig& loader_config);
 
 } // namespace appbox::test
 

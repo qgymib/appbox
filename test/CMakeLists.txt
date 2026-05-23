@@ -2,7 +2,8 @@
 add_executable(AppBoxTests
     "cases/__init__.cpp"
     "cases/ArugmentsPassthrough.cpp"
-    "cases/CreateFileW.cpp"
+    "cases/OpenFile.cpp"
+    "cases/ReadFile.cpp"
     "cases/RPC.cpp"
     "probe/__init__.cpp"
     "probe/Server.cpp"

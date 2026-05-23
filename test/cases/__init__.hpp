@@ -17,11 +17,9 @@ struct CWD
 
     /**
      * @brief Create a new CWD instance.
-     * @param[in] id The unique ID of the CWD instance.
-     * @param[in] cleanup Whether to delete the CWD directory when the CWD instance is destroyed.
      * @return The CWD instance pointe
      */
-    static Ptr Create(const std::wstring& id, bool cleanup = true);
+    static Ptr Create();
 
     /**
      * @brief Get the path of the CWD directory.
@@ -39,7 +37,7 @@ struct CWD
     CWD(CWD&&) = delete;
     CWD& operator=(CWD&&) = delete;
 
-    bool                  cleanup_;
+    bool                  no_cleanup_;
     std::filesystem::path cwd_;
 };
 

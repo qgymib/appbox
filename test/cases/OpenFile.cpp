@@ -1,7 +1,4 @@
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0600
-#endif
-#include <windows.h>
+#include "sandbox/utils/WinAPI.h" /* Must be first include file */
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <spdlog/spdlog.h>
@@ -9,15 +6,16 @@
 #include "loader/Config.hpp"
 #include "WString.hpp"
 #include "__init__.hpp"
+#include "Test.hpp"
 
-struct TestCreateFileW : testing::Test
+struct OpenFile : testing::Test
 {
-    TestCreateFileW()
+    OpenFile()
     {
-        cwd_ = appbox::test::CWD::Create(L"TestCreateFileW");
+        cwd_ = appbox::test::CWD::Create();
     }
 
-    ~TestCreateFileW() override
+    ~OpenFile() override
     {
         cwd_->NoCleanup(HasFailure());
     }
@@ -68,21 +66,49 @@ struct ProbeCreateFileW
 
 static appbox::test::Probe probe(ProbeCreateFileW::Method, ProbeCreateFileW::Entry);
 
-TEST_F(TestCreateFileW, NewFile)
+TEST_F(OpenFile, NewFile)
 {
-    ProbeCreateFileW::Req req;
+    auto file_path = cwd_->cwd_ / "CreateFile_NewFile";
 
-    auto file_path = cwd_->cwd_ / "TestCreateFileW.json";
-    req.FileName = appbox::WideToUTF8(file_path.wstring());
-    req.dwCreationDisposition = CREATE_ALWAYS;
-    req.dwDesiredAccess = GENERIC_WRITE;
+    /* Create file in sandbox */
+    {
+        ProbeCreateFileW::Req req;
+        req.FileName = appbox::WideToUTF8(file_path.wstring());
+        req.dwCreationDisposition = CREATE_ALWAYS;
+        req.dwDesiredAccess = GENERIC_WRITE;
 
-    auto rsp = probe.Call(req, cwd_->WString(), config_).get<ProbeCreateFileW::Rsp>();
-    ASSERT_EQ(rsp.code, 0);
+        auto rsp = probe.Call(req, cwd_->WString(), config_).get<ProbeCreateFileW::Rsp>();
+        ASSERT_EQ(rsp.code, 0);
+    }
 
     /*
      * The file should exist in the sandbox.
      * So original file path should not exist.
      */
     ASSERT_FALSE(std::filesystem::exists(file_path));
+
+    /* Open file in sandbox */
+    {
+        ProbeCreateFileW::Req req;
+        req.FileName = appbox::WideToUTF8(file_path.wstring());
+        req.dwCreationDisposition = OPEN_EXISTING;
+        req.dwDesiredAccess = GENERIC_READ;
+
+        auto rsp = probe.Call(req, cwd_->WString(), config_).get<ProbeCreateFileW::Rsp>();
+        ASSERT_EQ(rsp.code, 0);
+    }
+}
+
+TEST_F(OpenFile, NonExist)
+{
+    auto file_path = cwd_->cwd_ / "CreateFile_NonExist";
+
+    {
+        ProbeCreateFileW::Req req;
+        req.FileName = appbox::WideToUTF8(file_path.wstring());
+        req.dwCreationDisposition = OPEN_EXISTING;
+
+        auto rsp = probe.Call(req, cwd_->WString(), config_).get<ProbeCreateFileW::Rsp>();
+        ASSERT_NE(rsp.code, 0);
+    }
 }

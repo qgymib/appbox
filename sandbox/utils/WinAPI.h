@@ -151,6 +151,29 @@ typedef enum _FILE_INFORMATION_CLASS
     FileMaximumInformation
 } FILE_INFORMATION_CLASS, *PFILE_INFORMATION_CLASS;
 
+/**
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ne-wdm-_fsinfoclass
+ */
+typedef enum _FSINFOCLASS
+{
+    FileFsVolumeInformation,
+    FileFsLabelInformation,
+    FileFsSizeInformation,
+    FileFsDeviceInformation,
+    FileFsAttributeInformation,
+    FileFsControlInformation,
+    FileFsFullSizeInformation,
+    FileFsObjectIdInformation,
+    FileFsDriverPathInformation,
+    FileFsVolumeFlagsInformation,
+    FileFsSectorSizeInformation,
+    FileFsDataCopyInformation,
+    FileFsMetadataSizeInformation,
+    FileFsFullSizeInformationEx,
+    FileFsGuidInformation,
+    FileFsMaximumInformation
+} FS_INFORMATION_CLASS, *PFS_INFORMATION_CLASS;
+
 typedef struct _UNICODE_STRING
 {
     USHORT Length;

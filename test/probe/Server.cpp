@@ -195,10 +195,10 @@ static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, cons
     std::wstring cmd;
     {
         /* clang-format off */
-        cmd = appbox::BuildCommandLine(appbox::test::cmd_param.loader_path,
+        cmd = appbox::BuildCommandLine(appbox::test::config.loader_path,
             {
                 L"--X-AppBox-ConfigFile", cfg_path.wstring(),
-                L"--X-AppBox-LogLevel", appbox::test::cmd_param.log_level,
+                L"--X-AppBox-LogLevel", appbox::test::config.log_level,
                 L"--X-AppBox-LogFile", log_path.wstring(),
                 L"probe",
                 L"--probe_pipe", CLI::widen(s_probe_srv->pipe_path),
@@ -215,7 +215,7 @@ static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, cons
     PROCESS_INFORMATION process_info;
     ZeroMemory(&process_info, sizeof(process_info));
 
-    if (!CreateProcessW(appbox::test::cmd_param.loader_path.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr,
+    if (!CreateProcessW(appbox::test::config.loader_path.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr,
                         nullptr, &startup_info, &process_info))
     {
         auto msg = fmt::format("CreateProcessW failed: {}", GetLastError());
@@ -251,12 +251,12 @@ static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, cons
 }
 
 nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::json& data, const std::wstring& cwd,
-                                       const LoaderConfig& config)
+                                       const LoaderConfig& loader_config)
 {
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
 
-    auto copy_config = OverrideConfig(config);
+    auto copy_config = OverrideConfig(loader_config);
 
     ProbeKey key(name, data);
     RunSelfAsProbe(key.key, cwd, copy_config);

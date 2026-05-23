@@ -299,7 +299,7 @@ static NTSTATUS NtCreateFileOpenFS(const std::wstring& path, ULONG Attributes, P
 }
 
 // Query a single NT path and tell whether it exists and is a directory.
-PathKind QueryPathKind(const std::wstring& nt_path)
+static PathKind QueryPathKind(const std::wstring& nt_path)
 {
     UNICODE_STRING us;
     sys_RtlInitUnicodeString(&us, const_cast<PWSTR>(nt_path.c_str()));
@@ -324,7 +324,7 @@ PathKind QueryPathKind(const std::wstring& nt_path)
 
 // Resolve a path under the merged sandbox view: overlay -> base -> host.
 // Returns the kind of the topmost layer that has the entry.
-PathKind QueryMergedPathKind(const std::wstring& orig_path, const std::wstring& base_fs, const std::wstring& overlay_fs)
+static PathKind QueryMergedPathKind(const std::wstring& orig_path, const std::wstring& base_fs, const std::wstring& overlay_fs)
 {
     std::wstring mapped;
 
@@ -348,7 +348,7 @@ PathKind QueryMergedPathKind(const std::wstring& orig_path, const std::wstring& 
 
 // Create one directory at `nt_path`. Succeeds if it already exists as a directory;
 // fails (returns STATUS_OBJECT_NAME_COLLISION-ish status) if a file already occupies it.
-NTSTATUS CreateOneDirectory(const std::wstring& nt_path)
+static NTSTATUS CreateOneDirectory(const std::wstring& nt_path)
 {
     UNICODE_STRING us;
     sys_RtlInitUnicodeString(&us, const_cast<PWSTR>(nt_path.c_str()));
