@@ -29,10 +29,15 @@ static NTSTATUS Hook_NtQueryInformationByName(POBJECT_ATTRIBUTES ObjectAttribute
     return sys_NtQueryInformationByName(ObjectAttributes, IoStatusBlock, FileInformation, Length, FileInformationClass);
 }
 
-void appbox::InjectNtQueryInformationByName()
+void appbox::AttachNtQueryInformationByName()
 {
     auto addr = GetProcAddress(sys.h_ntdll, "NtQueryInformationByName");
     sys_NtQueryInformationByName = reinterpret_cast<T_NtQueryInformationByName>(addr);
 
     DetourAttach(&sys_NtQueryInformationByName, Hook_NtQueryInformationByName);
+}
+
+void appbox::DetachNtQueryInformationByName()
+{
+    DetourDetach(&sys_NtQueryInformationByName, Hook_NtQueryInformationByName);
 }

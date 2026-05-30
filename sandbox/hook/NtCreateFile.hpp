@@ -8,10 +8,21 @@ extern "C" {
 /**
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile
  */
-typedef NTSTATUS (*T_NtCreateFile)(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes,
-                                   PIO_STATUS_BLOCK IoStatusBlock, PLARGE_INTEGER AllocationSize, ULONG FileAttributes,
-                                   ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer,
-                                   ULONG EaLength);
+/* clang-format off */
+typedef NTSTATUS (*T_NtCreateFile)(
+    /* [OUT] */         PHANDLE             FileHandle,
+    /* [IN] */          ACCESS_MASK         DesiredAccess,
+    /* [IN] */          POBJECT_ATTRIBUTES  ObjectAttributes,
+    /* [OUT] */         PIO_STATUS_BLOCK    IoStatusBlock,
+    /* [IN,OPTIONAL] */ PLARGE_INTEGER      AllocationSize,
+    /* [IN] */          ULONG               FileAttributes,
+    /* [IN] */          ULONG               ShareAccess,
+    /* [IN] */          ULONG               CreateDisposition,
+    /* [IN] */          ULONG               CreateOptions,
+    /* [IN] */          PVOID               EaBuffer,
+    /* [IN] */          ULONG               EaLength
+);
+/* clang-format on */
 
 /**
  * @brief NtCreateFile() direct call.
@@ -31,12 +42,22 @@ struct NtCreateFileLock
 /**
  * @brief Inject NtCreateFile() hook.
  */
-void InjectNtCreateFile();
+void AttachNtCreateFile();
+void DetachNtCreateFile();
+
+/**
+ * @brief Convert POBJECT_ATTRIBUTES to full NT path.
+ * @param[in] ObjectAttributes Object attributes.
+ * @param[in] CreateOptions Create options.  Only `FILE_OPEN_BY_FILE_ID` matters.
+ * @param[out] path Full NT path.
+ * @return True if success.
+ */
+bool ConvertToFullNtPath(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG CreateOptions, std::wstring& path);
 
 /**
  * @brief Convert POBJECT_ATTRIBUTES to json.
  * @param[in] ObjectAttributes Object attributes.
- * @param[in] CreateOptions Create options.
+ * @param[in] CreateOptions Create options. Only `FILE_OPEN_BY_FILE_ID` matters.
  * @return Json object.
  */
 nlohmann::json ToJson(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG CreateOptions);

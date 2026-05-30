@@ -38,10 +38,15 @@ static NTSTATUS Hook_NtQueryDirectoryFileEx(HANDLE FileHandle, HANDLE Event, PIO
                                       FileInformationClass, QueryFlags, FileName);
 }
 
-void appbox::InjectNtQueryDirectoryFileEx()
+void appbox::AttachNtQueryDirectoryFileEx()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "NtQueryAttributesFile");
+    auto addr = GetProcAddress(sys.h_ntdll, "NtQueryDirectoryFileEx");
     sys_NtQueryDirectoryFileEx = reinterpret_cast<T_NtQueryDirectoryFileEx>(addr);
 
     DetourAttach(&sys_NtQueryDirectoryFileEx, Hook_NtQueryDirectoryFileEx);
+}
+
+void appbox::DetachNtQueryDirectoryFileEx()
+{
+    DetourDetach(&sys_NtQueryDirectoryFileEx, Hook_NtQueryDirectoryFileEx);
 }

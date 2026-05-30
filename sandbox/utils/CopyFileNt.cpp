@@ -117,7 +117,8 @@ bool appbox::CopyFileNt(const std::wstring& src, const std::wstring& dst)
 
     HANDLE hDst = nullptr;
     st = sys_NtCreateFile(&hDst, FILE_GENERIC_WRITE, &dstOa, &iosb,
-                          /*AllocationSize*/ nullptr, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ,
+                          /*AllocationSize*/ nullptr, FILE_ATTRIBUTE_NORMAL,
+                          FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                           FILE_OVERWRITE_IF, // 不存在则建，存在则覆盖
                           FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT,
                           /*EaBuffer*/ nullptr,

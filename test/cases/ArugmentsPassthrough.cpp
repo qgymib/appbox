@@ -4,24 +4,12 @@
 #include <windows.h>
 #include <gtest/gtest.h>
 #include "probe/__init__.hpp"
-#include "Test.hpp"
 #include "loader/Config.hpp"
+#include "utils/CommonFixture.hpp"
+#include "Test.hpp"
 #include "WString.hpp"
-#include "__init__.hpp"
 
-struct TestArgumentsPassthrough : testing::Test
-{
-    TestArgumentsPassthrough()
-    {
-        cwd_ = appbox::test::CWD::Create();
-    }
-    ~TestArgumentsPassthrough() override
-    {
-        cwd_->NoCleanup(HasFailure());
-    }
-
-    appbox::test::CWD::Ptr cwd_;
-};
+typedef appbox::test::CommonFixture TestArgumentsPassthrough;
 
 static nlohmann::json ProbeHelloWorld(const nlohmann::json& data)
 {
@@ -32,6 +20,6 @@ static appbox::test::Probe probe("HelloWorld", ProbeHelloWorld);
 
 TEST_F(TestArgumentsPassthrough, Hello)
 {
-    auto ret = probe.Call("Hello", cwd_->WString()).get<std::string>();
+    auto ret = probe.Call("Hello", GetCWDString(), {}).get<std::string>();
     ASSERT_EQ(ret, "HelloWorld");
 }

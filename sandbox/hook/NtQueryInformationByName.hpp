@@ -7,9 +7,15 @@ extern "C" {
 /**
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationbyname
  */
-typedef NTSTATUS (*T_NtQueryInformationByName)(POBJECT_ATTRIBUTES ObjectAttributes, PIO_STATUS_BLOCK IoStatusBlock,
-                                               PVOID FileInformation, ULONG Length,
-                                               FILE_INFORMATION_CLASS FileInformationClass);
+/* clang-format off */
+typedef NTSTATUS (*T_NtQueryInformationByName)(
+    /* [IN] */  POBJECT_ATTRIBUTES      ObjectAttributes,
+    /* [OUT] */ PIO_STATUS_BLOCK        IoStatusBlock,
+    /* [OUT] */ PVOID                   FileInformation,
+    /* [IN] */  ULONG                   Length,
+    /* [IN] */  FILE_INFORMATION_CLASS  FileInformationClass
+);
+/* clang-format on */
 
 /**
  * @brief NtQueryInformationByName() direct call.
@@ -23,7 +29,8 @@ namespace appbox
 /**
  * @brief Inject NtQueryInformationByName() hook.
  */
-void InjectNtQueryInformationByName();
+void AttachNtQueryInformationByName();
+void DetachNtQueryInformationByName();
 
 } // namespace appbox
 

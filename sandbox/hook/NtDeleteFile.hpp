@@ -2,12 +2,17 @@
 #define APPBOX_SANDBOX_HOOK_NTDELETEFILE_HPP
 
 #include "utils/WinAPI.h"
+#include "filesystem/Resolve.hpp"
 
 extern "C" {
 /**
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-zwdeletefile
  */
-typedef NTSTATUS (*T_NtDeleteFile)(POBJECT_ATTRIBUTES ObjectAttributes);
+/* clang-format off */
+typedef NTSTATUS (*T_NtDeleteFile)(
+    /* [IN] */  POBJECT_ATTRIBUTES  ObjectAttributes
+);
+/* clang-format on */
 
 /**
  * @brief NtDeleteFile() direct call.
@@ -21,7 +26,24 @@ namespace appbox
 /**
  * @brief Inject NtDeleteFile() hook.
  */
-void InjectNtDeleteFile();
+void AttachNtDeleteFile();
+void DetachNtDeleteFile();
+
+/**
+ * @brief Delete path in mapped view.
+ * @param[in] path File or directory NT path in mapped view.
+ * @param[in] Attributes Name attributes. Only `OBJ_CASE_INSENSITIVE` matters.
+ * @return Status code.
+ */
+NTSTATUS DeleteViewPath(const std::wstring& path, ULONG Attributes);
+
+/**
+ * @brief Delete path in mapped view.
+ * @param[in] resolve Resolve result.
+ * @param[in] Attributes Name attributes. Only `OBJ_CASE_INSENSITIVE` matters.
+ * @return Status code.
+ */
+NTSTATUS DeleteViewPath(const filesystem::ResolveResult& resolve, ULONG Attributes);
 
 } // namespace appbox
 

@@ -7,7 +7,11 @@ extern "C" {
 /**
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntclose
  */
-typedef NTSTATUS (*T_NtClose)(HANDLE Handle);
+/* clang-format off */
+typedef NTSTATUS (*T_NtClose)(
+    /* [IN] */  HANDLE  Handle
+);
+/* clang-format on */
 
 /**
  * @brief NtClose() direct call.
@@ -21,7 +25,8 @@ namespace appbox
 /**
  * @brief Inject NtClose() hook.
  */
-void InjectNtClose();
+void AttachNtClose();
+void DetachNtClose();
 
 } // namespace appbox
 

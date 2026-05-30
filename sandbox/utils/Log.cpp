@@ -3,13 +3,37 @@
 #include <iostream>
 #include <mutex>
 #include "msg/Log.hpp"
+#include "utils/BitParser.hpp"
 #include "WString.hpp"
 #include "Sandbox.hpp"
 #include "Log.hpp"
 
 static volatile bool s_log_enable = true;
 
-const char* get_filename(const char* file)
+static const appbox::BitData DesiredAccessMap[] = {
+    /* Combination flags always go first */
+    { "FILE_GENERIC_WRITE",    FILE_GENERIC_WRITE    },
+    { "FILE_GENERIC_READ",     FILE_GENERIC_READ     },
+    { "FILE_GENERIC_EXECUTE",  FILE_GENERIC_EXECUTE  },
+    /* Individual flags */
+    { "DELETE",                DELETE                },
+    { "FILE_READ_DATA",        FILE_READ_DATA        },
+    { "FILE_READ_ATTRIBUTES",  FILE_READ_ATTRIBUTES  },
+    { "FILE_READ_EA",          FILE_READ_EA          },
+    { "READ_CONTROL",          READ_CONTROL          },
+    { "FILE_WRITE_DATA",       FILE_WRITE_DATA       },
+    { "FILE_WRITE_ATTRIBUTES", FILE_WRITE_ATTRIBUTES },
+    { "FILE_WRITE_EA",         FILE_WRITE_EA         },
+    { "FILE_APPEND_DATA",      FILE_APPEND_DATA      },
+    { "WRITE_DAC",             WRITE_DAC             },
+    { "WRITE_OWNER",           WRITE_OWNER           },
+    { "SYNCHRONIZE",           SYNCHRONIZE           },
+    { "FILE_EXECUTE",          FILE_EXECUTE          },
+    { "GENERIC_READ",          GENERIC_READ          },
+    { "GENERIC_WRITE",         GENERIC_WRITE         },
+};
+
+static const char* get_filename(const char* file)
 {
     const char* pos = file;
 
@@ -21,6 +45,16 @@ const char* get_filename(const char* file)
         }
     }
     return pos;
+}
+
+appbox::LogGuard::LogGuard()
+{
+    LogEnable(false);
+}
+
+appbox::LogGuard::~LogGuard()
+{
+    LogEnable(true);
 }
 
 void appbox::LogEnable(bool enable)
@@ -129,4 +163,9 @@ nlohmann::json appbox::ToJson(const PUNICODE_STRING FileName)
     json["MaximumLength"] = FileName->MaximumLength;
     json["Buffer"] = appbox::WideToUTF8(FileName->Buffer);
     return json;
+}
+
+nlohmann::json appbox::DesiredAccessToJson(ACCESS_MASK DesiredAccess)
+{
+    return appbox::ParseBit(DesiredAccess, DesiredAccessMap, std::size(DesiredAccessMap));
 }

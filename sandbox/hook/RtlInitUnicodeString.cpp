@@ -3,7 +3,11 @@
 
 T_RtlInitUnicodeString sys_RtlInitUnicodeString = nullptr;
 
-void appbox::InjectRtlInitUnicodeString()
+void appbox::AttachRtlInitUnicodeString()
 {
     sys_RtlInitUnicodeString = (T_RtlInitUnicodeString)GetProcAddress(sys.h_ntdll, "RtlInitUnicodeString");
+}
+
+void appbox::DetachRtlInitUnicodeString()
+{
 }

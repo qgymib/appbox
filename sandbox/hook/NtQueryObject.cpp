@@ -39,10 +39,15 @@ static NTSTATUS Hook_NtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS Objec
     return sys_NtQueryObject(Handle, ObjectInformationClass, ObjectInformation, ObjectInformationLength, ReturnLength);
 }
 
-void appbox::InjectNtQueryObject()
+void appbox::AttachNtQueryObject()
 {
     auto addr = GetProcAddress(sys.h_ntdll, "NtQueryObject");
     sys_NtQueryObject = reinterpret_cast<T_NtQueryObject>(addr);
 
     DetourAttach(&sys_NtQueryObject, Hook_NtQueryObject);
+}
+
+void appbox::DetachNtQueryObject()
+{
+    DetourDetach(&sys_NtQueryObject, Hook_NtQueryObject);
 }

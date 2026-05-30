@@ -24,10 +24,15 @@ static NTSTATUS Hook_NtQueryFullAttributesFile(POBJECT_ATTRIBUTES             Ob
     return sys_NtQueryFullAttributesFile(ObjectAttributes, FileInformation);
 }
 
-void appbox::InjectNtQueryFullAttributesFile()
+void appbox::AttachNtQueryFullAttributesFile()
 {
     auto addr = GetProcAddress(sys.h_ntdll, "NtQueryFullAttributesFile");
     sys_NtQueryFullAttributesFile = reinterpret_cast<T_NtQueryFullAttributesFile>(addr);
 
     DetourAttach(&sys_NtQueryFullAttributesFile, Hook_NtQueryFullAttributesFile);
+}
+
+void appbox::DetachNtQueryFullAttributesFile()
+{
+    DetourDetach(&sys_NtQueryFullAttributesFile, Hook_NtQueryFullAttributesFile);
 }

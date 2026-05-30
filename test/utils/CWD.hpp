@@ -1,5 +1,5 @@
-#ifndef APPBOX_TEST_CASES_INIT_HPP
-#define APPBOX_TEST_CASES_INIT_HPP
+#ifndef APPBOX_TEST_UTILS_CWD_HPP
+#define APPBOX_TEST_UTILS_CWD_HPP
 
 #include <filesystem>
 #include <memory>

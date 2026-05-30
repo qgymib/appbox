@@ -7,10 +7,21 @@ extern "C" {
 /**
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntquerydirectoryfile
  */
-typedef NTSTATUS (*T_NtQueryDirectoryFile)(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine,
-                                           PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation,
-                                           ULONG Length, FILE_INFORMATION_CLASS FileInformationClass,
-                                           BOOLEAN ReturnSingleEntry, PUNICODE_STRING FileName, BOOLEAN RestartScan);
+/* clang-format off */
+typedef NTSTATUS (*T_NtQueryDirectoryFile)(
+    /* [IN] */              HANDLE                  FileHandle,
+    /* [IN, OPTIONAL] */    HANDLE                  Event,
+    /* [IN, OPTIONAL] */    PIO_APC_ROUTINE         ApcRoutine,
+    /* [IN, OPTIONAL] */    PVOID                   ApcContext,
+    /* [OUT] */             PIO_STATUS_BLOCK        IoStatusBlock,
+    /* [OUT] */             PVOID                   FileInformation,
+    /* [IN] */              ULONG                   Length,
+    /* [IN] */              FILE_INFORMATION_CLASS  FileInformationClass,
+    /* [IN] */              BOOLEAN                 ReturnSingleEntry,
+    /* [IN, OPTIONAL] */    PUNICODE_STRING         FileName,
+    /* [IN] */              BOOLEAN                 RestartScan
+);
+/* clang-format on */
 
 /**
  * @brief NtQueryDirectoryFile() direct call.
@@ -24,7 +35,8 @@ namespace appbox
 /**
  * @brief Inject NtQueryDirectoryFile() hook.
  */
-void InjectNtQueryDirectoryFile();
+void AttachNtQueryDirectoryFile();
+void DetachNtQueryDirectoryFile();
 
 } // namespace appbox
 

@@ -48,7 +48,7 @@ struct LoaderConfig
     /**
      * @brief Base filesystem.
      */
-    std::string base_fs = "app";
+    std::vector<std::string> base_fs;
 
     /**
      * @brief overlay filesystem.

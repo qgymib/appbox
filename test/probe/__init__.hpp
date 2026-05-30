@@ -3,7 +3,7 @@
 
 #include <CLI/CLI.hpp>
 #include <map>
-#include "Server.hpp"
+#include "utils/ProbeCall.hpp"
 
 namespace appbox::test
 {
@@ -36,8 +36,7 @@ struct Probe
      * @param[in] loader_config The loader configuration.
      * @return The result of the probe function.
      */
-    nlohmann::json Call(const nlohmann::json& data, const std::wstring& cwd,
-                        const LoaderConfig& loader_config = LoaderConfig())
+    nlohmann::json Call(const nlohmann::json& data, const std::wstring& cwd, const LoaderConfig& loader_config)
     {
         return ProbeCall(name, data, cwd, loader_config);
     }

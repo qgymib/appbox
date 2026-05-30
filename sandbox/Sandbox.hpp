@@ -16,7 +16,6 @@ struct Sandbox
 
     HINSTANCE                           hinstDLL;    /* Dll instance */
     appbox::SandboxConfig               inject_data; /* Inject data */
-    TaskQueue::Ptr                      task_queue;  /* Task queue */
     std::shared_ptr<appbox::PipeClient> client;      /* RPC client */
 };
 

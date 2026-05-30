@@ -7,18 +7,35 @@ extern "C" {
 /**
  * @see https://learn.microsoft.com/en-us/windows/win32/devnotes/ntreadfile
  */
-typedef NTSTATUS (*T_NtReadFile)(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext,
-                                 PIO_STATUS_BLOCK IoStatusBlock, PVOID Buffer, ULONG Length, PLARGE_INTEGER ByteOffset,
-                                 PULONG Key);
+/* clang-format off */
+typedef NTSTATUS (*T_NtReadFile)(
+    /* [IN] */          HANDLE              FileHandle,
+    /* [IN,OPTIONAL] */ HANDLE              Event,
+    /* [IN,OPTIONAL] */ PIO_APC_ROUTINE     ApcRoutine,
+    /* [IN,OPTIONAL] */ PVOID               ApcContext,
+    /* [OUT] */         PIO_STATUS_BLOCK    IoStatusBlock,
+    /* [OUT] */         PVOID               Buffer,
+    /* [IN] */          ULONG               Length,
+    /* [IN,OPTIONAL] */ PLARGE_INTEGER      ByteOffset,
+    /* [IN,OPTIONAL] */ PULONG              Key
+);
+/* clang-format on */
 
+/**
+ * @brief NtReadFile() direct call.
+ */
 extern T_NtReadFile sys_NtReadFile;
 }
 
 namespace appbox
 {
 
-void InjectNtReadFile();
+/**
+ * @brief Inject NtReadFile() hook.
+ */
+void AttachNtReadFile();
+void DetachNtReadFile();
 
-}
+} // namespace appbox
 
 #endif

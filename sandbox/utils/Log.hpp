@@ -1,9 +1,11 @@
 #ifndef APPBOX_SANDBOX_UTILS_LOG_HPP
 #define APPBOX_SANDBOX_UTILS_LOG_HPP
 
+#include "utils/WinAPI.h" /* Must be first include file */
+#include "msg/Log.hpp"
 #include <spdlog/spdlog.h>
 #include <nlohmann/json.hpp>
-#include "msg/Log.hpp"
+#include <string>
 
 #define LOG_GENERIC(LEVEL, FMT, ...)                                                                                   \
     do                                                                                                                 \
@@ -63,6 +65,15 @@ struct LoggerF
     bool        with_param;  /* Parameter output flag. */
 };
 
+/**
+ * @brief Disable log temporary
+ */
+struct LogGuard
+{
+    LogGuard();
+    ~LogGuard();
+};
+
 void Log(MsgLogLevel level, const char* file, int line, const std::string& msg);
 void Log(MsgLogLevel level, const char* file, int line, const std::wstring& msg);
 
@@ -76,6 +87,7 @@ std::string    PointerToString(const void* ptr);
 nlohmann::json ToJson(const POBJECT_ATTRIBUTES ObjectAttributes);
 nlohmann::json ToJson(const PFILE_NETWORK_OPEN_INFORMATION FileInformation);
 nlohmann::json ToJson(const PUNICODE_STRING FileName);
+nlohmann::json DesiredAccessToJson(ACCESS_MASK DesiredAccess);
 
 } // namespace appbox
 

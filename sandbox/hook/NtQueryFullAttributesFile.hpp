@@ -7,8 +7,12 @@ extern "C" {
 /**
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwqueryfullattributesfile
  */
-typedef NTSTATUS (*T_NtQueryFullAttributesFile)(POBJECT_ATTRIBUTES             ObjectAttributes,
-                                                PFILE_NETWORK_OPEN_INFORMATION FileInformation);
+/* clang-format off */
+typedef NTSTATUS (*T_NtQueryFullAttributesFile)(
+    /* [IN] */  POBJECT_ATTRIBUTES              ObjectAttributes,
+    /* [OUT] */ PFILE_NETWORK_OPEN_INFORMATION  FileInformation
+);
+/* clang-format on */
 
 /**
  * @brief NtQueryFullAttributesFile() direct call.
@@ -22,7 +26,8 @@ namespace appbox
 /**
  * @brief Inject NtQueryFullAttributesFile() hook.
  */
-void InjectNtQueryFullAttributesFile();
+void AttachNtQueryFullAttributesFile();
+void DetachNtQueryFullAttributesFile();
 
 } // namespace appbox
 

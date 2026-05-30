@@ -14,7 +14,7 @@ static BOOL Hook_SetProcessMitigationPolicy(PROCESS_MITIGATION_POLICY Mitigation
     return sys_SetProcessMitigationPolicy(MitigationPolicy, lpBuffer, dwLength);
 }
 
-void appbox::InjectSetProcessMitigationPolicy()
+void appbox::AttachSetProcessMitigationPolicy()
 {
     auto addr = GetProcAddress(sys.h_kernelbase, "SetProcessMitigationPolicy");
     sys_SetProcessMitigationPolicy = reinterpret_cast<T_SetProcessMitigationPolicy>(addr);
@@ -24,4 +24,9 @@ void appbox::InjectSetProcessMitigationPolicy()
     {
         DetourAttach(&sys_SetProcessMitigationPolicy, Hook_SetProcessMitigationPolicy);
     }
+}
+
+void appbox::DetachSetProcessMitigationPolicy()
+{
+    DetourDetach(&sys_SetProcessMitigationPolicy, Hook_SetProcessMitigationPolicy);
 }

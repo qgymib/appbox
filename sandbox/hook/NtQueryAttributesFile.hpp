@@ -7,8 +7,12 @@ extern "C" {
 /**
  * @see https://learn.microsoft.com/en-us/windows/win32/devnotes/ntqueryattributesfile
  */
-typedef NTSTATUS (*T_NtQueryAttributesFile)(POBJECT_ATTRIBUTES      ObjectAttributes,
-                                            PFILE_BASIC_INFORMATION FileInformation);
+/* clang-format off */
+typedef NTSTATUS (*T_NtQueryAttributesFile)(
+    /* [IN] */  POBJECT_ATTRIBUTES      ObjectAttributes,
+    /* [OUT] */ PFILE_BASIC_INFORMATION FileInformation
+);
+/* clang-format on */
 
 /**
  * @brief NtQueryAttributesFile() direct call.
@@ -22,7 +26,8 @@ namespace appbox
 /**
  * @brief Inject NtQueryAttributesFile() hook.
  */
-void InjectNtQueryAttributesFile();
+void AttachNtQueryAttributesFile();
+void DetachNtQueryAttributesFile();
 
 } // namespace appbox
 

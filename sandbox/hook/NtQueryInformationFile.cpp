@@ -27,10 +27,15 @@ static NTSTATUS Hook_NtQueryInformationFile(HANDLE FileHandle, PIO_STATUS_BLOCK 
     return sys_NtQueryInformationFile(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
 }
 
-void appbox::InjectNtQueryInformationFile()
+void appbox::AttachNtQueryInformationFile()
 {
     auto addr = GetProcAddress(sys.h_ntdll, "NtQueryInformationFile");
     sys_NtQueryInformationFile = reinterpret_cast<T_NtQueryInformationFile>(addr);
 
     DetourAttach(&sys_NtQueryInformationFile, Hook_NtQueryInformationFile);
+}
+
+void appbox::DetachNtQueryInformationFile()
+{
+    DetourDetach(&sys_NtQueryInformationFile, Hook_NtQueryInformationFile);
 }

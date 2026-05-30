@@ -7,9 +7,15 @@ extern "C" {
 /**
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryvolumeinformationfile
  */
-typedef NTSTATUS (*T_NtQueryVolumeInformationFile)(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
-                                                   PVOID FsInformation, ULONG Length,
-                                                   FS_INFORMATION_CLASS FsInformationClass);
+/* clang-format off */
+typedef NTSTATUS (*T_NtQueryVolumeInformationFile)(
+    /* [IN] */  HANDLE                  FileHandle,
+    /* [OUT] */ PIO_STATUS_BLOCK        IoStatusBlock,
+    /* [OUT] */ PVOID                   FsInformation,
+    /* [IN] */  ULONG                   Length,
+    /* [IN] */  FS_INFORMATION_CLASS    FsInformationClass
+);
+/* clang-format on */
 
 /**
  * @brief NtQueryVolumeInformationFile() direct call.
@@ -23,7 +29,7 @@ namespace appbox
 /**
  * @brief Inject NtQueryVolumeInformationFile() hook.
  */
-void InjectNtQueryVolumeInformationFile();
+void AttachNtQueryVolumeInformationFile();
 
 } // namespace appbox
 

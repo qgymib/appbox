@@ -96,6 +96,12 @@ static void MainLoader()
     wxGetApp().QueueEvent(new wxCommandEvent(APPBOX_EXIT_APPLICATION_IF_NO_GUI));
 }
 
+/**
+ * @brief Format path as absolute path.
+ * @param[in] path Path to format.
+ * @param[in] dir Working directory.
+ * @return Formatted absolute path.
+ */
 static std::wstring FormatPathAsAbs(const std::wstring& path, const std::wstring& dir)
 {
     std::filesystem::path p(path);
@@ -110,11 +116,21 @@ static std::wstring FormatPathAsAbs(const std::wstring& path, const std::wstring
     return d.wstring();
 }
 
-static void FormatConfigPath(appbox::LoaderConfig& cfg, const std::wstring& dir)
+/**
+ * @brief Format config path as absolute path.
+ * @param[in,out] cfg Config to format.
+ * @param[in] dir Directory contains this config.
+ */
+static void FormatConfigAbsolutePath(appbox::LoaderConfig& cfg, const std::wstring& dir)
 {
     {
-        auto abs_base_fs = FormatPathAsAbs(appbox::UTF8ToWide(cfg.base_fs), dir);
-        cfg.base_fs = appbox::WideToUTF8(abs_base_fs);
+        std::vector<std::string> abs_base_fs;
+        for (const auto& fs : cfg.base_fs)
+        {
+            auto path = FormatPathAsAbs(appbox::UTF8ToWide(fs), dir);
+            abs_base_fs.push_back(appbox::WideToUTF8(path));
+        }
+        cfg.base_fs = abs_base_fs;
     }
     {
         auto abs_overlay_fs = FormatPathAsAbs(appbox::UTF8ToWide(cfg.overlay_fs), dir);
@@ -132,7 +148,7 @@ static void LoadConfig()
     std::ifstream  f(path);
     nlohmann::json j_cfg = nlohmann::json::parse(f);
     wxGetApp().loader_config = j_cfg;
-    FormatConfigPath(wxGetApp().loader_config, dir);
+    FormatConfigAbsolutePath(wxGetApp().loader_config, dir);
 }
 
 /**
@@ -194,7 +210,7 @@ bool AppBoxLoader::OnInit()
         if (!opt.override_config.is_null())
         {
             wxGetApp().loader_config = opt.override_config;
-            FormatConfigPath(wxGetApp().loader_config, opt.config_dir);
+            FormatConfigAbsolutePath(wxGetApp().loader_config, opt.config_dir);
         }
         else
         {
@@ -207,7 +223,12 @@ bool AppBoxLoader::OnInit()
     }
     catch (const std::exception& e)
     {
+#if 1
+        wxGenericMessageDialog dlg(nullptr, e.what(), "Error", wxOK | wxICON_ERROR);
+        dlg.ShowModal();
+#else
         wxMessageBox(e.what(), "Error", wxOK | wxICON_ERROR);
+#endif
         return false;
     }
 

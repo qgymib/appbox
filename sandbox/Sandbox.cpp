@@ -5,20 +5,19 @@
 #include "hook/__init__.hpp"
 #include "hook/NtCreateFile.hpp"
 #include "utils/Log.hpp"
+#include "utils/HandleInfo.hpp"
 #include "Sandbox.hpp"
 #include "Defines.hpp"
 
-struct LogGuard
+struct ModuleInitializer
 {
-    LogGuard()
-    {
-        appbox::LogEnable(false);
-    }
+    NTSTATUS (*fn_init)();
+    void (*fn_exit)();
+};
 
-    ~LogGuard()
-    {
-        appbox::LogEnable(true);
-    }
+static const ModuleInitializer s_module[] = {
+    { appbox::HandleInfo::Init, appbox::HandleInfo::Exit },
+    { appbox::InitHook,         appbox::ExitHook         },
 };
 
 appbox::Sandbox* appbox::sandbox = nullptr;
@@ -58,20 +57,36 @@ static void OnDllAttach(HINSTANCE hinstDLL)
     appbox::sandbox = new appbox::Sandbox(hinstDLL);
     LoadInjectData();
 
-    appbox::sandbox->task_queue = appbox::TaskQueue::Create();
-
     appbox::sandbox->client = std::make_shared<appbox::PipeClient>(appbox::sandbox->inject_data.pipe_path);
     if (!appbox::sandbox->client->Start())
     {
         throw std::runtime_error("failed to start rpc client");
     }
 
-    appbox::InitHook();
-    LOG_I("AppBox Sandbox initialized");
+    for (size_t i = 0; i < std::size(s_module); ++i)
+    {
+        auto st = s_module[i].fn_init();
+        if (!NT_SUCCESS(st))
+        {
+            while (i > 0)
+            {
+                s_module[i - 1].fn_exit();
+            }
+            return;
+        }
+    }
+
+    LOG_I("AppBox Sandbox Config: {}", nlohmann::json(appbox::sandbox->inject_data).dump());
 }
 
 static void OnDllDetach()
 {
+    /* Deinitialize in reverse order. */
+    for (auto i = std::size(s_module); i > 0; --i)
+    {
+        s_module[i - 1].fn_exit();
+    }
+
     if (appbox::sandbox != nullptr)
     {
         delete appbox::sandbox;

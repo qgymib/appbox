@@ -10,9 +10,9 @@
 #include "loader/Config.hpp"
 #include "RemoteServer.hpp"
 #include "Random.hpp"
-#include "Server.hpp"
 #include "WString.hpp"
 #include "BuildCommandLine.hpp"
+#include "ProbeCall.hpp"
 #include "Test.hpp"
 
 struct ProbeContext

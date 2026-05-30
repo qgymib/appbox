@@ -3,7 +3,7 @@
 #include <chrono>
 #include "WString.hpp"
 #include "Test.hpp"
-#include "__init__.hpp"
+#include "CWD.hpp"
 
 appbox::test::CWD::~CWD()
 {

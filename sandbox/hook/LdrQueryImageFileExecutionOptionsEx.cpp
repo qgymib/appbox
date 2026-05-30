@@ -23,7 +23,7 @@ static NTSTATUS Hook_LdrQueryImageFileExecutionOptionsEx(PUNICODE_STRING lpImage
     return sys_LdrQueryImageFileExecutionOptionsEx(lpImageFile, lpszOption, dwType, lpData, cbData, lpcbData, bWow64);
 }
 
-void appbox::InjectLdrQueryImageFileExecutionOptionsEx()
+void appbox::AttachLdrQueryImageFileExecutionOptionsEx()
 {
     auto addr = GetProcAddress(sys.h_ntdll, "LdrQueryImageFileExecutionOptionsEx");
     sys_LdrQueryImageFileExecutionOptionsEx = reinterpret_cast<T_LdrQueryImageFileExecutionOptionsEx>(addr);
@@ -33,4 +33,9 @@ void appbox::InjectLdrQueryImageFileExecutionOptionsEx()
     {
         DetourAttach(&sys_LdrQueryImageFileExecutionOptionsEx, Hook_LdrQueryImageFileExecutionOptionsEx);
     }
+}
+
+void appbox::DetachLdrQueryImageFileExecutionOptionsEx()
+{
+    DetourDetach(&sys_LdrQueryImageFileExecutionOptionsEx, Hook_LdrQueryImageFileExecutionOptionsEx);
 }

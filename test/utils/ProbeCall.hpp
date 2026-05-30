@@ -1,5 +1,5 @@
-#ifndef APPBOX_TEST_PROBE_SERVER_HPP
-#define APPBOX_TEST_PROBE_SERVER_HPP
+#ifndef APPBOX_TEST_PROBE_CALL_HPP
+#define APPBOX_TEST_PROBE_CALL_HPP
 
 #include <string>
 #include <nlohmann/json.hpp>

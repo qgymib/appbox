@@ -7,7 +7,12 @@ extern "C" {
 /**
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-rtlinitunicodestring
  */
-typedef void (*T_RtlInitUnicodeString)(PUNICODE_STRING DestinationString, PCWSTR SourceString);
+/* clang-format off */
+typedef void (*T_RtlInitUnicodeString)(
+    /* [OUT] */         PUNICODE_STRING DestinationString,
+    /* [IN,OPTIONAL] */ PCWSTR          SourceString
+);
+/* clang-format on */
 
 /**
  * @brief RtlInitUnicodeString() direct call.
@@ -21,7 +26,8 @@ namespace appbox
 /**
  * @brief Inject RtlInitUnicodeString() hook.
  */
-void InjectRtlInitUnicodeString();
+void AttachRtlInitUnicodeString();
+void DetachRtlInitUnicodeString();
 
 } // namespace appbox
 

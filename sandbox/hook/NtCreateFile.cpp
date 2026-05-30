@@ -1,6 +1,10 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include <detours.h>
 #include <vector>
+#include "filesystem/CreateDirectory.hpp"
+#include "filesystem/DirName.hpp"
+#include "filesystem/Resolve.hpp"
+#include "filesystem/RemoveAll.hpp"
 #include "hook/NtClose.hpp"
 #include "hook/NtCreateFile.hpp"
 #include "hook/NtOpenFile.hpp"
@@ -11,8 +15,7 @@
 #include "utils/CopyFileNt.hpp"
 #include "utils/Log.hpp"
 #include "utils/MappingAsDosNtPath.hpp"
-#include "utils/MappingAsSandboxNtPath.hpp"
-#include "utils/CheckFileExist.hpp"
+#include "utils/Defines.hpp"
 #include "__init__.hpp"
 #include "WString.hpp"
 #include "Sandbox.hpp"
@@ -26,29 +29,6 @@ enum class PathKind
 };
 
 T_NtCreateFile sys_NtCreateFile = nullptr;
-
-static const appbox::BitData DesiredAccessMap[] = {
-    /* Combination flags always go first */
-    { "FILE_GENERIC_WRITE",    FILE_GENERIC_WRITE    },
-    { "FILE_GENERIC_READ",     FILE_GENERIC_READ     },
-    { "FILE_GENERIC_EXECUTE",  FILE_GENERIC_EXECUTE  },
-    /* Individual flags */
-    { "DELETE",                DELETE                },
-    { "FILE_READ_DATA",        FILE_READ_DATA        },
-    { "FILE_READ_ATTRIBUTES",  FILE_READ_ATTRIBUTES  },
-    { "FILE_READ_EA",          FILE_READ_EA          },
-    { "READ_CONTROL",          READ_CONTROL          },
-    { "FILE_WRITE_DATA",       FILE_WRITE_DATA       },
-    { "FILE_WRITE_ATTRIBUTES", FILE_WRITE_ATTRIBUTES },
-    { "FILE_WRITE_EA",         FILE_WRITE_EA         },
-    { "FILE_APPEND_DATA",      FILE_APPEND_DATA      },
-    { "WRITE_DAC",             WRITE_DAC             },
-    { "WRITE_OWNER",           WRITE_OWNER           },
-    { "SYNCHRONIZE",           SYNCHRONIZE           },
-    { "FILE_EXECUTE",          FILE_EXECUTE          },
-    { "GENERIC_READ",          GENERIC_READ          },
-    { "GENERIC_WRITE",         GENERIC_WRITE         },
-};
 
 static const appbox::BitData CreateDispositionMap[] = {
     { "FILE_OVERWRITE_IF", FILE_OVERWRITE_IF },
@@ -116,7 +96,7 @@ static nlohmann::json NtCreateFileLogParam(PHANDLE FileHandle, ACCESS_MASK Desir
 {
     nlohmann::json json;
     json["FileHandle"] = appbox::PointerToString(FileHandle);
-    json["DesiredAccess"] = appbox::ParseBit(DesiredAccess, DesiredAccessMap, std::size(DesiredAccessMap));
+    json["DesiredAccess"] = appbox::DesiredAccessToJson(DesiredAccess);
     json["ObjectAttributes"] = appbox::ToJson(ObjectAttributes, CreateOptions);
     json["IoStatusBlock"] = appbox::PointerToString(IoStatusBlock);
     if (AllocationSize != nullptr)
@@ -210,7 +190,160 @@ static std::wstring FormatFileIdFallback(const UNICODE_STRING& id)
     return buf;
 }
 
-static bool ConvertToFullNtPath(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG CreateOptions, std::wstring& path)
+static NTSTATUS NtCreateFileOpenFS(const std::wstring& path, ULONG Attributes, PHANDLE FileHandle,
+                                   ACCESS_MASK DesiredAccess, PIO_STATUS_BLOCK IoStatusBlock,
+                                   PLARGE_INTEGER AllocationSize, ULONG FileAttributes, ULONG ShareAccess,
+                                   ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer, ULONG EaLength)
+{
+    HANDLE tmpHandle = nullptr;
+    if (FileHandle == nullptr)
+    {
+        FileHandle = &tmpHandle;
+    }
+    IO_STATUS_BLOCK tmpIoStatusBlock;
+    if (IoStatusBlock == nullptr)
+    {
+        IoStatusBlock = &tmpIoStatusBlock;
+    }
+
+    OBJECT_ATTRIBUTES oa;
+    UNICODE_STRING    usPath;
+    sys_RtlInitUnicodeString(&usPath, path.c_str());
+    InitializeObjectAttributes(&oa, &usPath, Attributes, nullptr, nullptr);
+    auto st = sys_NtCreateFile(FileHandle, DesiredAccess, &oa, IoStatusBlock, AllocationSize, FileAttributes,
+                               ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
+    if (NT_SUCCESS(st) && FileHandle == &tmpHandle)
+    {
+        sys_NtClose(tmpHandle);
+    }
+    return st;
+}
+
+static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes,
+                                  PIO_STATUS_BLOCK IoStatusBlock, PLARGE_INTEGER AllocationSize, ULONG FileAttributes,
+                                  ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer,
+                                  ULONG EaLength)
+{
+    logger.Log(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess,
+               CreateDisposition, CreateOptions, EaBuffer, EaLength);
+
+    if (appbox::ThreadLocal::Get().disable_NtCreateFile_hook)
+    {
+        return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
+                                FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
+    }
+
+    /* Get file path in sandbox */
+    std::wstring nativate_fs_nt_path;
+    if (!appbox::ConvertToFullNtPath(ObjectAttributes, CreateOptions, nativate_fs_nt_path))
+    {
+        LOG_D("ConvertToFullNtPath failed");
+        return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
+                                FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
+    }
+
+    std::wstring nativate_fs_path;
+    if (!appbox::MappingAsDosNtPath(nativate_fs_nt_path, nativate_fs_path))
+    {
+        LOG_D(L"MappingAsDosNtPath failed: {}", nativate_fs_nt_path);
+        return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
+                                FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
+    }
+    CreateOptions &= ~FILE_OPEN_BY_FILE_ID;
+
+    /* Resolve path in sandbox. */
+    auto resolve_result = appbox::filesystem::Resolve(nativate_fs_path);
+    LOG_T("resolve: {}", nlohmann::json(resolve_result).dump());
+    /* In all of conditions, the parent path must exist. */
+    if (!resolve_result.bParentExist)
+    {
+        return STATUS_OBJECT_PATH_NOT_FOUND;
+    }
+
+    /* Check CreateDisposition */
+    if (CreateDisposition == FILE_CREATE && resolve_result.status == appbox::filesystem::ResolveResult::Status::Exists)
+    {
+        return STATUS_OBJECT_NAME_COLLISION;
+    }
+    if (CreateDisposition == FILE_OVERWRITE &&
+        resolve_result.status != appbox::filesystem::ResolveResult::Status::Exists)
+    {
+        return STATUS_OBJECT_NAME_NOT_FOUND;
+    }
+
+    const bool want_create = (CreateDisposition == FILE_SUPERSEDE || CreateDisposition == FILE_CREATE ||
+                              CreateDisposition == FILE_OPEN_IF || CreateDisposition == FILE_OVERWRITE_IF);
+    const bool want_edit = (DesiredAccess & (DELETE | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA |
+                                             FILE_APPEND_DATA | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE | GENERIC_ALL));
+
+    /* If file is hidden by whiteout, remove the whiteout file */
+    if (want_create && resolve_result.status == appbox::filesystem::ResolveResult::Status::HiddenByWhiteout &&
+        resolve_result.bWhiteoutInUpper)
+    {
+        appbox::filesystem::RemoveAll(resolve_result.whiteoutPath, ObjectAttributes->Attributes);
+
+        /* If want to create directory, search again to check if we need to create opaque file */
+        if (CreateOptions & FILE_DIRECTORY_FILE)
+        {
+            auto rResult = appbox::filesystem::Resolve(nativate_fs_path);
+            if (rResult.status == appbox::filesystem::ResolveResult::Status::Exists)
+            {
+                NtCreateFileOpenFS(nativate_fs_path, ObjectAttributes->Attributes, nullptr, DesiredAccess,
+                                   IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
+                                   CreateOptions, EaBuffer, EaLength);
+                return NtCreateFileOpenFS(nativate_fs_path + L"\\" + APPBOX_SANDBOX_OPAQUE_NAME_W,
+                                          ObjectAttributes->Attributes, nullptr, DELETE | FILE_WRITE_DATA, nullptr,
+                                          nullptr, FILE_ATTRIBUTE_NORMAL,
+                                          FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN_IF,
+                                          FILE_NON_DIRECTORY_FILE, nullptr, 0);
+            }
+        }
+    }
+    if (want_create || want_edit)
+    {
+        auto dir = appbox::filesystem::DirName(resolve_result.uPath);
+        appbox::filesystem::CreateDirectories(dir, resolve_result.uPathBaseSize);
+    }
+    if (want_edit)
+    {
+        if (resolve_result.status == appbox::filesystem::ResolveResult::Status::Exists && !resolve_result.bInUpper)
+        {
+            appbox::CopyFileNt(resolve_result.hPath[0].fPath, resolve_result.uPath);
+        }
+    }
+    std::wstring open_path = (want_edit || resolve_result.status != appbox::filesystem::ResolveResult::Status::Exists)
+                                 ? resolve_result.uPath
+                                 : resolve_result.hPath[0].fPath;
+
+    return NtCreateFileOpenFS(open_path, ObjectAttributes->Attributes, FileHandle, DesiredAccess, IoStatusBlock,
+                              AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer,
+                              EaLength);
+}
+
+appbox::NtCreateFileLock::NtCreateFileLock()
+{
+    appbox::ThreadLocal::Get().disable_NtCreateFile_hook = true;
+}
+
+appbox::NtCreateFileLock::~NtCreateFileLock()
+{
+    appbox::ThreadLocal::Get().disable_NtCreateFile_hook = false;
+}
+
+void appbox::AttachNtCreateFile()
+{
+    auto addr = GetProcAddress(sys.h_ntdll, "NtCreateFile");
+    sys_NtCreateFile = reinterpret_cast<T_NtCreateFile>(addr);
+
+    DetourAttach(&sys_NtCreateFile, Hook_NtCreateFile);
+}
+
+void appbox::DetachNtCreateFile()
+{
+    DetourDetach(&sys_NtCreateFile, Hook_NtCreateFile);
+}
+
+bool appbox::ConvertToFullNtPath(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG CreateOptions, std::wstring& path)
 {
     path.clear();
     if (!ObjectAttributes)
@@ -283,320 +416,6 @@ static bool ConvertToFullNtPath(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG
     path = std::move(rootPath);
     JoinNtPath(path, objStr); // objStr 可以为空（表示就是根本身）
     return !path.empty();
-}
-
-static NTSTATUS NtCreateFileOpenFS(const std::wstring& path, ULONG Attributes, PHANDLE FileHandle,
-                                   ACCESS_MASK DesiredAccess, PIO_STATUS_BLOCK IoStatusBlock,
-                                   PLARGE_INTEGER AllocationSize, ULONG FileAttributes, ULONG ShareAccess,
-                                   ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer, ULONG EaLength)
-{
-    OBJECT_ATTRIBUTES oa;
-    UNICODE_STRING    usPath;
-    sys_RtlInitUnicodeString(&usPath, path.c_str());
-    InitializeObjectAttributes(&oa, &usPath, Attributes, nullptr, nullptr);
-    return sys_NtCreateFile(FileHandle, DesiredAccess, &oa, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess,
-                            CreateDisposition, CreateOptions & ~FILE_OPEN_BY_FILE_ID, EaBuffer, EaLength);
-}
-
-// Query a single NT path and tell whether it exists and is a directory.
-static PathKind QueryPathKind(const std::wstring& nt_path)
-{
-    UNICODE_STRING us;
-    sys_RtlInitUnicodeString(&us, const_cast<PWSTR>(nt_path.c_str()));
-
-    OBJECT_ATTRIBUTES oa;
-    InitializeObjectAttributes(&oa, &us, OBJ_CASE_INSENSITIVE, nullptr, nullptr);
-
-    FILE_NETWORK_OPEN_INFORMATION info = {};
-    NTSTATUS                      status = sys_NtQueryFullAttributesFile(&oa, &info);
-
-    if (NT_SUCCESS(status))
-    {
-        return (info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? PathKind::Directory : PathKind::File;
-    }
-    if (status == STATUS_OBJECT_NAME_NOT_FOUND || status == STATUS_OBJECT_PATH_NOT_FOUND ||
-        status == STATUS_NO_SUCH_FILE || status == STATUS_NOT_A_DIRECTORY)
-    {
-        return PathKind::NotExist;
-    }
-    return PathKind::Error;
-}
-
-// Resolve a path under the merged sandbox view: overlay -> base -> host.
-// Returns the kind of the topmost layer that has the entry.
-static PathKind QueryMergedPathKind(const std::wstring& orig_path, const std::wstring& base_fs, const std::wstring& overlay_fs)
-{
-    std::wstring mapped;
-
-    // 1) overlay layer (highest priority)
-    if (appbox::MappingPathInSandbox(orig_path, overlay_fs, mapped))
-    {
-        PathKind k = QueryPathKind(mapped);
-        if (k != PathKind::NotExist)
-            return k;
-    }
-    // 2) base layer
-    if (appbox::MappingPathInSandbox(orig_path, base_fs, mapped))
-    {
-        PathKind k = QueryPathKind(mapped);
-        if (k != PathKind::NotExist)
-            return k;
-    }
-    // 3) host layer (raw original path)
-    return QueryPathKind(orig_path);
-}
-
-// Create one directory at `nt_path`. Succeeds if it already exists as a directory;
-// fails (returns STATUS_OBJECT_NAME_COLLISION-ish status) if a file already occupies it.
-static NTSTATUS CreateOneDirectory(const std::wstring& nt_path)
-{
-    UNICODE_STRING us;
-    sys_RtlInitUnicodeString(&us, const_cast<PWSTR>(nt_path.c_str()));
-
-    OBJECT_ATTRIBUTES oa;
-    InitializeObjectAttributes(&oa, &us, OBJ_CASE_INSENSITIVE, nullptr, nullptr);
-
-    HANDLE          h = nullptr;
-    IO_STATUS_BLOCK iosb = {};
-    NTSTATUS status = sys_NtCreateFile(&h, FILE_LIST_DIRECTORY | SYNCHRONIZE, &oa, &iosb, nullptr,
-                                       FILE_ATTRIBUTE_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                       FILE_OPEN_IF, // open or create
-                                       FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, nullptr, 0);
-
-    if (NT_SUCCESS(status) && h)
-    {
-        sys_NtClose(h);
-    }
-    return status;
-}
-
-static NTSTATUS NtCreateFileCheckParent(const std::wstring& orig_path, const std::wstring& base_fs,
-                                        const std::wstring& overlay_fs)
-{
-    // ---- 1. Derive the parent path of orig_path. ----
-    // orig_path is an NT path like "\??\D:\foo\bar". The parent is the substring
-    // preceding the last backslash. We require the path to have at least one
-    // component below the volume root (e.g. "\??\D:\x"); otherwise it is malformed
-    // for our purposes.
-    constexpr size_t kNtPrefixLen = 4; // length of "\??\"
-    if (orig_path.length() <= kNtPrefixLen || orig_path.compare(0, kNtPrefixLen, L"\\??\\") != 0)
-    {
-        return STATUS_OBJECT_PATH_NOT_FOUND;
-    }
-
-    size_t last_sep = orig_path.find_last_of(L'\\');
-    if (last_sep == std::wstring::npos || last_sep < kNtPrefixLen)
-    {
-        return STATUS_OBJECT_PATH_NOT_FOUND;
-    }
-    std::wstring parent = orig_path.substr(0, last_sep);
-
-    // ---- 2. Walk every prefix of `parent` in the merged view, from just below
-    // the volume root down to `parent` itself, ensuring each level exists and
-    // is a directory. ----
-    //
-    // The volume root component itself ("\??\D:") is not checked here; the
-    // caller is expected to have validated the volume already.
-    size_t volume_end = parent.find(L'\\', kNtPrefixLen); // first '\' after "\??\X:"
-    if (volume_end != std::wstring::npos)
-    {
-        size_t p = volume_end;
-        while (p < parent.length())
-        {
-            size_t       next = parent.find(L'\\', p + 1);
-            std::wstring component = (next == std::wstring::npos) ? parent : parent.substr(0, next);
-
-            PathKind kind = QueryMergedPathKind(component, base_fs, overlay_fs);
-            // Both "missing" and "is a file" collapse to STATUS_OBJECT_PATH_NOT_FOUND
-            // per the spec. Errors are treated conservatively the same way.
-            if (kind != PathKind::Directory)
-            {
-                return STATUS_OBJECT_PATH_NOT_FOUND;
-            }
-
-            if (next == std::wstring::npos)
-                break;
-            p = next;
-        }
-    }
-
-    // ---- 3. Parent exists in the merged view. Mirror the parent directory
-    // chain into overlay_fs so that subsequent writes can land in overlay. ----
-    std::wstring overlay_parent;
-    if (!appbox::MappingPathInSandbox(parent, overlay_fs, overlay_parent))
-    {
-        return STATUS_INVALID_PARAMETER;
-    }
-
-    // Sanity check: mapped path must live under overlay_fs.
-    if (overlay_parent.length() < overlay_fs.length() ||
-        overlay_parent.compare(0, overlay_fs.length(), overlay_fs) != 0)
-    {
-        return STATUS_INVALID_PARAMETER;
-    }
-
-    // Walk from just inside overlay_fs down to overlay_parent, creating every
-    // intermediate directory. FILE_OPEN_IF makes this idempotent if a directory
-    // already exists. We assume overlay_fs itself already exists.
-    size_t p = overlay_fs.length();
-    while (p < overlay_parent.length())
-    {
-        // Ensure we step over the leading '\' of the next component.
-        if (overlay_parent[p] != L'\\')
-        {
-            // Defensive: should not happen given consistent mapping output.
-            ++p;
-            continue;
-        }
-        size_t       next = overlay_parent.find(L'\\', p + 1);
-        std::wstring sub = (next == std::wstring::npos) ? overlay_parent : overlay_parent.substr(0, next);
-
-        NTSTATUS s = CreateOneDirectory(sub);
-        if (!NT_SUCCESS(s))
-        {
-            // If a non-directory entry already occupies this path in overlay
-            // (e.g. left over from a previous run), surface the error.
-            return s;
-        }
-
-        if (next == std::wstring::npos)
-            break;
-        p = next;
-    }
-
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes,
-                                  PIO_STATUS_BLOCK IoStatusBlock, PLARGE_INTEGER AllocationSize, ULONG FileAttributes,
-                                  ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer,
-                                  ULONG EaLength)
-{
-    logger.Log(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess,
-               CreateDisposition, CreateOptions, EaBuffer, EaLength);
-
-    if (appbox::ThreadLocal::Get().disable_NtCreateFile_hook)
-    {
-        return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
-                                FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
-    }
-
-    /* Get file path in sandbox */
-    std::wstring nativate_fs_nt_path;
-    if (!ConvertToFullNtPath(ObjectAttributes, CreateOptions, nativate_fs_nt_path))
-    {
-        LOG_W("ConvertToFullNtPath failed");
-        return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
-                                FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
-    }
-
-    std::wstring nativate_fs_path;
-    if (!appbox::MappingAsDosNtPath(nativate_fs_nt_path, nativate_fs_path))
-    {
-        LOG_W(L"MappingAsDosNtPath failed: {}", nativate_fs_nt_path);
-        return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
-                                FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
-    }
-    LOG_D(L"nativate_fs_path: {}", nativate_fs_path);
-
-    /*
-     * If file exists in overlay fs, open it
-     */
-    auto         w_overlay_fs = appbox::UTF8ToWide(appbox::sandbox->inject_data.overlay_nt_path);
-    std::wstring file_path_in_overlay_fs;
-    if (!appbox::MappingPathInSandbox(nativate_fs_path, w_overlay_fs, file_path_in_overlay_fs))
-    {
-        LOG_W("MappingPathInSandbox() for overlay_fs failed");
-        return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
-                                FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
-    }
-    LOG_D(L"file_path_in_overlay_fs: {}", file_path_in_overlay_fs);
-    if (appbox::CheckFileExist(file_path_in_overlay_fs))
-    {
-        return NtCreateFileOpenFS(file_path_in_overlay_fs, ObjectAttributes->Attributes, FileHandle, DesiredAccess,
-                                  IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
-                                  CreateOptions, EaBuffer, EaLength);
-    }
-
-    /*
-     * IF file exist in base fs:
-     * 1. If file is writable, copy it to overlay fs and open it
-     * 2. Otherwise, open it in base fs
-     */
-    auto         w_base_fs = appbox::UTF8ToWide(appbox::sandbox->inject_data.base_nt_path);
-    std::wstring file_path_in_base_fs;
-    if (!appbox::MappingPathInSandbox(nativate_fs_path, w_base_fs, file_path_in_base_fs))
-    {
-        LOG_W("MappingPathInSandbox() for base_fs failed");
-        return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
-                                FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
-    }
-    LOG_D(L"file_path_in_base_fs: {}", file_path_in_base_fs);
-    if (appbox::CheckFileExist(file_path_in_base_fs))
-    {
-        if (DesiredAccess & GENERIC_WRITE)
-        { /* Copy to overlay fs and open it */
-            appbox::CopyFileNt(file_path_in_base_fs, file_path_in_overlay_fs);
-            return NtCreateFileOpenFS(file_path_in_overlay_fs, ObjectAttributes->Attributes, FileHandle, DesiredAccess,
-                                      IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
-                                      CreateOptions, EaBuffer, EaLength);
-        }
-        /* Open it directly */
-        return NtCreateFileOpenFS(file_path_in_base_fs, ObjectAttributes->Attributes, FileHandle, DesiredAccess,
-                                  IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
-                                  CreateOptions, EaBuffer, EaLength);
-    }
-
-    /*
-     * If file exist in nativate fs:
-     * 1. If file is writable, copy it to overlay fs and open it
-     * 2. Otherwise, open it directly
-     */
-    if (appbox::CheckFileExist(nativate_fs_path))
-    {
-        if (DesiredAccess & GENERIC_WRITE)
-        {
-            appbox::CopyFileNt(nativate_fs_path, file_path_in_overlay_fs);
-            return NtCreateFileOpenFS(file_path_in_overlay_fs, ObjectAttributes->Attributes, FileHandle, DesiredAccess,
-                                      IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
-                                      CreateOptions, EaBuffer, EaLength);
-        }
-        /* Open it directly */
-        return NtCreateFileOpenFS(nativate_fs_path, ObjectAttributes->Attributes, FileHandle, DesiredAccess,
-                                  IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
-                                  CreateOptions, EaBuffer, EaLength);
-    }
-
-    /* File not exist, try to open it in overlay fs */
-    LOG_D("File not exist in nativate fs, try to open it in overlay fs");
-
-    auto nt = NtCreateFileCheckParent(nativate_fs_path, w_base_fs, w_overlay_fs);
-    if (nt != 0)
-    {
-        return nt;
-    }
-
-    return NtCreateFileOpenFS(file_path_in_overlay_fs, ObjectAttributes->Attributes, FileHandle, DesiredAccess,
-                              IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
-                              CreateOptions, EaBuffer, EaLength);
-}
-
-appbox::NtCreateFileLock::NtCreateFileLock()
-{
-    appbox::ThreadLocal::Get().disable_NtCreateFile_hook = true;
-}
-
-appbox::NtCreateFileLock::~NtCreateFileLock()
-{
-    appbox::ThreadLocal::Get().disable_NtCreateFile_hook = false;
-}
-
-void appbox::InjectNtCreateFile()
-{
-    auto addr = GetProcAddress(sys.h_ntdll, "NtCreateFile");
-    sys_NtCreateFile = reinterpret_cast<T_NtCreateFile>(addr);
-
-    DetourAttach(&sys_NtCreateFile, Hook_NtCreateFile);
 }
 
 nlohmann::json appbox::ToJson(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG CreateOptions)

@@ -96,7 +96,7 @@ static BOOL Hook_CreateProcessInternalW(HANDLE hToken, LPCWSTR lpApplicationName
     return TRUE;
 }
 
-void appbox::InjectCreateProcessInternalW()
+void appbox::AttachCreateProcessInternalW()
 {
     auto addr = GetProcAddress(sys.h_kernelbase, "CreateProcessInternalW");
     if (addr == nullptr)
@@ -106,4 +106,9 @@ void appbox::InjectCreateProcessInternalW()
 
     sys_CreateProcessInternalW = reinterpret_cast<T_CreateProcessInternalW>(addr);
     DetourAttach(&sys_CreateProcessInternalW, Hook_CreateProcessInternalW);
+}
+
+void appbox::DetachCreateProcessInternalW()
+{
+    DetourDetach(&sys_CreateProcessInternalW, Hook_CreateProcessInternalW);
 }

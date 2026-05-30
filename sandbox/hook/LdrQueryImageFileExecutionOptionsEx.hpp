@@ -8,17 +8,33 @@ extern "C" {
  * @see
  * https://www.geoffchappell.com/studies/windows/win32/ntdll/api/rtl/rtlexec/queryimagefileexecutionoptionsex.htm
  */
-typedef NTSTATUS (*T_LdrQueryImageFileExecutionOptionsEx)(PUNICODE_STRING lpImageFile, PCWSTR lpszOption, ULONG dwType,
-                                                          PVOID lpData, ULONG cbData, ULONG* lpcbData, BOOLEAN bWow64);
+/* clang-format off */
+typedef NTSTATUS (*T_LdrQueryImageFileExecutionOptionsEx)(
+    /* [IN] */              PUNICODE_STRING lpImageFile,
+    /* [IN] */              PCWSTR          lpszOption,
+    /* [IN] */              ULONG           dwType,
+    /* [OUT] */             PVOID           lpData,
+    /* [IN] */              ULONG           cbData,
+    /* [OUT,OPTIONAL] */    ULONG*          lpcbData,
+    /* [IN] */              BOOLEAN         bWow64
+);
+/* clang-format on */
 
+/**
+ * @brief LdrQueryImageFileExecutionOptionsEx() direct call.
+ */
 extern T_LdrQueryImageFileExecutionOptionsEx sys_LdrQueryImageFileExecutionOptionsEx;
 }
 
 namespace appbox
 {
 
-void InjectLdrQueryImageFileExecutionOptionsEx();
+/**
+ * @brief Inject LdrQueryImageFileExecutionOptionsEx() hook.
+ */
+void AttachLdrQueryImageFileExecutionOptionsEx();
+void DetachLdrQueryImageFileExecutionOptionsEx();
 
-}
+} // namespace appbox
 
 #endif

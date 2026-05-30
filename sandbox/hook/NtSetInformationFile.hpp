@@ -7,8 +7,15 @@ extern "C" {
 /**
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntsetinformationfile
  */
-typedef NTSTATUS (*T_NtSetInformationFile)(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation,
-                                           ULONG Length, FILE_INFORMATION_CLASS FileInformationClass);
+/* clang-format off */
+typedef NTSTATUS (*T_NtSetInformationFile)(
+    /* [IN] */  HANDLE                  FileHandle,
+    /* [OUT] */ PIO_STATUS_BLOCK        IoStatusBlock,
+    /* [IN] */  PVOID                   FileInformation,
+    /* [IN] */  ULONG                   Length,
+    /* [IN] */  FILE_INFORMATION_CLASS  FileInformationClass
+);
+/* clang-format on */
 
 /**
  * @brief NtSetInformationFile() direct call.
@@ -22,7 +29,8 @@ namespace appbox
 /**
  * @brief Inject NtSetInformationFile() hook.
  */
-void InjectNtSetInformationFile();
+void AttachNtSetInformationFile();
+void DetachNtSetInformationFile();
 
 } // namespace appbox
 

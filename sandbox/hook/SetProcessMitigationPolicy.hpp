@@ -8,8 +8,13 @@ extern "C" {
  * @see
  * https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-setprocessmitigationpolicy
  */
-typedef BOOL (*T_SetProcessMitigationPolicy)(PROCESS_MITIGATION_POLICY MitigationPolicy, PVOID lpBuffer,
-                                             SIZE_T dwLength);
+/* clang-format off */
+typedef BOOL (*T_SetProcessMitigationPolicy)(
+    /* [IN] */  PROCESS_MITIGATION_POLICY   MitigationPolicy,
+    /* [IN] */  PVOID                       lpBuffer,
+    /* [IN] */  SIZE_T                      dwLength
+);
+/* clang-format on */
 
 /**
  * @brief SetProcessMitigationPolicy() direct call.
@@ -23,7 +28,8 @@ namespace appbox
 /**
  * @brief Inject SetProcessMitigationPolicy() hook.
  */
-void InjectSetProcessMitigationPolicy();
+void AttachSetProcessMitigationPolicy();
+void DetachSetProcessMitigationPolicy();
 
 } // namespace appbox
 

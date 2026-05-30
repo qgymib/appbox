@@ -7,8 +7,15 @@ extern "C" {
 /**
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntqueryobject
  */
-typedef NTSTATUS (*T_NtQueryObject)(HANDLE Handle, OBJECT_INFORMATION_CLASS ObjectInformationClass,
-                                    PVOID ObjectInformation, ULONG ObjectInformationLength, PULONG ReturnLength);
+/* clang-format off */
+typedef NTSTATUS (*T_NtQueryObject)(
+    /* [IN,OPTIONAL] */     HANDLE                      Handle,
+    /* [IN] */              OBJECT_INFORMATION_CLASS    ObjectInformationClass,
+    /* [OUT,OPTIONAL] */    PVOID                       ObjectInformation,
+    /* [IN] */              ULONG                       ObjectInformationLength,
+    /* [OUT,OPTIONAL] */    PULONG                      ReturnLength
+);
+/* clang-format on */
 
 /**
  * @brief NtQueryObject() direct call.
@@ -22,7 +29,8 @@ namespace appbox
 /**
  * @brief Inject NtQueryObject() hook.
  */
-void InjectNtQueryObject();
+void AttachNtQueryObject();
+void DetachNtQueryObject();
 
 } // namespace appbox
 

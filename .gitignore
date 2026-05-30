@@ -8,3 +8,9 @@
 # eclipse
 /.cproject
 /.project
+
+# Visual studio code
+/*.code-workspace
+
+# CMake user presets
+/CMakeUserPresets.json

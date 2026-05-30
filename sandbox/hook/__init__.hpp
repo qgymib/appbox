@@ -14,8 +14,8 @@ struct ThreadLocal
         return s_local;
     }
 
-    bool disable_NtCreateFile_hook = true;
-    bool disable_NtQueryObject_hook = true;
+    bool disable_NtCreateFile_hook = false;
+    bool disable_NtQueryObject_hook = false;
 };
 
 /**
@@ -48,7 +48,8 @@ extern Sys sys;
 /**
  * @brief Initialize hooks
  */
-void InitHook();
+NTSTATUS InitHook();
+void ExitHook();
 
 } // namespace appbox
 

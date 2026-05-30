@@ -2,6 +2,7 @@
 #define APPBOX_COMMON_WSTRING_HPP
 
 #include <string>
+#include <vector>
 
 namespace appbox
 {
@@ -37,6 +38,26 @@ std::wstring UTF8ToWide(const std::string& s);
  */
 std::string WideToUTF8(const wchar_t* s);
 std::string WideToUTF8(const std::wstring& s);
+
+/**
+ * @brief Split string.
+ * @param[in] str The string to split.
+ * @param[in] p The delimiter to split the string.
+ * @return The vector of split strings.
+ */
+std::vector<std::wstring> Split(const std::wstring& str, const std::wstring& p);
+
+/**
+ * @brief Prefix compare and exchange.
+ * @param[in] str The string to compare.
+ * @param[in] pat The prefix string to compare.
+ * @param[in] rep The replacement string.
+ * @param[in] ignore_case Whether to ignore case when comparing.
+ * @param[out] out The output string.
+ * @return Whether the prefix is matched.
+ */
+bool PrefixCompareExchange(const std::wstring& str, const std::wstring& pat, const std::wstring& rep, bool ignore_case,
+                           std::wstring& out);
 
 } // namespace appbox
 

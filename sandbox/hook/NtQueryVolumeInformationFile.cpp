@@ -29,7 +29,7 @@ static NTSTATUS Hook_NtQueryVolumeInformationFile(HANDLE FileHandle, PIO_STATUS_
     return sys_NtQueryVolumeInformationFile(FileHandle, IoStatusBlock, FsInformation, Length, FsInformationClass);
 }
 
-void appbox::InjectNtQueryVolumeInformationFile()
+void appbox::AttachNtQueryVolumeInformationFile()
 {
     auto addr = GetProcAddress(sys.h_ntdll, "NtQueryVolumeInformationFile");
     sys_NtQueryVolumeInformationFile = reinterpret_cast<T_NtQueryVolumeInformationFile>(addr);
