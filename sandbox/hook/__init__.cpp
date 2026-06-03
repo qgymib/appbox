@@ -5,6 +5,7 @@
 #include "hook/LdrQueryImageFileExecutionOptionsEx.hpp"
 #include "hook/NtClose.hpp"
 #include "hook/NtCreateFile.hpp"
+#include "hook/NtCurrentTeb.hpp"
 #include "hook/NtDeleteFile.hpp"
 #include "hook/NtDeviceIoControlFile.hpp"
 #include "hook/NtFsControlFile.hpp"
@@ -16,46 +17,41 @@
 #include "hook/NtQueryInformationByName.hpp"
 #include "hook/NtQueryInformationFile.hpp"
 #include "hook/NtQueryObject.hpp"
+#include "hook/NtQueryVolumeInformationFile.hpp"
 #include "hook/NtReadFile.hpp"
 #include "hook/NtSetInformationFile.hpp"
 #include "hook/NtWriteFile.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
 #include "hook/SetProcessMitigationPolicy.hpp"
 #include "__init__.hpp"
+#include "Sandbox.hpp"
 #include <exception>
 #include <detours.h>
 
-struct SandboxHook
-{
-    const char* name;    /* function name */
-    void (*fn_attach)(); /* Attach function */
-    void (*fn_detach)(); /* Detach function. */
+static const appbox::HookRecord* s_hooks[] = {
+    &appbox::HookCreateProcessInternalW,
+    &appbox::HookLdrQueryImageFileExecutionOptionsEx,
+    &appbox::HookNtClose,
+    &appbox::HookNtCreateFile,
+    &appbox::HookNtCurrentTeb,
+    &appbox::HookNtDeleteFile,
+    &appbox::HookNtDeviceIoControlFile,
+    &appbox::HookNtFsControlFile,
+    &appbox::HookNtOpenFile,
+    &appbox::HookNtQueryAttributesFile,
+    &appbox::HookNtQueryDirectoryFile,
+    &appbox::HookNtQueryDirectoryFileEx,
+    &appbox::HookNtQueryFullAttributesFile,
+    &appbox::HookNtQueryInformationByName,
+    &appbox::HookNtQueryInformationFile,
+    &appbox::HookNtQueryObject,
+    &appbox::HookNtQueryVolumeInformationFile,
+    &appbox::HookNtReadFile,
+    &appbox::HookNtSetInformationFile,
+    &appbox::HookNtWriteFile,
+    &appbox::HookRtlInitUnicodeString,
+    &appbox::HookSetProcessMitigationPolicy,
 };
-
-/* clang-format off */
-static const SandboxHook s_hooks[] = {
-    { "CreateProcessInternalW",                 appbox::AttachCreateProcessInternalW,               appbox::DetachCreateProcessInternalW              },
-    { "LdrQueryImageFileExecutionOptionsEx",    appbox::AttachLdrQueryImageFileExecutionOptionsEx,  appbox::DetachLdrQueryImageFileExecutionOptionsEx },
-    { "NtClose",                                appbox::AttachNtClose,                              appbox::DetachNtClose                             },
-    { "NtCreateFile",                           appbox::AttachNtCreateFile,                         appbox::DetachNtCreateFile                        },
-    { "NtDeleteFile",                           appbox::AttachNtDeleteFile,                         appbox::DetachNtDeleteFile                        },
-    { "NtDeviceIoControlFile",                  appbox::AttachNtDeviceIoControlFile,                appbox::DetachNtDeviceIoControlFile               },
-    { "NtFsControlFile",                        appbox::AttachNtFsControlFile,                      appbox::DetachNtFsControlFile                     },
-    { "NtOpenFile",                             appbox::AttachNtOpenFile,                           appbox::DetachNtOpenFile                          },
-    { "NtQueryAttributesFile",                  appbox::AttachNtQueryAttributesFile,                appbox::DetachNtQueryAttributesFile               },
-    { "NtQueryDirectoryFile",                   appbox::AttachNtQueryDirectoryFile,                 appbox::DetachNtQueryDirectoryFile                },
-    { "NtQueryDirectoryFileEx",                 appbox::AttachNtQueryDirectoryFileEx,               appbox::DetachNtQueryDirectoryFileEx              },
-    { "NtQueryFullAttributesFile",              appbox::AttachNtQueryFullAttributesFile,            appbox::DetachNtQueryFullAttributesFile           },
-    { "NtQueryInformationByName",               appbox::AttachNtQueryInformationByName,             appbox::DetachNtQueryInformationByName            },
-    { "NtQueryInformationFile",                 appbox::AttachNtQueryInformationFile,               appbox::DetachNtQueryInformationFile              },
-    { "NtQueryObject",                          appbox::AttachNtQueryObject,                        appbox::DetachNtQueryObject                       },
-    { "NtReadFile",                             appbox::AttachNtReadFile,                           appbox::DetachNtReadFile                          },
-    { "NtSetInformationFile",                   appbox::AttachNtSetInformationFile,                 appbox::DetachNtSetInformationFile                },
-    { "NtWriteFile",                            appbox::AttachNtWriteFile,                          appbox::DetachNtWriteFile                         },
-    { "RtlInitUnicodeString",                   appbox::AttachRtlInitUnicodeString,                 appbox::DetachRtlInitUnicodeString                },
-    { "SetProcessMitigationPolicy",             appbox::AttachSetProcessMitigationPolicy,           appbox::DetachSetProcessMitigationPolicy          },
-};
-/* clang-format on */
 
 appbox::Sys appbox::sys;
 
@@ -72,10 +68,20 @@ NTSTATUS appbox::InitHook()
 
     for (const auto& hook : s_hooks)
     {
-        hook.fn_attach();
+        hook->load_proc_addr_fn();
+
+        if (appbox::sandbox->bIsolationMode && hook->pDetour != nullptr)
+        {
+            DetourAttach(hook->ppPointer, hook->pDetour);
+        }
     }
 
     DetourTransactionCommit();
+
+    for (const auto& hook : s_hooks)
+    {
+        LOG_D("{}: {}", hook->name, *hook->ppPointer);
+    }
 
     return 0;
 }
@@ -87,7 +93,10 @@ void appbox::ExitHook()
 
     for (const auto& hook : s_hooks)
     {
-        hook.fn_detach();
+        if (appbox::sandbox->bIsolationMode && hook->pDetour != nullptr)
+        {
+            DetourDetach(hook->ppPointer, hook->pDetour);
+        }
     }
 
     DetourTransactionCommit();

@@ -2,9 +2,9 @@
 #define APPBOX_SANDBOX_HOOK_NTDEVICEIOCONTROLFILE_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
-
 /**
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntdeviceiocontrolfile
  */
@@ -33,10 +33,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject NtDeviceIoControlFile() hook.
+ * @brief Hook NtDeviceIoControlFile().
  */
-void AttachNtDeviceIoControlFile();
-void DetachNtDeviceIoControlFile();
+extern HookRecord HookNtDeviceIoControlFile;
 
 } // namespace appbox
 

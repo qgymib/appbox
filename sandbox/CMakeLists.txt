@@ -29,6 +29,7 @@ add_library(${sandbox_name} MODULE
     "hook/LdrQueryImageFileExecutionOptionsEx.cpp"
     "hook/NtClose.cpp"
     "hook/NtCreateFile.cpp"
+    "hook/NtCurrentTeb.cpp"
     "hook/NtDeleteFile.cpp"
     "hook/NtDeviceIoControlFile.cpp"
     "hook/NtFsControlFile.cpp"

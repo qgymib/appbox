@@ -1,13 +1,15 @@
 #include "NtReadFile.hpp"
-#include "__init__.hpp"
 
 T_NtReadFile sys_NtReadFile = nullptr;
 
-void appbox::AttachNtReadFile()
+static void LoadNtReadFile()
 {
-    sys_NtReadFile = (T_NtReadFile)GetProcAddress(sys.h_ntdll, "NtReadFile");
+    sys_NtReadFile = (T_NtReadFile)GetProcAddress(appbox::sys.h_ntdll, "NtReadFile");
 }
 
-void appbox::DetachNtReadFile()
-{
-}
+appbox::HookRecord appbox::HookNtReadFile = {
+    "NtReadFile",
+    LoadNtReadFile,
+    (void**)&sys_NtReadFile,
+    nullptr,
+};

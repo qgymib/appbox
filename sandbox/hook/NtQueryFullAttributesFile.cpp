@@ -1,8 +1,6 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "NtQueryFullAttributesFile.hpp"
-#include "__init__.hpp"
-#include <detours.h>
 
 T_NtQueryFullAttributesFile sys_NtQueryFullAttributesFile = nullptr;
 
@@ -24,15 +22,15 @@ static NTSTATUS Hook_NtQueryFullAttributesFile(POBJECT_ATTRIBUTES             Ob
     return sys_NtQueryFullAttributesFile(ObjectAttributes, FileInformation);
 }
 
-void appbox::AttachNtQueryFullAttributesFile()
+static void LoadNtQueryFullAttributesFile()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "NtQueryFullAttributesFile");
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtQueryFullAttributesFile");
     sys_NtQueryFullAttributesFile = reinterpret_cast<T_NtQueryFullAttributesFile>(addr);
-
-    DetourAttach(&sys_NtQueryFullAttributesFile, Hook_NtQueryFullAttributesFile);
 }
 
-void appbox::DetachNtQueryFullAttributesFile()
-{
-    DetourDetach(&sys_NtQueryFullAttributesFile, Hook_NtQueryFullAttributesFile);
-}
+appbox::HookRecord appbox::HookNtQueryFullAttributesFile = {
+    "NtQueryFullAttributesFile",
+    LoadNtQueryFullAttributesFile,
+    (void**)&sys_NtQueryFullAttributesFile,
+    Hook_NtQueryFullAttributesFile,
+};

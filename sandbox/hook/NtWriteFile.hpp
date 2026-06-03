@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_NTWRITEFILE_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -31,10 +32,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject NtWriteFile() hook.
+ * @brief Hook NtWriteFile().
  */
-void AttachNtWriteFile();
-void DetachNtWriteFile();
+extern HookRecord HookNtWriteFile;
 
 } // namespace appbox
 

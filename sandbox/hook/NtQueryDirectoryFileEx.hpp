@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_NTQUERYDIRECTORYFILEEX_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -36,6 +37,11 @@ namespace appbox
  */
 void AttachNtQueryDirectoryFileEx();
 void DetachNtQueryDirectoryFileEx();
+
+/**
+ * @brief Hook NtQueryDirectoryFileEx().
+ */
+extern HookRecord HookNtQueryDirectoryFileEx;
 
 } // namespace appbox
 

@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_NTQUERYINFORMATIONBYNAME_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -27,10 +28,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject NtQueryInformationByName() hook.
+ * @brief Hook NtQueryInformationByName().
  */
-void AttachNtQueryInformationByName();
-void DetachNtQueryInformationByName();
+extern HookRecord HookNtQueryInformationByName;
 
 } // namespace appbox
 

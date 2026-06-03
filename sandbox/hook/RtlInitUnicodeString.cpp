@@ -1,13 +1,15 @@
 #include "RtlInitUnicodeString.hpp"
-#include "__init__.hpp"
 
 T_RtlInitUnicodeString sys_RtlInitUnicodeString = nullptr;
 
-void appbox::AttachRtlInitUnicodeString()
+static void LoadRtlInitUnicodeString()
 {
-    sys_RtlInitUnicodeString = (T_RtlInitUnicodeString)GetProcAddress(sys.h_ntdll, "RtlInitUnicodeString");
+    sys_RtlInitUnicodeString = (T_RtlInitUnicodeString)GetProcAddress(appbox::sys.h_ntdll, "RtlInitUnicodeString");
 }
 
-void appbox::DetachRtlInitUnicodeString()
-{
-}
+appbox::HookRecord appbox::HookRtlInitUnicodeString = {
+    "RtlInitUnicodeString",
+    LoadRtlInitUnicodeString,
+    (void**)&sys_RtlInitUnicodeString,
+    nullptr,
+};

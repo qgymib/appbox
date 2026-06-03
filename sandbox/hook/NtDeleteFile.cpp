@@ -11,10 +11,8 @@
 #include "hook/NtQueryDirectoryFile.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
 #include "NtDeleteFile.hpp"
-#include "__init__.hpp"
 #include "WString.hpp"
 #include "Config.hpp"
-#include <detours.h>
 
 struct FolderTraversalResult
 {
@@ -213,19 +211,6 @@ static NTSTATUS Hook_NtDeleteFile(POBJECT_ATTRIBUTES ObjectAttributes)
     return appbox::DeleteViewPath(fs_path, ObjectAttributes->Attributes);
 }
 
-void appbox::AttachNtDeleteFile()
-{
-    auto addr = GetProcAddress(sys.h_ntdll, "NtDeleteFile");
-    sys_NtDeleteFile = reinterpret_cast<T_NtDeleteFile>(addr);
-
-    DetourAttach(&sys_NtDeleteFile, Hook_NtDeleteFile);
-}
-
-void appbox::DetachNtDeleteFile()
-{
-    DetourDetach(&sys_NtDeleteFile, Hook_NtDeleteFile);
-}
-
 NTSTATUS appbox::DeleteViewPath(const std::wstring& path, ULONG Attributes)
 {
     appbox::filesystem::ResolveOption resolve_option;
@@ -256,3 +241,16 @@ NTSTATUS appbox::DeleteViewPath(const appbox::filesystem::ResolveResult& resolve
     LOG_T("delete as dir");
     return DeleteAsDirectory(resolve, Attributes);
 }
+
+static void LoadNtDeleteFile()
+{
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtDeleteFile");
+    sys_NtDeleteFile = reinterpret_cast<T_NtDeleteFile>(addr);
+}
+
+appbox::HookRecord appbox::HookNtDeleteFile = {
+    "NtDeleteFile",
+    LoadNtDeleteFile,
+    (void**)&sys_NtDeleteFile,
+    Hook_NtDeleteFile,
+};

@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_RTLINITUNICODESTRING_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -24,10 +25,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject RtlInitUnicodeString() hook.
+ * @brief Hook RtlInitUnicodeString().
  */
-void AttachRtlInitUnicodeString();
-void DetachRtlInitUnicodeString();
+extern HookRecord HookRtlInitUnicodeString;
 
 } // namespace appbox
 

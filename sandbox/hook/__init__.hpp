@@ -18,6 +18,29 @@ struct ThreadLocal
     bool disable_NtQueryObject_hook = false;
 };
 
+struct HookRecord
+{
+    /**
+     * @brief Hook name.
+     */
+    const char* name;
+
+    /**
+     * @brief Initialize function address.
+     */
+    void (*load_proc_addr_fn)();
+
+    /**
+     * @brief Hook function address.
+     */
+    void** ppPointer;
+
+    /**
+     * @brief Detour function address, can be NULL.
+     */
+    void* pDetour;
+};
+
 /**
  * @brief System informations.
  */
@@ -49,7 +72,7 @@ extern Sys sys;
  * @brief Initialize hooks
  */
 NTSTATUS InitHook();
-void ExitHook();
+void     ExitHook();
 
 } // namespace appbox
 

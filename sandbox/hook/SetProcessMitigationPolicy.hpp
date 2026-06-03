@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_SETPROCESSMITIGATIONPOLICY_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -26,10 +27,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject SetProcessMitigationPolicy() hook.
+ * @brief Hook SetProcessMitigationPolicy().
  */
-void AttachSetProcessMitigationPolicy();
-void DetachSetProcessMitigationPolicy();
+extern HookRecord HookSetProcessMitigationPolicy;
 
 } // namespace appbox
 

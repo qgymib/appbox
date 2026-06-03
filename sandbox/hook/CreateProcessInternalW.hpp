@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_CREATEPROCESSINTERNALW_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -34,10 +35,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject CreateProcessInternalW() hook.
+ * @brief Hook CreateProcessInternalW().
  */
-void AttachCreateProcessInternalW();
-void DetachCreateProcessInternalW();
+extern HookRecord HookCreateProcessInternalW;
 
 } // namespace appbox
 

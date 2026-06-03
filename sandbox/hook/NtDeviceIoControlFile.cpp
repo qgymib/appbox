@@ -1,8 +1,6 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "NtDeviceIoControlFile.hpp"
-#include "__init__.hpp"
-#include <detours.h>
 
 T_NtDeviceIoControlFile sys_NtDeviceIoControlFile = nullptr;
 
@@ -38,15 +36,15 @@ static NTSTATUS Hook_NtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
                                      InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
 }
 
-void appbox::AttachNtDeviceIoControlFile()
+static void LoadNtDeviceIoControlFile()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "NtDeviceIoControlFile");
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtDeviceIoControlFile");
     sys_NtDeviceIoControlFile = reinterpret_cast<T_NtDeviceIoControlFile>(addr);
-
-    DetourAttach(&sys_NtDeviceIoControlFile, Hook_NtDeviceIoControlFile);
 }
 
-void appbox::DetachNtDeviceIoControlFile()
-{
-    DetourDetach(&sys_NtDeviceIoControlFile, Hook_NtDeviceIoControlFile);
-}
+appbox::HookRecord appbox::HookNtDeviceIoControlFile = {
+    "NtDeviceIoControlFile",
+    LoadNtDeviceIoControlFile,
+    (void**)&sys_NtDeviceIoControlFile,
+    Hook_NtDeviceIoControlFile,
+};

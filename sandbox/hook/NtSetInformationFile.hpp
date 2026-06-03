@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_NTSETINFORMATIONFILE_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -27,10 +28,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject NtSetInformationFile() hook.
+ * @brief Hook NtSetInformationFile().
  */
-void AttachNtSetInformationFile();
-void DetachNtSetInformationFile();
+extern HookRecord HookNtSetInformationFile;
 
 } // namespace appbox
 

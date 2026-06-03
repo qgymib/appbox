@@ -4,8 +4,6 @@
 #include "hook/NtDeleteFile.hpp"
 #include "hook/NtQueryInformationFile.hpp"
 #include "NtClose.hpp"
-#include "__init__.hpp"
-#include <detours.h>
 
 T_NtClose sys_NtClose = nullptr;
 
@@ -50,15 +48,15 @@ static NTSTATUS Hook_NtClose(HANDLE Handle)
     return st;
 }
 
-void appbox::AttachNtClose()
+static void LoadNtClose()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "NtClose");
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtClose");
     sys_NtClose = reinterpret_cast<T_NtClose>(addr);
-
-    DetourAttach(&sys_NtClose, Hook_NtClose);
 }
 
-void appbox::DetachNtClose()
-{
-    DetourDetach(&sys_NtClose, Hook_NtClose);
-}
+appbox::HookRecord appbox::HookNtClose = {
+    "NtClose",
+    LoadNtClose,
+    (void**)&sys_NtClose,
+    Hook_NtClose,
+};

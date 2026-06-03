@@ -1,8 +1,6 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "NtQueryAttributesFile.hpp"
-#include "__init__.hpp"
-#include <detours.h>
 
 static nlohmann::json NtQueryAttributesFileLogParam(POBJECT_ATTRIBUTES      ObjectAttributes,
                                                     PFILE_BASIC_INFORMATION FileInformation)
@@ -24,15 +22,15 @@ static NTSTATUS Hook_NtQueryAttributesFile(POBJECT_ATTRIBUTES ObjectAttributes, 
     return sys_NtQueryAttributesFile(ObjectAttributes, FileInformation);
 }
 
-void appbox::AttachNtQueryAttributesFile()
+static void LoadNtQueryAttributesFile()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "NtQueryAttributesFile");
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtQueryAttributesFile");
     sys_NtQueryAttributesFile = reinterpret_cast<T_NtQueryAttributesFile>(addr);
-
-    DetourAttach(&sys_NtQueryAttributesFile, Hook_NtQueryAttributesFile);
 }
 
-void appbox::DetachNtQueryAttributesFile()
-{
-    DetourDetach(&sys_NtQueryAttributesFile, Hook_NtQueryAttributesFile);
-}
+appbox::HookRecord appbox::HookNtQueryAttributesFile = {
+    "NtQueryAttributesFile",
+    LoadNtQueryAttributesFile,
+    (void**)&sys_NtQueryAttributesFile,
+    Hook_NtQueryAttributesFile,
+};

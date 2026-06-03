@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_NTCREATEFILE_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 #include <nlohmann/json.hpp>
 
 extern "C" {
@@ -40,10 +41,9 @@ struct NtCreateFileLock
 };
 
 /**
- * @brief Inject NtCreateFile() hook.
+ * @brief Hook NtCreateFile().
  */
-void AttachNtCreateFile();
-void DetachNtCreateFile();
+extern HookRecord HookNtCreateFile;
 
 /**
  * @brief Convert POBJECT_ATTRIBUTES to full NT path.

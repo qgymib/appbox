@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_NTOPENFILE_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -28,10 +29,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject NtOpenFile() hook.
+ * @brief Hook NtOpenFile().
  */
-void AttachNtOpenFile();
-void DetachNtOpenFile();
+extern HookRecord HookNtOpenFile;
 
 } // namespace appbox
 

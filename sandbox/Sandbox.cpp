@@ -4,14 +4,23 @@
 #include <spdlog/spdlog.h>
 #include "hook/__init__.hpp"
 #include "hook/NtCreateFile.hpp"
+#include "hook/NtCurrentTeb.hpp"
 #include "utils/Log.hpp"
 #include "utils/HandleInfo.hpp"
 #include "Sandbox.hpp"
 #include "Defines.hpp"
+#include "WString.hpp"
 
 struct ModuleInitializer
 {
+    /**
+     * @brief Initialize function.
+     */
     NTSTATUS (*fn_init)();
+
+    /**
+     * @brief Exit function.
+     */
     void (*fn_exit)();
 };
 
@@ -22,45 +31,81 @@ static const ModuleInitializer s_module[] = {
 
 appbox::Sandbox* appbox::sandbox = nullptr;
 
+static void ParseInjectData(const std::string& data)
+{
+    appbox::SandboxConfig inject_data;
+    nlohmann::json::parse(data).get_to(inject_data);
+
+    appbox::sandbox->sandbox32_dos_path = inject_data.sandbox32_dos_path;
+    appbox::sandbox->sandbox64_dos_path = inject_data.sandbox64_dos_path;
+    appbox::sandbox->wPipePath = appbox::UTF8ToWide(inject_data.pipe_path);
+
+    appbox::sandbox->fs.fs_upper = appbox::UTF8ToWide(inject_data.fs_upper);
+    for (const auto& p : inject_data.fs_lower)
+    {
+        appbox::filesystem::ResolveFsMapping mapping;
+        mapping.host_nt_path = appbox::UTF8ToWide(p.host_nt_path);
+        mapping.mapped_nt_path = appbox::UTF8ToWide(p.mapped_nt_path);
+        appbox::sandbox->fs.fs_lower.push_back(mapping);
+    }
+
+    appbox::sandbox->client = std::make_shared<appbox::PipeClient>(appbox::sandbox->wPipePath);
+    if (!appbox::sandbox->client->Start())
+    {
+        throw std::runtime_error("failed to start rpc client");
+    }
+}
+
 static void LoadInjectData()
 {
     const GUID guid = SANDBOX_GUID;
-    DWORD      inject_data_sz = 0;
-    void*      inject_data = nullptr;
+    DWORD      inject_bytes_sz = 0;
+    void*      inject_bytes = nullptr;
     HMODULE    hModuleLast = nullptr;
     while ((hModuleLast = DetourEnumerateModules(hModuleLast)) != nullptr)
     {
-        if ((inject_data = DetourFindPayload(hModuleLast, guid, &inject_data_sz)) != nullptr)
+        if ((inject_bytes = DetourFindPayload(hModuleLast, guid, &inject_bytes_sz)) != nullptr)
         {
             break;
         }
     }
 
-    if (inject_data == nullptr)
+    if (inject_bytes == nullptr)
     {
         SPDLOG_ERROR("failed to find inject data");
         throw std::runtime_error("failed to find inject data");
     }
 
-    std::string inject_string(static_cast<const char*>(inject_data), inject_data_sz);
-    appbox::sandbox->inject_data = nlohmann::json::parse(inject_string);
+    appbox::sandbox->inject_data = std::string(static_cast<const char*>(inject_bytes), inject_bytes_sz);
+    ParseInjectData(appbox::sandbox->inject_data);
 }
 
-static void OnDllAttach(HINSTANCE hinstDLL)
+static std::string GetImagePathFromPeb()
+{
+    auto         peb = sys_NtCurrentTeb()->ProcessEnvironmentBlock;
+    auto&        path = peb->ProcessParameters->ImagePathName;
+    std::wstring name(path.Buffer, path.Length / sizeof(wchar_t));
+    return appbox::WideToUTF8(name);
+}
+
+static void SayHello()
+{
+    LOG_I("AppBox Sandbox initialized for {} with config: {}", GetImagePathFromPeb(),
+          nlohmann::json(*appbox::sandbox).dump());
+}
+
+static void OnDllAttach()
 {
     if (DetourIsHelperProcess())
     {
         return;
     }
-    DetourRestoreAfterWith();
 
-    appbox::sandbox = new appbox::Sandbox(hinstDLL);
-    LoadInjectData();
-
-    appbox::sandbox->client = std::make_shared<appbox::PipeClient>(appbox::sandbox->inject_data.pipe_path);
-    if (!appbox::sandbox->client->Start())
+    appbox::sandbox = new appbox::Sandbox;
+    appbox::sandbox->bIsolationMode = DetourRestoreAfterWith();
+    if (appbox::sandbox->bIsolationMode)
     {
-        throw std::runtime_error("failed to start rpc client");
+        LoadInjectData();
     }
 
     for (size_t i = 0; i < std::size(s_module); ++i)
@@ -76,7 +121,7 @@ static void OnDllAttach(HINSTANCE hinstDLL)
         }
     }
 
-    LOG_I("AppBox Sandbox Config: {}", nlohmann::json(appbox::sandbox->inject_data).dump());
+    SayHello();
 }
 
 static void OnDllDetach()
@@ -94,19 +139,24 @@ static void OnDllDetach()
     }
 }
 
-appbox::Sandbox::Sandbox(HINSTANCE hinstDLL)
+void appbox::to_json(nlohmann::json& j, const Sandbox& r)
 {
-    this->hinstDLL = hinstDLL;
+    j["bIsolationMode"] = r.bIsolationMode;
+    j["wPipePath"] = appbox::WideToUTF8(r.wPipePath);
+    j["fs"] = r.fs;
+    j["sandbox32_dos_path"] = r.sandbox32_dos_path;
+    j["sandbox64_dos_path"] = r.sandbox64_dos_path;
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
 {
+    (void)hinstDLL;
     try
     {
         switch (fdwReason)
         {
         case DLL_PROCESS_ATTACH:
-            OnDllAttach(hinstDLL);
+            OnDllAttach();
             break;
         case DLL_THREAD_ATTACH:
         case DLL_THREAD_DETACH:

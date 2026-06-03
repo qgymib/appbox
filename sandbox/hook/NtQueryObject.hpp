@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_NTQUERYOBJECT_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -27,10 +28,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject NtQueryObject() hook.
+ * @brief Hook NtQueryObject().
  */
-void AttachNtQueryObject();
-void DetachNtQueryObject();
+extern HookRecord HookNtQueryObject;
 
 } // namespace appbox
 

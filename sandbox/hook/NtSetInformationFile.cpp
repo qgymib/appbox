@@ -1,8 +1,6 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "NtSetInformationFile.hpp"
-#include "__init__.hpp"
-#include <detours.h>
 
 T_NtSetInformationFile sys_NtSetInformationFile = nullptr;
 
@@ -124,15 +122,15 @@ static NTSTATUS Hook_NtSetInformationFile(HANDLE FileHandle, PIO_STATUS_BLOCK Io
     return sys_NtSetInformationFile(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
 }
 
-void appbox::AttachNtSetInformationFile()
+static void LoadNtSetInformationFile()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "NtSetInformationFile");
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtSetInformationFile");
     sys_NtSetInformationFile = reinterpret_cast<T_NtSetInformationFile>(addr);
-
-    DetourAttach(&sys_NtSetInformationFile, Hook_NtSetInformationFile);
 }
 
-void appbox::DetachNtSetInformationFile()
-{
-    DetourDetach(&sys_NtSetInformationFile, Hook_NtSetInformationFile);
-}
+appbox::HookRecord appbox::HookNtSetInformationFile = {
+    "NtSetInformationFile",
+    LoadNtSetInformationFile,
+    (void**)&sys_NtSetInformationFile,
+    Hook_NtSetInformationFile,
+};

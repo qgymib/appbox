@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_NTQUERYVOLUMEINFORMATIONFILE_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -27,9 +28,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject NtQueryVolumeInformationFile() hook.
+ * @brief Hook NtQueryVolumeInformationFile().
  */
-void AttachNtQueryVolumeInformationFile();
+extern HookRecord HookNtQueryVolumeInformationFile;
 
 } // namespace appbox
 

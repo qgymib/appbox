@@ -1,13 +1,15 @@
 #include "NtWriteFile.hpp"
-#include "__init__.hpp"
 
 T_NtWriteFile sys_NtWriteFile = nullptr;
 
-void appbox::AttachNtWriteFile()
+static void LoadNtWriteFile()
 {
-    sys_NtWriteFile = (T_NtWriteFile)GetProcAddress(sys.h_ntdll, "NtWriteFile");
+    sys_NtWriteFile = (T_NtWriteFile)GetProcAddress(appbox::sys.h_ntdll, "NtWriteFile");
 }
 
-void appbox::DetachNtWriteFile()
-{
-}
+appbox::HookRecord appbox::HookNtWriteFile = {
+    "NtWriteFile",
+    LoadNtWriteFile,
+    (void**)&sys_NtWriteFile,
+    nullptr,
+};

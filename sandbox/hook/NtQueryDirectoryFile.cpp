@@ -1,8 +1,6 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "NtQueryDirectoryFile.hpp"
-#include "__init__.hpp"
-#include <detours.h>
 
 T_NtQueryDirectoryFile sys_NtQueryDirectoryFile = nullptr;
 
@@ -40,15 +38,15 @@ static NTSTATUS Hook_NtQueryDirectoryFile(HANDLE FileHandle, HANDLE Event, PIO_A
                                     FileInformationClass, ReturnSingleEntry, FileName, RestartScan);
 }
 
-void appbox::AttachNtQueryDirectoryFile()
+static void LoadNtQueryDirectoryFile()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "NtQueryDirectoryFile");
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtQueryDirectoryFile");
     sys_NtQueryDirectoryFile = reinterpret_cast<T_NtQueryDirectoryFile>(addr);
-
-    DetourAttach(&sys_NtQueryDirectoryFile, Hook_NtQueryDirectoryFile);
 }
 
-void appbox::DetachNtQueryDirectoryFile()
-{
-    DetourDetach(&sys_NtQueryDirectoryFile, Hook_NtQueryDirectoryFile);
-}
+appbox::HookRecord appbox::HookNtQueryDirectoryFile = {
+    "NtQueryDirectoryFile",
+    LoadNtQueryDirectoryFile,
+    (void**)&sys_NtQueryDirectoryFile,
+    Hook_NtQueryDirectoryFile,
+};

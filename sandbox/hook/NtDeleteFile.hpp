@@ -3,6 +3,7 @@
 
 #include "utils/WinAPI.h"
 #include "filesystem/Resolve.hpp"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -24,10 +25,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject NtDeleteFile() hook.
+ * @brief Hook NtDeleteFile().
  */
-void AttachNtDeleteFile();
-void DetachNtDeleteFile();
+extern HookRecord HookNtDeleteFile;
 
 /**
  * @brief Delete path in mapped view.

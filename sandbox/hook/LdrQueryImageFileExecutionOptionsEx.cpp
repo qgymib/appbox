@@ -1,6 +1,4 @@
 #include "utils/WinAPI.h" /* Must be first include file */
-#include <detours.h>
-#include "__init__.hpp"
 #include "LdrQueryImageFileExecutionOptionsEx.hpp"
 
 T_LdrQueryImageFileExecutionOptionsEx sys_LdrQueryImageFileExecutionOptionsEx = nullptr;
@@ -8,6 +6,12 @@ T_LdrQueryImageFileExecutionOptionsEx sys_LdrQueryImageFileExecutionOptionsEx = 
 static NTSTATUS Hook_LdrQueryImageFileExecutionOptionsEx(PUNICODE_STRING lpImageFile, PCWSTR lpszOption, ULONG dwType,
                                                          PVOID lpData, ULONG cbData, ULONG* lpcbData, BOOLEAN bWow64)
 {
+    if (appbox::sys.OSBuild < 14942)
+    {
+        return sys_LdrQueryImageFileExecutionOptionsEx(lpImageFile, lpszOption, dwType, lpData, cbData, lpcbData,
+                                                       bWow64);
+    }
+
     /*
      * Sandbox on ARM64 requires x86 applications NOT to use the CHPE binaries.
      *
@@ -23,19 +27,15 @@ static NTSTATUS Hook_LdrQueryImageFileExecutionOptionsEx(PUNICODE_STRING lpImage
     return sys_LdrQueryImageFileExecutionOptionsEx(lpImageFile, lpszOption, dwType, lpData, cbData, lpcbData, bWow64);
 }
 
-void appbox::AttachLdrQueryImageFileExecutionOptionsEx()
+static void LoadLdrQueryImageFileExecutionOptionsEx()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "LdrQueryImageFileExecutionOptionsEx");
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "LdrQueryImageFileExecutionOptionsEx");
     sys_LdrQueryImageFileExecutionOptionsEx = reinterpret_cast<T_LdrQueryImageFileExecutionOptionsEx>(addr);
-
-    /* Windows 10 */
-    if (appbox::sys.OSBuild >= 14942)
-    {
-        DetourAttach(&sys_LdrQueryImageFileExecutionOptionsEx, Hook_LdrQueryImageFileExecutionOptionsEx);
-    }
 }
 
-void appbox::DetachLdrQueryImageFileExecutionOptionsEx()
-{
-    DetourDetach(&sys_LdrQueryImageFileExecutionOptionsEx, Hook_LdrQueryImageFileExecutionOptionsEx);
-}
+appbox::HookRecord appbox::HookLdrQueryImageFileExecutionOptionsEx = {
+    "LdrQueryImageFileExecutionOptionsEx",
+    LoadLdrQueryImageFileExecutionOptionsEx,
+    (void**)&sys_LdrQueryImageFileExecutionOptionsEx,
+    Hook_LdrQueryImageFileExecutionOptionsEx,
+};

@@ -7,8 +7,6 @@
 #include "hook/NtCreateFile.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
 #include "NtOpenFile.hpp"
-#include "__init__.hpp"
-#include <detours.h>
 
 T_NtOpenFile sys_NtOpenFile = nullptr;
 
@@ -113,15 +111,15 @@ static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
     return st;
 }
 
-void appbox::AttachNtOpenFile()
+static void LoadNtOpenFile()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "NtOpenFile");
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtOpenFile");
     sys_NtOpenFile = reinterpret_cast<T_NtOpenFile>(addr);
-
-    DetourAttach(&sys_NtOpenFile, Hook_NtOpenFile);
 }
 
-void appbox::DetachNtOpenFile()
-{
-    DetourDetach(&sys_NtOpenFile, Hook_NtOpenFile);
-}
+appbox::HookRecord appbox::HookNtOpenFile = {
+    "NtOpenFile",
+    LoadNtOpenFile,
+    (void**)&sys_NtOpenFile,
+    Hook_NtOpenFile,
+};

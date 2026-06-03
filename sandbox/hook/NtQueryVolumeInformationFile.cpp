@@ -1,8 +1,6 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
-#include "hook/NtQueryVolumeInformationFile.hpp"
-#include "__init__.hpp"
-#include <detours.h>
+#include "NtQueryVolumeInformationFile.hpp"
 
 T_NtQueryVolumeInformationFile sys_NtQueryVolumeInformationFile = nullptr;
 
@@ -29,10 +27,15 @@ static NTSTATUS Hook_NtQueryVolumeInformationFile(HANDLE FileHandle, PIO_STATUS_
     return sys_NtQueryVolumeInformationFile(FileHandle, IoStatusBlock, FsInformation, Length, FsInformationClass);
 }
 
-void appbox::AttachNtQueryVolumeInformationFile()
+static void LoadNtQueryVolumeInformationFile()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "NtQueryVolumeInformationFile");
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtQueryVolumeInformationFile");
     sys_NtQueryVolumeInformationFile = reinterpret_cast<T_NtQueryVolumeInformationFile>(addr);
-
-    DetourAttach(&sys_NtQueryVolumeInformationFile, Hook_NtQueryVolumeInformationFile);
 }
+
+appbox::HookRecord appbox::HookNtQueryVolumeInformationFile = {
+    "NtQueryVolumeInformationFile",
+    LoadNtQueryVolumeInformationFile,
+    (void**)&sys_NtQueryVolumeInformationFile,
+    Hook_NtQueryVolumeInformationFile,
+};

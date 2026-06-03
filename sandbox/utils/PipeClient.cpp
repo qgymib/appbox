@@ -6,10 +6,10 @@
 
 struct appbox::PipeClient::Data
 {
-    Data(const std::string& path);
+    Data(const std::wstring& path);
     ~Data();
     std::atomic_uint64_t id_cnt_;
-    std::string          path_;
+    std::wstring         path_;
     std::mutex           mutex_;
     HANDLE               pipe_;
 };
@@ -95,7 +95,7 @@ static bool RecvResponse(HANDLE pipe, uint64_t id, nlohmann::json& rsp)
     return true;
 }
 
-appbox::PipeClient::Data::Data(const std::string& path) : id_cnt_(0), path_(path), pipe_(INVALID_HANDLE_VALUE)
+appbox::PipeClient::Data::Data(const std::wstring& path) : id_cnt_(0), path_(path), pipe_(INVALID_HANDLE_VALUE)
 {
 }
 
@@ -108,7 +108,7 @@ appbox::PipeClient::Data::~Data()
     }
 }
 
-appbox::PipeClient::PipeClient(const std::string& path)
+appbox::PipeClient::PipeClient(const std::wstring& path)
 {
     data_ = new Data(path);
 }
@@ -123,7 +123,7 @@ bool appbox::PipeClient::Start()
     for (size_t i = 0; i < 5; ++i)
     {
         data_->pipe_ =
-            CreateFileA(data_->path_.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+            CreateFileW(data_->path_.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
         if (data_->pipe_ != INVALID_HANDLE_VALUE)
         {
             break;
@@ -135,7 +135,7 @@ bool appbox::PipeClient::Start()
             return false;
         }
 
-        WaitNamedPipeA(data_->path_.c_str(), 1 * 1000);
+        WaitNamedPipeW(data_->path_.c_str(), 1 * 1000);
     }
     if (data_->pipe_ == INVALID_HANDLE_VALUE)
     {

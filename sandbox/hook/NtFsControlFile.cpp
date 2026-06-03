@@ -1,8 +1,6 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "NtFsControlFile.hpp"
-#include "__init__.hpp"
-#include <detours.h>
 
 T_NtFsControlFile sys_NtFsControlFile = nullptr;
 
@@ -37,15 +35,15 @@ static NTSTATUS Hook_NtFsControlFile(HANDLE FileHandle, HANDLE Event, PIO_APC_RO
                                InputBufferLength, OutputBuffer, OutputBufferLength);
 }
 
-void appbox::AttachNtFsControlFile()
+static void LoadNtFsControlFile()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "NtFsControlFile");
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtFsControlFile");
     sys_NtFsControlFile = reinterpret_cast<T_NtFsControlFile>(addr);
-
-    DetourAttach(&sys_NtFsControlFile, Hook_NtFsControlFile);
 }
 
-void appbox::DetachNtFsControlFile()
-{
-    DetourDetach(&sys_NtFsControlFile, Hook_NtFsControlFile);
-}
+appbox::HookRecord appbox::HookNtFsControlFile = {
+    "NtFsControlFile",
+    LoadNtFsControlFile,
+    (void**)&sys_NtFsControlFile,
+    Hook_NtFsControlFile,
+};

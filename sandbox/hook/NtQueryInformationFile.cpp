@@ -1,8 +1,6 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "NtQueryInformationFile.hpp"
-#include "__init__.hpp"
-#include <detours.h>
 
 T_NtQueryInformationFile sys_NtQueryInformationFile = nullptr;
 
@@ -27,15 +25,15 @@ static NTSTATUS Hook_NtQueryInformationFile(HANDLE FileHandle, PIO_STATUS_BLOCK 
     return sys_NtQueryInformationFile(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
 }
 
-void appbox::AttachNtQueryInformationFile()
+static void LoadNtQueryInformationFile()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "NtQueryInformationFile");
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtQueryInformationFile");
     sys_NtQueryInformationFile = reinterpret_cast<T_NtQueryInformationFile>(addr);
-
-    DetourAttach(&sys_NtQueryInformationFile, Hook_NtQueryInformationFile);
 }
 
-void appbox::DetachNtQueryInformationFile()
-{
-    DetourDetach(&sys_NtQueryInformationFile, Hook_NtQueryInformationFile);
-}
+appbox::HookRecord appbox::HookNtQueryInformationFile = {
+    "NtQueryInformationFile",
+    LoadNtQueryInformationFile,
+    (void**)&sys_NtQueryInformationFile,
+    Hook_NtQueryInformationFile,
+};

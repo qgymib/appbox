@@ -1,9 +1,7 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "hook/NtCreateFile.hpp"
-#include "hook/NtQueryObject.hpp"
-#include "__init__.hpp"
-#include <detours.h>
+#include "NtQueryObject.hpp"
 
 T_NtQueryObject sys_NtQueryObject = nullptr;
 
@@ -39,15 +37,15 @@ static NTSTATUS Hook_NtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS Objec
     return sys_NtQueryObject(Handle, ObjectInformationClass, ObjectInformation, ObjectInformationLength, ReturnLength);
 }
 
-void appbox::AttachNtQueryObject()
+static void LoadNtQueryObject()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "NtQueryObject");
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtQueryObject");
     sys_NtQueryObject = reinterpret_cast<T_NtQueryObject>(addr);
-
-    DetourAttach(&sys_NtQueryObject, Hook_NtQueryObject);
 }
 
-void appbox::DetachNtQueryObject()
-{
-    DetourDetach(&sys_NtQueryObject, Hook_NtQueryObject);
-}
+appbox::HookRecord appbox::HookNtQueryObject = {
+    "NtQueryObject",
+    LoadNtQueryObject,
+    (void**)&sys_NtQueryObject,
+    Hook_NtQueryObject,
+};

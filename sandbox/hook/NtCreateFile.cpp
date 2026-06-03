@@ -1,6 +1,4 @@
 #include "utils/WinAPI.h" /* Must be first include file */
-#include <detours.h>
-#include <vector>
 #include "filesystem/CreateDirectory.hpp"
 #include "filesystem/DirName.hpp"
 #include "filesystem/Resolve.hpp"
@@ -16,9 +14,9 @@
 #include "utils/Log.hpp"
 #include "utils/MappingAsDosNtPath.hpp"
 #include "utils/Defines.hpp"
-#include "__init__.hpp"
 #include "WString.hpp"
 #include "Sandbox.hpp"
+#include <vector>
 
 enum class PathKind
 {
@@ -330,19 +328,6 @@ appbox::NtCreateFileLock::~NtCreateFileLock()
     appbox::ThreadLocal::Get().disable_NtCreateFile_hook = false;
 }
 
-void appbox::AttachNtCreateFile()
-{
-    auto addr = GetProcAddress(sys.h_ntdll, "NtCreateFile");
-    sys_NtCreateFile = reinterpret_cast<T_NtCreateFile>(addr);
-
-    DetourAttach(&sys_NtCreateFile, Hook_NtCreateFile);
-}
-
-void appbox::DetachNtCreateFile()
-{
-    DetourDetach(&sys_NtCreateFile, Hook_NtCreateFile);
-}
-
 bool appbox::ConvertToFullNtPath(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG CreateOptions, std::wstring& path)
 {
     path.clear();
@@ -448,3 +433,16 @@ nlohmann::json appbox::ToJson(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG C
 
     return json;
 }
+
+static void LoadNtCreateFile()
+{
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtCreateFile");
+    sys_NtCreateFile = reinterpret_cast<T_NtCreateFile>(addr);
+}
+
+appbox::HookRecord appbox::HookNtCreateFile = {
+    "NtCreateFile",
+    LoadNtCreateFile,
+    (void**)&sys_NtCreateFile,
+    Hook_NtCreateFile,
+};

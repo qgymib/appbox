@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_LDRQUERYIMAGEFILEEXECUTIONOPTIONSEX_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -30,10 +31,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject LdrQueryImageFileExecutionOptionsEx() hook.
+ * @brief Hook LdrQueryImageFileExecutionOptionsEx().
  */
-void AttachLdrQueryImageFileExecutionOptionsEx();
-void DetachLdrQueryImageFileExecutionOptionsEx();
+extern HookRecord HookLdrQueryImageFileExecutionOptionsEx;
 
 } // namespace appbox
 

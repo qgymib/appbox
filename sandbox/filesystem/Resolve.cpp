@@ -26,25 +26,24 @@ typedef std::vector<FileLayer> FileLayerVec;
  * @param[in] path Virtual file path. Must has not trailing slash.
  * @return Host file path in upper and lower filesystem.
  */
-static FileLayerVec MapViewPathToHost(const std::wstring& path)
+static FileLayerVec MapViewPathToHost(const appbox::filesystem::ResolveFs& fs, const std::wstring& path)
 {
     FileLayerVec ret;
 
     /* upper fs */
     {
         FileLayer layer;
-        layer.base_fs = appbox::UTF8ToWide(appbox::sandbox->inject_data.fs_upper);
+        layer.base_fs = fs.fs_upper;
         appbox::MappingPathInSandbox(path, layer.base_fs, layer.file_fs);
         ret.push_back(layer);
     }
 
     /* lower fs */
-    for (const auto& fs : appbox::sandbox->inject_data.fs_lower)
+    for (const auto& mapping : fs.fs_lower)
     {
         FileLayer layer;
-        auto      mapped_path = appbox::UTF8ToWide(fs.mapped_nt_path);
-        layer.base_fs = appbox::UTF8ToWide(fs.host_nt_path);
-        if (appbox::PrefixCompareExchange(path, mapped_path, layer.base_fs, true, layer.file_fs))
+        layer.base_fs = mapping.host_nt_path;
+        if (appbox::PrefixCompareExchange(path, mapping.mapped_nt_path, layer.base_fs, true, layer.file_fs))
         {
             ret.push_back(layer);
         }
@@ -68,7 +67,7 @@ static void SearchInSingleLayer(const std::vector<std::wstring>& path_seq, bool 
     const auto path_seq_sz = path_seq.size();
     for (size_t j = 0; j < path_seq_sz; j++)
     {
-        const auto& comp_path = path_seq[j];
+        auto comp_path = path_seq[j];
 
         /* Check if whiteout file exists. */
         const auto whiteout_path = comp_path + APPBOX_SANDBOX_WHITEOUT_SUFFIX_W;
@@ -83,6 +82,12 @@ static void SearchInSingleLayer(const std::vector<std::wstring>& path_seq, bool 
         /* Check parent path. */
         if (j != path_seq_sz - 1)
         {
+            /* If path is drive letter, add backslash. */
+            if (j == 0 && comp_path.back() == L':')
+            {
+                comp_path += L"\\";
+            }
+
             st = appbox::CheckPathExist(comp_path, resolve_result.NameAttributes, nullptr);
             if (NT_SUCCESS(st))
             { /* All parents must exists. */
@@ -160,10 +165,11 @@ static void SearchInMultipleLayer(const FileLayerVec& path_vec, const appbox::fi
     }
 }
 
-appbox::filesystem::ResolveResult appbox::filesystem::Resolve(const std::wstring& vPath, const ResolveOption& option)
+appbox::filesystem::ResolveResult appbox::filesystem::ResolveFull(const ResolveFs& fs, const std::wstring& vPath,
+                                                                  const appbox::filesystem::ResolveOption& option)
 {
-    ResolveResult resolve_result;
-    resolve_result.status = ResolveResult::Status::Exists;
+    appbox::filesystem::ResolveResult resolve_result;
+    resolve_result.status = appbox::filesystem::ResolveResult::Status::Exists;
     resolve_result.NameAttributes = option.NameAttributes;
 
     /* Remove trailing slash */
@@ -176,7 +182,7 @@ appbox::filesystem::ResolveResult appbox::filesystem::Resolve(const std::wstring
     }
 
     /* Generate host path sequence for upper / lower / host filesystem. */
-    const auto path_vec = MapViewPathToHost(copy_v_path);
+    const auto path_vec = MapViewPathToHost(fs, copy_v_path);
     resolve_result.uPath = path_vec[0].file_fs + (has_trailing_slash ? L"\\" : L"");
     resolve_result.uPathBaseSize = path_vec[0].base_fs.size();
 
@@ -189,20 +195,53 @@ appbox::filesystem::ResolveResult appbox::filesystem::Resolve(const std::wstring
     {
         if (!resolve_result.whiteoutPath.empty())
         {
-            resolve_result.status = ResolveResult::Status::HiddenByWhiteout;
+            resolve_result.status = appbox::filesystem::ResolveResult::Status::HiddenByWhiteout;
             return resolve_result;
         }
 
         if (search_result.opaque_found)
         {
-            resolve_result.status = ResolveResult::Status::BlockedByOpaque;
+            resolve_result.status = appbox::filesystem::ResolveResult::Status::BlockedByOpaque;
             return resolve_result;
         }
 
-        resolve_result.status = ResolveResult::Status::NotFound;
+        resolve_result.status = appbox::filesystem::ResolveResult::Status::NotFound;
     }
 
     return resolve_result;
+}
+
+appbox::filesystem::ResolveResult appbox::filesystem::Resolve(const std::wstring& vPath, const ResolveOption& option)
+{
+    return ResolveFull(appbox::sandbox->fs, vPath, option);
+}
+
+void appbox::filesystem::to_json(nlohmann::json& j, const ResolveFsMapping& r)
+{
+    j["mapped_nt_path"] = appbox::WideToUTF8(r.mapped_nt_path);
+    j["host_nt_path"] = appbox::WideToUTF8(r.host_nt_path);
+}
+
+void appbox::filesystem::from_json(const nlohmann::json& j, ResolveFsMapping& r)
+{
+    r.mapped_nt_path = appbox::UTF8ToWide(j.value("mapped_nt_path", ""));
+    r.host_nt_path = appbox::UTF8ToWide(j.value("host_nt_path", ""));
+}
+
+void appbox::filesystem::to_json(nlohmann::json& j, const ResolveFs& r)
+{
+    j["fs_upper"] = appbox::WideToUTF8(r.fs_upper);
+
+    for (auto& ele : r.fs_lower)
+    {
+        j["fs_lower"].push_back(ele);
+    }
+}
+
+void appbox::filesystem::from_json(const nlohmann::json& j, ResolveFs& r)
+{
+    r.fs_upper = appbox::UTF8ToWide(j.value("fs_upper", ""));
+    j.at("fs_lower").get_to(r.fs_lower);
 }
 
 void appbox::filesystem::to_json(nlohmann::json& j, const ResolveResult& r)

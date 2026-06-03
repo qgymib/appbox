@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_NTFSCONTROLFILE_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -32,10 +33,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject NtFsControlFile() hook.
+ * @brief Hook NtFsControlFile().
  */
-void AttachNtFsControlFile();
-void DetachNtFsControlFile();
+extern HookRecord HookNtFsControlFile;
 
 } // namespace appbox
 

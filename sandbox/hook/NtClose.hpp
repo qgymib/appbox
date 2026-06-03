@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_NTCLOSE_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -23,10 +24,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject NtClose() hook.
+ * @brief Hook NtClose().
  */
-void AttachNtClose();
-void DetachNtClose();
+extern HookRecord HookNtClose;
 
 } // namespace appbox
 

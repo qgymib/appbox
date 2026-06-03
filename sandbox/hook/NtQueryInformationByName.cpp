@@ -1,8 +1,6 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "hook/NtQueryInformationByName.hpp"
-#include "__init__.hpp"
-#include <detours.h>
 
 T_NtQueryInformationByName sys_NtQueryInformationByName = nullptr;
 
@@ -29,15 +27,15 @@ static NTSTATUS Hook_NtQueryInformationByName(POBJECT_ATTRIBUTES ObjectAttribute
     return sys_NtQueryInformationByName(ObjectAttributes, IoStatusBlock, FileInformation, Length, FileInformationClass);
 }
 
-void appbox::AttachNtQueryInformationByName()
+static void LoadNtQueryInformationByName()
 {
-    auto addr = GetProcAddress(sys.h_ntdll, "NtQueryInformationByName");
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtQueryInformationByName");
     sys_NtQueryInformationByName = reinterpret_cast<T_NtQueryInformationByName>(addr);
-
-    DetourAttach(&sys_NtQueryInformationByName, Hook_NtQueryInformationByName);
 }
 
-void appbox::DetachNtQueryInformationByName()
-{
-    DetourDetach(&sys_NtQueryInformationByName, Hook_NtQueryInformationByName);
-}
+appbox::HookRecord appbox::HookNtQueryInformationByName = {
+    "NtQueryInformationByName",
+    LoadNtQueryInformationByName,
+    (void**)&sys_NtQueryInformationByName,
+    Hook_NtQueryInformationByName,
+};

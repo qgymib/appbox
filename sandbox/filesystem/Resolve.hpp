@@ -103,14 +103,42 @@ struct ResolveOption
      * @brief Lookup attributes.
      */
     ULONG NameAttributes = OBJ_CASE_INSENSITIVE;
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(ResolveOption, bStopOnFirstFound, NameAttributes)
 };
+
+struct ResolveFsMapping
+{
+    std::wstring mapped_nt_path;
+    std::wstring host_nt_path;
+};
+void to_json(nlohmann::json& j, const ResolveFsMapping& r);
+void from_json(const nlohmann::json& j, ResolveFsMapping& r);
+
+struct ResolveFs
+{
+    std::wstring                  fs_upper;
+    std::vector<ResolveFsMapping> fs_lower;
+};
+void to_json(nlohmann::json& j, const ResolveFs& r);
+void from_json(const nlohmann::json& j, ResolveFs& r);
 
 /**
  * @brief Resolve virtual path to host path.
  * @param[in] vPath Virtual path in mapped view.
+ * @param[in] option Resolve option.
  * @return Resolve result.
  */
 ResolveResult Resolve(const std::wstring& vPath, const ResolveOption& option = {});
+
+/**
+ * @brief Resolve virtual path to host path.
+ * @param[in] fs Resolve file system.
+ * @param[in] vPath Virtual path in mapped view.
+ * @param[in] option Resolve option.
+ * @return Resolve result.
+ */
+ResolveResult ResolveFull(const ResolveFs& fs, const std::wstring& vPath, const ResolveOption& option);
 
 } // namespace appbox::filesystem
 

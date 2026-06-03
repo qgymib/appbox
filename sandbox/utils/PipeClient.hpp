@@ -14,7 +14,7 @@ struct PipeClient
      * @brief Create a pipe client.
      * @param[in] path Pipe path.
      */
-    PipeClient(const std::string& path);
+    PipeClient(const std::wstring& path);
     ~PipeClient();
 
     /**

@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_HOOK_NTQUERYFULLATTRIBUTESFILE_HPP
 
 #include "utils/WinAPI.h"
+#include "__init__.hpp"
 
 extern "C" {
 /**
@@ -24,10 +25,9 @@ namespace appbox
 {
 
 /**
- * @brief Inject NtQueryFullAttributesFile() hook.
+ * @brief Hook NtQueryFullAttributesFile().
  */
-void AttachNtQueryFullAttributesFile();
-void DetachNtQueryFullAttributesFile();
+extern HookRecord HookNtQueryFullAttributesFile;
 
 } // namespace appbox
 
