@@ -43,7 +43,7 @@ static NTSTATUS Hook_NtClose(HANDLE Handle)
     auto st = sys_NtClose(Handle);
     if (NT_SUCCESS(st) && bPendingDelete)
     {
-        appbox::DeleteViewPath(info->resolve, info->Attributes);
+        appbox::DeleteViewPath(*info->resolve, info->ObjAttributes);
     }
     return st;
 }

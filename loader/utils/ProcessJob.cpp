@@ -1,10 +1,10 @@
 #include <wx/wx.h>
 #include <detours.h>
+#include "sandbox/utils/Defines.hpp"
 #include "utils/GetExecutableDir.hpp"
 #include "ProcessJob.hpp"
 #include "Loader.hpp"
 #include "BuildCommandLine.hpp"
-#include "Defines.hpp"
 
 struct appbox::ProcessJob::Data
 {
@@ -101,7 +101,7 @@ DWORD appbox::ProcessJob::Start()
         return GetLastError();
     }
 
-    const GUID  guid = SANDBOX_GUID;
+    const GUID  guid = APPBOX_SANDBOX_GUID;
     std::string inject_data = nlohmann::json(wxGetApp().runtime->inject_data).dump();
     DWORD       inject_data_sz = static_cast<DWORD>(inject_data.size());
     if (!DetourCopyPayloadToProcess(data_->process_info.hProcess, guid, inject_data.c_str(), inject_data_sz))

@@ -62,6 +62,12 @@
 
 #define OBJ_CASE_INSENSITIVE                        0x00000040
 #define OBJ_INHERIT                                 0x00000002
+
+#define SL_RESTART_SCAN                             0x00000001
+#define SL_RETURN_SINGLE_ENTRY                      0x00000002
+#define SL_INDEX_SPECIFIED                          0x00000004
+#define SL_RETURN_ON_DISK_ENTRIES_ONLY              0x00000008
+#define SL_NO_CURSOR_UPDATE_QUERY                   0x00000010
 /* clang-format on */
 
 #ifdef __cplusplus
@@ -322,6 +328,7 @@ typedef struct _UNICODE_STRING
     USHORT MaximumLength;
     PWSTR  Buffer;
 } UNICODE_STRING, *PUNICODE_STRING;
+typedef const UNICODE_STRING *PCUNICODE_STRING;
 
 typedef struct _OBJECT_NAME_INFORMATION
 {
@@ -455,6 +462,22 @@ typedef struct _TEB
     PVOID Reserved6[4];
     PVOID TlsExpansionSlots;
 } TEB, *PTEB;
+
+typedef struct _FILE_FULL_DIR_INFORMATION
+{
+    ULONG         NextEntryOffset;
+    ULONG         FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG         FileAttributes;
+    ULONG         FileNameLength;
+    ULONG         EaSize;
+    WCHAR         FileName[1];
+} FILE_FULL_DIR_INFORMATION, *PFILE_FULL_DIR_INFORMATION;
 
 typedef void(NTAPI* PIO_APC_ROUTINE)(IN PVOID ApcContext, IN PIO_STATUS_BLOCK IoStatusBlock, IN ULONG Reserved);
 

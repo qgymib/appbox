@@ -33,12 +33,6 @@ namespace appbox
 {
 
 /**
- * @brief Inject NtQueryDirectoryFileEx() hook.
- */
-void AttachNtQueryDirectoryFileEx();
-void DetachNtQueryDirectoryFileEx();
-
-/**
  * @brief Hook NtQueryDirectoryFileEx().
  */
 extern HookRecord HookNtQueryDirectoryFileEx;

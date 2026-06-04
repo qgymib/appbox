@@ -4,6 +4,7 @@
 #include "utils/WinAPI.h"
 #include <string>
 #include <vector>
+#include <memory>
 #include <nlohmann/json.hpp>
 
 namespace appbox::filesystem
@@ -11,6 +12,8 @@ namespace appbox::filesystem
 
 struct ResolveResult
 {
+    typedef std::shared_ptr<ResolveResult> Ptr;
+
     enum class Status
     {
         Exists,           /* File exists. */
@@ -129,7 +132,7 @@ void from_json(const nlohmann::json& j, ResolveFs& r);
  * @param[in] option Resolve option.
  * @return Resolve result.
  */
-ResolveResult Resolve(const std::wstring& vPath, const ResolveOption& option = {});
+ResolveResult::Ptr Resolve(const std::wstring& vPath, const ResolveOption& option = {});
 
 /**
  * @brief Resolve virtual path to host path.
@@ -138,7 +141,7 @@ ResolveResult Resolve(const std::wstring& vPath, const ResolveOption& option = {
  * @param[in] option Resolve option.
  * @return Resolve result.
  */
-ResolveResult ResolveFull(const ResolveFs& fs, const std::wstring& vPath, const ResolveOption& option);
+ResolveResult::Ptr ResolveFull(const ResolveFs& fs, const std::wstring& vPath, const ResolveOption& option);
 
 } // namespace appbox::filesystem
 

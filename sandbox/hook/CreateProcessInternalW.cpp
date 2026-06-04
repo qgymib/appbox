@@ -1,9 +1,9 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
+#include "utils/Defines.hpp"
 #include "Sandbox.hpp"
 #include "CreateProcessInternalW.hpp"
 #include "WString.hpp"
-#include "Defines.hpp"
 #include <detours.h>
 
 T_CreateProcessInternalW sys_CreateProcessInternalW = nullptr;
@@ -110,7 +110,7 @@ static BOOL Hook_CreateProcessInternalW(HANDLE hToken, LPCWSTR lpApplicationName
         return FALSE;
     }
 
-    const GUID guid = SANDBOX_GUID;
+    const GUID guid = APPBOX_SANDBOX_GUID;
     auto       inject_data_sz = static_cast<DWORD>(appbox::sandbox->inject_data.size());
     if (!DetourCopyPayloadToProcess(lpProcessInformation->hProcess, guid, appbox::sandbox->inject_data.c_str(),
                                     inject_data_sz))

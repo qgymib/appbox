@@ -2,12 +2,19 @@
 #include <map>
 #include "HandleInfo.hpp"
 
-typedef std::map<HANDLE, appbox::HandleInfo::Ptr> HandleInfoMap;
+typedef std::map<HANDLE, appbox::HandleInfo::Ptr>         HandleInfoMap;
+typedef std::map<uint64_t, appbox::HandleInfo::Meta::Ptr> HandleInfoMetaMap;
 
 struct HandleInfoCtx
 {
     HandleInfoMap info_map;
     std::mutex    info_map_mutex;
+};
+
+struct appbox::HandleInfo::Data
+{
+    HandleInfoMetaMap meta_map;
+    std::mutex        meta_map_mutex;
 };
 
 static HandleInfoCtx* s_handle_info_ctx = nullptr;
@@ -36,7 +43,7 @@ void appbox::HandleInfo::Exit()
 
 appbox::HandleInfo::Ptr appbox::HandleInfo::Create(HANDLE handle, Fn fn)
 {
-    auto info = std::make_shared<appbox::HandleInfo>();
+    Ptr info(new appbox::HandleInfo);
     info->handle = handle;
     fn(info);
 
@@ -77,4 +84,50 @@ appbox::HandleInfo::Ptr appbox::HandleInfo::Pop(HANDLE handle)
     s_handle_info_ctx->info_map.erase(it);
 
     return info;
+}
+
+appbox::HandleInfo::HandleInfo()
+{
+    data_ = new Data;
+    handle = nullptr;
+    ObjAttributes = 0;
+}
+
+appbox::HandleInfo::~HandleInfo()
+{
+    delete data_;
+}
+
+appbox::HandleInfo::Meta::Ptr appbox::HandleInfo::MetaFindOr(uint64_t key, Meta::CreateFn fn)
+{
+    std::lock_guard<std::mutex> guard(data_->meta_map_mutex);
+    auto                        it = data_->meta_map.find(key);
+    if (it != data_->meta_map.end())
+    {
+        return it->second;
+    }
+
+    if (fn == nullptr)
+    {
+        return nullptr;
+    }
+
+    auto meta = fn();
+    if (meta.get() == nullptr)
+    {
+        return meta;
+    }
+
+    data_->meta_map.insert(HandleInfoMetaMap::value_type(key, meta));
+    return meta;
+}
+
+void appbox::HandleInfo::MetaDrop(uint64_t key)
+{
+    std::lock_guard<std::mutex> guard(data_->meta_map_mutex);
+    auto                        it = data_->meta_map.find(key);
+    if (it != data_->meta_map.end())
+    {
+        data_->meta_map.erase(it);
+    }
 }

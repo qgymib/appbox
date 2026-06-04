@@ -217,9 +217,9 @@ NTSTATUS appbox::DeleteViewPath(const std::wstring& path, ULONG Attributes)
     resolve_option.bStopOnFirstFound = false;
 
     auto resolve_result = appbox::filesystem::Resolve(path, resolve_option);
-    LOG_T("resolve: {}", nlohmann::json(resolve_result).dump());
+    LOG_T("resolve: {}", nlohmann::json(*resolve_result).dump());
 
-    return DeleteViewPath(resolve_result, Attributes);
+    return DeleteViewPath(*resolve_result, Attributes);
 }
 
 NTSTATUS appbox::DeleteViewPath(const appbox::filesystem::ResolveResult& resolve, ULONG Attributes)

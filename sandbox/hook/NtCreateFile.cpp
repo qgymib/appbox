@@ -14,6 +14,8 @@
 #include "utils/Log.hpp"
 #include "utils/MappingAsDosNtPath.hpp"
 #include "utils/Defines.hpp"
+#include "utils/QueryHandlePath.hpp"
+#include "utils/ConvertToFullNtPath.hpp"
 #include "WString.hpp"
 #include "Sandbox.hpp"
 #include <vector>
@@ -105,7 +107,7 @@ static nlohmann::json NtCreateFileLogParam(PHANDLE FileHandle, ACCESS_MASK Desir
     json["ShareAccess"] = ShareAccess;
     json["CreateDisposition"] =
         appbox::ParseBit(CreateDisposition, CreateDispositionMap, std::size(CreateDispositionMap));
-    json["CreateOptions"] = appbox::ParseBit(CreateOptions, CreateOptionsMap, std::size(CreateOptionsMap));
+    json["CreateOptions"] = appbox::CreateOptionsToJson(CreateOptions);
     json["EaBuffer"] = appbox::PointerToString(EaBuffer);
     json["EaLength"] = EaLength;
 
@@ -113,80 +115,6 @@ static nlohmann::json NtCreateFileLogParam(PHANDLE FileHandle, ACCESS_MASK Desir
 }
 
 static appbox::LoggerF logger("NtCreateFile", NtCreateFileLogParam);
-
-static bool QueryHandleNtName(HANDLE h, std::wstring& out)
-{
-    if (!h || h == INVALID_HANDLE_VALUE)
-        return false;
-
-    ULONG    needed = 0;
-    NTSTATUS st = sys_NtQueryObject(h, ObjectNameInformation, nullptr, 0, &needed);
-    if (needed < sizeof(OBJECT_NAME_INFORMATION))
-        needed = sizeof(OBJECT_NAME_INFORMATION) + 0x400;
-
-    std::vector<BYTE> buf(needed);
-    st = sys_NtQueryObject(h, ObjectNameInformation, buf.data(), (ULONG)buf.size(), &needed);
-    if (st == STATUS_INFO_LENGTH_MISMATCH || st == STATUS_BUFFER_OVERFLOW || st == STATUS_BUFFER_TOO_SMALL)
-    {
-        buf.resize(needed);
-        st = sys_NtQueryObject(h, ObjectNameInformation, buf.data(), (ULONG)buf.size(), &needed);
-    }
-    if (!NT_SUCCESS(st))
-        return false;
-
-    auto* info = reinterpret_cast<OBJECT_NAME_INFORMATION*>(buf.data());
-    if (!info->Name.Buffer || info->Name.Length == 0)
-        return false;
-
-    out.assign(info->Name.Buffer, info->Name.Length / sizeof(wchar_t));
-    return true;
-}
-
-// 拼接父路径与子路径，规范化分隔符
-static void JoinNtPath(std::wstring& parent, const std::wstring& child)
-{
-    if (child.empty())
-        return;
-    if (parent.empty())
-    {
-        parent = child;
-        return;
-    }
-
-    bool parentSlash = parent.back() == L'\\';
-    bool childSlash = child.front() == L'\\';
-
-    if (parentSlash && childSlash)
-        parent.append(child, 1, std::wstring::npos);
-    else if (!parentSlash && !childSlash)
-    {
-        parent.push_back(L'\\');
-        parent.append(child);
-    }
-    else
-        parent.append(child);
-}
-
-// 把 FileID（8/16 字节二进制）格式化为可读字符串作为兜底
-static std::wstring FormatFileIdFallback(const UNICODE_STRING& id)
-{
-    wchar_t buf[80] = { 0 };
-    if (id.Length == sizeof(LONGLONG))
-    {
-        ULONGLONG v = *reinterpret_cast<const ULONGLONG*>(id.Buffer);
-        swprintf_s(buf, L"\\:fid:0x%016llx", v);
-    }
-    else if (id.Length == 16)
-    {
-        const ULONGLONG* p = reinterpret_cast<const ULONGLONG*>(id.Buffer);
-        swprintf_s(buf, L"\\:fid:0x%016llx%016llx", p[1], p[0]);
-    }
-    else
-    {
-        swprintf_s(buf, L"\\:fid:<len=%u>", id.Length);
-    }
-    return buf;
-}
 
 static NTSTATUS NtCreateFileOpenFS(const std::wstring& path, ULONG Attributes, PHANDLE FileHandle,
                                    ACCESS_MASK DesiredAccess, PIO_STATUS_BLOCK IoStatusBlock,
@@ -233,7 +161,7 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
 
     /* Get file path in sandbox */
     std::wstring nativate_fs_nt_path;
-    if (!appbox::ConvertToFullNtPath(ObjectAttributes, CreateOptions, nativate_fs_nt_path))
+    if (appbox::ConvertToFullNtPath(ObjectAttributes, CreateOptions, nativate_fs_nt_path) != 0)
     {
         LOG_D("ConvertToFullNtPath failed");
         return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
@@ -251,20 +179,20 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
 
     /* Resolve path in sandbox. */
     auto resolve_result = appbox::filesystem::Resolve(nativate_fs_path);
-    LOG_T("resolve: {}", nlohmann::json(resolve_result).dump());
+    LOG_T("resolve: {}", nlohmann::json(*resolve_result).dump());
     /* In all of conditions, the parent path must exist. */
-    if (!resolve_result.bParentExist)
+    if (!resolve_result->bParentExist)
     {
         return STATUS_OBJECT_PATH_NOT_FOUND;
     }
 
     /* Check CreateDisposition */
-    if (CreateDisposition == FILE_CREATE && resolve_result.status == appbox::filesystem::ResolveResult::Status::Exists)
+    if (CreateDisposition == FILE_CREATE && resolve_result->status == appbox::filesystem::ResolveResult::Status::Exists)
     {
         return STATUS_OBJECT_NAME_COLLISION;
     }
     if (CreateDisposition == FILE_OVERWRITE &&
-        resolve_result.status != appbox::filesystem::ResolveResult::Status::Exists)
+        resolve_result->status != appbox::filesystem::ResolveResult::Status::Exists)
     {
         return STATUS_OBJECT_NAME_NOT_FOUND;
     }
@@ -275,16 +203,16 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
                                              FILE_APPEND_DATA | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE | GENERIC_ALL));
 
     /* If file is hidden by whiteout, remove the whiteout file */
-    if (want_create && resolve_result.status == appbox::filesystem::ResolveResult::Status::HiddenByWhiteout &&
-        resolve_result.bWhiteoutInUpper)
+    if (want_create && resolve_result->status == appbox::filesystem::ResolveResult::Status::HiddenByWhiteout &&
+        resolve_result->bWhiteoutInUpper)
     {
-        appbox::filesystem::RemoveAll(resolve_result.whiteoutPath, ObjectAttributes->Attributes);
+        appbox::filesystem::RemoveAll(resolve_result->whiteoutPath, ObjectAttributes->Attributes);
 
         /* If want to create directory, search again to check if we need to create opaque file */
         if (CreateOptions & FILE_DIRECTORY_FILE)
         {
             auto rResult = appbox::filesystem::Resolve(nativate_fs_path);
-            if (rResult.status == appbox::filesystem::ResolveResult::Status::Exists)
+            if (rResult->status == appbox::filesystem::ResolveResult::Status::Exists)
             {
                 NtCreateFileOpenFS(nativate_fs_path, ObjectAttributes->Attributes, nullptr, DesiredAccess,
                                    IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
@@ -299,23 +227,29 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
     }
     if (want_create || want_edit)
     {
-        auto dir = appbox::filesystem::DirName(resolve_result.uPath);
-        appbox::filesystem::CreateDirectories(dir, resolve_result.uPathBaseSize);
+        auto dir = appbox::filesystem::DirName(resolve_result->uPath);
+        appbox::filesystem::CreateDirectories(dir, resolve_result->uPathBaseSize);
     }
     if (want_edit)
     {
-        if (resolve_result.status == appbox::filesystem::ResolveResult::Status::Exists && !resolve_result.bInUpper)
+        if (resolve_result->status == appbox::filesystem::ResolveResult::Status::Exists && !resolve_result->bInUpper)
         {
-            appbox::CopyFileNt(resolve_result.hPath[0].fPath, resolve_result.uPath);
+            appbox::CopyFileNt(resolve_result->hPath[0].fPath, resolve_result->uPath);
         }
     }
-    std::wstring open_path = (want_edit || resolve_result.status != appbox::filesystem::ResolveResult::Status::Exists)
-                                 ? resolve_result.uPath
-                                 : resolve_result.hPath[0].fPath;
+    std::wstring open_path = (want_edit || resolve_result->status != appbox::filesystem::ResolveResult::Status::Exists)
+                                 ? resolve_result->uPath
+                                 : resolve_result->hPath[0].fPath;
 
     return NtCreateFileOpenFS(open_path, ObjectAttributes->Attributes, FileHandle, DesiredAccess, IoStatusBlock,
                               AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer,
                               EaLength);
+}
+
+static void LoadNtCreateFile()
+{
+    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtCreateFile");
+    sys_NtCreateFile = reinterpret_cast<T_NtCreateFile>(addr);
 }
 
 appbox::NtCreateFileLock::NtCreateFileLock()
@@ -326,81 +260,6 @@ appbox::NtCreateFileLock::NtCreateFileLock()
 appbox::NtCreateFileLock::~NtCreateFileLock()
 {
     appbox::ThreadLocal::Get().disable_NtCreateFile_hook = false;
-}
-
-bool appbox::ConvertToFullNtPath(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG CreateOptions, std::wstring& path)
-{
-    path.clear();
-    if (!ObjectAttributes)
-        return false;
-
-    UNICODE_STRING* objName = ObjectAttributes->ObjectName;
-    HANDLE          root = ObjectAttributes->RootDirectory;
-
-    // ---------- 场景 1：按 FileID 打开 ----------
-    if (CreateOptions & FILE_OPEN_BY_FILE_ID)
-    {
-        if (!root || !objName || !objName->Buffer || (objName->Length != 8 && objName->Length != 16))
-        {
-            return false;
-        }
-
-        // 取卷/根目录的 NT 路径
-        std::wstring rootPath;
-        if (!QueryHandleNtName(root, rootPath))
-            return false;
-
-        // 用 FileID 再开一次以拿到真实文件名
-        HANDLE            fh = nullptr;
-        OBJECT_ATTRIBUTES oa{};
-        InitializeObjectAttributes(&oa, objName, OBJ_CASE_INSENSITIVE, root, nullptr);
-        IO_STATUS_BLOCK iosb{};
-        NTSTATUS st = sys_NtOpenFile(&fh, FILE_READ_ATTRIBUTES | SYNCHRONIZE, &oa, &iosb,
-                                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                     FILE_OPEN_BY_FILE_ID | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT);
-
-        if (NT_SUCCESS(st) && fh)
-        {
-            std::wstring real;
-            bool         ok = QueryHandleNtName(fh, real);
-            sys_NtClose(fh);
-            if (ok)
-            {
-                path = std::move(real);
-                return true;
-            }
-        }
-
-        // 兜底：返回 <卷路径>\:fid:<hex>
-        path = rootPath;
-        JoinNtPath(path, FormatFileIdFallback(*objName));
-        return true;
-    }
-
-    // ---------- 场景 2：普通字符串路径 ----------
-    std::wstring objStr;
-    if (objName && objName->Buffer && objName->Length)
-    {
-        objStr.assign(objName->Buffer, objName->Length / sizeof(wchar_t));
-    }
-
-    if (root == nullptr)
-    {
-        // 必须已经是完整 NT 路径
-        if (objStr.empty() || objStr.front() != L'\\')
-            return false;
-        path = std::move(objStr);
-        return true;
-    }
-
-    // RootDirectory 非空：相对路径，需用 NtQueryObject 取根的 NT 名
-    std::wstring rootPath;
-    if (!QueryHandleNtName(root, rootPath))
-        return false;
-
-    path = std::move(rootPath);
-    JoinNtPath(path, objStr); // objStr 可以为空（表示就是根本身）
-    return !path.empty();
 }
 
 nlohmann::json appbox::ToJson(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG CreateOptions)
@@ -434,10 +293,9 @@ nlohmann::json appbox::ToJson(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG C
     return json;
 }
 
-static void LoadNtCreateFile()
+nlohmann::json appbox::CreateOptionsToJson(ULONG CreateOptions)
 {
-    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtCreateFile");
-    sys_NtCreateFile = reinterpret_cast<T_NtCreateFile>(addr);
+    return appbox::ParseBit(CreateOptions, CreateOptionsMap, std::size(CreateOptionsMap));
 }
 
 appbox::HookRecord appbox::HookNtCreateFile = {

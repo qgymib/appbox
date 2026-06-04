@@ -165,12 +165,12 @@ static void SearchInMultipleLayer(const FileLayerVec& path_vec, const appbox::fi
     }
 }
 
-appbox::filesystem::ResolveResult appbox::filesystem::ResolveFull(const ResolveFs& fs, const std::wstring& vPath,
-                                                                  const appbox::filesystem::ResolveOption& option)
+appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveFull(const ResolveFs& fs, const std::wstring& vPath,
+                                                                       const appbox::filesystem::ResolveOption& option)
 {
-    appbox::filesystem::ResolveResult resolve_result;
-    resolve_result.status = appbox::filesystem::ResolveResult::Status::Exists;
-    resolve_result.NameAttributes = option.NameAttributes;
+    auto resolve_result = std::make_shared<appbox::filesystem::ResolveResult>();
+    resolve_result->status = appbox::filesystem::ResolveResult::Status::Exists;
+    resolve_result->NameAttributes = option.NameAttributes;
 
     /* Remove trailing slash */
     auto copy_v_path = vPath;
@@ -183,35 +183,36 @@ appbox::filesystem::ResolveResult appbox::filesystem::ResolveFull(const ResolveF
 
     /* Generate host path sequence for upper / lower / host filesystem. */
     const auto path_vec = MapViewPathToHost(fs, copy_v_path);
-    resolve_result.uPath = path_vec[0].file_fs + (has_trailing_slash ? L"\\" : L"");
-    resolve_result.uPathBaseSize = path_vec[0].base_fs.size();
+    resolve_result->uPath = path_vec[0].file_fs + (has_trailing_slash ? L"\\" : L"");
+    resolve_result->uPathBaseSize = path_vec[0].base_fs.size();
 
     /* For each layer, check if the file exists. */
     SearchResult search_result;
-    SearchInMultipleLayer(path_vec, option, has_trailing_slash, search_result, resolve_result);
+    SearchInMultipleLayer(path_vec, option, has_trailing_slash, search_result, *resolve_result);
 
     /* Fix status. */
-    if (resolve_result.hPath.empty())
+    if (resolve_result->hPath.empty())
     {
-        if (!resolve_result.whiteoutPath.empty())
+        if (!resolve_result->whiteoutPath.empty())
         {
-            resolve_result.status = appbox::filesystem::ResolveResult::Status::HiddenByWhiteout;
+            resolve_result->status = appbox::filesystem::ResolveResult::Status::HiddenByWhiteout;
             return resolve_result;
         }
 
         if (search_result.opaque_found)
         {
-            resolve_result.status = appbox::filesystem::ResolveResult::Status::BlockedByOpaque;
+            resolve_result->status = appbox::filesystem::ResolveResult::Status::BlockedByOpaque;
             return resolve_result;
         }
 
-        resolve_result.status = appbox::filesystem::ResolveResult::Status::NotFound;
+        resolve_result->status = appbox::filesystem::ResolveResult::Status::NotFound;
     }
 
     return resolve_result;
 }
 
-appbox::filesystem::ResolveResult appbox::filesystem::Resolve(const std::wstring& vPath, const ResolveOption& option)
+appbox::filesystem::ResolveResult::Ptr appbox::filesystem::Resolve(const std::wstring&  vPath,
+                                                                   const ResolveOption& option)
 {
     return ResolveFull(appbox::sandbox->fs, vPath, option);
 }

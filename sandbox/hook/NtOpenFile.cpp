@@ -3,6 +3,7 @@
 #include "utils/MappingAsDosNtPath.hpp"
 #include "utils/CopyFileNt.hpp"
 #include "utils/HandleInfo.hpp"
+#include "utils/ConvertToFullNtPath.hpp"
 #include "filesystem/Resolve.hpp"
 #include "hook/NtCreateFile.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
@@ -41,7 +42,7 @@ static NTSTATUS NtOpenFileWrap(const std::wstring& path, ULONG Attributes, PHAND
 static bool NtOpenFileGetDosNtPath(POBJECT_ATTRIBUTES ObjectAttributes, std::wstring& path)
 {
     std::wstring nativate_fs_nt_path;
-    if (!appbox::ConvertToFullNtPath(ObjectAttributes, 0, nativate_fs_nt_path))
+    if (appbox::ConvertToFullNtPath(ObjectAttributes, 0, nativate_fs_nt_path) != 0)
     {
         return false;
     }
@@ -69,34 +70,35 @@ static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
 
     /* Resolve path in sandbox. */
     appbox::filesystem::ResolveOption resolve_option;
-    resolve_option.bStopOnFirstFound = !(DesiredAccess & DELETE);
+    resolve_option.NameAttributes = ObjectAttributes->Attributes;
+    resolve_option.bStopOnFirstFound = false;
 
     auto resolve_result = appbox::filesystem::Resolve(nativate_fs_path, resolve_option);
-    LOG_T("resolve: {}", nlohmann::json(resolve_result).dump());
+    LOG_T("resolve: {}", nlohmann::json(*resolve_result).dump());
 
-    if (!resolve_result.bParentExist)
+    if (!resolve_result->bParentExist)
     {
         return STATUS_OBJECT_PATH_NOT_FOUND;
     }
-    if (resolve_result.status != appbox::filesystem::ResolveResult::Status::Exists)
+    if (resolve_result->status != appbox::filesystem::ResolveResult::Status::Exists)
     {
         return STATUS_OBJECT_NAME_NOT_FOUND;
     }
 
     const bool want_edit = (DesiredAccess & (DELETE | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA |
                                              FILE_APPEND_DATA | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE | GENERIC_ALL));
-    if (want_edit && !resolve_result.bInUpper)
+    if (want_edit && !resolve_result->bInUpper)
     {
-        appbox::CopyFileNt(resolve_result.hPath[0].fPath, resolve_result.uPath);
-        resolve_result.bInUpper = true;
+        appbox::CopyFileNt(resolve_result->hPath[0].fPath, resolve_result->uPath);
+        resolve_result->bInUpper = true;
 
         appbox::filesystem::ResolveResult::Path p;
-        p.fPath = resolve_result.uPath;
-        p.fInfo = resolve_result.hPath[0].fInfo;
-        resolve_result.hPath.insert(resolve_result.hPath.begin(), p);
+        p.fPath = resolve_result->uPath;
+        p.fInfo = resolve_result->hPath[0].fInfo;
+        resolve_result->hPath.insert(resolve_result->hPath.begin(), p);
     }
 
-    std::wstring open_path = resolve_result.bInUpper ? resolve_result.uPath : resolve_result.hPath[0].fPath;
+    std::wstring open_path = resolve_result->bInUpper ? resolve_result->uPath : resolve_result->hPath[0].fPath;
     auto         st = NtOpenFileWrap(open_path, ObjectAttributes->Attributes, FileHandle, DesiredAccess, IoStatusBlock,
                                      ShareAccess, OpenOptions);
     if (NT_SUCCESS(st))
@@ -105,7 +107,7 @@ static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
             *FileHandle, [&nativate_fs_path, ObjectAttributes, &resolve_result](appbox::HandleInfo::Ptr info) {
                 info->viewPath = nativate_fs_path;
                 info->resolve = resolve_result;
-                info->Attributes = ObjectAttributes->Attributes;
+                info->ObjAttributes = ObjectAttributes->Attributes;
             });
     }
     return st;

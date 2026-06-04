@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <base64.hpp>
+#include "sandbox/utils/Defines.hpp"
 #include "utils/CommandLineOptions.hpp"
 #include "utils/Defer.hpp"
 #include "utils/GetExecutableDir.hpp"
@@ -12,7 +13,6 @@
 #include "utils/KnownFolder.hpp"
 #include "utils/WinCall.hpp"
 #include "widget/MainFrame.hpp"
-#include "Defines.hpp"
 #include "BuildCommandLine.hpp"
 #include "Loader.hpp"
 #include "WString.hpp"

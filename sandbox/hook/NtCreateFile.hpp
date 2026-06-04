@@ -46,21 +46,19 @@ struct NtCreateFileLock
 extern HookRecord HookNtCreateFile;
 
 /**
- * @brief Convert POBJECT_ATTRIBUTES to full NT path.
- * @param[in] ObjectAttributes Object attributes.
- * @param[in] CreateOptions Create options.  Only `FILE_OPEN_BY_FILE_ID` matters.
- * @param[out] path Full NT path.
- * @return True if success.
- */
-bool ConvertToFullNtPath(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG CreateOptions, std::wstring& path);
-
-/**
  * @brief Convert POBJECT_ATTRIBUTES to json.
  * @param[in] ObjectAttributes Object attributes.
  * @param[in] CreateOptions Create options. Only `FILE_OPEN_BY_FILE_ID` matters.
  * @return Json object.
  */
 nlohmann::json ToJson(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG CreateOptions);
+
+/**
+ * @brief Convert CreateOptions to json.
+ * @param[in] CreateOptions Create options.
+ * @return Json object.
+ */
+nlohmann::json CreateOptionsToJson(ULONG CreateOptions);
 
 } // namespace appbox
 

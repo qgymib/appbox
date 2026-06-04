@@ -21,6 +21,7 @@
 #include "hook/NtReadFile.hpp"
 #include "hook/NtSetInformationFile.hpp"
 #include "hook/NtWriteFile.hpp"
+#include "hook/RtlCompareUnicodeString.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
 #include "hook/SetProcessMitigationPolicy.hpp"
 #include "__init__.hpp"
@@ -49,6 +50,7 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtReadFile,
     &appbox::HookNtSetInformationFile,
     &appbox::HookNtWriteFile,
+    &appbox::HookRtlCompareUnicodeString,
     &appbox::HookRtlInitUnicodeString,
     &appbox::HookSetProcessMitigationPolicy,
 };

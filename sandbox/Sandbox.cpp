@@ -5,10 +5,10 @@
 #include "hook/__init__.hpp"
 #include "hook/NtCreateFile.hpp"
 #include "hook/NtCurrentTeb.hpp"
-#include "utils/Log.hpp"
+#include "utils/Defines.hpp"
 #include "utils/HandleInfo.hpp"
+#include "utils/Log.hpp"
 #include "Sandbox.hpp"
-#include "Defines.hpp"
 #include "WString.hpp"
 
 struct ModuleInitializer
@@ -58,7 +58,7 @@ static void ParseInjectData(const std::string& data)
 
 static void LoadInjectData()
 {
-    const GUID guid = SANDBOX_GUID;
+    const GUID guid = APPBOX_SANDBOX_GUID;
     DWORD      inject_bytes_sz = 0;
     void*      inject_bytes = nullptr;
     HMODULE    hModuleLast = nullptr;
