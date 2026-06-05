@@ -11,6 +11,7 @@ add_executable(${PROJECT_NAME} WIN32
     "utils/MapBaseFS.cpp"
     "utils/MiniLauncher.cpp"
     "utils/ProcessJob.cpp"
+    "utils/Registry.cpp"
     "utils/WinCall.cpp"
     "widget/MainFrame.cpp"
     "Loader.cpp"

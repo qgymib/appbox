@@ -28,6 +28,14 @@ static std::vector<std::wstring> BuildCmdArg()
     return args;
 }
 
+static DWORD RegistryInit()
+{
+    auto hive_path = wxGetApp().hive_path;
+
+    HKEY hKey = nullptr;
+    RegLoadAppKeyW(hive_path.c_str(), &hKey, KEY_ALL_ACCESS, 0, 0);
+}
+
 static void MainLoader()
 {
     DWORD         ret;
@@ -141,6 +149,7 @@ bool AppBoxLoader::OnInit()
         SPDLOG_INFO("Load config: {}", nlohmann::json(wxGetApp().loader_config).dump());
 
         wxGetApp().runtime = std::make_shared<AppBoxLoaderRuntime>();
+        wxGetApp().hive_path = CLI::widen(wxGetApp().loader_config.overlay_fs) + L"\\registry.hive";
     }
     catch (const std::exception& e)
     {

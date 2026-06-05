@@ -30,6 +30,7 @@ struct AppBoxLoader : wxApp
 
     appbox::LoaderConfig     loader_config;            /* Loader configuration */
     AppBoxLoaderRuntime::Ptr runtime;                  /* Runtime information */
+    std::wstring             hive_path;                /* Hive path */
     MainFrame*               main_frame = nullptr;     /* Main frame */
     std::thread*             working_thread = nullptr; /* Working thread */
     DWORD                    exit_code = 0;            /* Exit code */
