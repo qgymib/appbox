@@ -1,6 +1,8 @@
-# Prevent duplicate entries
-if(TARGET wx::core)
-    set(wxWidgets_FOUND TRUE)
+include_guard(GLOBAL)
+
+find_package(wxWidgets CONFIG QUIET COMPONENTS ${wxWidgets_FIND_COMPONENTS})
+
+if (wxWidgets_FOUND)
     return()
 endif()
 

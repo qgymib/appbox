@@ -7,6 +7,7 @@ on: [push]
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
+  WX_INSTALL_DIR: ${{github.workspace}}/.deps/wxWidgets
 
 jobs:
   build:
@@ -20,8 +21,27 @@ jobs:
         with:
           submodules: 'recursive'
 
+      - name: Cache wxWidgets install
+        id: cache-wxWidgets
+        uses: actions/cache@v5
+        with:
+          path: ${{github.workspace}}/.deps/wxWidgets
+          key: wxWidgets-${{runner.os}}-${{env.BUILD_TYPE}}-${{hashFiles('.git/modules/third_party/wxWidgets/HEAD')}}
+
+      - name: Build wxWidgets
+        if: steps.cache-wxWidgets.outputs.cache-hit != 'true'
+        shell: cmd
+        run: |
+          cmake -S third_party/wxWidgets -B build-wxWidgets ^
+            -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} ^
+            -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/.deps/wxWidgets ^
+            -DwxBUILD_SHARED=OFF
+          cmake --build build-wxWidgets --config ${{env.BUILD_TYPE}} --parallel
+          cmake --install build-wxWidgets --config ${{env.BUILD_TYPE}}
+
       - name: Build
-        # Build your program with the given configuration
+        env:
+          CMAKE_PREFIX_PATH: ${{env.WX_INSTALL_DIR}}
         run: cmake --workflow --preset ${{env.BUILD_TYPE}}
 
       - name: Upload test logs
@@ -29,10 +49,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: test-logs
-          path: ./build/${{env.BUILD_TYPE}}/test/Test-*
+          path: ./build/test/Test-*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          path: ./build/${{env.BUILD_TYPE}}/appbox-*.zip
+          path: ./build/appbox-*.zip
           archive: false
