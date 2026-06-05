@@ -6,7 +6,7 @@
 
 extern "C" {
 /**
- * @see https://ntdoc.m417z.com/ntdeletekey
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwdeletekey
  */
 /* clang-format off */
 typedef NTSTATUS (*T_NtDeleteKey)(

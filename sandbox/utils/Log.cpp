@@ -113,7 +113,7 @@ std::string appbox::PointerToString(const void* ptr)
     return oss.str();
 }
 
-nlohmann::json appbox::ToJson(const POBJECT_ATTRIBUTES ObjectAttributes)
+nlohmann::json appbox::ToJson(POBJECT_ATTRIBUTES ObjectAttributes)
 {
     if (ObjectAttributes == nullptr)
     {
@@ -133,7 +133,7 @@ nlohmann::json appbox::ToJson(const POBJECT_ATTRIBUTES ObjectAttributes)
     return json;
 }
 
-nlohmann::json appbox::ToJson(const PFILE_NETWORK_OPEN_INFORMATION FileInformation)
+nlohmann::json appbox::ToJson(PFILE_NETWORK_OPEN_INFORMATION FileInformation)
 {
     if (FileInformation == nullptr)
     {
@@ -151,7 +151,7 @@ nlohmann::json appbox::ToJson(const PFILE_NETWORK_OPEN_INFORMATION FileInformati
     return json;
 }
 
-nlohmann::json appbox::ToJson(const PUNICODE_STRING FileName)
+nlohmann::json appbox::ToJson(PCUNICODE_STRING FileName)
 {
     if (FileName == nullptr)
     {

@@ -34,6 +34,20 @@ namespace appbox
  */
 extern HookRecord HookNtCreateKey;
 
+/**
+ * @brief Convert registry key DesiredAccess value to JSON.
+ * @param[in] DesiredAccess DesiredAccess value
+ * @return JSON object
+ */
+nlohmann::json RegistryKeyDesiredAccessToJson(ACCESS_MASK DesiredAccess);
+
+/**
+ * @brief Convert registry key CreateOptions value to JSON.
+ * @param[in] CreateOptions CreateOptions value
+ * @return JSON object
+ */
+nlohmann::json RegistryKeyCreateOptionsToJson(ULONG CreateOptions);
+
 } // namespace appbox
 
 #endif

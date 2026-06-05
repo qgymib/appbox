@@ -1,10 +1,26 @@
+#include "utils/Log.hpp"
+#include "hook/NtCreateKey.hpp"
 #include "NtOpenKeyTransacted.hpp"
 
 T_NtOpenKeyTransacted sys_NtOpenKeyTransacted = nullptr;
 
+static nlohmann::json NtOpenKeyTransactedLogParam(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess,
+                                                  POBJECT_ATTRIBUTES ObjectAttributes, HANDLE TransactionHandle)
+{
+    nlohmann::json param;
+    param["KeyHandle"] = appbox::PointerToString(KeyHandle);
+    param["DesiredAccess"] = appbox::RegistryKeyDesiredAccessToJson(DesiredAccess);
+    param["ObjectAttributes"] = appbox::ToJson(ObjectAttributes);
+    param["TransactionHandle"] = appbox::PointerToString(TransactionHandle);
+    return param;
+}
+
+static appbox::LoggerF logger("NtOpenKeyTransacted", NtOpenKeyTransactedLogParam);
+
 static NTSTATUS Hook_NtOpenKeyTransacted(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess,
                                          POBJECT_ATTRIBUTES ObjectAttributes, HANDLE TransactionHandle)
 {
+    logger.Log(KeyHandle, DesiredAccess, ObjectAttributes, TransactionHandle);
     return sys_NtOpenKeyTransacted(KeyHandle, DesiredAccess, ObjectAttributes, TransactionHandle);
 }
 

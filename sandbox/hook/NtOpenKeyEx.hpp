@@ -6,7 +6,7 @@
 
 extern "C" {
 /**
- * @see https://ntdoc.m417z.com/ntopenkeyex
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwopenkeyex
  */
 /* clang-format off */
 typedef NTSTATUS (*T_NtOpenKeyEx)(
@@ -30,6 +30,13 @@ namespace appbox
  * @brief Hook NtOpenKeyEx().
  */
 extern HookRecord HookNtOpenKeyEx;
+
+/**
+ * @brief Convert registry key OpenOptions to JSON.
+ * @param[in] OpenOptions Value
+ * @return Json object.
+ */
+nlohmann::json RegistryKeyOpenOptionsToJson(ULONG OpenOptions);
 
 } // namespace appbox
 

@@ -6,7 +6,7 @@
 
 extern "C" {
 /**
- * @see https://ntdoc.m417z.com/ntnotifychangekey
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-zwnotifychangekey
  */
 /* clang-format off */
 typedef NTSTATUS (*T_NtNotifyChangeKey)(
@@ -38,4 +38,5 @@ namespace appbox
 extern HookRecord HookNtNotifyChangeKey;
 
 } // namespace appbox
+
 #endif

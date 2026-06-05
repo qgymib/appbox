@@ -6,7 +6,7 @@
 
 extern "C" {
 /**
- * @see https://ntdoc.m417z.com/ntopenkeytransacted
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwopenkeytransacted
  */
 /* clang-format off */
 typedef NTSTATUS (*T_NtOpenKeyTransacted)(

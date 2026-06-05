@@ -84,9 +84,9 @@ void Log(MsgLogLevel level, const char* file, int line, const std::wstring& msg)
 void LogEnable(bool enable);
 
 std::string    PointerToString(const void* ptr);
-nlohmann::json ToJson(const POBJECT_ATTRIBUTES ObjectAttributes);
-nlohmann::json ToJson(const PFILE_NETWORK_OPEN_INFORMATION FileInformation);
-nlohmann::json ToJson(const PUNICODE_STRING FileName);
+nlohmann::json ToJson(POBJECT_ATTRIBUTES ObjectAttributes);
+nlohmann::json ToJson(PFILE_NETWORK_OPEN_INFORMATION FileInformation);
+nlohmann::json ToJson(PCUNICODE_STRING FileName);
 nlohmann::json DesiredAccessToJson(ACCESS_MASK DesiredAccess);
 
 } // namespace appbox
