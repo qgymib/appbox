@@ -1,0 +1,20 @@
+#include "NtUnloadKey2.hpp"
+
+T_NtUnloadKey2 sys_NtUnloadKey2 = nullptr;
+
+static NTSTATUS Hook_NtUnloadKey2(POBJECT_ATTRIBUTES TargetKey, ULONG Flags)
+{
+    return sys_NtUnloadKey2(TargetKey, Flags);
+}
+
+static void LoadNtUnloadKey2()
+{
+    *appbox::HookNtUnloadKey2.ppPointer = GetProcAddress(appbox::sys.h_ntdll, appbox::HookNtUnloadKey2.name);
+}
+
+appbox::HookRecord appbox::HookNtUnloadKey2 = {
+    "NtUnloadKey2",
+    LoadNtUnloadKey2,
+    (void**)&sys_NtUnloadKey2,
+    Hook_NtUnloadKey2,
+};

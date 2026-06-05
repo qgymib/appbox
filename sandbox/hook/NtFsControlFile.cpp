@@ -37,8 +37,7 @@ static NTSTATUS Hook_NtFsControlFile(HANDLE FileHandle, HANDLE Event, PIO_APC_RO
 
 static void LoadNtFsControlFile()
 {
-    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtFsControlFile");
-    sys_NtFsControlFile = reinterpret_cast<T_NtFsControlFile>(addr);
+    *appbox::HookNtFsControlFile.ppPointer = GetProcAddress(appbox::sys.h_ntdll, appbox::HookNtFsControlFile.name);
 }
 
 appbox::HookRecord appbox::HookNtFsControlFile = {

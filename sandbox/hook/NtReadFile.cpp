@@ -4,7 +4,7 @@ T_NtReadFile sys_NtReadFile = nullptr;
 
 static void LoadNtReadFile()
 {
-    sys_NtReadFile = (T_NtReadFile)GetProcAddress(appbox::sys.h_ntdll, "NtReadFile");
+    *appbox::HookNtReadFile.ppPointer = GetProcAddress(appbox::sys.h_ntdll, appbox::HookNtReadFile.name);
 }
 
 appbox::HookRecord appbox::HookNtReadFile = {

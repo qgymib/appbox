@@ -50,8 +50,7 @@ static NTSTATUS Hook_NtClose(HANDLE Handle)
 
 static void LoadNtClose()
 {
-    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtClose");
-    sys_NtClose = reinterpret_cast<T_NtClose>(addr);
+    *appbox::HookNtClose.ppPointer = GetProcAddress(appbox::sys.h_ntdll, appbox::HookNtClose.name);
 }
 
 appbox::HookRecord appbox::HookNtClose = {

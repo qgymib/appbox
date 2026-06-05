@@ -39,8 +39,7 @@ static NTSTATUS Hook_NtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS Objec
 
 static void LoadNtQueryObject()
 {
-    auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtQueryObject");
-    sys_NtQueryObject = reinterpret_cast<T_NtQueryObject>(addr);
+    *appbox::HookNtQueryObject.ppPointer = GetProcAddress(appbox::sys.h_ntdll, appbox::HookNtQueryObject.name);
 }
 
 appbox::HookRecord appbox::HookNtQueryObject = {

@@ -322,13 +322,45 @@ typedef enum _PROCESSINFOCLASS
     MaxProcessInfoClass
 } PROCESSINFOCLASS;
 
+typedef enum _KEY_INFORMATION_CLASS
+{
+    KeyBasicInformation,
+    KeyNodeInformation,
+    KeyFullInformation,
+    KeyNameInformation,
+    KeyCachedInformation,
+    KeyFlagsInformation,
+    KeyVirtualizationInformation, // Windows Vista
+    KeyHandleTagsInformation,     // Windows 7
+    KeyTrustInformation,
+    KeyLayerInformation,
+    MaxKeyInfoClass
+} KEY_INFORMATION_CLASS;
+
+typedef enum _KEY_VALUE_INFORMATION_CLASS
+{
+    KeyValueBasicInformation,
+    KeyValueFullInformation,
+    KeyValuePartialInformation,
+    KeyValueFullInformationAlign64,
+    KeyValuePartialInformationAlign64,
+    MaxKeyValueInfoClass // MaxKeyValueInfoClass should always be the last enum
+} KEY_VALUE_INFORMATION_CLASS;
+
+typedef enum _KEY_SET_INFORMATION_CLASS
+{
+    KeyWriteTimeInformation,
+    KeyUserFlagsInformation,
+    MaxKeySetInfoClass // MaxKeySetInfoClass should always be the last enum
+} KEY_SET_INFORMATION_CLASS;
+
 typedef struct _UNICODE_STRING
 {
     USHORT Length;
     USHORT MaximumLength;
     PWSTR  Buffer;
 } UNICODE_STRING, *PUNICODE_STRING;
-typedef const UNICODE_STRING *PCUNICODE_STRING;
+typedef const UNICODE_STRING* PCUNICODE_STRING;
 
 typedef struct _OBJECT_NAME_INFORMATION
 {
@@ -478,6 +510,14 @@ typedef struct _FILE_FULL_DIR_INFORMATION
     ULONG         EaSize;
     WCHAR         FileName[1];
 } FILE_FULL_DIR_INFORMATION, *PFILE_FULL_DIR_INFORMATION;
+
+typedef struct _KEY_VALUE_ENTRY
+{
+    PUNICODE_STRING ValueName;
+    ULONG           DataLength;
+    ULONG           DataOffset;
+    ULONG           Type;
+} KEY_VALUE_ENTRY, *PKEY_VALUE_ENTRY;
 
 typedef void(NTAPI* PIO_APC_ROUTINE)(IN PVOID ApcContext, IN PIO_STATUS_BLOCK IoStatusBlock, IN ULONG Reserved);
 
