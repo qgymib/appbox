@@ -102,8 +102,7 @@ static void OnDllAttach()
     }
 
     appbox::sandbox = new appbox::Sandbox;
-    appbox::sandbox->bIsolationMode = DetourRestoreAfterWith();
-    if (appbox::sandbox->bIsolationMode)
+    if (DetourRestoreAfterWith())
     {
         LoadInjectData();
     }
@@ -141,7 +140,6 @@ static void OnDllDetach()
 
 void appbox::to_json(nlohmann::json& j, const Sandbox& r)
 {
-    j["bIsolationMode"] = r.bIsolationMode;
     j["wPipePath"] = appbox::WideToUTF8(r.wPipePath);
     j["fs"] = r.fs;
     j["sandbox32_dos_path"] = r.sandbox32_dos_path;

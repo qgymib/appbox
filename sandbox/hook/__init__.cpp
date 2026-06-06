@@ -147,7 +147,7 @@ NTSTATUS appbox::InitHook()
     {
         hook->load_proc_addr_fn();
 
-        if (appbox::sandbox->bIsolationMode && hook->pDetour != nullptr)
+        if (hook->pDetour != nullptr)
         {
             DetourAttach(hook->ppPointer, hook->pDetour);
         }
@@ -170,7 +170,7 @@ void appbox::ExitHook()
 
     for (const auto& hook : s_hooks)
     {
-        if (appbox::sandbox->bIsolationMode && hook->pDetour != nullptr)
+        if (hook->pDetour != nullptr)
         {
             DetourDetach(hook->ppPointer, hook->pDetour);
         }

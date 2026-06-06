@@ -13,10 +13,8 @@ namespace appbox
 struct Sandbox
 {
     /**
-     * @brief Sandbox isolation enable flag.
+     * @brief Inject data for new process.
      */
-    bool bIsolationMode = false;
-
     std::string inject_data;
 
     /**
