@@ -6,7 +6,7 @@
 
 extern "C" {
 /**
- * @see https://learn.microsoft.com/fr-fr/windows-hardware/drivers/ddi/wdm/nf-wdm-zwenumeratekey
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwenumeratekey
  */
 /* clang-format off */
 typedef NTSTATUS (*T_NtEnumerateKey)(

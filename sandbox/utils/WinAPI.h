@@ -324,11 +324,11 @@ typedef enum _PROCESSINFOCLASS
 
 typedef enum _KEY_INFORMATION_CLASS
 {
-    KeyBasicInformation,
-    KeyNodeInformation,
-    KeyFullInformation,
-    KeyNameInformation,
-    KeyCachedInformation,
+    KeyBasicInformation,  // KEY_BASIC_INFORMATION
+    KeyNodeInformation,   // KEY_NODE_INFORMATION
+    KeyFullInformation,   // KEY_FULL_INFORMATION
+    KeyNameInformation,   // KEY_NAME_INFORMATION
+    KeyCachedInformation, // KEY_CACHED_INFORMATION
     KeyFlagsInformation,
     KeyVirtualizationInformation, // Windows Vista
     KeyHandleTagsInformation,     // Windows 7
@@ -518,6 +518,57 @@ typedef struct _KEY_VALUE_ENTRY
     ULONG           DataOffset;
     ULONG           Type;
 } KEY_VALUE_ENTRY, *PKEY_VALUE_ENTRY;
+
+typedef struct _KEY_BASIC_INFORMATION
+{
+    LARGE_INTEGER LastWriteTime;
+    ULONG         TitleIndex;
+    ULONG         NameLength;
+    WCHAR         Name[1];
+} KEY_BASIC_INFORMATION, *PKEY_BASIC_INFORMATION;
+
+typedef struct _KEY_NODE_INFORMATION
+{
+    LARGE_INTEGER LastWriteTime;
+    ULONG         TitleIndex;
+    ULONG         ClassOffset;
+    ULONG         ClassLength;
+    ULONG         NameLength;
+    WCHAR         Name[1];
+} KEY_NODE_INFORMATION, *PKEY_NODE_INFORMATION;
+
+typedef struct _KEY_FULL_INFORMATION
+{
+    LARGE_INTEGER LastWriteTime;
+    ULONG         TitleIndex;
+    ULONG         ClassOffset;
+    ULONG         ClassLength;
+    ULONG         SubKeys;
+    ULONG         MaxNameLen;
+    ULONG         MaxClassLen;
+    ULONG         Values;
+    ULONG         MaxValueNameLen;
+    ULONG         MaxValueDataLen;
+    WCHAR         Class[1];
+} KEY_FULL_INFORMATION, *PKEY_FULL_INFORMATION;
+
+typedef struct _KEY_NAME_INFORMATION
+{
+    ULONG NameLength;
+    WCHAR Name[1];
+} KEY_NAME_INFORMATION, *PKEY_NAME_INFORMATION;
+
+typedef struct _KEY_CACHED_INFORMATION
+{
+    LARGE_INTEGER LastWriteTime;
+    ULONG         TitleIndex;
+    ULONG         SubKeys;
+    ULONG         MaxNameLen;
+    ULONG         Values;
+    ULONG         MaxValueNameLen;
+    ULONG         MaxValueDataLen;
+    ULONG         NameLength;
+} KEY_CACHED_INFORMATION, *PKEY_CACHED_INFORMATION;
 
 typedef void(NTAPI* PIO_APC_ROUTINE)(IN PVOID ApcContext, IN PIO_STATUS_BLOCK IoStatusBlock, IN ULONG Reserved);
 
