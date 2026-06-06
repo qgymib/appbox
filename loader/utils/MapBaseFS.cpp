@@ -30,7 +30,6 @@ DWORD appbox::MapBaseFS(const std::string& fs, std::vector<SandboxLowerFS>& mapp
     {
         dos_path_w.pop_back();
     }
-    dos_path_w += L"\\filesystem";
 
     std::vector<appbox::SandboxLowerFS> tmp_fs;
     std::error_code                     ec;

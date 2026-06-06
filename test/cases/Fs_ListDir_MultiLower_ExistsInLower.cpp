@@ -26,12 +26,12 @@ TEST_F(Fs, ListDir_MultiLower_ExistsInLower)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"Upper", {}),
         FsDir(L"Lower1", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"%APPDATA%", {
                 FsFile(wName, "hello1")
             })
         }),
         FsDir(L"Lower2", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"%APPDATA%", {
                 FsFile(wName, "hello2")
             })
         })

@@ -48,7 +48,6 @@ static bool MapOverlayFS(const std::string& fs, std::string& mapped_fs)
     {
         dos_path_w.pop_back();
     }
-    dos_path_w += L"\\filesystem";
 
     std::wstring nt_path_w;
     if (appbox::ConvertDosPathToNtPath(dos_path_w, nt_path_w))

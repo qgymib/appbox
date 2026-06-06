@@ -32,17 +32,17 @@ TEST_F(Fs, ListDir_MultiLower_ExistsInLower_WhiteoutInUpper)
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"Upper", {
-            FsDir(L"filesystem\\" + GetKnownFolderPath(L"%APPDATA%", true), {
+            FsDir(GetKnownFolderPath(L"%APPDATA%", true), {
                 FsFile(wName + L".$APPBOX_DELETE$", "")
             })
         }),
         FsDir(L"Lower1", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"%APPDATA%", {
                 FsFile(wName, "hello1")
             })
         }),
         FsDir(L"Lower2", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"%APPDATA%", {
                 FsFile(wName2, "hello2")
             })
         })

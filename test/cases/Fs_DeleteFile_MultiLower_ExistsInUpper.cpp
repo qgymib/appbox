@@ -21,7 +21,7 @@ TEST_F(Fs, DeleteFile_MultiLower_ExistsInUpper)
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"Upper", {
-            FsDir(L"filesystem\\" + GetKnownFolderPath(L"%APPDATA%", true), {
+            FsDir(GetKnownFolderPath(L"%APPDATA%", true), {
                 FsFile(L"data.txt", "hello")
             })
         }),
@@ -44,13 +44,13 @@ TEST_F(Fs, DeleteFile_MultiLower_ExistsInUpper)
 
     /* File should not exist in upper fs. */
     {
-        auto fPath = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"%APPDATA%", true) + L"\\data.txt";
+        auto fPath = GetCWDString() + L"\\Upper\\" + GetKnownFolderPath(L"%APPDATA%", true) + L"\\data.txt";
         ASSERT_FALSE(std::filesystem::exists(fPath));
     }
 
     /* Whiteout file should not exist in upper fs. */
     {
-        auto fPath = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"%APPDATA%", true) +
+        auto fPath = GetCWDString() + L"\\Upper\\" + GetKnownFolderPath(L"%APPDATA%", true) +
                      L"\\data.txt.$APPBOX_DELETE$";
         ASSERT_FALSE(std::filesystem::exists(fPath));
     }

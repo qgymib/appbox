@@ -20,17 +20,17 @@ TEST_F(Fs, ReadFile_MultiLower_WhiteoutInUpper)
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"Upper", {
-            FsDir(L"filesystem\\" + GetKnownFolderPath(L"%APPDATA%", true), {
+            FsDir(GetKnownFolderPath(L"%APPDATA%", true), {
                 FsFile(L"data.txt.$APPBOX_DELETE$", "")
             })
         }),
         FsDir(L"Lower1", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"%APPDATA%", {
                 FsFile(L"data.txt", "hello1")
             })
         }),
         FsDir(L"Lower2", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"%APPDATA%", {
                 FsFile(L"data.txt", "hello2")
             })
         })

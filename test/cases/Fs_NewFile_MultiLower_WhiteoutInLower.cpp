@@ -21,12 +21,12 @@ TEST_F(Fs, NewFile_MultiLower_WhiteoutInLower)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"Upper", {}),
         FsDir(L"Lower1", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"%APPDATA%", {
                 FsFile(L"data.txt.$APPBOX_DELETE$", "")
             })
         }),
         FsDir(L"Lower2", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"%APPDATA%", {
                 FsFile(L"data.txt", "hello2")
             })
         })
@@ -48,7 +48,7 @@ TEST_F(Fs, NewFile_MultiLower_WhiteoutInLower)
 
     /* Target file should be created. */
     {
-        auto fPath = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"%APPDATA%", true) + L"\\data.txt";
+        auto fPath = GetCWDString() + L"\\Upper\\" + GetKnownFolderPath(L"%APPDATA%", true) + L"\\data.txt";
         ASSERT_TRUE(std::filesystem::exists(fPath));
     }
 

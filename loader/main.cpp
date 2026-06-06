@@ -28,14 +28,6 @@ static std::vector<std::wstring> BuildCmdArg()
     return args;
 }
 
-static DWORD RegistryInit()
-{
-    auto hive_path = wxGetApp().hive_path;
-
-    HKEY hKey = nullptr;
-    RegLoadAppKeyW(hive_path.c_str(), &hKey, KEY_ALL_ACCESS, 0, 0);
-}
-
 static void MainLoader()
 {
     DWORD         ret;
