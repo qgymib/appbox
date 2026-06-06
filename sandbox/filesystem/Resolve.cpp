@@ -5,7 +5,6 @@
 #include "utils/Defines.hpp"
 #include "Sandbox.hpp"
 #include "WString.hpp"
-#include "__init__.hpp"
 #include "Resolve.hpp"
 
 struct SearchResult

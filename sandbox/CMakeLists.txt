@@ -18,7 +18,6 @@ endif ()
 set(sandbox_name ${PROJECT_NAME}${APPBOX_SANDBOX_SUFFIX})
 
 add_library(${sandbox_name} MODULE
-    "filesystem/__init__.cpp"
     "filesystem/CreateDirectory.cpp"
     "filesystem/DirName.cpp"
     "filesystem/RemoveAll.cpp"
