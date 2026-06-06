@@ -1,5 +1,5 @@
-#ifndef APPBOX_TEST_HPP
-#define APPBOX_TEST_HPP
+#ifndef APPBOX_TEST_UTILS_CONFIG_HPP
+#define APPBOX_TEST_UTILS_CONFIG_HPP
 
 #include <string>
 #include <CLI/CLI.hpp>

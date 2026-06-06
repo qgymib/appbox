@@ -19,6 +19,7 @@ add_executable(AppBoxTests
     "probe/ListDir.cpp"
     "probe/ReadFileFull.cpp"
     "utils/CommonFixture.cpp"
+    "utils/Config.cpp"
     "utils/CWD.cpp"
     "utils/FsBuilder.cpp"
     "utils/KnownFolder.cpp"
@@ -26,7 +27,6 @@ add_executable(AppBoxTests
     "utils/ReadFileFull.cpp"
     "utils/Semaphore.cpp"
     "utils/WriteFileFull.cpp"
-    "Test.cpp"
     "main.cpp"
 )
 appbox_setup_target_wall(AppBoxTests)

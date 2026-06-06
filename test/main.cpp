@@ -3,7 +3,7 @@
 #include <spdlog/spdlog.h>
 #include <base64.hpp>
 #include "probe/__init__.hpp"
-#include "Test.hpp"
+#include "utils/Config.hpp"
 
 int wmain(int argc, wchar_t* argv[])
 {

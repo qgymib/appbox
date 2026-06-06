@@ -1,12 +1,6 @@
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0600
-#endif
-#include <windows.h>
 #include <gtest/gtest.h>
 #include "probe/__init__.hpp"
-#include "loader/Config.hpp"
 #include "utils/CommonFixture.hpp"
-#include "Test.hpp"
 #include "WString.hpp"
 
 typedef appbox::test::CommonFixture TestArgumentsPassthrough;

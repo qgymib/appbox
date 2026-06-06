@@ -1,8 +1,8 @@
 #include <spdlog/spdlog.h>
 #include <gtest/gtest.h>
+#include <CLI/Encoding.hpp>
 #include <chrono>
-#include "WString.hpp"
-#include "Test.hpp"
+#include "utils/Config.hpp"
 #include "CWD.hpp"
 
 appbox::test::CWD::~CWD()
@@ -14,11 +14,12 @@ appbox::test::CWD::~CWD()
     }
 }
 
-static std::string GetTimestampMs()
+static std::wstring GetTimestampMs()
 {
     auto now = std::chrono::system_clock::now();
     auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
-    return std::to_string(ms);
+    auto ret = std::to_string(ms);
+    return CLI::widen(ret);
 }
 
 appbox::test::CWD::Ptr appbox::test::CWD::Create()
@@ -27,11 +28,11 @@ appbox::test::CWD::Ptr appbox::test::CWD::Create()
 
     auto info = ::testing::UnitTest::GetInstance()->current_test_info();
     auto name = info->test_suite_name() + std::string(".") + info->name();
-    auto name_w = appbox::UTF8ToWide(name);
+    auto name_w = CLI::widen(name);
 
     obj->no_cleanup_ = false;
     obj->cwd_ = std::filesystem::current_path();
-    obj->cwd_ = obj->cwd_ / fmt::format("Test-{}-{}", appbox::WideToUTF8(name_w), GetTimestampMs());
+    obj->cwd_ = obj->cwd_ / fmt::format(L"Test-{}-{}", name_w, GetTimestampMs());
 
     std::filesystem::create_directories(obj->cwd_);
     return obj;

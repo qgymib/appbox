@@ -1,7 +1,7 @@
 #include "sandbox/utils/WinAPI.h" /* Must be included before any other headers. */
 #include <spdlog/spdlog.h>
 #include "SetLogLevel.hpp"
-#include "Test.hpp"
+#include "Config.hpp"
 
 appbox::test::TestConfig appbox::test::config;
 
