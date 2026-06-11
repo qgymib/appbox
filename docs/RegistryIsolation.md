@@ -928,7 +928,7 @@ For WOW applications on affected Windows installations, the following table list
 | HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\OLE | Shared |
 | HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\RAS | Shared |
 | HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\RPC | Shared |
-| HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\SOFTWARE\Microsoft\Shared Tools\MSInfo | Shared |
+| HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Software\Microsoft\Shared Tools\MSInfo | Shared |
 | HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\SystemCertificates | Shared |
 | HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\TermServLicensing | Shared |
 | HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\TransactionServer | Shared |

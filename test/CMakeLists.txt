@@ -11,6 +11,7 @@ add_executable(AppBoxTests
     "cases/Fs_NewFile_MultiLower_WhiteoutInLower.cpp"
     "cases/Fs_NewFile_MultiLower_WhiteoutInUpper.cpp"
     "cases/Fs_ReadFile_MultiLower_WhiteoutInUpper.cpp"
+    "cases/Reg_ReadValue.cpp"
     "cases/RPC.cpp"
     "probe/__init__.cpp"
     "probe/CreateDirectoryW.cpp"
