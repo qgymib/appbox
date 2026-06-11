@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.15)
 project(AppBoxLoader)
 
 add_executable(${PROJECT_NAME} WIN32
+    "filesystem/RegCompile.cpp"
     "rpc/__init__.cpp"
     "rpc/Log.cpp"
     "utils/CommandLineOptions.cpp"
@@ -64,4 +65,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE wx::core wx::base)
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         sandbox_resource
+)
+
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+        bcrypt
 )
