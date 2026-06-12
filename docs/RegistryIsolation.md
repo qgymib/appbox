@@ -4,7 +4,7 @@
 
 Like the filesystem overlay (RawFS → LowerFS → UpperFS), the registry also supports a multi-layer isolation model.
 
-Each `LowerFS` layer may optionally contain a file named `registry.reg` in its root directory — this is the read-only registry information authored by the sandbox packager. There can be multiple LowerFS layers, each with its own `registry.reg`; they are merged in LowerFS priority order (see §1). In `UpperFS`, a file named `registry.hive` contains all the registry information needed for application runtime, including compiled and merged LowerFS data and all application modifications.
+Each `LowerFS` layer may optionally contain a directory named `%REGISTRY%` in its root directory — this directory holds one or more `.reg` text files that constitute the read-only registry information authored by the sandbox packager. There can be multiple LowerFS layers, each with its own `%REGISTRY%` directory; they are merged in LowerFS priority order (see §1), and within each layer the `.reg` files are processed in ASCII ascending sort order by filename. In `UpperFS`, a file named `registry.hive` contains all the registry information needed for application runtime, including compiled and merged LowerFS data and all application modifications.
 
 ---
 
@@ -13,7 +13,7 @@ Each `LowerFS` layer may optionally contain a file named `registry.reg` in its r
 | Layer | Storage | Persistence | Description |
 |-------|---------|------------|-------------|
 | **Host Registry** | Windows real registry | Read-only (from sandbox view) | The system registry, treated as the bottom layer |
-| **LowerFS `registry.reg`** (multiple layers) | `.reg` text file per LowerFS layer | Read-only, user-editable | Optional per layer. Each LowerFS may contain a `registry.reg`; layers are merged in priority order (top-down) |
+| **LowerFS `%REGISTRY%` directory** (multiple layers) | `.reg` text files in `%REGISTRY%` directory per LowerFS layer | Read-only, user-editable | Optional per layer. Each LowerFS may contain a `%REGISTRY%` directory with one or more `.reg` files; layers are merged in priority order (top-down), and `.reg` files within each layer are processed in ASCII ascending order by filename |
 | **UpperFS `registry.hive`** | Binary registry hive file in UpperFS | Read-write | The writable sandbox layer; stores merged LowerFS data + all app modifications + sandbox metadata |
 
 Search order (highest priority first):
@@ -45,8 +45,8 @@ registry.hive (loaded hive root)
 └── __sbx__                       ← Sandbox internal metadata (hidden from app)
     ├── Meta
     │   ├── LowerFSHashes          ← Per-layer hashes (see below)
-    │   │   ├── 0                  ← REG_BINARY, SHA-256 of LowerFS[0]'s registry.reg
-    │   │   ├── 1                  ← REG_BINARY, SHA-256 of LowerFS[1]'s registry.reg
+    │   │   ├── 0                  ← REG_BINARY, SHA-256 of LowerFS[0]'s .reg files (concatenated in ASCII sort order)
+    │   │   ├── 1                  ← REG_BINARY, SHA-256 of LowerFS[1]'s .reg files (concatenated in ASCII sort order)
     │   │   └── ...                ← One entry per LowerFS layer
     │   ├── Version                ← REG_DWORD, incrementing compile version
     │   └── CompileTime            ← REG_QWORD, FILETIME of last compile
@@ -76,7 +76,7 @@ The `DATA` subtree mirrors the standard Windows registry namespace that the sand
 | `HKCR\Foo` | `DATA\Machine\SOFTWARE\Classes\Foo` | `DATA\Machine\SOFTWARE\WOW6432Node\Classes\Foo`* |
 | `HKU\<SID>\...` | `DATA\User\<SID>\...` | `DATA\User\<SID>\...` |
 
-> **Note on HKCR**: `HKEY_CLASSES_ROOT` is a merged view of `HKLM\SOFTWARE\Classes` and `HKCU\SOFTWARE\Classes`. The sandbox maps HKCR to `DATA\Machine\SOFTWARE\Classes\...` (native 64-bit). For WoW64 processes, the shared/redirected subkey logic of `HKLM\SOFTWARE\Classes` applies (see §6.8.3). User-specific COM class registrations (normally visible via `HKCU\SOFTWARE\Classes`) are not separately mapped under HKCR. Applications that rely on per-user class registrations through HKCR may need the packager to include those entries in `registry.reg` under the `HKLM\SOFTWARE\Classes` path.
+> **Note on HKCR**: `HKEY_CLASSES_ROOT` is a merged view of `HKLM\SOFTWARE\Classes` and `HKCU\SOFTWARE\Classes`. The sandbox maps HKCR to `DATA\Machine\SOFTWARE\Classes\...` (native 64-bit). For WoW64 processes, the shared/redirected subkey logic of `HKLM\SOFTWARE\Classes` applies (see §6.8.3). User-specific COM class registrations (normally visible via `HKCU\SOFTWARE\Classes`) are not separately mapped under HKCR. Applications that rely on per-user class registrations through HKCR may need the packager to include those entries in `.reg` files under the `HKLM\SOFTWARE\Classes` path.
 
 > **Note on WOW6432Node**: The `WOW6432Node` subdirectory in the hive `DATA` subtree is a physical representation of the 32-bit registry view. It is only present when the sandbox is running on 64-bit Windows and a 32-bit (WoW64) process has been sandboxed. See §6.8 for the complete WoW64 redirection rules, including shared-key exceptions and `KEY_WOW64_*` flag handling.
 
@@ -91,8 +91,8 @@ Stores metadata about the LowerFS compilation state for change detection:
 
 | Value | Type | Description |
 |-------|------|-------------|
-| `LowerFSHashes\0` | `REG_BINARY` (32 bytes) | SHA-256 hash of LowerFS layer 0's `registry.reg` content at last compile. If that layer has no `registry.reg`, all zeros. |
-| `LowerFSHashes\1` | `REG_BINARY` (32 bytes) | SHA-256 hash of LowerFS layer 1's `registry.reg` content. And so on for each layer. |
+| `LowerFSHashes\0` | `REG_BINARY` (32 bytes) | SHA-256 hash computed from the concatenation of all `.reg` file contents in LowerFS layer 0's `%REGISTRY%` directory (sorted by ASCII ascending filename) at last compile. If that layer has no `%REGISTRY%` directory, all zeros. |
+| `LowerFSHashes\1` | `REG_BINARY` (32 bytes) | SHA-256 hash of LowerFS layer 1's `.reg` files (concatenated in ASCII sort order). And so on for each layer. |
 | `Version` | `REG_DWORD` | Monotonically increasing version counter, incremented on each successful recompile. |
 | `CompileTime` | `REG_QWORD` | FILETIME timestamp of the last compile. |
 
@@ -112,7 +112,7 @@ Example: After `NtSetValueKey(HKLM\SOFTWARE\Foo, "Version", 0x1234)`:
 This marker is used during the LowerFS update flow to preserve app changes (see §5).
 
 #### `__sbx__\Deleted`
-Contains marker keys (REG_NONE, zero-length value) for paths that are deleted — either by the application (via NtDeleteKey) or by path-whiteout directives in `registry.reg` (see §3.2). Paths are physical paths including `WOW6432Node` where applicable (see §6.8.9). When a path is in this set:
+Contains marker keys (REG_NONE, zero-length value) for paths that are deleted — either by the application (via NtDeleteKey) or by path-whiteout directives in `.reg` files (see §3.2). Paths are physical paths including `WOW6432Node` where applicable (see §6.8.9). When a path is in this set:
 - Opening the key returns `STATUS_OBJECT_NAME_NOT_FOUND` (unless the key has been recreated in `DATA` by the app). For OPEN operations, ancestor deletion markers are also checked — if any ancestor is deleted, the entire subtree is invisible from the host registry fallback.
 - The key is excluded from enumeration results merged from the host registry.
 
@@ -121,7 +121,7 @@ Contains subkeys for key paths that have specific value-level whiteouts. Each su
 
 **Semantics**: Value whiteout **only blocks fallback to the host registry**. If a value exists in the hive `DATA` subtree (either compiled from LowerFS or written by the app), it is visible regardless of the whiteout marker. The whiteout prevents the sandbox from returning a host registry value for the specified name when the value is absent from `DATA`.
 
-Example: If `registry.reg` contains `"OldFlag"=".$APPBOX_WHITEOUT$"` under `[HKEY_LOCAL_MACHINE\SOFTWARE\Foo]`:
+Example: If a `.reg` file contains `"OldFlag"="$APPBOX_WHITEOUT$"` under `[HKEY_LOCAL_MACHINE\SOFTWARE\Foo]`:
 - A subkey is created under `__sbx__\Whiteout`:
   - `Machine\SOFTWARE\Foo` (64-bit target)
   - `Machine\SOFTWARE\WOW6432Node\Foo` (32-bit WoW64 target)
@@ -131,13 +131,13 @@ Example: If `registry.reg` contains `"OldFlag"=".$APPBOX_WHITEOUT$"` under `[HKE
   - If `OldFlag` does NOT exist in DATA → check `__sbx__\Whiteout` → marker found → return `STATUS_OBJECT_NAME_NOT_FOUND` (host fallback blocked).
 
 #### `__sbx__\Opaque`
-Contains marker keys (REG_NONE, zero-length value) for paths marked opaque in `registry.reg` (the `.$APPBOX_OPAQUE$` directive). Paths are physical paths including `WOW6432Node` where applicable (see §6.8.9). When a path is opaque, during enumeration the sandbox does **not** merge results from the host registry — only keys in the hive `DATA` are visible.
+Contains marker keys (REG_NONE, zero-length value) for paths marked opaque in `.reg` files (the `.$APPBOX_OPAQUE$` directive). Paths are physical paths including `WOW6432Node` where applicable (see §6.8.9). When a path is opaque, during enumeration the sandbox does **not** merge results from the host registry — only keys in the hive `DATA` are visible.
 
 ---
 
-## 3. Whiteout and Opaque in `registry.reg`
+## 3. Whiteout and Opaque in `.reg` Files
 
-The `registry.reg` file in LowerFS uses special value markers for whiteout/opaque semantics, identical in spirit to the filesystem overlay whiteout.
+The `.reg` files in each LowerFS layer's `%REGISTRY%` directory use special value markers for whiteout/opaque semantics, identical in spirit to the filesystem overlay whiteout.
 
 ### 3.1 Value Whiteout
 
@@ -177,21 +177,21 @@ Hides all content under this path from lower layers:
 ### 3.4 Precedence Rules
 
 1. If both `.$APPBOX_WHITEOUT$` and `.$APPBOX_OPAQUE$` exist under the same path, that path is treated as deleted (whiteout takes precedence).
-2. Whiteout/opaque markers from `registry.reg` only affect the compiled state and host fallback behavior. If the application later writes data to the same path, the data in `DATA` takes precedence — the whiteout marker does not hide values that exist in `DATA`.
+2. Whiteout/opaque markers from `.reg` files only affect the compiled state and host fallback behavior. If the application later writes data to the same path, the data in `DATA` takes precedence — the whiteout marker does not hide values that exist in `DATA`.
 3. During enumeration, value whiteout markers filter out matching value names from the host merge results. Keys/values present in `DATA` are always visible.
 
-> **WoW64 Note**: The compile flow applies WoW64 redirection to the paths in `registry.reg` when writing to the hive (see §4.1 step 3a and §6.8.7). For a 32-bit target, a path like `HKLM\SOFTWARE\Foo` is compiled to `DATA\Machine\SOFTWARE\WOW6432Node\Foo`, and the corresponding `__sbx__` marker is at `Machine\SOFTWARE\WOW6432Node\Foo`. For a 64-bit target, no WOW6432Node is inserted.
+> **WoW64 Note**: The compile flow applies WoW64 redirection to the paths in `.reg` files when writing to the hive (see §4.1 step 3a and §6.8.7). For a 32-bit target, a path like `HKLM\SOFTWARE\Foo` is compiled to `DATA\Machine\SOFTWARE\WOW6432Node\Foo`, and the corresponding `__sbx__` marker is at `Machine\SOFTWARE\WOW6432Node\Foo`. For a 64-bit target, no WOW6432Node is inserted.
 
 ---
 
-## 4. Compile Flow: `registry.reg` → `registry.hive`
+## 4. Compile Flow: `%REGISTRY%` `.reg` files → `registry.hive`
 
-The compile step runs during sandbox initialization (first startup, or when any `registry.reg` has changed). It transforms the user-editable `.reg` files from all LowerFS layers into the binary hive.
+The compile step runs during sandbox initialization (first startup, or when any `.reg` file has changed). It transforms the user-editable `.reg` files from all LowerFS layers into the binary hive.
 
 ### 4.1 Algorithm
 
 ```
-Input:  registry.reg files (optional, one per LowerFS layer)
+Input:  .reg files in %REGISTRY% directories (optional, one or more per LowerFS layer)
 Output: registry.hive (populated DATA + __sbx__)
 
 1. Initialize
@@ -201,8 +201,9 @@ Output: registry.hive (populated DATA + __sbx__)
       __sbx__\Meta\LowerFSHashes, __sbx__\Modified, __sbx__\Deleted, __sbx__\Whiteout, __sbx__\Opaque.
 
 2. For each LowerFS layer in priority order (lowest priority first → highest priority last):
-   a. If the layer has no registry.reg → skip this layer.
-   b. Parse the layer's registry.reg:
+   a. If the layer has no %REGISTRY% directory → skip this layer.
+   b. List all .reg files in the layer's %REGISTRY% directory, sort them by filename
+      in ASCII ascending order, and process each file in that order:
       - Parse each [HKEY_...] section and its values.
       - For each value entry:
         - If value data is ".$APPBOX_WHITEOUT$" (value whiteout):
@@ -262,7 +263,9 @@ Output: registry.hive (populated DATA + __sbx__)
 
 5. Store compile metadata
    a. For each LowerFS layer (by index):
-      Compute SHA-256 of that layer's registry.reg content (or all zeros if absent)
+      List all .reg files in the layer's %REGISTRY% directory, sort by ASCII ascending
+      filename, concatenate their contents, and compute SHA-256 of the concatenation
+      (or all zeros if the directory is absent or empty)
       → write to __sbx__\Meta\LowerFSHashes\<index>.
    b. Increment __sbx__\Meta\Version.
    c. Write current FILETIME to __sbx__\Meta\CompileTime.
@@ -270,24 +273,24 @@ Output: registry.hive (populated DATA + __sbx__)
 6. Flush the hive to disk.
 ```
 
-### 4.2 Handling No `registry.reg`
+### 4.2 Handling No `%REGISTRY%` Directory
 
-If no LowerFS layer contains a `registry.reg` file:
+If no LowerFS layer contains a `%REGISTRY%` directory:
 - No LowerFS data is compiled into `DATA`.
 - All entries under `__sbx__\Meta\LowerFSHashes` are set to all zeros (indicating no source).
 - The sandbox operates with only an empty writable layer on top of the host registry.
 
 ---
 
-## 5. Update Flow: `registry.reg` Change Detection and Hive Update
+## 5. Update Flow: `.reg` File Change Detection and Hive Update
 
-When the user modifies `registry.reg` in any LowerFS layer, the application view must reflect the changes while preserving any application modifications.
+When the user modifies any `.reg` file in any LowerFS layer's `%REGISTRY%` directory, the application view must reflect the changes while preserving any application modifications.
 
 ### 5.1 Change Detection
 
 At sandbox initialization (before any sandboxed process starts):
 
-1. For each LowerFS layer (by index), compute SHA-256 of its `registry.reg` file (or all zeros if absent).
+1. For each LowerFS layer (by index), list all `.reg` files in its `%REGISTRY%` directory (sorted by ASCII ascending filename), concatenate their contents, and compute SHA-256 of the concatenation (or all zeros if the directory is absent or empty).
 2. Compare each hash against the corresponding value under `__sbx__\Meta\LowerFSHashes` stored in the hive.
 3. If ALL hashes match → skip update (no changes in any layer).
 4. If ANY hash differs → proceed with the update.
@@ -297,7 +300,7 @@ At sandbox initialization (before any sandboxed process starts):
 The update is performed **at initialization time**, before any sandboxed process is launched. The hive is loaded, modified, flushed, and then re-loaded for the sandbox session.
 
 ```
-Input:  New registry.reg content (from all LowerFS layers)
+Input:  New .reg file content (from all LowerFS layers' %REGISTRY% directories)
         Existing registry.hive (with app modifications tracked in __sbx__)
 Output: Updated registry.hive
 
@@ -309,7 +312,7 @@ Output: Updated registry.hive
    newOpaque    = { opaque paths }           from the merged opaque sets
 
    Note: All paths in these sets are physical paths (WoW64 redirection applied
-   per §4.1 step 3a and §6.8.7 when constructing paths from registry.reg content).
+   per §4.1 step 3a and §6.8.7 when constructing paths from .reg file content).
 
 2. Read existing state from hive:
    modifiedSet = keys under __sbx__\Modified (paths the app has changed)
@@ -328,13 +331,13 @@ Output: Updated registry.hive
    b. If path ∈ deletedSet  → keep the deletion marker (path already removed from DATA).
    c. If any descendant path ∈ modifiedSet → keep the key in DATA
       (removing it would also remove the app's modified subkeys/values).
-   d. Otherwise → REMOVE the key from DATA (the user removed it from registry.reg).
+   d. Otherwise → REMOVE the key from DATA (the user removed it from .reg files).
 
-5. Update __sbx__\Deleted (path-whiteout markers from registry.reg):
+5. Update __sbx__\Deleted (path-whiteout markers from .reg files):
    a. For paths in newDeleted that are NOT in modifiedSet:
       UPSERT the deletion marker.
    b. For paths in old deleted set that are NOT in newDeleted and NOT in modifiedSet:
-      REMOVE the deletion marker (user removed the path whiteout from registry.reg).
+      REMOVE the deletion marker (user removed the path whiteout from .reg files).
       Note: these are compile-time whiteouts only. App-deleted paths always have a
       corresponding Modified marker (§6.4 step 3c creates both Deleted and Modified
       markers for NtDeleteKey), so the "NOT in modifiedSet" condition ensures app
@@ -342,7 +345,7 @@ Output: Updated registry.hive
    c. Paths that the app has deleted (NtDeleteKey creating both Modified and Deleted
       markers) are NOT removed — app deletions are preserved.
 
-6. Update __sbx__\Whiteout (value-level whiteouts from registry.reg):
+6. Update __sbx__\Whiteout (value-level whiteouts from .reg files):
    a. For each (key_path, value_name) in newWhiteout:
       - If key_path ∈ modifiedSet AND (the value exists in DATA\[key_path]
         OR a whiteout marker already exists for this value name under
@@ -355,7 +358,7 @@ Output: Updated registry.hive
         changes, including deletions, for modified keys — see §6.4 step 3d
         for how NtDeleteValueKey creates whiteout markers).
       - Otherwise → REMOVE the whiteout marker (user removed the value
-        whiteout from registry.reg).
+        whiteout from .reg files).
       - The value will now be visible from the host registry on subsequent queries.
    c. Remove empty __sbx__\Whiteout subkeys when all their value markers have been removed.
 
@@ -367,7 +370,9 @@ Output: Updated registry.hive
 
 8. Update compile metadata:
    a. For each LowerFS layer (by index):
-      Compute SHA-256 of that layer's registry.reg (or all zeros if absent)
+      List all .reg files in the layer's %REGISTRY% directory, sort by ASCII ascending
+      filename, concatenate their contents, and compute SHA-256 of the concatenation
+      (or all zeros if the directory is absent or empty)
       → write to __sbx__\Meta\LowerFSHashes\<index>.
       If the number of LowerFS layers has changed, add or remove entries
       under __sbx__\Meta\LowerFSHashes to match the current layer count.
@@ -380,8 +385,8 @@ Output: Updated registry.hive
 ### 5.3 Key Design Rationale
 
 - **App modifications are never silently overwritten**: The `__sbx__\Modified` and `__sbx__\Deleted` sets act as a "diff" layer that preserves user-visible application behavior across LowerFS updates.
-- **Unmodified keys always reflect the latest merged LowerFS view**: If the user updates a version number in any layer's `registry.reg`, the app sees the new version immediately — unless the app has overwritten it.
-- **Value whiteout respects app modifications**: If the app has written a value that is later whited out in an updated `registry.reg`, the app's value in `DATA` takes precedence. The whiteout marker is not applied.
+- **Unmodified keys always reflect the latest merged LowerFS view**: If the user updates a version number in any layer's `.reg` file, the app sees the new version immediately — unless the app has overwritten it.
+- **Value whiteout respects app modifications**: If the app has written a value that is later whited out in an updated `.reg` file, the app's value in `DATA` takes precedence. The whiteout marker is not applied.
 - **Update is atomic from the application's perspective**: It happens before any sandboxed process runs.
 
 ---
@@ -459,7 +464,7 @@ TranslateVirtualPathToHive(virtualPath, accessMask):
 
 The current user SID is retrieved at injection time and stored in a global accessible to the hooks. The WoW64 status of the process is also determined at DLL init (`IsWow64Process`) and stored globally.
 
-> **HKCR Note**: `HKEY_CLASSES_ROOT` is a merged view of `HKLM\SOFTWARE\Classes` and `HKCU\SOFTWARE\Classes`. The sandbox maps HKCR to `DATA\Machine\SOFTWARE\Classes\...` (native 64-bit). For WoW64 processes, the WoW64 redirection applies the same shared/redirected logic as `HKLM\SOFTWARE\Classes` (see §6.8.3): redirected subkeys (e.g., CLSID) map to `DATA\Machine\SOFTWARE\WOW6432Node\Classes\...`, while shared subkeys (e.g., `.txt`, `Appid`) map to `DATA\Machine\SOFTWARE\Classes\...` with no WOW6432Node. If per-user COM registrations (from `HKCU\SOFTWARE\Classes`) need to be visible under HKCR, they must be included in `registry.reg` under the `HKLM\SOFTWARE\Classes` path.
+> **HKCR Note**: `HKEY_CLASSES_ROOT` is a merged view of `HKLM\SOFTWARE\Classes` and `HKCU\SOFTWARE\Classes`. The sandbox maps HKCR to `DATA\Machine\SOFTWARE\Classes\...` (native 64-bit). For WoW64 processes, the WoW64 redirection applies the same shared/redirected logic as `HKLM\SOFTWARE\Classes` (see §6.8.3): redirected subkeys (e.g., CLSID) map to `DATA\Machine\SOFTWARE\WOW6432Node\Classes\...`, while shared subkeys (e.g., `.txt`, `Appid`) map to `DATA\Machine\SOFTWARE\Classes\...` with no WOW6432Node. If per-user COM registrations (from `HKCU\SOFTWARE\Classes`) need to be visible under HKCR, they must be included in `.reg` files under the `HKLM\SOFTWARE\Classes` path.
 
 ### 6.2 Open / Create Flow
 
@@ -485,7 +490,7 @@ NtOpenKey / NtCreateKey / NtOpenKeyEx / NtCreateKeyTransacted (hooked)
    If the key path or any ancestor path has a deletion marker:
    a. For OPEN operations → return STATUS_OBJECT_NAME_NOT_FOUND.
       (The key or an ancestor was deleted by the app or path-whiteout from
-       registry.reg. Ancestor deletion must be checked because deleting a key
+       .reg files. Ancestor deletion must be checked because deleting a key
        should make its entire subtree invisible from the host registry fallback.
        Note: if the key was recreated in DATA by the app, step 3 would have
        found it, so reaching this step means the key is truly absent from DATA.)
@@ -1010,15 +1015,15 @@ However, when copying data from the host to the hive (copy-before-write, §6.2 s
 
 #### 6.8.7 Compile Flow and WoW64
 
-The compile flow (§4) must be WoW64-aware when translating `registry.reg` paths to hive paths.
+The compile flow (§4) must be WoW64-aware when translating `.reg` file paths to hive paths.
 
 **Target bitness**: The sandbox configuration specifies the target application's bitness (or it is auto-detected from the target executable's PE header). The compile flow uses this bitness to apply WoW64 redirection, respecting the shared-key and redirected-subkey table (§6.8.3):
-- For a 32-bit target: `HKLM\SOFTWARE\Foo` in `registry.reg` → `DATA\Machine\SOFTWARE\WOW6432Node\Foo` in hive
-- For a 32-bit target: `HKLM\SOFTWARE\Classes\.txt` in `registry.reg` → `DATA\Machine\SOFTWARE\Classes\.txt` in hive (shared key, no WOW6432Node)
-- For a 32-bit target: `HKLM\SOFTWARE\Classes\CLSID\{xxx}` in `registry.reg` → `DATA\Machine\SOFTWARE\WOW6432Node\Classes\CLSID\{xxx}` in hive (redirected subkey)
-- For a 64-bit target: `HKLM\SOFTWARE\Foo` in `registry.reg` → `DATA\Machine\SOFTWARE\Foo` in hive
+- For a 32-bit target: `HKLM\SOFTWARE\Foo` in `.reg` file → `DATA\Machine\SOFTWARE\WOW6432Node\Foo` in hive
+- For a 32-bit target: `HKLM\SOFTWARE\Classes\.txt` in `.reg` file → `DATA\Machine\SOFTWARE\Classes\.txt` in hive (shared key, no WOW6432Node)
+- For a 32-bit target: `HKLM\SOFTWARE\Classes\CLSID\{xxx}` in `.reg` file → `DATA\Machine\SOFTWARE\WOW6432Node\Classes\CLSID\{xxx}` in hive (redirected subkey)
+- For a 64-bit target: `HKLM\SOFTWARE\Foo` in `.reg` file → `DATA\Machine\SOFTWARE\Foo` in hive
 
-**Explicit WOW6432Node paths**: If the packager explicitly writes a path containing `WOW6432Node` in `registry.reg`, the compile flow uses the path as-is (no further redirection is applied). This allows the packager to create entries for both 32-bit and 64-bit views in the same `registry.reg`:
+**Explicit WOW6432Node paths**: If the packager explicitly writes a path containing `WOW6432Node` in a `.reg` file, the compile flow uses the path as-is (no further redirection is applied). This allows the packager to create entries for both 32-bit and 64-bit views in the same `.reg` file:
 ```reg
 [HKEY_LOCAL_MACHINE\SOFTWARE\Foo]
 "Value1"="Data1"
@@ -1029,7 +1034,7 @@ The compile flow (§4) must be WoW64-aware when translating `registry.reg` paths
 The first entry targets the 64-bit view; the second explicitly targets the 32-bit view.
 
 **Mixed-bitness scenarios**: If both 32-bit and 64-bit processes may use the same hive (e.g., a 64-bit parent spawning a 32-bit child), the packager should either:
-- Include entries for both views in `registry.reg` (using explicit WOW6432Node paths for the 32-bit view)
+- Include entries for both views in `.reg` files (using explicit WOW6432Node paths for the 32-bit view)
 - Or accept that the second process's view may fall through to the host registry for redirected paths (since the compile was done for the primary process's bitness only)
 
 #### 6.8.8 Registry Reflection (Deprecated, Not Implemented)
@@ -1068,7 +1073,7 @@ When a hooked registry API is called, the sandbox performs multiple steps:
 - A `__sbx__\Whiteout` marker may not be removed after a value is written — the value exists in DATA (visible), and the stale whiteout marker is harmless (it only blocks host fallback for values absent from DATA).
 
 **Mitigation**: The `__sbx__` markers are best-effort. The worst-case consequence of stale markers is:
-- A lost `Modified` marker → LowerFS update may overwrite an app modification (only happens when the user changes `registry.reg`, which is rare).
+- A lost `Modified` marker → LowerFS update may overwrite an app modification (only happens when the user changes `.reg` files, which is rare).
 - A lost `Deleted` marker → a deleted key temporarily reappears (from host fallback) until the next write operation refreshes the markers.
 
 Both cases are self-healing: subsequent writes or the next sandbox restart will correct the markers.
@@ -1131,7 +1136,7 @@ The sandbox is a decentralized system — each Loader instance independently sta
    > **Why not do everything in DllMain?** Microsoft explicitly forbids the following operations inside `DllMain` (which runs under the loader lock): loading/unloading DLLs (risk: `RegLoadAppKeyW` may load hive DLLs → deadlock), waiting on synchronization objects (risk: named pipe connection → deadlock), performing file I/O (risk: page fault during hive compile → deadlock), and calling Detours APIs that modify module lists. Performing these in a separate thread avoids all loader-lock hazards.
 4. The initialization thread runs (after `DllMain` returns and the loader lock is released):
    a. Connect to the Loader's named pipe (for RPC communication).
-   b. Check `registry.hive` — if it does not exist or if `registry.reg` hashes have changed, perform compile/update (§4, §5).
+   b. Check `registry.hive` — if it does not exist or if `.reg` file hashes have changed, perform compile/update (§4, §5).
    c. Load `registry.hive` via `RegLoadAppKeyW` → store the hive root handle.
    d. Retrieve the current user SID and store it for path translation.
    e. Determine the process's WoW64 status via `IsWow64Process(GetCurrentProcess(), &isWow64)` and store the result for WoW64-aware path translation (§6.8).
@@ -1176,7 +1181,7 @@ When multiple sandboxed processes call `RegLoadAppKeyW` on the same `registry.hi
 
 #### 7.3.2 Initialization Race Condition
 
-When multiple Loader instances start at the same time using the same configuration, each may independently detect that `registry.hive` does not exist and attempt to create it, or detect that `registry.reg` has changed and attempt to update it.
+When multiple Loader instances start at the same time using the same configuration, each may independently detect that `registry.hive` does not exist and attempt to create it, or detect that `.reg` files have changed and attempt to update it.
 
 **Mitigation**: A file-level lock (`registry.hive.lock`) is used to serialize the compile/update flow (§4, §5):
 1. Create `registry.hive.lock` with exclusive access before compile/update.
@@ -1269,13 +1274,13 @@ When a sandboxed process uses KTM transacted registry APIs (§6.9.2), the transa
 
 | # | Constraint | How It Is Satisfied |
 |---|-----------|---------------------|
-| 1 | LowerFS optionally owns `registry.reg` | The compile flow checks each LowerFS for `registry.reg`; if absent, that layer contributes no data. Multiple LowerFS layers are merged in priority order (§4.1). |
-| 2 | LowerFS `registry.reg` changes reflect in app view | Per-layer change detection via SHA-256 hashes stored in `__sbx__\Meta\LowerFSHashes` (§5.1); the update algorithm (§5.2) recompiles the merged view while preserving app modifications. |
+| 1 | LowerFS optionally owns `%REGISTRY%` directory with `.reg` files | The compile flow checks each LowerFS for a `%REGISTRY%` directory; if absent, that layer contributes no data. Multiple LowerFS layers are merged in priority order (§4.1), and `.reg` files within each layer are processed in ASCII ascending sort order (§4.1 step 2b). |
+| 2 | LowerFS `.reg` file changes reflect in app view | Per-layer change detection via SHA-256 hashes (computed from concatenated `.reg` file contents in each layer's `%REGISTRY%` directory, sorted by ASCII ascending filename) stored in `__sbx__\Meta\LowerFSHashes` (§5.1); the update algorithm (§5.2) recompiles the merged view while preserving app modifications. |
 | 3 | Minimize hooks, no fake handles | All handles returned to the app are real kernel handles. The sandbox only tracks them via a lightweight handle set and redirect map (§6.6). `NtDuplicateObject` is hooked to prevent handle elevation bypass. |
 | 4 | Isolate all registry modifications | All write hooks redirect to the hive (§6.4). Copy-on-write (§6.2 step 6, §6.6 NtDuplicateObject) prevents host registry pollution. Shared kernel hive object ensures cross-process visibility without additional synchronization (§7.3.1). |
 | 5 | Modified keys survive LowerFS updates | `__sbx__\Modified` and `__sbx__\Deleted` act as a preservation set during recompile (§5.2). Value-level whiteouts are also respected — if the app has written a whited-out value, the whiteout marker is not applied (§5.2 step 6). |
 | 6 | `registry.hive` file structure documentation | §2 describes the complete hive structure including `DATA`, `__sbx__\Meta`, `__sbx__\Modified`, `__sbx__\Deleted`, `__sbx__\Whiteout`, and `__sbx__\Opaque`. |
-| 7 | Compile flow from `registry.reg` to `registry.hive` | §4 describes the algorithm, including value whiteout, path whiteout, and opaque handling. |
-| 8 | Update flow when `registry.reg` changes | §5 describes the change detection and update algorithm, including value whiteout and opaque marker synchronization. |
+| 7 | Compile flow from `.reg` files to `registry.hive` | §4 describes the algorithm, including value whiteout, path whiteout, and opaque handling. `.reg` files are sourced from each LowerFS layer's `%REGISTRY%` directory and processed in ASCII ascending sort order within each layer. |
+| 8 | Update flow when `.reg` files change | §5 describes the change detection and update algorithm, including value whiteout and opaque marker synchronization. Change detection is based on per-layer SHA-256 hashes of concatenated `.reg` file contents in ASCII sort order. |
 | 9 | `registry.hive` mapping flow at runtime | §6 describes the complete runtime flow: WoW64-aware path translation (§6.1), open/create with whiteout-aware host fallback (§6.2), read/query with whiteout/deleted/opaque handling + NtQueryKey path rewriting with WoW64 reversal + enumeration index translation + WOW6432Node visibility (§6.3), write with modification tracking + NtRenameKey marker updates (§6.4), enumeration merge logic (§6.5), handle tracking with NtDuplicateObject (§6.6), pre-existing and pass-through handles (§6.7), and complete WoW64 redirection handling including shared keys, compile flow, `__sbx__` markers, and host fallback (§6.8). |
 | 10 | `__sbx__` design | §2.2 describes each `__sbx__` subtree: `Meta` (compile metadata), `Modified` (app-modified paths), `Deleted` (app-deleted and path-whiteout paths), `Whiteout` (value-level whiteouts), and `Opaque` (opaque paths). |
