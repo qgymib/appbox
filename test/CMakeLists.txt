@@ -1,5 +1,6 @@
 
 add_executable(AppBoxTests
+    "builder/FsBuilder.cpp"
     "cases/ArugmentsPassthrough.cpp"
     "cases/Fs_DeleteFile_MultiLower_ExistsInLower.cpp"
     "cases/Fs_DeleteFile_MultiLower_ExistsInLowerUpper.cpp"
@@ -22,7 +23,6 @@ add_executable(AppBoxTests
     "utils/CommonFixture.cpp"
     "utils/Config.cpp"
     "utils/CWD.cpp"
-    "utils/FsBuilder.cpp"
     "utils/KnownFolder.cpp"
     "utils/ProbeCall.cpp"
     "utils/ReadFileFull.cpp"

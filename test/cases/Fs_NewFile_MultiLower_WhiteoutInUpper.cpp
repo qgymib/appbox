@@ -1,7 +1,7 @@
 #include "sandbox/utils/WinAPI.h" /* Must be first include file */
+#include "builder/FsBuilder.hpp"
 #include "probe/CreateFileW.hpp"
 #include "utils/CommonFixture.hpp"
-#include "utils/FsBuilder.hpp"
 #include "utils/KnownFolder.hpp"
 #include "WString.hpp"
 
