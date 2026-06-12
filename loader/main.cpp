@@ -143,16 +143,6 @@ bool AppBoxLoader::OnInit()
 
         wxGetApp().runtime = std::make_shared<AppBoxLoaderRuntime>();
         wxGetApp().hive_path = CLI::widen(wxGetApp().loader_config.overlay_fs) + L"\\registry.hive";
-
-        /* Initialize (compile/update) the registry hive from LowerFS registry.reg */
-        {
-            auto reg_result = appbox::InitializeRegistryHive(wxGetApp().hive_path, wxGetApp().loader_config.base_fs);
-            if (!reg_result.success)
-            {
-                throw std::runtime_error(
-                    fmt::format("registry.hive initialization failed: error={}", reg_result.error_code));
-            }
-        }
     }
     catch (const std::exception& e)
     {
