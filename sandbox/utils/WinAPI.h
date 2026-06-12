@@ -8,6 +8,7 @@
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
 #endif
+#define NOMINMAX /* Prevent windows.h from defining min() and max() macros. */
 #include <windows.h>
 
 /**

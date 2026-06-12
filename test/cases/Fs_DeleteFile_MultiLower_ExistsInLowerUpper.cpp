@@ -20,27 +20,27 @@ using namespace appbox::test;
 TEST_F(Fs, DeleteFile_MultiLower_ExistsInLowerUpper)
 {
     /* clang-format off */
-    auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {
-            FsDir(GetKnownFolderPath(L"%APPDATA%", true), {
-                FsFile(L"data.txt", "hello")
+    auto tree = FsRoot::Make(GetCWD(), {
+        FsDir::Make(L"Upper", {
+            FsDir::Make(GetKnownFolderPath(L"%APPDATA%", true), {
+                FsFile::Make(L"data.txt", "hello")
             })
         }),
-        FsDir(L"Lower1", {
-            FsDir(L"%APPDATA%", {
-                FsFile(L"data.txt", "hello1")
+        FsDir::Make(L"Lower1", {
+            FsDir::Make(L"%APPDATA%", {
+                FsFile::Make(L"data.txt", "hello1")
             })
         }),
-        FsDir(L"Lower2", {
-            FsDir(L"%APPDATA%", {
-                FsFile(L"data.txt", "hello2")
+        FsDir::Make(L"Lower2", {
+            FsDir::Make(L"%APPDATA%", {
+                FsFile::Make(L"data.txt", "hello2")
             })
         })
     });
     /* clang-format on */
 
     /* Build filesystem tree. */
-    auto config = tree.Build();
+    auto config = tree->Build();
 
     /* Delete file. */
     {
@@ -65,5 +65,5 @@ TEST_F(Fs, DeleteFile_MultiLower_ExistsInLowerUpper)
     }
 
     /* Verify lower filesystem content */
-    ASSERT_TRUE(tree.Verify());
+    ASSERT_TRUE(tree->Verify());
 }

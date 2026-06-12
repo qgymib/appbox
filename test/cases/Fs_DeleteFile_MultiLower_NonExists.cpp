@@ -18,23 +18,23 @@ using namespace appbox::test;
 TEST_F(Fs, DeleteFile_MultiLower_NonExists)
 {
     /* clang-format off */
-    auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {
-            FsDir(L"%APPDATA%", {
-                FsFile(L"data1.txt", "hello1")
+    auto tree = FsRoot::Make(GetCWD(), {
+        FsDir::Make(L"Upper", {}),
+        FsDir::Make(L"Lower1", {
+            FsDir::Make(L"%APPDATA%", {
+                FsFile::Make(L"data1.txt", "hello1")
             })
         }),
-        FsDir(L"Lower2", {
-            FsDir(L"%APPDATA%", {
-                FsFile(L"data2.txt", "hello2")
+        FsDir::Make(L"Lower2", {
+            FsDir::Make(L"%APPDATA%", {
+                FsFile::Make(L"data2.txt", "hello2")
             })
         })
     });
     /* clang-format on */
 
     /* Build filesystem tree. */
-    auto config = tree.Build();
+    auto config = tree->Build();
 
     /* Delete file should fail. */
     {
@@ -53,5 +53,5 @@ TEST_F(Fs, DeleteFile_MultiLower_NonExists)
     }
 
     /* Verify lower filesystem content */
-    ASSERT_TRUE(tree.Verify());
+    ASSERT_TRUE(tree->Verify());
 }

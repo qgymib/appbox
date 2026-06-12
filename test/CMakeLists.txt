@@ -1,6 +1,9 @@
 
 add_executable(AppBoxTests
-    "builder/FsBuilder.cpp"
+    "builder/FsDir.cpp"
+    "builder/FsFile.cpp"
+    "builder/FsNode.cpp"
+    "builder/FsRoot.cpp"
     "cases/ArugmentsPassthrough.cpp"
     "cases/Fs_DeleteFile_MultiLower_ExistsInLower.cpp"
     "cases/Fs_DeleteFile_MultiLower_ExistsInLowerUpper.cpp"

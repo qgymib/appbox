@@ -23,23 +23,23 @@ TEST_F(Fs, ListDir_MultiLower_ExistsInLower)
     const std::wstring wName = CLI::widen(fName);
 
     /* clang-format off */
-    auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {
-            FsDir(L"%APPDATA%", {
-                FsFile(wName, "hello1")
+    auto tree = FsRoot::Make(GetCWD(), {
+        FsDir::Make(L"Upper", {}),
+        FsDir::Make(L"Lower1", {
+            FsDir::Make(L"%APPDATA%", {
+                FsFile::Make(wName, "hello1")
             })
         }),
-        FsDir(L"Lower2", {
-            FsDir(L"%APPDATA%", {
-                FsFile(wName, "hello2")
+        FsDir::Make(L"Lower2", {
+            FsDir::Make(L"%APPDATA%", {
+                FsFile::Make(wName, "hello2")
             })
         })
     });
     /* clang-format on */
 
     /* Build filesystem tree. */
-    auto config = tree.Build();
+    auto config = tree->Build();
 
     ProtocolListDir::Rsp rsp;
     {
@@ -72,5 +72,5 @@ TEST_F(Fs, ListDir_MultiLower_ExistsInLower)
     }
 
     /* Verify lower filesystem content */
-    ASSERT_TRUE(tree.Verify());
+    ASSERT_TRUE(tree->Verify());
 }

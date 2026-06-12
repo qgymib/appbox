@@ -30,27 +30,27 @@ TEST_F(Fs, ListDir_MultiLower_ExistsInLower_WhiteoutInUpper)
     const std::wstring wName2 = L"Fs.ListDir_MultiLower_ExistsInLower_WhiteoutInUpper.txt2";
 
     /* clang-format off */
-    auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {
-            FsDir(GetKnownFolderPath(L"%APPDATA%", true), {
-                FsFile(wName + L".$APPBOX_DELETE$", "")
+    auto tree = FsRoot::Make(GetCWD(), {
+        FsDir::Make(L"Upper", {
+            FsDir::Make(GetKnownFolderPath(L"%APPDATA%", true), {
+                FsFile::Make(wName + L".$APPBOX_DELETE$", "")
             })
         }),
-        FsDir(L"Lower1", {
-            FsDir(L"%APPDATA%", {
-                FsFile(wName, "hello1")
+        FsDir::Make(L"Lower1", {
+            FsDir::Make(L"%APPDATA%", {
+                FsFile::Make(wName, "hello1")
             })
         }),
-        FsDir(L"Lower2", {
-            FsDir(L"%APPDATA%", {
-                FsFile(wName2, "hello2")
+        FsDir::Make(L"Lower2", {
+            FsDir::Make(L"%APPDATA%", {
+                FsFile::Make(wName2, "hello2")
             })
         })
     });
     /* clang-format on */
 
     /* Build filesystem tree. */
-    auto config = tree.Build();
+    auto config = tree->Build();
 
     ProtocolListDir::Rsp rsp;
     {
@@ -70,5 +70,5 @@ TEST_F(Fs, ListDir_MultiLower_ExistsInLower_WhiteoutInUpper)
     ASSERT_EQ(SearchInRsp(rsp, wName2), 1);
 
     /* Verify lower filesystem content */
-    ASSERT_TRUE(tree.Verify());
+    ASSERT_TRUE(tree->Verify());
 }
