@@ -2,7 +2,7 @@
 #include "probe/DeleteFileW.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/KnownFolder.hpp"
-#include "WString.hpp"
+#include <CLI/Encoding.hpp>
 
 typedef appbox::test::CommonFixture Fs;
 using namespace appbox::test;
@@ -41,7 +41,7 @@ TEST_F(Fs, DeleteFile_MultiLower_ExistsInLower)
     /* Delete file. */
     {
         ProtocolDeleteFileW::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"%APPDATA%", false) + L"\\data.txt");
+        req.FileName = CLI::narrow(GetKnownFolderPath(L"%APPDATA%", false) + L"\\data.txt");
 
         auto rsp = ProbeDeleteFileW.Call(req, GetCWD(), config).get<ProtocolDeleteFileW::Rsp>();
         ASSERT_EQ(rsp.code, 0);

@@ -16,6 +16,7 @@ public:
     typedef std::vector<Ptr>        PtrVec;
 
     FsNode(const std::wstring& name);
+    virtual ~FsNode() = default;
 
     /**
      * @brief Get the name of the file system node.
@@ -23,7 +24,6 @@ public:
      */
     const std::wstring& GetName() const;
 
-    virtual ~FsNode() = default;
     virtual void Build(const std::filesystem::path& root) const = 0;
     virtual bool Verify(const std::filesystem::path& root) const = 0;
 

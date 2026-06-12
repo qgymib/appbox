@@ -22,6 +22,7 @@ public:
      * @param[in] name The name of the directory.
      */
     FsDir(const std::wstring& name);
+    virtual ~FsDir() = default;
 
     /**
      * @brief Build directory.

@@ -24,6 +24,7 @@ public:
      * @param[in] name The name of the file.
      */
     FsFile(const std::wstring& name);
+    virtual ~FsFile() = default;
 
     /**
      * @brief Create a file.
