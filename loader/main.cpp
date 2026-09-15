@@ -36,7 +36,7 @@ static void MainLoader()
     auto exe_path = appbox::UTF8ToWide(wxGetApp().loader_config.launch.executable.c_str());
     exe_path = appbox::ExpandKnownFolder(exe_path);
     auto               cmdline = BuildCmdArg();
-    appbox::ProcessJob job(exe_path, cmdline);
+    appbox::ProcessJob job(exe_path, cmdline, wxGetApp().runtime->inject_data);
 
     if ((ret = job.Start()) != 0)
     {

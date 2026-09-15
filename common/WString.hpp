@@ -18,6 +18,7 @@ namespace appbox
  *
  * @param[in] s The multibyte string to convert.
  * @return A wide string representation of the specified portion of the input multibyte string.
+ * @throw std::runtime_error The input is null or the conversion failed.
  */
 std::wstring UTF8ToWide(const char* s);
 std::wstring UTF8ToWide(const std::string& s);
@@ -35,6 +36,7 @@ std::wstring UTF8ToWide(const std::string& s);
  * @param[in] codepage The code page used for the conversion. Defaults to CP_UTF8 if not explicitly
  * provided.
  * @return A multibyte string representation of the specified portion of the input wide string.
+ * @throw std::runtime_error The input is null or the conversion failed.
  */
 std::string WideToUTF8(const wchar_t* s);
 std::string WideToUTF8(const std::wstring& s);

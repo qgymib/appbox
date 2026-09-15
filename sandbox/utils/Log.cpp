@@ -1,14 +1,22 @@
 #include <chrono>
 #include <sstream>
 #include <iostream>
+#include <atomic>
 #include <mutex>
 #include "msg/Log.hpp"
 #include "utils/BitParser.hpp"
 #include "WString.hpp"
-#include "Sandbox.hpp"
 #include "Log.hpp"
 
-static volatile bool s_log_enable = true;
+/* Log output switch, can be toggled from any thread. */
+static std::atomic<bool> s_log_enable = true;
+
+/* Number of log messages which could not be delivered. */
+static std::atomic<uint64_t> s_dropped_logs = 0;
+
+/* Installed log sink and the lock which protects it. */
+static std::mutex      s_log_sink_mutex;
+static appbox::LogSink s_log_sink;
 
 static const appbox::BitData DesiredAccessMap[] = {
     /* Combination flags always go first */
@@ -59,7 +67,18 @@ appbox::LogGuard::~LogGuard()
 
 void appbox::LogEnable(bool enable)
 {
-    s_log_enable = enable;
+    s_log_enable.store(enable, std::memory_order_relaxed);
+}
+
+void appbox::SetLogSink(LogSink sink)
+{
+    std::lock_guard<std::mutex> lock(s_log_sink_mutex);
+    s_log_sink = std::move(sink);
+}
+
+uint64_t appbox::DroppedLogCount()
+{
+    return s_dropped_logs.load(std::memory_order_relaxed);
 }
 
 void appbox::Log(MsgLogLevel level, const char* file, int line, const std::wstring& msg)
@@ -70,12 +89,11 @@ void appbox::Log(MsgLogLevel level, const char* file, int line, const std::wstri
 
 void appbox::Log(MsgLogLevel level, const char* file, int line, const std::string& msg)
 {
-    if (!s_log_enable)
+    if (!s_log_enable.load(std::memory_order_relaxed))
     {
         return;
     }
 
-#if 1
     auto now = std::chrono::system_clock::now();
     auto duration = now.time_since_epoch();
     auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
@@ -87,23 +105,27 @@ void appbox::Log(MsgLogLevel level, const char* file, int line, const std::strin
     req.line = line;
     req.payload = msg;
 
+    LogSink sink;
+    {
+        std::lock_guard<std::mutex> lock(s_log_sink_mutex);
+        sink = s_log_sink;
+    }
+
+    if (!sink)
+    {
+        /* No sink installed, for example outside isolation mode. */
+        return;
+    }
+
     nlohmann::json rsp;
-    if (!appbox::sandbox->client->Call(appbox::MsgLog::Method, req, rsp))
+    if (!sink(req, rsp))
     {
-        throw std::runtime_error("Failed to call log");
+        /*
+         * Never throw from the logging path: it is called from inside hooks and
+         * an exception would unwind through the hooked kernel call.
+         */
+        s_dropped_logs.fetch_add(1, std::memory_order_relaxed);
     }
-#else
-    (void)level;
-    auto data = fmt::format("[{}:{}] {}\n", file, line, msg);
-
-    {
-        static std::mutex           s_log_mutex;
-        std::lock_guard<std::mutex> lock(s_log_mutex);
-        std::ofstream               ofs("sandbox.log", std::ios::binary | std::ios::app);
-        ofs.write(data.data(), data.size());
-    }
-
-#endif
 }
 
 std::string appbox::PointerToString(const void* ptr)

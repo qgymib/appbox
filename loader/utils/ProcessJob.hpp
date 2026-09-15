@@ -2,6 +2,7 @@
 #define APPBOX_LOADER_UTILS_PROCESSJOB_HPP
 
 #include "sandbox/utils/WinAPI.h"
+#include "sandbox/Config.hpp"
 #include <string>
 #include <vector>
 
@@ -10,7 +11,14 @@ namespace appbox
 
 struct ProcessJob
 {
-    ProcessJob(const std::wstring exePath, const std::vector<std::wstring> args);
+    /**
+     * @brief Construct a process job.
+     * @param[in] exePath Path of the target executable.
+     * @param[in] args Arguments of the target executable.
+     * @param[in] inject_data Injection data written into the target process.
+     */
+    ProcessJob(const std::wstring exePath, const std::vector<std::wstring> args,
+               const appbox::SandboxConfig& inject_data);
     ~ProcessJob();
 
     /**

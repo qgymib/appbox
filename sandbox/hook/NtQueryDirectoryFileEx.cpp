@@ -82,8 +82,8 @@ static void FixNameInfo(FullDirectoryInformationMeta::Ptr meta, PIO_STATUS_BLOCK
                 name = ToLower(name);
             }
 
-            std::lock_guard<std::mutex> guard(meta->mutex);
-            auto                        it = meta->FileNameSeen.find(name);
+            /* The caller holds meta->mutex, see NtQueryDirectoryFileFullDirectoryInformation(). */
+            auto it = meta->FileNameSeen.find(name);
             if (it == meta->FileNameSeen.end())
             {
                 meta->FileNameSeen.insert(name);
@@ -197,6 +197,20 @@ static NTSTATUS NtQueryDirectoryFileFullDirectoryInformation(HANDLE FileHandle, 
         info->MetaFindOr(FullDirectoryInformationMetaKey, [FileName, info]() -> appbox::HandleInfo::Meta::Ptr {
             return std::make_shared<FullDirectoryInformationMeta>(info, FileName);
         }));
+
+    if (meta == nullptr)
+    {
+        /* Should not happen, the meta is created with this type above. */
+        return sys_NtQueryDirectoryFileEx(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, FileInformation,
+                                          Length, FileFullDirectoryInformation, QueryFlags, FileName);
+    }
+
+    /*
+     * The meta data is shared by every thread which enumerates the same
+     * directory handle, so every access to it is serialized here. FixNameInfo()
+     * expects the lock to be held by its caller.
+     */
+    std::lock_guard<std::mutex> guard(meta->mutex);
 
     /* Update filename if necessary */
     if (FileName != nullptr)

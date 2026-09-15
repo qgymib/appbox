@@ -44,10 +44,17 @@ static bool MapOverlayFS(const std::string& fs, std::string& mapped_fs)
 {
     auto dos_path_w = appbox::UTF8ToWide(fs);
     /* Remove trailing slash */
-    while (dos_path_w.back() == L'\\')
+    while (!dos_path_w.empty() && dos_path_w.back() == L'\\')
     {
         dos_path_w.pop_back();
     }
+
+    if (dos_path_w.empty())
+    {
+        SPDLOG_ERROR("overlay filesystem path is empty");
+        return false;
+    }
+
     dos_path_w += L"\\filesystem";
 
     std::wstring nt_path_w;

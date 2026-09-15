@@ -2,24 +2,31 @@
 #define _WIN32_WINNT 0x0600
 #endif
 #include <windows.h>
+#include <memory>
 #include <stdexcept>
 #include "WString.hpp"
 
 std::wstring appbox::UTF8ToWide(const char* s)
 {
+    if (s == nullptr)
+    {
+        throw std::runtime_error("UTF8ToWide() failed: input is null");
+    }
+
+    /* Both conversion functions return 0 on failure, never a negative value. */
     int size_need = MultiByteToWideChar(CP_UTF8, 0, s, -1, nullptr, 0);
-    if (size_need < 0)
+    if (size_need <= 0)
     {
         throw std::runtime_error("MultiByteToWideChar() failed");
     }
-    wchar_t* new_str = new wchar_t[size_need];
-    if (MultiByteToWideChar(CP_UTF8, 0, s, -1, new_str, size_need) != size_need)
+
+    auto new_str = std::make_unique<wchar_t[]>(static_cast<size_t>(size_need));
+    if (MultiByteToWideChar(CP_UTF8, 0, s, -1, new_str.get(), size_need) != size_need)
     {
         throw std::runtime_error("MultiByteToWideChar() failed");
     }
-    std::wstring dst(new_str);
-    delete[] new_str;
-    return dst;
+
+    return std::wstring(new_str.get());
 }
 
 std::wstring appbox::UTF8ToWide(const std::string& s)
@@ -29,12 +36,24 @@ std::wstring appbox::UTF8ToWide(const std::string& s)
 
 std::string appbox::WideToUTF8(const wchar_t* s)
 {
-    int   size_need = WideCharToMultiByte(CP_UTF8, 0, s, -1, nullptr, 0, nullptr, nullptr);
-    char* new_str = new char[size_need];
-    WideCharToMultiByte(CP_UTF8, 0, s, -1, new_str, size_need, nullptr, nullptr);
-    std::string dst(new_str);
-    delete[] new_str;
-    return dst;
+    if (s == nullptr)
+    {
+        throw std::runtime_error("WideToUTF8() failed: input is null");
+    }
+
+    int size_need = WideCharToMultiByte(CP_UTF8, 0, s, -1, nullptr, 0, nullptr, nullptr);
+    if (size_need <= 0)
+    {
+        throw std::runtime_error("WideCharToMultiByte() failed");
+    }
+
+    auto new_str = std::make_unique<char[]>(static_cast<size_t>(size_need));
+    if (WideCharToMultiByte(CP_UTF8, 0, s, -1, new_str.get(), size_need, nullptr, nullptr) != size_need)
+    {
+        throw std::runtime_error("WideCharToMultiByte() failed");
+    }
+
+    return std::string(new_str.get());
 }
 
 std::string appbox::WideToUTF8(const std::wstring& s)

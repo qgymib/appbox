@@ -3,8 +3,15 @@
 #include <utility>
 #include <map>
 #include <mutex>
+#include "RpcCodec.hpp"
 #include "RemoteSession.hpp"
 #include "RemoteClient.hpp"
+
+/* Number of attempts used to open the pipe of the server. */
+constexpr size_t kConnectRetries = 5;
+
+/* Timeout of a single attempt to wait for a busy pipe instance. */
+constexpr DWORD kConnectRetryTimeoutMs = 1000;
 
 struct PipeClientRequest
 {
@@ -63,10 +70,16 @@ static std::wstring GetErrorString(DWORD errorMessageID)
 
     LPWSTR messageBuffer = nullptr;
 
-    size_t size = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-                                     FORMAT_MESSAGE_IGNORE_INSERTS,
-                                 nullptr, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                                 (LPWSTR)&messageBuffer, 0, nullptr);
+    const DWORD size = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
+                                          FORMAT_MESSAGE_IGNORE_INSERTS,
+                                      nullptr, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                                      (LPWSTR)&messageBuffer, 0, nullptr);
+
+    if (size == 0 || messageBuffer == nullptr)
+    {
+        /* No description is available for this error code. */
+        return L"";
+    }
 
     std::wstring message(messageBuffer, size);
 
@@ -77,8 +90,8 @@ static std::wstring GetErrorString(DWORD errorMessageID)
 
 void appbox::RemoteClient::Data::ConnectThread()
 {
-    HANDLE pipe = nullptr;
-    for (size_t i = 0; i < 5; ++i)
+    HANDLE pipe = INVALID_HANDLE_VALUE;
+    for (size_t i = 0; i < kConnectRetries; ++i)
     {
         pipe = CreateFileA(pipe_path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
                            OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
@@ -94,21 +107,39 @@ void appbox::RemoteClient::Data::ConnectThread()
             return;
         }
 
-        if (!WaitNamedPipeA(pipe_path.c_str(), 1 * 1000))
+        if (!WaitNamedPipeA(pipe_path.c_str(), kConnectRetryTimeoutMs))
         {
             SPDLOG_ERROR("cannot open pipe");
             return;
         }
     }
 
+    if (pipe == INVALID_HANDLE_VALUE)
+    {
+        /* Every attempt found the pipe busy, do not continue with no handle. */
+        SPDLOG_ERROR("cannot open pipe: every attempt was busy");
+        return;
+    }
+
     DWORD mode = PIPE_READMODE_BYTE;
     if (!SetNamedPipeHandleState(pipe, &mode, nullptr, nullptr))
     {
         SPDLOG_ERROR("SetNamedPipeHandleState() failed: {}", GetLastError());
+        CloseHandle(pipe);
         return;
     }
 
-    auto handle = std::make_shared<asio::windows::stream_handle>(io_context, pipe);
+    std::shared_ptr<asio::windows::stream_handle> handle;
+    try
+    {
+        handle = std::make_shared<asio::windows::stream_handle>(io_context, pipe);
+    }
+    catch (const std::exception& e)
+    {
+        SPDLOG_ERROR("failed to create the pipe stream: {}", e.what());
+        CloseHandle(pipe);
+        return;
+    }
 
     auto self = shared_from_this();
     session =
@@ -132,8 +163,25 @@ void appbox::RemoteClient::Data::OnRecv(const asio::error_code& ec, RemoteSessio
         return;
     }
 
-    nlohmann::json j_rsp = nlohmann::json::parse(*msg);
-    uint64_t       id = j_rsp["id"].get<uint64_t>();
+    nlohmann::json rsp;
+    try
+    {
+        rsp = nlohmann::json::parse(*msg);
+    }
+    catch (const nlohmann::json::exception& e)
+    {
+        SPDLOG_ERROR("failed to parse the response: {}", e.what());
+        return;
+    }
+
+    uint64_t     id = 0;
+    RemoteResult result;
+    std::string  error;
+    if (!ParseRpcResponse(rsp, id, result, error))
+    {
+        SPDLOG_ERROR("invalid response: {}", error);
+        return;
+    }
 
     PipeClientRequest::Ptr orig_req;
     {
@@ -148,17 +196,14 @@ void appbox::RemoteClient::Data::OnRecv(const asio::error_code& ec, RemoteSessio
         request_map.erase(it);
     }
 
-    auto it_result = j_rsp.find("result");
-    if (it_result != j_rsp.end())
+    try
     {
-        orig_req->promise.set_value(*it_result);
-        return;
+        orig_req->promise.set_value(std::move(result));
     }
-
-    nlohmann::json j_err = j_rsp["error"];
-    auto err = tl::unexpected<RemoteError>({ j_err["code"].get<int>(), j_err.value("message", ""),
-                                           j_err.value("data", nlohmann::json::object()) });
-    orig_req->promise.set_value(err);
+    catch (const std::future_error& e)
+    {
+        SPDLOG_ERROR("failed to deliver the response of request {}: {}", id, e.what());
+    }
 }
 
 appbox::RemoteClient::RemoteClient()

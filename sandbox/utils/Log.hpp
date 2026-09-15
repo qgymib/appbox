@@ -5,6 +5,8 @@
 #include "msg/Log.hpp"
 #include <spdlog/spdlog.h>
 #include <nlohmann/json.hpp>
+#include <cstdint>
+#include <functional>
 #include <string>
 
 #define LOG_GENERIC(LEVEL, FMT, ...)                                                                                   \
@@ -73,6 +75,31 @@ struct LogGuard
     LogGuard();
     ~LogGuard();
 };
+
+/**
+ * @brief Log sink.
+ *
+ * The sandbox installs a sink which forwards the log message to the loader over
+ * the RPC pipe. An empty sink means that log messages are dropped, which is the
+ * case outside isolation mode.
+ *
+ * @param[in] req Log request.
+ * @param[out] rsp Log response.
+ * @return true when the message was delivered, otherwise false.
+ */
+using LogSink = std::function<bool(const MsgLog::Req& req, nlohmann::json& rsp)>;
+
+/**
+ * @brief Install or uninstall the log sink.
+ * @param[in] sink Sink callback. Pass an empty function to uninstall the sink.
+ */
+void SetLogSink(LogSink sink);
+
+/**
+ * @brief Number of log messages which could not be delivered.
+ * @return Number of dropped messages.
+ */
+uint64_t DroppedLogCount();
 
 void Log(MsgLogLevel level, const char* file, int line, const std::string& msg);
 void Log(MsgLogLevel level, const char* file, int line, const std::wstring& msg);

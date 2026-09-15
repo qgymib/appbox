@@ -16,6 +16,7 @@ add_library(${PROJECT_NAME} STATIC
     "RemoteClient.cpp"
     "RemoteServer.cpp"
     "RemoteSession.cpp"
+    "RpcCodec.cpp"
     "SetLogLevel.cpp"
     "WString.cpp"
 )

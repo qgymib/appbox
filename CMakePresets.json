@@ -7,6 +7,13 @@
   },
   "configurePresets": [
     {
+      "name": "Debug",
+      "binaryDir": "${sourceDir}/build/Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
       "name": "Release",
       "binaryDir": "${sourceDir}/build/Release",
       "cacheVariables": {
@@ -16,6 +23,12 @@
   ],
   "buildPresets": [
     {
+      "name": "Debug",
+      "configurePreset": "Debug",
+      "configuration": "Debug",
+      "jobs": 8
+    },
+    {
       "name": "Release",
       "configurePreset": "Release",
       "configuration": "Release",
@@ -23,6 +36,22 @@
     }
   ],
   "testPresets": [
+    {
+      "name": "Debug",
+      "configurePreset": "Debug",
+      "configuration": "Debug",
+      "environment": {
+        "APPBOX_TEST_LOG_LEVEL": "trace"
+      },
+      "output": {
+        "outputOnFailure": true,
+        "verbosity": "verbose"
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true
+      }
+    },
     {
       "name": "Release",
       "configurePreset": "Release",
@@ -42,6 +71,13 @@
   ],
   "packagePresets": [
     {
+      "name": "Debug",
+      "configurePreset": "Debug",
+      "generators": [
+        "ZIP"
+      ]
+    },
+    {
       "name": "Release",
       "configurePreset": "Release",
       "generators": [
@@ -50,6 +86,27 @@
     }
   ],
   "workflowPresets": [
+    {
+      "name": "Debug",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "Debug"
+        },
+        {
+          "type": "build",
+          "name": "Debug"
+        },
+        {
+          "type": "test",
+          "name": "Debug"
+        },
+        {
+          "type": "package",
+          "name": "Debug"
+        }
+      ]
+    },
     {
       "name": "Release",
       "steps": [

@@ -25,8 +25,10 @@
 #include "hook/RtlInitUnicodeString.hpp"
 #include "hook/SetProcessMitigationPolicy.hpp"
 #include "__init__.hpp"
+#include "HookTransaction.hpp"
 #include "Sandbox.hpp"
 #include <exception>
+#include <iterator>
 #include <detours.h>
 
 static const appbox::HookRecord* s_hooks[] = {
@@ -59,47 +61,82 @@ appbox::Sys appbox::sys;
 
 NTSTATUS appbox::InitHook()
 {
+    if (appbox::sandbox == nullptr)
+    {
+        return STATUS_UNSUCCESSFUL;
+    }
+
     sys.OSBuild = appbox::GetPEB().ImageBuild;
 
     sys.h_ntdll = GetModuleHandleW(L"ntdll.dll");
     sys.h_kernel32 = GetModuleHandleW(L"kernel32.dll");
     sys.h_kernelbase = GetModuleHandleW(L"kernelbase.dll");
 
-    DetourTransactionBegin();
-    DetourUpdateThread(GetCurrentThread());
+    if (sys.h_ntdll == nullptr || sys.h_kernel32 == nullptr || sys.h_kernelbase == nullptr)
+    {
+        LOG_E("failed to resolve the system module handles");
+        return STATUS_DLL_NOT_FOUND;
+    }
 
+    /*
+     * Resolve the entry point of every hook. In isolation mode a hook which
+     * cannot be resolved is fatal when it carries a detour, because the sandbox
+     * would silently stop isolating the corresponding API.
+     */
     for (const auto& hook : s_hooks)
     {
         hook->load_proc_addr_fn();
 
-        if (appbox::sandbox->bIsolationMode && hook->pDetour != nullptr)
+        if (*hook->ppPointer != nullptr)
         {
-            DetourAttach(hook->ppPointer, hook->pDetour);
+            continue;
         }
+
+        if (hook->pDetour != nullptr && appbox::sandbox->bIsolationMode)
+        {
+            LOG_E("failed to resolve the entry point of {}", hook->name);
+            return STATUS_PROCEDURE_NOT_FOUND;
+        }
+
+        LOG_W("the entry point of {} was not resolved", hook->name);
     }
 
-    DetourTransactionCommit();
+    if (!appbox::sandbox->bIsolationMode)
+    {
+        /* Outside isolation mode the hooks are resolved but never attached. */
+        return STATUS_SUCCESS;
+    }
+
+    const appbox::HookTransactionResult result = appbox::ApplyHookTransaction(
+        s_hooks, std::size(s_hooks), appbox::HookAction::Attach, appbox::DefaultDetourOps());
+    if (!result.bSuccess)
+    {
+        LOG_E("failed to attach hooks ({}): {}",
+              result.pFailedHook != nullptr ? result.pFailedHook : "transaction", result.status);
+        return STATUS_UNSUCCESSFUL;
+    }
 
     for (const auto& hook : s_hooks)
     {
         LOG_D("{}: {}", hook->name, *hook->ppPointer);
     }
 
-    return 0;
+    return STATUS_SUCCESS;
 }
 
 void appbox::ExitHook()
 {
-    DetourTransactionBegin();
-    DetourUpdateThread(GetCurrentThread());
-
-    for (const auto& hook : s_hooks)
+    if (appbox::sandbox == nullptr || !appbox::sandbox->bIsolationMode)
     {
-        if (appbox::sandbox->bIsolationMode && hook->pDetour != nullptr)
-        {
-            DetourDetach(hook->ppPointer, hook->pDetour);
-        }
+        /* Nothing was attached outside isolation mode. */
+        return;
     }
 
-    DetourTransactionCommit();
+    const appbox::HookTransactionResult result = appbox::ApplyHookTransaction(
+        s_hooks, std::size(s_hooks), appbox::HookAction::Detach, appbox::DefaultDetourOps());
+    if (!result.bSuccess)
+    {
+        LOG_E("failed to detach hooks ({}): {}",
+              result.pFailedHook != nullptr ? result.pFailedHook : "transaction", result.status);
+    }
 }

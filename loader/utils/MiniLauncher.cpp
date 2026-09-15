@@ -18,10 +18,19 @@ DWORD appbox::MiniLauncer(const std::wstring& path, const std::vector<std::wstri
     }
 
     CloseHandle(pi.hThread);
-    WaitForSingleObject(pi.hProcess, INFINITE);
 
-    DWORD exit_code;
-    GetExitCodeProcess(pi.hProcess, &exit_code);
+    if (WaitForSingleObject(pi.hProcess, INFINITE) != WAIT_OBJECT_0)
+    {
+        const DWORD err = GetLastError();
+        CloseHandle(pi.hProcess);
+        return err;
+    }
+
+    DWORD exit_code = 0;
+    if (!GetExitCodeProcess(pi.hProcess, &exit_code))
+    {
+        exit_code = GetLastError();
+    }
 
     CloseHandle(pi.hProcess);
     return exit_code;

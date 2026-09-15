@@ -26,20 +26,38 @@ DWORD appbox::MapBaseFS(const std::string& fs, std::vector<SandboxLowerFS>& mapp
 {
     auto dos_path_w = CLI::widen(fs);
     /* Remove trailing slash */
-    while (dos_path_w.back() == '\\')
+    while (!dos_path_w.empty() && dos_path_w.back() == '\\')
     {
         dos_path_w.pop_back();
     }
+
+    if (dos_path_w.empty())
+    {
+        SPDLOG_ERROR("base filesystem path is empty");
+        return ERROR_INVALID_PARAMETER;
+    }
+
     dos_path_w += L"\\filesystem";
 
     std::vector<appbox::SandboxLowerFS> tmp_fs;
     std::error_code                     ec;
-    for (const auto& entry : std::filesystem::directory_iterator(dos_path_w, ec))
+    std::filesystem::directory_iterator it(dos_path_w, ec);
+    if (ec)
+    {
+        SPDLOG_ERROR(L"failed to enumerate the base filesystem: {}", dos_path_w);
+        return ERROR_PATH_NOT_FOUND;
+    }
+
+    for (const auto& entry : it)
     {
         SandboxLowerFS lower_fs;
         auto           name = entry.path().filename().wstring();
         auto           host_path = dos_path_w + L"\\" + name;
-        appbox::ConvertDosPathToNtPath(CLI::narrow(host_path), lower_fs.host_nt_path);
+        if (appbox::ConvertDosPathToNtPath(CLI::narrow(host_path), lower_fs.host_nt_path) != 0)
+        {
+            SPDLOG_ERROR(L"failed to convert the host path: {}", host_path);
+            return ERROR_INVALID_PARAMETER;
+        }
 
         if (IsRetain(name))
         {
@@ -49,12 +67,20 @@ DWORD appbox::MapBaseFS(const std::string& fs, std::vector<SandboxLowerFS>& mapp
         std::wstring folder_path;
         if (appbox::SearchFolderID(name, folder_path))
         {
-            appbox::ConvertDosPathToNtPath(CLI::narrow(folder_path), lower_fs.mapped_nt_path);
+            if (appbox::ConvertDosPathToNtPath(CLI::narrow(folder_path), lower_fs.mapped_nt_path) != 0)
+            {
+                SPDLOG_ERROR(L"failed to convert the known folder path: {}", folder_path);
+                return ERROR_INVALID_PARAMETER;
+            }
         }
         else if (name.size() == 1)
         {
             auto driver = name + L":";
-            appbox::ConvertDosPathToNtPath(CLI::narrow(driver), lower_fs.mapped_nt_path);
+            if (appbox::ConvertDosPathToNtPath(CLI::narrow(driver), lower_fs.mapped_nt_path) != 0)
+            {
+                SPDLOG_ERROR(L"failed to convert the drive path: {}", driver);
+                return ERROR_INVALID_PARAMETER;
+            }
         }
         else
         {

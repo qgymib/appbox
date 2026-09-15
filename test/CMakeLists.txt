@@ -65,3 +65,68 @@ add_test(NAME AppBoxTests
     COMMAND AppBoxTests
         --loader=$<TARGET_FILE:AppBoxLoader>
 )
+
+###############################################################################
+# Unit tests
+#
+# Pure in-process tests. They do not start the loader nor inject the sandbox
+# DLL, so they can run without the end-to-end probe chain of AppBoxTests.
+###############################################################################
+add_executable(AppBoxUnitTests
+    "unit/main.cpp"
+    "unit/Unit_HookTransaction.cpp"
+    "unit/Unit_LoaderPath.cpp"
+    "unit/Unit_Log.cpp"
+    "unit/Unit_MiniLauncher.cpp"
+    "unit/Unit_ModuleTable.cpp"
+    "unit/Unit_ProcessJob.cpp"
+    "unit/Unit_RemoteClient.cpp"
+    "unit/Unit_RpcCodec.cpp"
+    "unit/Unit_WString.cpp"
+    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ConvertDosPathToNtPath.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/GetExecutableDir.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/KnownFolder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/MapBaseFS.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/MiniLauncher.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ProcessJob.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/WinCall.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/ModuleTable.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/hook/HookTransaction.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/BitParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/Log.cpp
+)
+appbox_setup_target_wall(AppBoxUnitTests)
+
+# The project directories come first: test/utils holds headers with the same
+# name as the loader ones, and the loader headers have to win.
+target_include_directories(AppBoxUnitTests
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/..
+        ${CMAKE_CURRENT_SOURCE_DIR}/../loader
+        ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox
+        ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+target_link_libraries(AppBoxUnitTests PRIVATE AppBoxCommon)
+
+find_package(CLI11 REQUIRED)
+target_link_libraries(AppBoxUnitTests PRIVATE CLI11::CLI11)
+
+find_package(googletest REQUIRED)
+target_link_libraries(AppBoxUnitTests PRIVATE googletest::gtest)
+
+find_package(nlohmann_json REQUIRED)
+target_link_libraries(AppBoxUnitTests PRIVATE nlohmann_json::nlohmann_json)
+
+find_package(spdlog REQUIRED)
+target_link_libraries(AppBoxUnitTests PRIVATE spdlog::spdlog)
+
+find_package(Detours REQUIRED)
+target_link_libraries(AppBoxUnitTests PRIVATE Detours)
+
+# Used by the known folder helper of the loader.
+target_link_libraries(AppBoxUnitTests PRIVATE shell32 ole32)
+
+add_test(NAME AppBoxUnitTests
+    COMMAND AppBoxUnitTests
+)

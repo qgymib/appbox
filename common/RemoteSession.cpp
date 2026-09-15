@@ -7,7 +7,7 @@
 #include <spdlog/spdlog.h>
 #include <list>
 #include <array>
-#include "sandbox/utils/RemoteProtocol.hpp"
+#include "RpcCodec.hpp"
 #include "RemoteSession.hpp"
 
 struct appbox::RemoteSession::Data : std::enable_shared_from_this<Data>
@@ -83,32 +83,32 @@ void appbox::RemoteSession::Data::WantRead()
 
 void appbox::RemoteSession::Data::OnRead()
 {
-    if (recv_data.size() < sizeof(RemoteProtocol))
+    /*
+     * One read may deliver several frames at once or a part of the next frame,
+     * so the buffer is drained until it does not hold a complete frame any
+     * more.
+     */
+    for (;;)
     {
-        return;
+        std::string payload;
+        std::string error;
+
+        const FrameStatus status = TryDecodeFrame(recv_data, payload, error);
+        if (status == FrameStatus::NeedMoreData)
+        {
+            return;
+        }
+
+        if (status == FrameStatus::ProtocolError)
+        {
+            SPDLOG_ERROR("[HANDLE: {}] {}", pipe->native_handle(), error);
+            /* Report the failure instead of throwing out of the asio callback. */
+            cb(asio::error_code(asio::error::invalid_argument), MsgPtr());
+            return;
+        }
+
+        cb(asio::error_code(), std::make_shared<std::string>(std::move(payload)));
     }
-
-    RemoteProtocol head;
-    memcpy(&head, recv_data.data(), sizeof(head));
-    if (head.magic != RemoteProtocol().magic)
-    {
-        SPDLOG_ERROR("[HANDLE: {}] invalid magic", pipe->native_handle());
-        throw std::runtime_error("invalid magic");
-    }
-
-    size_t total_msg_bytes = head.length + sizeof(head);
-    if (total_msg_bytes > recv_data.size())
-    { /* no enough data */
-        return;
-    }
-    size_t left_bytes = recv_data.size() - total_msg_bytes;
-
-    auto p_start = reinterpret_cast<const char*>(recv_data.data() + sizeof(head));
-    auto msg = std::make_shared<std::string>(p_start, head.length);
-    memmove(recv_data.data(), recv_data.data() + total_msg_bytes, left_bytes);
-    recv_data.resize(left_bytes);
-
-    cb(asio::error_code(), msg);
 }
 
 appbox::RemoteSession::RemoteSession()
@@ -138,11 +138,16 @@ void appbox::RemoteSession::Start()
 
 void appbox::RemoteSession::Send(MsgPtr data)
 {
-    RemoteProtocol head;
-    head.length = static_cast<uint32_t>(data->size());
+    std::string header;
+    std::string error;
 
-    auto p_head = std::make_shared<std::string>(reinterpret_cast<const char*>(&head), sizeof(head));
-    data_->send_queue.push_back(std::move(p_head));
+    if (!MakeFrameHeader(data->size(), header, error))
+    {
+        SPDLOG_ERROR("[HANDLE: {}] {}", data_->pipe->native_handle(), error);
+        return;
+    }
+
+    data_->send_queue.push_back(std::make_shared<std::string>(std::move(header)));
     data_->send_queue.push_back(std::move(data));
 
     data_->WantWrite();

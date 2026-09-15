@@ -26,6 +26,7 @@ add_library(${sandbox_name} MODULE
     "filesystem/Sequence.cpp"
     "hook/__init__.cpp"
     "hook/CreateProcessInternalW.cpp"
+    "hook/HookTransaction.cpp"
     "hook/LdrQueryImageFileExecutionOptionsEx.cpp"
     "hook/NtClose.cpp"
     "hook/NtCreateFile.cpp"
@@ -61,6 +62,7 @@ add_library(${sandbox_name} MODULE
     "utils/PipeClient.cpp"
     "utils/QueryHandlePath.cpp"
     "utils/Task.cpp"
+    "ModuleTable.cpp"
     "Sandbox.cpp"
     "Sandbox.def"
 )

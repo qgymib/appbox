@@ -8,23 +8,11 @@
 #include "utils/Defines.hpp"
 #include "utils/HandleInfo.hpp"
 #include "utils/Log.hpp"
+#include "ModuleTable.hpp"
 #include "Sandbox.hpp"
 #include "WString.hpp"
 
-struct ModuleInitializer
-{
-    /**
-     * @brief Initialize function.
-     */
-    NTSTATUS (*fn_init)();
-
-    /**
-     * @brief Exit function.
-     */
-    void (*fn_exit)();
-};
-
-static const ModuleInitializer s_module[] = {
+static const appbox::ModuleInitializer s_module[] = {
     { appbox::HandleInfo::Init, appbox::HandleInfo::Exit },
     { appbox::InitHook,         appbox::ExitHook         },
 };
@@ -54,6 +42,16 @@ static void ParseInjectData(const std::string& data)
     {
         throw std::runtime_error("failed to start rpc client");
     }
+
+    /* Forward every log message to the loader over the RPC pipe. */
+    appbox::SetLogSink([](const appbox::MsgLog::Req& req, nlohmann::json& rsp) {
+        if (appbox::sandbox == nullptr || appbox::sandbox->client == nullptr)
+        {
+            return false;
+        }
+
+        return appbox::sandbox->client->Call(appbox::MsgLog::Method, req, rsp);
+    });
 }
 
 static void LoadInjectData()
@@ -94,42 +92,117 @@ static void SayHello()
           nlohmann::json(*appbox::sandbox).dump());
 }
 
-static void OnDllAttach()
+/**
+ * @brief Whether the module table was applied successfully.
+ */
+static bool s_modules_initialized = false;
+
+/**
+ * @brief RAII owner of the global sandbox instance.
+ *
+ * The instance is created by the constructor and released by the destructor
+ * unless Release() was called, so a failure or an exception in the middle of
+ * the initialization sequence never leaks it.
+ */
+class SandboxGuard
 {
-    if (DetourIsHelperProcess())
+public:
+    SandboxGuard()
     {
-        return;
+        appbox::sandbox = new appbox::Sandbox;
     }
 
-    appbox::sandbox = new appbox::Sandbox;
-    appbox::sandbox->bIsolationMode = DetourRestoreAfterWith();
-    if (appbox::sandbox->bIsolationMode)
+    ~SandboxGuard()
     {
-        LoadInjectData();
-    }
-
-    for (size_t i = 0; i < std::size(s_module); ++i)
-    {
-        auto st = s_module[i].fn_init();
-        if (!NT_SUCCESS(st))
+        if (!released_)
         {
-            while (i > 0)
-            {
-                s_module[i - 1].fn_exit();
-            }
-            return;
+            delete appbox::sandbox;
+            appbox::sandbox = nullptr;
         }
     }
 
-    SayHello();
+    SandboxGuard(const SandboxGuard&) = delete;
+    SandboxGuard& operator=(const SandboxGuard&) = delete;
+    SandboxGuard(SandboxGuard&&) = delete;
+    SandboxGuard& operator=(SandboxGuard&&) = delete;
+
+    /**
+     * @brief Keep the sandbox instance alive after the guard is destroyed.
+     */
+    void Release()
+    {
+        released_ = true;
+    }
+
+private:
+    bool released_ = false;
+};
+
+/**
+ * @brief Handle the DLL_PROCESS_ATTACH notification.
+ *
+ * The sandbox instance and every module of the module table are released again
+ * when the initialization fails, so the DLL can be unloaded cleanly.
+ *
+ * @return true when the sandbox was initialized, otherwise false.
+ */
+static bool OnDllAttach()
+{
+    if (DetourIsHelperProcess())
+    {
+        return true;
+    }
+
+    try
+    {
+        SandboxGuard guard;
+
+        appbox::sandbox->bIsolationMode = DetourRestoreAfterWith();
+        if (appbox::sandbox->bIsolationMode)
+        {
+            LoadInjectData();
+        }
+
+        if (!appbox::InitModuleTable(s_module, std::size(s_module)))
+        {
+            SPDLOG_ERROR("failed to initialize sandbox modules");
+            /* InitModuleTable() already rolled back the initialized modules. */
+            return false;
+        }
+
+        s_modules_initialized = true;
+
+        /*
+         * The instance has to stay alive as long as the module table is
+         * initialized, because the deinitialization of the hooks uses it.
+         */
+        guard.Release();
+
+        /* Reporting the configuration must not fail the whole attach. */
+        SayHello();
+    }
+    catch (const std::exception& e)
+    {
+        SPDLOG_ERROR("Sandbox attach error: {}", e.what());
+        return false;
+    }
+
+    return true;
 }
 
+/**
+ * @brief Handle the DLL_PROCESS_DETACH notification.
+ */
 static void OnDllDetach()
 {
-    /* Deinitialize in reverse order. */
-    for (auto i = std::size(s_module); i > 0; --i)
+    /* The log sink refers to the sandbox instance, uninstall it first. */
+    appbox::SetLogSink(nullptr);
+
+    if (s_modules_initialized)
     {
-        s_module[i - 1].fn_exit();
+        /* Deinitialize in reverse order. */
+        appbox::ExitModuleTable(s_module, std::size(s_module));
+        s_modules_initialized = false;
     }
 
     if (appbox::sandbox != nullptr)
@@ -156,8 +229,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
         switch (fdwReason)
         {
         case DLL_PROCESS_ATTACH:
-            OnDllAttach();
-            break;
+            return OnDllAttach() ? TRUE : FALSE;
         case DLL_THREAD_ATTACH:
         case DLL_THREAD_DETACH:
             break;
