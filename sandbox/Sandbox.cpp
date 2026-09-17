@@ -5,6 +5,7 @@
 #include "hook/__init__.hpp"
 #include "hook/NtCreateFile.hpp"
 #include "hook/NtCurrentTeb.hpp"
+#include "registry/__init__.hpp"
 #include "utils/Defines.hpp"
 #include "utils/HandleInfo.hpp"
 #include "utils/Log.hpp"
@@ -13,8 +14,9 @@
 #include "WString.hpp"
 
 static const appbox::ModuleInitializer s_module[] = {
-    { appbox::HandleInfo::Init, appbox::HandleInfo::Exit },
-    { appbox::InitHook,         appbox::ExitHook         },
+    { appbox::HandleInfo::Init,      appbox::HandleInfo::Exit      },
+    { appbox::registry::Hive::Init,  appbox::registry::Hive::Exit  },
+    { appbox::InitHook,              appbox::ExitHook              },
 };
 
 appbox::Sandbox* appbox::sandbox = nullptr;
@@ -36,6 +38,8 @@ static void ParseInjectData(const std::string& data)
         mapping.mapped_nt_path = appbox::UTF8ToWide(p.mapped_nt_path);
         appbox::sandbox->fs.fs_lower.push_back(mapping);
     }
+
+    appbox::sandbox->wRegistryHiveDOSPath = appbox::UTF8ToWide(inject_data.registry_hive_dos_path);
 
     appbox::sandbox->client = std::make_shared<appbox::PipeClient>(appbox::sandbox->wPipePath);
     if (!appbox::sandbox->client->Start())
@@ -219,6 +223,7 @@ void appbox::to_json(nlohmann::json& j, const Sandbox& r)
     j["fs"] = r.fs;
     j["sandbox32_dos_path"] = r.sandbox32_dos_path;
     j["sandbox64_dos_path"] = r.sandbox64_dos_path;
+    j["registry_hive_dos_path"] = appbox::WideToUTF8(r.wRegistryHiveDOSPath);
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)

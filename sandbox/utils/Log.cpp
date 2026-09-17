@@ -181,9 +181,22 @@ nlohmann::json appbox::ToJson(const PUNICODE_STRING FileName)
     }
 
     nlohmann::json json;
-    json["Length"] = FileName->Length;
+    json["Length"]        = FileName->Length;
     json["MaximumLength"] = FileName->MaximumLength;
-    json["Buffer"] = appbox::WideToUTF8(FileName->Buffer);
+
+    /*
+     * The buffer can be null while the structure itself is not, for example
+     * for the Class parameter of NtCreateKey(). The logging path must never
+     * throw, because the exception would unwind through the hooked call.
+     */
+    if (FileName->Buffer == nullptr || FileName->Length == 0)
+    {
+        json["Buffer"] = "";
+    }
+    else
+    {
+        json["Buffer"] = appbox::WideToUTF8(FileName->Buffer);
+    }
     return json;
 }
 

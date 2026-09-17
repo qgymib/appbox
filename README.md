@@ -81,6 +81,10 @@ wxWidgets-based GUI application for managing sandboxed processes:
 - Pipe-based RPC communication with sandbox
 - Configuration management
 - Process injection
+- Read-only sandbox registry browser (admin UI): a registry editor style key
+  tree and value list which mounts `<overlay_fs>\registry\user.hiv` directly,
+  never touching the host registry (see
+  [Registry Isolation](docs/RegistryIsolation.md))
 
 ### Sandbox
 

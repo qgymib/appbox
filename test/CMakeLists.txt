@@ -11,6 +11,12 @@ add_executable(AppBoxTests
     "cases/Fs_NewFile_MultiLower_WhiteoutInLower.cpp"
     "cases/Fs_NewFile_MultiLower_WhiteoutInUpper.cpp"
     "cases/Fs_ReadFile_MultiLower_WhiteoutInUpper.cpp"
+    "cases/Reg_EnumerateKey_Merged.cpp"
+    "cases/Reg_EnumerateValue_Merged.cpp"
+    "cases/Reg_QueryKeyName_ViewPath.cpp"
+    "cases/Reg_ReadValue_RealFallback.cpp"
+    "cases/Reg_ShadowKey_ReadRealValue.cpp"
+    "cases/Reg_WriteValue_NewKey.cpp"
     "cases/RPC.cpp"
     "probe/__init__.cpp"
     "probe/CreateDirectoryW.cpp"
@@ -18,6 +24,12 @@ add_executable(AppBoxTests
     "probe/DeleteFileW.cpp"
     "probe/ListDir.cpp"
     "probe/ReadFileFull.cpp"
+    "probe/RegEnumKey.cpp"
+    "probe/RegEnumValue.cpp"
+    "probe/RegQueryKeyName.cpp"
+    "probe/RegReadValue.cpp"
+    "probe/RegShadowRead.cpp"
+    "probe/RegWriteValue.cpp"
     "utils/CommonFixture.cpp"
     "utils/CWD.cpp"
     "utils/FsBuilder.cpp"
@@ -74,15 +86,19 @@ add_test(NAME AppBoxTests
 ###############################################################################
 add_executable(AppBoxUnitTests
     "unit/main.cpp"
+    "unit/Unit_HiveReader.cpp"
     "unit/Unit_HookTransaction.cpp"
     "unit/Unit_LoaderPath.cpp"
     "unit/Unit_Log.cpp"
     "unit/Unit_MiniLauncher.cpp"
     "unit/Unit_ModuleTable.cpp"
     "unit/Unit_ProcessJob.cpp"
+    "unit/Unit_RegistryEnumMerge.cpp"
+    "unit/Unit_RegistryKeyPath.cpp"
     "unit/Unit_RemoteClient.cpp"
     "unit/Unit_RpcCodec.cpp"
     "unit/Unit_WString.cpp"
+    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/registry/HiveReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ConvertDosPathToNtPath.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/GetExecutableDir.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/KnownFolder.cpp
@@ -92,6 +108,8 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/WinCall.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/ModuleTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/hook/HookTransaction.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/EnumMerge.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/KeyPath.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/BitParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/Log.cpp
 )
@@ -126,6 +144,9 @@ target_link_libraries(AppBoxUnitTests PRIVATE Detours)
 
 # Used by the known folder helper of the loader.
 target_link_libraries(AppBoxUnitTests PRIVATE shell32 ole32)
+
+# Registry access of the sandbox hive reader (RegLoadAppKeyW and friends).
+target_link_libraries(AppBoxUnitTests PRIVATE advapi32)
 
 add_test(NAME AppBoxUnitTests
     COMMAND AppBoxUnitTests

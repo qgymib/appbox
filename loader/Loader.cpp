@@ -69,6 +69,46 @@ static bool MapOverlayFS(const std::string& fs, std::string& mapped_fs)
     return std::filesystem::create_directories(dos_path_w);
 }
 
+/**
+ * @brief Derive the registry hive file path from the overlay filesystem.
+ *
+ * The hive lives in the registry subdirectory of the overlay, next to the
+ * filesystem subdirectory which carries the filesystem overlay. The sandbox
+ * mounts it as a private application hive, so the file itself is created on
+ * the first mount and not here.
+ *
+ * @param[in] fs The overlay filesystem root.
+ * @param[out] hive_path The DOS path of the hive file.
+ * @return true on success.
+ */
+static bool MapRegistryHive(const std::string& fs, std::string& hive_path)
+{
+    auto dos_path_w = appbox::UTF8ToWide(fs);
+    /* Remove trailing slash */
+    while (!dos_path_w.empty() && dos_path_w.back() == L'\\')
+    {
+        dos_path_w.pop_back();
+    }
+
+    if (dos_path_w.empty())
+    {
+        SPDLOG_ERROR("overlay filesystem path is empty");
+        return false;
+    }
+
+    std::filesystem::path dir = std::filesystem::path(dos_path_w) / "registry";
+
+    std::error_code ec;
+    if (!std::filesystem::create_directories(dir, ec) && ec)
+    {
+        SPDLOG_ERROR("failed to create the registry directory: {}", ec.message());
+        return false;
+    }
+
+    hive_path = appbox::WideToUTF8((dir / "user.hiv").wstring());
+    return true;
+}
+
 AppBoxLoaderRuntime::AppBoxLoaderRuntime()
 {
     std::time_t timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
@@ -81,6 +121,7 @@ AppBoxLoaderRuntime::AppBoxLoaderRuntime()
         appbox::MapBaseFS(f, inject_data.fs_lower);
     }
     MapOverlayFS(wxGetApp().loader_config.overlay_fs, inject_data.fs_upper);
+    MapRegistryHive(wxGetApp().loader_config.overlay_fs, inject_data.registry_hive_dos_path);
 
     {
         auto                  w_overlay_path = appbox::UTF8ToWide(wxGetApp().loader_config.overlay_fs);

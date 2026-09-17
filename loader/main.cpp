@@ -151,7 +151,7 @@ bool AppBoxLoader::OnInit()
 
     this->Bind(APPBOX_EXIT_APPLICATION_IF_NO_GUI, &AppBoxLoader::HandleEventExitApplicationNoGUI, this);
 
-    main_frame = new MainFrame;
+    main_frame = new MainFrame(wxGetApp().runtime->inject_data.registry_hive_dos_path);
     main_frame->Show(this->loader_config.enable_admin_ui);
 
     this->working_thread = new std::thread(MainLoader);

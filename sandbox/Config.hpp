@@ -39,8 +39,10 @@ struct SandboxConfig
     std::string                 sandbox64_dos_path; /* Path to 64-bit sandbox dll path. Encoding in UTF-8. */
     std::string                 fs_upper;           /* Overlay filesystem path, no trailing slash. Encoding in UTF-8. */
     std::vector<SandboxLowerFS> fs_lower;           /* Sandbox read-only filesystem layers. */
+    std::string                 registry_hive_dos_path; /* Registry hive file path. Encoding in UTF-8. */
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(SandboxConfig, pipe_path, sandbox32_dos_path, sandbox64_dos_path, fs_upper, fs_lower)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(SandboxConfig, pipe_path, sandbox32_dos_path, sandbox64_dos_path, fs_upper,
+                                   fs_lower, registry_hive_dos_path)
 };
 
 } // namespace appbox

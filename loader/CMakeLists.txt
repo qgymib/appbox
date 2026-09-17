@@ -4,6 +4,7 @@ project(AppBoxLoader)
 add_executable(${PROJECT_NAME} WIN32
     "rpc/__init__.cpp"
     "rpc/Log.cpp"
+    "registry/HiveReader.cpp"
     "utils/CommandLineOptions.cpp"
     "utils/ConvertDosPathToNtPath.cpp"
     "utils/GetExecutableDir.cpp"
@@ -13,6 +14,7 @@ add_executable(${PROJECT_NAME} WIN32
     "utils/ProcessJob.cpp"
     "utils/WinCall.cpp"
     "widget/MainFrame.cpp"
+    "widget/RegistryBrowser.cpp"
     "Loader.cpp"
     "main.cpp"
     "resource.rc"
@@ -56,6 +58,9 @@ target_compile_options(${PROJECT_NAME} PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVE
 
 find_package(wxWidgets REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE wx::core wx::base)
+
+# Registry access of the sandbox hive browser (RegLoadAppKeyW and friends).
+target_link_libraries(${PROJECT_NAME} PRIVATE advapi32)
 
 ###############################################################################
 # Embed Sandbox

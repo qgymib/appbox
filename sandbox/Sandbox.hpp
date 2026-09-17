@@ -30,6 +30,13 @@ struct Sandbox
     filesystem::ResolveFs fs;
 
     /**
+     * @brief Registry hive file path (DOS style).
+     *
+     * Empty when registry isolation is not configured.
+     */
+    std::wstring wRegistryHiveDOSPath;
+
+    /**
      * @brief Path to 32-bit sandbox dll path. Encoding in UTF-8.
      */
     std::string sandbox32_dos_path;

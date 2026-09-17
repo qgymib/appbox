@@ -330,6 +330,129 @@ typedef struct _UNICODE_STRING
 } UNICODE_STRING, *PUNICODE_STRING;
 typedef const UNICODE_STRING *PCUNICODE_STRING;
 
+/**
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ne-wdm-_key_information_class
+ */
+#ifndef _KEY_INFORMATION_CLASS
+#define _KEY_INFORMATION_CLASS
+typedef enum _KEY_INFORMATION_CLASS
+{
+    KeyBasicInformation,
+    KeyNodeInformation,
+    KeyFullInformation,
+    KeyNameInformation,
+    KeyCachedInformation,
+    KeyFlagsInformation,
+    KeyVirtualizationInformation,
+    KeyHandleTagsInformation,
+    KeyTrustInformation,
+    KeyLayerInformation,
+    MaximumKeyInfoClass
+} KEY_INFORMATION_CLASS, *PKEY_INFORMATION_CLASS;
+#endif
+
+/**
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ne-wdm-_key_value_information_class
+ */
+#ifndef _KEY_VALUE_INFORMATION_CLASS
+#define _KEY_VALUE_INFORMATION_CLASS
+typedef enum _KEY_VALUE_INFORMATION_CLASS
+{
+    KeyValueBasicInformation,
+    KeyValueFullInformation,
+    KeyValuePartialInformation,
+    KeyValueFullInformationAlign64,
+    KeyValuePartialInformationAlign64,
+    KeyValueLayerInformation,
+    MaximumKeyValueInfoClass
+} KEY_VALUE_INFORMATION_CLASS, *PKEY_VALUE_INFORMATION_CLASS;
+#endif
+
+typedef struct _KEY_BASIC_INFORMATION
+{
+    LARGE_INTEGER LastWriteTime;
+    ULONG         TitleIndex;
+    ULONG         NameLength;
+    WCHAR         Name[1];
+} KEY_BASIC_INFORMATION, *PKEY_BASIC_INFORMATION;
+
+typedef struct _KEY_NODE_INFORMATION
+{
+    LARGE_INTEGER LastWriteTime;
+    ULONG         TitleIndex;
+    ULONG         ClassOffset;
+    ULONG         ClassLength;
+    ULONG         NameLength;
+    WCHAR         Name[1];
+} KEY_NODE_INFORMATION, *PKEY_NODE_INFORMATION;
+
+typedef struct _KEY_FULL_INFORMATION
+{
+    LARGE_INTEGER LastWriteTime;
+    ULONG         TitleIndex;
+    ULONG         ClassOffset;
+    ULONG         ClassLength;
+    ULONG         SubKeys;
+    ULONG         MaxNameLen;
+    ULONG         MaxClassLen;
+    ULONG         Values;
+    ULONG         MaxValueNameLen;
+    ULONG         MaxValueDataLen;
+    WCHAR         Class[1];
+} KEY_FULL_INFORMATION, *PKEY_FULL_INFORMATION;
+
+typedef struct _KEY_NAME_INFORMATION
+{
+    ULONG NameLength;
+    WCHAR Name[1];
+} KEY_NAME_INFORMATION, *PKEY_NAME_INFORMATION;
+
+typedef struct _KEY_CACHED_INFORMATION
+{
+    LARGE_INTEGER LastWriteTime;
+    ULONG         TitleIndex;
+    ULONG         SubKeys;
+    ULONG         MaxNameLen;
+    ULONG         Values;
+    ULONG         MaxValueNameLen;
+    ULONG         MaxValueDataLen;
+    ULONG         NameType;
+    ULONG         Flags;
+} KEY_CACHED_INFORMATION, *PKEY_CACHED_INFORMATION;
+
+typedef struct _KEY_VALUE_BASIC_INFORMATION
+{
+    ULONG TitleIndex;
+    ULONG Type;
+    ULONG NameLength;
+    WCHAR Name[1];
+} KEY_VALUE_BASIC_INFORMATION, *PKEY_VALUE_BASIC_INFORMATION;
+
+typedef struct _KEY_VALUE_PARTIAL_INFORMATION
+{
+    ULONG TitleIndex;
+    ULONG Type;
+    ULONG DataLength;
+    UCHAR Data[1];
+} KEY_VALUE_PARTIAL_INFORMATION, *PKEY_VALUE_PARTIAL_INFORMATION;
+
+typedef struct _KEY_VALUE_PARTIAL_INFORMATION_ALIGN64
+{
+    ULONG Type;
+    ULONG DataLength;
+    UCHAR Data[1];
+} KEY_VALUE_PARTIAL_INFORMATION_ALIGN64, *PKEY_VALUE_PARTIAL_INFORMATION_ALIGN64;
+
+typedef struct _KEY_VALUE_FULL_INFORMATION
+{
+    ULONG TitleIndex;
+    ULONG Type;
+    ULONG DataOffset;
+    ULONG DataLength;
+    ULONG NameLength;
+    WCHAR Name[1];
+} KEY_VALUE_FULL_INFORMATION, *PKEY_VALUE_FULL_INFORMATION;
+
 typedef struct _OBJECT_NAME_INFORMATION
 {
     UNICODE_STRING Name;
@@ -507,6 +630,61 @@ typedef NTSTATUS (*T_NtQueryInformationProcess)(
 	/* [OUT] */				PVOID            	ProcessInformation,
 	/* [IN] */				ULONG            	ProcessInformationLength,
 	/* [OUT,OPTIONAL] */	PULONG           	ReturnLength
+);
+/* clang-format on */
+
+/**
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwenumeratekey
+ */
+/* clang-format off */
+typedef NTSTATUS (*T_NtEnumerateKey)(
+	/* [IN] */  HANDLE                  KeyHandle,
+	/* [IN] */  ULONG                   Index,
+	/* [IN] */  KEY_INFORMATION_CLASS   KeyInformationClass,
+	/* [OUT] */ PVOID                   KeyInformation,
+	/* [IN] */  ULONG                   Length,
+	/* [OUT] */ PULONG                  ResultLength
+);
+/* clang-format on */
+
+/**
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwenumeratevaluekey
+ */
+/* clang-format off */
+typedef NTSTATUS (*T_NtEnumerateValueKey)(
+	/* [IN] */  HANDLE                      KeyHandle,
+	/* [IN] */  ULONG                       Index,
+	/* [IN] */  KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
+	/* [OUT] */ PVOID                       KeyValueInformation,
+	/* [IN] */  ULONG                       Length,
+	/* [OUT] */ PULONG                      ResultLength
+);
+/* clang-format on */
+
+/**
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwquerykey
+ */
+/* clang-format off */
+typedef NTSTATUS (*T_NtQueryKey)(
+	/* [IN] */  HANDLE                  KeyHandle,
+	/* [IN] */  KEY_INFORMATION_CLASS   KeyInformationClass,
+	/* [OUT] */ PVOID                   KeyInformation,
+	/* [IN] */  ULONG                   Length,
+	/* [OUT] */ PULONG                  ResultLength
+);
+/* clang-format on */
+
+/**
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwqueryvaluekey
+ */
+/* clang-format off */
+typedef NTSTATUS (*T_NtQueryValueKey)(
+	/* [IN] */  HANDLE                      KeyHandle,
+	/* [IN] */  PUNICODE_STRING             ValueName,
+	/* [IN] */  KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
+	/* [OUT] */ PVOID                       KeyValueInformation,
+	/* [IN] */  ULONG                       Length,
+	/* [OUT] */ PULONG                      ResultLength
 );
 /* clang-format on */
 

@@ -5,18 +5,25 @@
 #include "hook/LdrQueryImageFileExecutionOptionsEx.hpp"
 #include "hook/NtClose.hpp"
 #include "hook/NtCreateFile.hpp"
+#include "hook/NtCreateKey.hpp"
 #include "hook/NtCurrentTeb.hpp"
 #include "hook/NtDeleteFile.hpp"
 #include "hook/NtDeviceIoControlFile.hpp"
+#include "hook/NtEnumerateKey.hpp"
+#include "hook/NtEnumerateValueKey.hpp"
 #include "hook/NtFsControlFile.hpp"
 #include "hook/NtOpenFile.hpp"
+#include "hook/NtOpenKey.hpp"
+#include "hook/NtOpenKeyEx.hpp"
 #include "hook/NtQueryAttributesFile.hpp"
 #include "hook/NtQueryDirectoryFile.hpp"
 #include "hook/NtQueryDirectoryFileEx.hpp"
 #include "hook/NtQueryFullAttributesFile.hpp"
 #include "hook/NtQueryInformationByName.hpp"
 #include "hook/NtQueryInformationFile.hpp"
+#include "hook/NtQueryKey.hpp"
 #include "hook/NtQueryObject.hpp"
+#include "hook/NtQueryValueKey.hpp"
 #include "hook/NtQueryVolumeInformationFile.hpp"
 #include "hook/NtReadFile.hpp"
 #include "hook/NtSetInformationFile.hpp"
@@ -36,18 +43,25 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookLdrQueryImageFileExecutionOptionsEx,
     &appbox::HookNtClose,
     &appbox::HookNtCreateFile,
+    &appbox::HookNtCreateKey,
     &appbox::HookNtCurrentTeb,
     &appbox::HookNtDeleteFile,
     &appbox::HookNtDeviceIoControlFile,
+    &appbox::HookNtEnumerateKey,
+    &appbox::HookNtEnumerateValueKey,
     &appbox::HookNtFsControlFile,
     &appbox::HookNtOpenFile,
+    &appbox::HookNtOpenKey,
+    &appbox::HookNtOpenKeyEx,
     &appbox::HookNtQueryAttributesFile,
     &appbox::HookNtQueryDirectoryFile,
     &appbox::HookNtQueryDirectoryFileEx,
     &appbox::HookNtQueryFullAttributesFile,
     &appbox::HookNtQueryInformationByName,
     &appbox::HookNtQueryInformationFile,
+    &appbox::HookNtQueryKey,
     &appbox::HookNtQueryObject,
+    &appbox::HookNtQueryValueKey,
     &appbox::HookNtQueryVolumeInformationFile,
     &appbox::HookNtReadFile,
     &appbox::HookNtSetInformationFile,
