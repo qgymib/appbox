@@ -1,3 +1,9 @@
+/*
+ * The RPC headers pull in winsock2.h through asio, they have to come before
+ * <windows.h> which would otherwise include the winsock.h version 1 header.
+ */
+#include "RemoteServer.hpp"
+#include "RemoteClient.hpp"
 #include <windows.h>
 #include <atomic>
 #include <memory>
@@ -8,7 +14,6 @@
 #include <CLI/Encoding.hpp>
 #include "utils/Semaphore.hpp"
 #include "loader/Config.hpp"
-#include "RemoteServer.hpp"
 #include "Random.hpp"
 #include "WString.hpp"
 #include "BuildCommandLine.hpp"

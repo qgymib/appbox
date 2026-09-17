@@ -1,6 +1,6 @@
 #include "utils/WinAPI.h"
 #include "PipeClient.hpp"
-#include "utils/RemoteProtocol.hpp"
+#include "RemoteProtocol.hpp"
 #include <atomic>
 #include <mutex>
 

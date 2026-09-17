@@ -4,48 +4,35 @@ project(AppBoxCommon)
 # Add cmake search path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake")
 
-include(SetupTargetWall)
-
 ###############################################################################
 # Export library
+#
+# Header-only library: every consumer compiles the inline implementations
+# directly, there is no library artifact.
 ###############################################################################
-add_library(${PROJECT_NAME} STATIC
-    "BuildCommandLine.cpp"
-    "CRC32.cpp"
-    "Random.cpp"
-    "RemoteClient.cpp"
-    "RemoteServer.cpp"
-    "RemoteSession.cpp"
-    "RpcCodec.cpp"
-    "SetLogLevel.cpp"
-    "WString.cpp"
-)
-setup_target_wall(${PROJECT_NAME})
+add_library(${PROJECT_NAME} INTERFACE)
 
 target_include_directories(${PROJECT_NAME}
-    PUBLIC
+    INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/..
 )
 
-set_target_properties(${PROJECT_NAME}
-    PROPERTIES
-        CXX_STANDARD 17
+target_compile_features(${PROJECT_NAME}
+    INTERFACE
+        cxx_std_17
 )
 
 ###############################################################################
 # Dependency
 ###############################################################################
 find_package(asio REQUIRED)
-target_link_libraries(${PROJECT_NAME} PRIVATE asio ws2_32)
+target_link_libraries(${PROJECT_NAME} INTERFACE asio ws2_32)
 
 find_package(expected REQUIRED)
-target_link_libraries(${PROJECT_NAME} PUBLIC tl::expected)
+target_link_libraries(${PROJECT_NAME} INTERFACE tl::expected)
 
 find_package(nlohmann_json REQUIRED)
-target_link_libraries(${PROJECT_NAME} PUBLIC nlohmann_json::nlohmann_json)
+target_link_libraries(${PROJECT_NAME} INTERFACE nlohmann_json::nlohmann_json)
 
 find_package(spdlog REQUIRED)
-target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
-target_compile_options(${PROJECT_NAME} PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
+target_link_libraries(${PROJECT_NAME} INTERFACE spdlog::spdlog)

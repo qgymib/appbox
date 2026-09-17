@@ -96,7 +96,7 @@ Example: the view path `\??\C:\Users\foo\AppData\Roaming\data.txt` maps to
 
 The view path is rebased by replacing the layer's `mapped_nt_path` prefix with its
 `host_nt_path`. The comparison is case insensitive
-(`appbox::PrefixCompareExchange` in `common/WString.cpp`, backed by
+(`appbox::PrefixCompareExchange` in `common/WString.hpp`, backed by
 `CompareStringOrdinal`) and the prefix must be followed by a path separator, so
 `...\AppData\RoamingX` does not match the `...\AppData\Roaming` mapping.
 
