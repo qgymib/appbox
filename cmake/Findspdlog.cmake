@@ -9,6 +9,8 @@ set(_SPDLOG_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../third_party/spdlog")
 get_filename_component(_SPDLOG_SOURCE_DIR "${_SPDLOG_SOURCE_DIR}" ABSOLUTE)
 
 # Build options
+# The dependency is linked statically (see the top level CMakeLists.txt).
+set(SPDLOG_BUILD_SHARED OFF CACHE BOOL "spdlog: static library" FORCE)
 set(SPDLOG_BUILD_EXAMPLE OFF)
 set(SPDLOG_WCHAR_SUPPORT ON)
 set(SPDLOG_WCHAR_FILENAMES ON)

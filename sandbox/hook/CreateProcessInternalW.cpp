@@ -1,6 +1,8 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "utils/Defines.hpp"
+#include "utils/MappingAsDosNtPath.hpp"
+#include "filesystem/Resolve.hpp"
 #include "Sandbox.hpp"
 #include "CreateProcessInternalW.hpp"
 #include "WString.hpp"
@@ -40,6 +42,56 @@ static nlohmann::json CreateProcessInternalWLogParam(HANDLE hToken, LPCWSTR lpAp
     return param;
 }
 static appbox::LoggerF logger("CreateProcessInternalW", CreateProcessInternalWLogParam);
+
+/**
+ * @brief Resolve the application path of a process creation into the layer
+ *        path which hosts the image.
+ *
+ * CreateProcessInternalW hands the image path to NtCreateUserProcess, which
+ * is not hooked and resolves the path in the host filesystem. A view path
+ * which only exists in a lower layer must therefore be rewritten into its
+ * host location before the process creation is forwarded.
+ *
+ * @param[in] lpApplicationName Application path as passed by the caller.
+ * @param[out] layer_path Host path (Win32 form) which holds the image.
+ * @return true when the path was resolved and should be rewritten.
+ */
+static bool ResolveApplicationPath(LPCWSTR lpApplicationName, std::wstring& layer_path)
+{
+    if (lpApplicationName == nullptr)
+    {
+        return false;
+    }
+
+    /* Win32 path to DOS NT path. */
+    std::wstring nt_path = L"\\??\\";
+    nt_path += lpApplicationName;
+
+    std::wstring dos_nt_path;
+    if (!appbox::MappingAsDosNtPath(nt_path, dos_nt_path))
+    {
+        return false;
+    }
+
+    auto result = appbox::filesystem::Resolve(dos_nt_path);
+    if (result->status != appbox::filesystem::ResolveResult::Status::Exists)
+    {
+        /* The image does not exist in the view either, let the original
+         * call produce the failure. */
+        return false;
+    }
+
+    layer_path = result->bInUpper ? result->uPath : result->hPath[0].fPath;
+
+    /* Strip the NT prefix, the parameter expects a Win32 path. */
+    static const wchar_t kNtPrefix[] = L"\\??\\";
+    if (layer_path.compare(0, 4, kNtPrefix) == 0)
+    {
+        layer_path.erase(0, 4);
+    }
+
+    return true;
+}
 
 static BOOL WrapDetourCreateProcessWithDllExW(HANDLE hToken, LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
                                               LPSECURITY_ATTRIBUTES lpProcessAttributes,
@@ -96,13 +148,25 @@ static BOOL Hook_CreateProcessInternalW(HANDLE hToken, LPCWSTR lpApplicationName
     logger.Log(hToken, lpApplicationName, lpCommandLine, lpProcessAttributes, lpThreadAttributes, bInheritHandles,
                dwCreationFlags, lpEnvironment, lpCurrentDirectory, lpStartupInfo, lpProcessInformation, hNewToken);
 
+    /*
+     * Rewrite the application path into the host layer which holds the
+     * image. The string is kept alive for the duration of the forwarded
+     * call.
+     */
+    std::wstring layer_path;
+    LPCWSTR      effective_app_name = lpApplicationName;
+    if (ResolveApplicationPath(lpApplicationName, layer_path))
+    {
+        effective_app_name = layer_path.c_str();
+    }
+
 #if defined(_WIN64)
     LPCSTR lpDllName = appbox::sandbox->sandbox64_dos_path.c_str();
 #else
     LPCSTR lpDllName = appbox::sandbox->sandbox32_dos_path.c_str();
 #endif
 
-    if (!WrapDetourCreateProcessWithDllExW(hToken, lpApplicationName, lpCommandLine, lpProcessAttributes,
+    if (!WrapDetourCreateProcessWithDllExW(hToken, effective_app_name, lpCommandLine, lpProcessAttributes,
                                            lpThreadAttributes, bInheritHandles, dwCreationFlags | CREATE_SUSPENDED,
                                            lpEnvironment, lpCurrentDirectory, lpStartupInfo, lpProcessInformation,
                                            hNewToken, lpDllName))

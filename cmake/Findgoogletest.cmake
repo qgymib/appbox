@@ -8,6 +8,8 @@ endif()
 set(_GOOGLETEST_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../third_party/googletest")
 get_filename_component(_GOOGLETEST_SOURCE_DIR "${_GOOGLETEST_SOURCE_DIR}" ABSOLUTE)
 
+# The dependency is linked statically (see the top level CMakeLists.txt).
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "googletest: static library" FORCE)
 set(INSTALL_GTEST OFF)
 
 # Build the third-party library (specify the binary directory to avoid conflicts)

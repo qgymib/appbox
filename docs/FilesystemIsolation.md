@@ -119,6 +119,38 @@ The view path is used as-is, i.e. the object is looked up in the real filesystem
 Both markers live in the upper layer. `Resolve` never writes them; they are produced by
 the delete and create paths (`NtDeleteFile.cpp`, `NtCreateFile.cpp`).
 
+### `CreateProcessInternalW` (`sandbox/hook/CreateProcessInternalW.cpp`)
+
+Process creation hands the application path to `NtCreateUserProcess`, which
+is not hooked and resolves the path in the host filesystem. The hook
+therefore rewrites `lpApplicationName` into the host layer path which holds
+the image (resolved through the view) before the creation is forwarded and
+the sandbox DLL is injected. Applications which only exist in a lower layer
+become launchable this way; the process is still injected, so every file
+operation of the child stays inside the view.
+
+## Packer archives
+
+`AppBox` produces self-contained archives which double as a base
+filesystem. The layout matches the loader runtime conventions:
+
+```
+AppBoxLoader.exe                     embedded loader payload
+AppBoxLoader.json                    launch configuration:
+                                     base_fs = ["."], overlay_fs = "data",
+                                     launch.executable = <layer key>\<import>\<exe>
+filesystem/<layer key>/<import>/...  imported folder content
+```
+
+The archive root is the single `base_fs` entry (relative `.`, expanded by
+the loader against the executable directory), so `MapBaseFS` maps every
+`filesystem/<layer key>` child directory as a lower layer, and
+`launch.executable` is expanded by `ExpandKnownFolder` into the sandbox
+view. Running the extracted `AppBoxLoader.exe` therefore shows the imported
+folders at their preset locations (`%ProgramFiles%\<import>`,
+`%USERPROFILE%\<import>`) and starts the selected main program inside the
+isolation.
+
 ## Path resolution
 
 Implementation: `sandbox/filesystem/Resolve.hpp` / `Resolve.cpp`.
@@ -267,6 +299,18 @@ Reentrancy is controlled by `ThreadLocal::disable_NtCreateFile_hook` (see
 `appbox::NtCreateFileLock`); all internal NT calls go through the saved original
 pointers (`sys_NtCreateFile` and friends), so they bypass the hooks by construction.
 
+### `NtQueryAttributesFile` (`sandbox/hook/NtQueryAttributesFile.cpp`)
+
+Path-based attribute queries are redirected through the view:
+
+1. The view path is extracted (root handle / file ID resolution, DOS NT
+   conversion).
+2. The resolver decides the layer; a missing parent yields
+   `STATUS_OBJECT_PATH_NOT_FOUND`, a missing or whiteouted object yields
+   `STATUS_OBJECT_NAME_NOT_FOUND`.
+3. The query is forwarded with the layer path of the first layer holding
+   the object.
+
 ### `NtOpenFile` (`sandbox/hook/NtOpenFile.cpp`)
 
 Resolves with `bStopOnFirstFound = false` (so `hPath` lists every layer holding the
@@ -373,12 +417,13 @@ filesystems. Each case is documented in its own header comment.
 The following points are visible in the current code and should be kept in mind when
 extending or testing the isolation:
 
-1. **Path-based queries are not redirected.** `NtQueryAttributesFile` (marked `// TODO`
-   in the source), `NtQueryFullAttributesFile`, `NtQueryInformationByName` and
+1. **Path-based queries are not redirected.** `NtQueryFullAttributesFile`,
+   `NtQueryInformationByName` and
    `NtQueryDirectoryFile` log their arguments and forward the call unchanged, so the
    query hits the raw path (a lower layer or the host filesystem) instead of the view.
-   The resolver itself is not affected, because `CheckPathExist` calls the original
-   `NtQueryAttributesFile` with paths that are already rebased into a layer.
+   `NtQueryAttributesFile` is redirected (see above). The resolver itself is not
+   affected, because `CheckPathExist` calls the original `NtQueryAttributesFile`
+   with paths that are already rebased into a layer.
 2. **Handle-based hooks only log.** `NtQueryInformationFile`, `NtSetInformationFile`,
    `NtQueryVolumeInformationFile`, `NtDeviceIoControlFile` and `NtFsControlFile` forward
    unchanged. The handle already refers to the layer that was selected at open time

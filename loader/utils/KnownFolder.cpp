@@ -81,7 +81,20 @@ std::wstring appbox::ExpandKnownFolder(const std::wstring& path)
 
         if (_wcsnicmp(entry.name.c_str(), path.c_str(), entry.name.size()) == 0)
         {
-            return GetFolderPath(entry.guid) + L"\\" + path.substr(entry.name.size());
+            const auto folder = GetFolderPath(entry.guid);
+            const auto rest = path.substr(entry.name.size());
+            if (rest.empty())
+            {
+                return folder;
+            }
+            if (rest.front() == L'\\')
+            {
+                /* The remainder already carries a separator, appending
+                 * another one would produce a doubled backslash which the
+                 * NT object manager rejects. */
+                return folder + rest;
+            }
+            return folder + L"\\" + rest;
         }
     }
 

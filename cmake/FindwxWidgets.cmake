@@ -11,7 +11,12 @@ set(_WXWIDGETS_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/../third_party/wxWidgets")
 get_filename_component(_WXWIDGETS_SOURCE_DIR "${_WXWIDGETS_SOURCE_DIR}" ABSOLUTE)
 
 # Configuration for wxWidgets
-set(wxBUILD_SHARED OFF)
+#
+# The libraries are linked statically (see the top level CMakeLists.txt).
+# wxWidgets declares wxBUILD_SHARED with a default of ON and its bundled
+# libwebp picks its library type from BUILD_SHARED_LIBS, so both are pinned
+# through the cache to survive a reconfigure of an already polluted build tree.
+set(wxBUILD_SHARED OFF CACHE BOOL "wxWidgets: static libraries" FORCE)
 set(wxBUILD_TESTS OFF)
 set(wxBUILD_SAMPLES OFF)
 set(wxBUILD_DEMOS OFF)

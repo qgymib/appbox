@@ -6,10 +6,12 @@ add_executable(AppBoxTests
     "cases/Fs_DeleteFile_MultiLower_ExistsInUpper.cpp"
     "cases/Fs_DeleteFile_MultiLower_NonExists.cpp"
     "cases/Fs_DeleteFile_WhiteoutInLower_ExistsInUpper.cpp"
+    "cases/Fs_LaunchProcess_FromLower.cpp"
     "cases/Fs_ListDir_MultiLower_ExistsInLower_WhiteoutInUpper.cpp"
     "cases/Fs_ListDir_MultiLower_ExistsInLower.cpp"
     "cases/Fs_NewFile_MultiLower_WhiteoutInLower.cpp"
     "cases/Fs_NewFile_MultiLower_WhiteoutInUpper.cpp"
+    "cases/Fs_QueryAttributes_MultiLower.cpp"
     "cases/Fs_ReadFile_MultiLower_WhiteoutInUpper.cpp"
     "cases/Reg_EnumerateKey_Merged.cpp"
     "cases/Reg_EnumerateValue_Merged.cpp"
@@ -22,7 +24,9 @@ add_executable(AppBoxTests
     "probe/CreateDirectoryW.cpp"
     "probe/CreateFileW.cpp"
     "probe/DeleteFileW.cpp"
+    "probe/LaunchProcess.cpp"
     "probe/ListDir.cpp"
+    "probe/QueryAttributes.cpp"
     "probe/ReadFileFull.cpp"
     "probe/RegEnumKey.cpp"
     "probe/RegEnumValue.cpp"
@@ -86,18 +90,25 @@ add_test(NAME AppBoxTests
 ###############################################################################
 add_executable(AppBoxUnitTests
     "unit/main.cpp"
+    "unit/Unit_BuildReport.cpp"
     "unit/Unit_HiveReader.cpp"
     "unit/Unit_HookTransaction.cpp"
+    "unit/Unit_ExpandKnownFolder.cpp"
     "unit/Unit_LoaderPath.cpp"
     "unit/Unit_Log.cpp"
     "unit/Unit_MiniLauncher.cpp"
     "unit/Unit_ModuleTable.cpp"
+    "unit/Unit_PackModel.cpp"
+    "unit/Unit_PackService.cpp"
     "unit/Unit_ProcessJob.cpp"
     "unit/Unit_RegistryEnumMerge.cpp"
     "unit/Unit_RegistryKeyPath.cpp"
     "unit/Unit_RemoteClient.cpp"
     "unit/Unit_RpcCodec.cpp"
+    "unit/Unit_StartupTree.cpp"
     "unit/Unit_WString.cpp"
+    "unit/Unit_ZipReader.cpp"
+    "unit/Unit_ZipWriter.cpp"
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/registry/HiveReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ConvertDosPathToNtPath.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/GetExecutableDir.cpp
@@ -106,6 +117,13 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/MiniLauncher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ProcessJob.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/WinCall.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackService.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PresetDirectory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/StartupTree.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipReader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipWriter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/ModuleTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/hook/HookTransaction.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/EnumMerge.cpp
@@ -147,6 +165,12 @@ target_link_libraries(AppBoxUnitTests PRIVATE shell32 ole32)
 
 # Registry access of the sandbox hive reader (RegLoadAppKeyW and friends).
 target_link_libraries(AppBoxUnitTests PRIVATE advapi32)
+
+# Zip archive creation of the packer core (zlib must be found first so the
+# libzip build reuses the already configured target).
+find_package(ZLIB REQUIRED)
+find_package(libzip REQUIRED)
+target_link_libraries(AppBoxUnitTests PRIVATE libzip::zip)
 
 add_test(NAME AppBoxUnitTests
     COMMAND AppBoxUnitTests

@@ -144,6 +144,7 @@ bool AppBoxLoader::OnInit()
     }
     catch (const std::exception& e)
     {
+        SPDLOG_ERROR(e.what());
         wxGenericMessageDialog dlg(nullptr, e.what(), "Error", wxOK | wxICON_ERROR);
         dlg.ShowModal();
         return false;
