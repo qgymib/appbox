@@ -22,17 +22,17 @@ TEST_F(Fs, NewFile_MultiLower_WhiteoutInUpper)
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"Upper", {
-            FsDir(L"filesystem\\" + GetKnownFolderPath(L"%APPDATA%", true), {
+            FsDir(L"filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true), {
                 FsFile(L"data.txt.$APPBOX_DELETE$", "")
             })
         }),
         FsDir(L"Lower1", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(L"data.txt", "hello1")
             })
         }),
         FsDir(L"Lower2", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(L"data.txt", "hello2")
             })
         })
@@ -45,7 +45,7 @@ TEST_F(Fs, NewFile_MultiLower_WhiteoutInUpper)
     /* Create file in upper. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"%APPDATA%", false) + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#APPDATA#", false) + L"\\data.txt");
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
         auto rsp = ProbeCreateFileW.Call(req, GetCWD(), config).get<ProtocolCreateFileW::Rsp>();
@@ -54,13 +54,13 @@ TEST_F(Fs, NewFile_MultiLower_WhiteoutInUpper)
 
     /* Target file should be created. */
     {
-        auto fPath = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"%APPDATA%", true) + L"\\data.txt";
+        auto fPath = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\data.txt";
         ASSERT_TRUE(std::filesystem::exists(fPath));
     }
 
     /* Whiteout file should be deleted. */
     {
-        auto fPath = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"%APPDATA%", true) +
+        auto fPath = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) +
                      L"\\data.txt.$APPBOX_DELETE$";
         ASSERT_FALSE(std::filesystem::exists(fPath));
     }

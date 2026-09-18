@@ -214,7 +214,7 @@ TEST(ZipWriter, KeepsEmptyDirectories)
     {
         appbox::ZipWriter writer(zip_path.wstring());
         std::string error;
-        ASSERT_TRUE(writer.AddDirectory("filesystem/%ProgramFiles%/MyApp/empty", error)) << error;
+        ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#/MyApp/empty", error)) << error;
         ASSERT_TRUE(writer.Close(error)) << error;
     }
 
@@ -224,8 +224,8 @@ TEST(ZipWriter, KeepsEmptyDirectories)
 
     const auto names = EntryNames(archive);
     ASSERT_EQ(names.size(), static_cast<std::size_t>(1));
-    EXPECT_TRUE(names.count("filesystem/%ProgramFiles%/MyApp/empty/") > 0
-                || names.count("filesystem/%ProgramFiles%/MyApp/empty") > 0);
+    EXPECT_TRUE(names.count("filesystem/#ProgramFiles#/MyApp/empty/") > 0
+                || names.count("filesystem/#ProgramFiles#/MyApp/empty") > 0);
 
     zip_close(archive);
 }

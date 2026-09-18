@@ -4,33 +4,39 @@
 
 struct FolderMapping
 {
-    const std::wstring name; /* Folder name */
+    const std::wstring name; /* Layer key token, e.g. L"#ProgramFiles#" */
     const GUID         guid; /* Folder GUID */
 };
 
+/*
+ * The layer key is a `#Name#` delimited token. A `#` is a plain file name
+ * character, so a layer key never collides with the environment variable
+ * syntax of the shell (`%Name%`, where `%%` is an escape sequence) when the
+ * path is handed to a command line or to an expanding API.
+ */
 static const FolderMapping s_known_folders[] = {
     /* Known FolderID */
-    { L"%Fonts%",                  FOLDERID_Fonts                  }, /* %windir%\Fonts */
-    { L"%LocalAppData%",           FOLDERID_LocalAppData           }, /* %LOCALAPPDATA% (%USERPROFILE%\AppData\Local) */
-    { L"%LocalAppDataLow%",        FOLDERID_LocalAppDataLow        }, /* %USERPROFILE%\AppData\LocalLow */
-    { L"%Profile%",                FOLDERID_Profile                }, /* %USERPROFILE% (%SystemDrive%\Users\%USERNAME%) */
-    { L"%ProgramData%",            FOLDERID_ProgramData            }, /* %ALLUSERSPROFILE% (%ProgramData%, %SystemDrive%\ProgramData) */
-    { L"%ProgramFiles%",           FOLDERID_ProgramFiles           }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
-    { L"%ProgramFilesX64%",        FOLDERID_ProgramFilesX64        }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
-    { L"%ProgramFilesX86%",        FOLDERID_ProgramFilesX86        }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
-    { L"%ProgramFilesCommon%",     FOLDERID_ProgramFilesCommon     }, /* %ProgramFiles%\Common Files */
-    { L"%ProgramFilesCommonX64%",  FOLDERID_ProgramFilesCommonX64  }, /* %ProgramFiles%\Common Files */
-    { L"%ProgramFilesCommonX86%",  FOLDERID_ProgramFilesCommonX86  }, /* %ProgramFiles%\Common Files */
-    { L"%RoamingAppData%",         FOLDERID_RoamingAppData         }, /* %APPDATA% (%USERPROFILE%\AppData\Roaming) */
-    { L"%UserProfiles%",           FOLDERID_UserProfiles           }, /* %SystemDrive%\Users */
-    { L"%UserProgramFiles%",       FOLDERID_UserProgramFiles       }, /* %LOCALAPPDATA%\Programs */
-    { L"%UserProgramFilesCommon%", FOLDERID_UserProgramFilesCommon }, /* %LOCALAPPDATA%\Programs\Common */
-    { L"%Windows%",                FOLDERID_Windows                }, /* %windir% */
+    { L"#Fonts#",                  FOLDERID_Fonts                  }, /* %windir%\Fonts */
+    { L"#LocalAppData#",           FOLDERID_LocalAppData           }, /* %LOCALAPPDATA% (%USERPROFILE%\AppData\Local) */
+    { L"#LocalAppDataLow#",        FOLDERID_LocalAppDataLow        }, /* %USERPROFILE%\AppData\LocalLow */
+    { L"#Profile#",                FOLDERID_Profile                }, /* %USERPROFILE% (%SystemDrive%\Users\%USERNAME%) */
+    { L"#ProgramData#",            FOLDERID_ProgramData            }, /* %ALLUSERSPROFILE% (%ProgramData%, %SystemDrive%\ProgramData) */
+    { L"#ProgramFiles#",           FOLDERID_ProgramFiles           }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
+    { L"#ProgramFilesX64#",        FOLDERID_ProgramFilesX64        }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
+    { L"#ProgramFilesX86#",        FOLDERID_ProgramFilesX86        }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
+    { L"#ProgramFilesCommon#",     FOLDERID_ProgramFilesCommon     }, /* %ProgramFiles%\Common Files */
+    { L"#ProgramFilesCommonX64#",  FOLDERID_ProgramFilesCommonX64  }, /* %ProgramFiles%\Common Files */
+    { L"#ProgramFilesCommonX86#",  FOLDERID_ProgramFilesCommonX86  }, /* %ProgramFiles%\Common Files */
+    { L"#RoamingAppData#",         FOLDERID_RoamingAppData         }, /* %APPDATA% (%USERPROFILE%\AppData\Roaming) */
+    { L"#UserProfiles#",           FOLDERID_UserProfiles           }, /* %SystemDrive%\Users */
+    { L"#UserProgramFiles#",       FOLDERID_UserProgramFiles       }, /* %LOCALAPPDATA%\Programs */
+    { L"#UserProgramFilesCommon#", FOLDERID_UserProgramFilesCommon }, /* %LOCALAPPDATA%\Programs\Common */
+    { L"#Windows#",                FOLDERID_Windows                }, /* %windir% */
     /* For compatibility */
-    { L"%ALLUSERSPROFILE%",        FOLDERID_ProgramData            }, /* %ALLUSERSPROFILE% (%ProgramData%, %SystemDrive%\ProgramData) */
-    { L"%APPDATA%",                FOLDERID_RoamingAppData         }, /* %APPDATA% (%USERPROFILE%\AppData\Roaming) */
-    { L"%USERPROFILE%",            FOLDERID_Profile                }, /* %USERPROFILE% (%SystemDrive%\Users\%USERNAME%) */
-    { L"%windir%",                 FOLDERID_Windows                }, /* %windir% */
+    { L"#ALLUSERSPROFILE#",        FOLDERID_ProgramData            }, /* %ALLUSERSPROFILE% (%ProgramData%, %SystemDrive%\ProgramData) */
+    { L"#APPDATA#",                FOLDERID_RoamingAppData         }, /* %APPDATA% (%USERPROFILE%\AppData\Roaming) */
+    { L"#USERPROFILE#",            FOLDERID_Profile                }, /* %USERPROFILE% (%SystemDrive%\Users\%USERNAME%) */
+    { L"#windir#",                 FOLDERID_Windows                }, /* %windir% */
 };
 
 static std::wstring GetFolderPath(const GUID& guid)
@@ -67,7 +73,8 @@ std::wstring appbox::ExpandKnownFolder(const std::wstring& path)
         return path;
     }
 
-    if (path.front() != L'%')
+    /* Only a `#Name#` delimited token is expanded. */
+    if (path.front() != L'#')
     {
         return path;
     }

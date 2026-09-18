@@ -21,12 +21,12 @@ TEST_F(Fs, QueryAttributes_MultiLower_ExistsInLower)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"Upper", {}),
         FsDir(L"Lower1", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(L"data.txt", "hello1")
             })
         }),
         FsDir(L"Lower2", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(L"data.txt", "hello2")
             })
         })
@@ -39,7 +39,7 @@ TEST_F(Fs, QueryAttributes_MultiLower_ExistsInLower)
     /* Query the file which only exists in the lower layers. */
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"%APPDATA%", false) + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#APPDATA#", false) + L"\\data.txt");
 
         auto rsp = ProbeQueryAttributes.Call(req, GetCWD(), config).get<ProtocolQueryAttributes::Rsp>();
         ASSERT_EQ(rsp.code, static_cast<DWORD>(0));
@@ -64,7 +64,7 @@ TEST_F(Fs, QueryAttributes_MultiLower_NonExists)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"Upper", {}),
         FsDir(L"Lower1", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(L"other.txt", "hello1")
             })
         })
@@ -77,7 +77,7 @@ TEST_F(Fs, QueryAttributes_MultiLower_NonExists)
     /* Query a file which does not exist anywhere. */
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"%APPDATA%", false) + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#APPDATA#", false) + L"\\data.txt");
 
         auto rsp = ProbeQueryAttributes.Call(req, GetCWD(), config).get<ProtocolQueryAttributes::Rsp>();
         ASSERT_EQ(rsp.attributes, static_cast<DWORD>(INVALID_FILE_ATTRIBUTES));

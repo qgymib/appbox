@@ -23,12 +23,12 @@ TEST_F(Fs, DeleteFile_MultiLower_ExistsInLower)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"Upper", {}),
         FsDir(L"Lower1", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(L"data.txt", "hello1")
             })
         }),
         FsDir(L"Lower2", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(L"data.txt", "hello2")
             })
         })
@@ -41,7 +41,7 @@ TEST_F(Fs, DeleteFile_MultiLower_ExistsInLower)
     /* Delete file. */
     {
         ProtocolDeleteFileW::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"%APPDATA%", false) + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#APPDATA#", false) + L"\\data.txt");
 
         auto rsp = ProbeDeleteFileW.Call(req, GetCWD(), config).get<ProtocolDeleteFileW::Rsp>();
         ASSERT_EQ(rsp.code, 0);
@@ -49,13 +49,13 @@ TEST_F(Fs, DeleteFile_MultiLower_ExistsInLower)
 
     /* File should not exist in upper fs. */
     {
-        auto fPath = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"%APPDATA%", true) + L"\\data.txt";
+        auto fPath = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\data.txt";
         ASSERT_FALSE(std::filesystem::exists(fPath));
     }
 
     /* Whiteout file should exist in upper fs. */
     {
-        auto fPath = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"%APPDATA%", true) +
+        auto fPath = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) +
                      L"\\data.txt.$APPBOX_DELETE$";
         ASSERT_TRUE(std::filesystem::exists(fPath));
     }

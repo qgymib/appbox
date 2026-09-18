@@ -90,10 +90,12 @@ add_test(NAME AppBoxTests
 ###############################################################################
 add_executable(AppBoxUnitTests
     "unit/main.cpp"
+    "unit/Unit_ApplicationIcon.cpp"
     "unit/Unit_BuildReport.cpp"
     "unit/Unit_HiveReader.cpp"
     "unit/Unit_HookTransaction.cpp"
     "unit/Unit_ExpandKnownFolder.cpp"
+    "unit/Unit_GetExecutableDir.cpp"
     "unit/Unit_LoaderPath.cpp"
     "unit/Unit_Log.cpp"
     "unit/Unit_MiniLauncher.cpp"
@@ -117,6 +119,7 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/MiniLauncher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ProcessJob.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/WinCall.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationIcon.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackService.cpp
@@ -172,6 +175,11 @@ find_package(ZLIB REQUIRED)
 find_package(libzip REQUIRED)
 target_link_libraries(AppBoxUnitTests PRIVATE libzip::zip)
 
+# The unit tests which work on the real loader payload are given the path of
+# the loader executable; the remaining tests do not need it.
+add_dependencies(AppBoxUnitTests AppBoxLoader)
+
 add_test(NAME AppBoxUnitTests
     COMMAND AppBoxUnitTests
+        --loader=$<TARGET_FILE:AppBoxLoader>
 )

@@ -13,5 +13,12 @@
 //
 // IDI_ICON1 is a named resource and sorts before the wxICON_AAA icon embedded
 // by wx/msw/wx.rc, so Windows picks this icon group for the executable and for
-// the default frame icon.
+// the default frame icon. MainFrame::ApplyWindowIcon() loads it by name for
+// the window and the taskbar button of the loader.
+//
+// A packed loader carries a second icon group as well: the packer appends the
+// icon of the packaged application below a resource name which the resource
+// directory orders before this one (see src/core/ApplicationIcon.cpp), so
+// Explorer shows the icon of the packaged application for the extracted
+// program while this group stays the icon of the loader.
 IDI_ICON1 ICON DISCARDABLE "../docs/icon.ico"

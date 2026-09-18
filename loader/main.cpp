@@ -4,6 +4,7 @@
 #include <spdlog/spdlog.h>
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <base64.hpp>
 #include "sandbox/utils/Defines.hpp"
 #include "utils/CommandLineOptions.hpp"
@@ -97,12 +98,22 @@ static void FormatConfigAbsolutePath(appbox::LoaderConfig& cfg, const std::wstri
 
 static void LoadConfig()
 {
-    /* Parse configuration file. */
+    /*
+     * The configuration file is named after the executable itself and lives
+     * beside it, so an executable `foo.exe` loads `foo.exe.json` from its own
+     * directory. No fallback name is tried: a missing configuration file is
+     * reported as an error.
+     */
     auto dir = appbox::GetExecutableDir();
-    auto cfg_name = appbox::GetExecutableName() + L".json";
-    auto path = std::filesystem::path(dir) / cfg_name;
+    auto path = appbox::DefaultConfigPathForExecutable(appbox::GetExecutablePath());
 
-    std::ifstream  f(path);
+    std::ifstream f{std::filesystem::path(path)};
+    if (!f.is_open())
+    {
+        throw std::runtime_error("the loader configuration file was not found: " +
+                                 appbox::WideToUTF8(path));
+    }
+
     nlohmann::json j_cfg = nlohmann::json::parse(f);
     wxGetApp().loader_config = j_cfg;
     FormatConfigAbsolutePath(wxGetApp().loader_config, dir);

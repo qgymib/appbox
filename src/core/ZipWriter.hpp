@@ -45,7 +45,7 @@ public:
      * Directory entries keep empty folders and the tree structure of the
      * archive visible to extraction tools.
      *
-     * @param[in] entry Entry name, e.g. `"filesystem/%ProgramFiles%/MyApp"`.
+     * @param[in] entry Entry name, e.g. `"filesystem/#ProgramFiles#/MyApp"`.
      * @param[out] error Error description on failure.
      * @return true on success.
      */

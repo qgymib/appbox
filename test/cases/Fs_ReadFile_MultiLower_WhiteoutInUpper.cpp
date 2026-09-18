@@ -20,17 +20,17 @@ TEST_F(Fs, ReadFile_MultiLower_WhiteoutInUpper)
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"Upper", {
-            FsDir(L"filesystem\\" + GetKnownFolderPath(L"%APPDATA%", true), {
+            FsDir(L"filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true), {
                 FsFile(L"data.txt.$APPBOX_DELETE$", "")
             })
         }),
         FsDir(L"Lower1", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(L"data.txt", "hello1")
             })
         }),
         FsDir(L"Lower2", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(L"data.txt", "hello2")
             })
         })
@@ -43,7 +43,7 @@ TEST_F(Fs, ReadFile_MultiLower_WhiteoutInUpper)
     /* Try to read file */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"%APPDATA%", false) + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#APPDATA#", false) + L"\\data.txt");
 
         auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
         ASSERT_NE(rsp.code, 0);

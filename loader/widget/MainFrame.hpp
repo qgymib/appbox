@@ -17,6 +17,15 @@ public:
 
     struct Data;
 private:
+    /**
+     * @brief Install the icon of the loader as the icon of the frame.
+     *
+     * The icon is taken from the resource of the loader executable, so the
+     * window and the taskbar button always show the icon of the loader even
+     * when the executable carries the icon of a packaged application as well.
+     */
+    void ApplyWindowIcon();
+
     Data* data_;
 };
 

@@ -232,8 +232,9 @@ void MainFrame::OnAbout(wxCommandEvent&)
 {
     wxMessageBox("AppBox packages an installed application into a portable zip "
                  "archive: the imported folders become lower filesystem layers and the "
-                 "embedded AppBoxLoader starts the sandboxed application.\n\n"
-                 "Extracting the archive and running AppBoxLoader.exe requires no "
+                 "embedded loader starts the sandboxed application.\n\n"
+                 "The loader and its configuration carry the file name of the startup "
+                 "file, so extracting the archive and running that program requires no "
                  "further installation.",
                  "About AppBox", wxOK | wxICON_INFORMATION, this);
 }
@@ -372,6 +373,12 @@ void MainFrame::StartPack(bool run_after)
                 return !this->pack_cancelled_.load();
             });
 
+        if (outcome.error.empty())
+        {
+            /* The loader is named after the main program of the snapshot. */
+            outcome.loader_entry = appbox::LoaderEntryName(snapshot);
+        }
+
         if (outcome.error.empty() && run_after)
         {
             const auto folder = std::filesystem::temp_directory_path() / UniqueExtractFolder();
@@ -439,8 +446,17 @@ void MainFrame::OnPackFinished(wxThreadEvent& event)
     }
     else if (run_after && !outcome.extract_dir.empty())
     {
-        const auto loader = std::filesystem::path(outcome.extract_dir) / L"AppBoxLoader.exe";
-        const auto pid = wxExecute("\"" + wxString(loader.wstring()) + "\"", wxEXEC_ASYNC);
+        /*
+         * The loader carries the file name of the main program, so it is
+         * started through the name the pack run resolved.
+         */
+        long pid = 0;
+        if (!outcome.loader_entry.empty())
+        {
+            const auto loader = std::filesystem::path(outcome.extract_dir) / outcome.loader_entry;
+            pid = wxExecute("\"" + wxString(loader.wstring()) + "\"", wxEXEC_ASYNC);
+        }
+
         if (pid <= 0)
         {
             result = appbox::BuildOutcome::LaunchFailed;

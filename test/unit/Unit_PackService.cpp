@@ -231,28 +231,74 @@ TEST(PackService, PackProducesLoaderConfigurationAndLayers)
     zip_t* archive = closer.archive;
     ASSERT_NE(archive, nullptr);
 
-    /* The loader payload is embedded verbatim. */
-    EXPECT_EQ(ReadEntry(archive, "AppBoxLoader.exe"), "FAKE-LOADER");
+    /* The loader payload is embedded under the name of the main program. */
+    EXPECT_EQ(appbox::LoaderEntryName(model), L"app.exe");
+    EXPECT_EQ(ReadEntry(archive, "app.exe"), "FAKE-LOADER");
+
+    /* The archive carries a single naming, the loader name is gone. */
+    EXPECT_EQ(zip_name_locate(archive, "AppBoxLoader.exe", 0), -1);
+    EXPECT_EQ(zip_name_locate(archive, "AppBoxLoader.json", 0), -1);
 
     /* The configuration matches the loader runtime conventions. */
-    const auto json_text = ReadEntry(archive, "AppBoxLoader.json");
+    const auto json_text = ReadEntry(archive, "app.exe.json");
     ASSERT_FALSE(json_text.empty());
     const auto config = nlohmann::json::parse(json_text).get<appbox::LoaderConfig>();
     ASSERT_EQ(config.base_fs.size(), static_cast<std::size_t>(1));
     EXPECT_EQ(config.base_fs[0], ".");
     EXPECT_EQ(config.overlay_fs, "data");
-    EXPECT_EQ(config.launch.executable, "%ProgramFiles%\\MyApp\\app.exe");
+    EXPECT_EQ(config.launch.executable, "#ProgramFiles#\\MyApp\\app.exe");
     EXPECT_TRUE(config.launch.arguments.empty());
 
     /* Imported folders become lower layers below filesystem/<layer key>. */
-    EXPECT_EQ(ReadEntry(archive, "filesystem/%ProgramFiles%/MyApp/app.exe"), "EXE-CONTENT");
-    EXPECT_EQ(ReadEntry(archive, "filesystem/%ProgramFiles%/MyApp/data/config.txt"), "CFG-CONTENT");
-    EXPECT_EQ(ReadEntry(archive, "filesystem/%USERPROFILE%/MyUser/settings.ini"), "INI-CONTENT");
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE-CONTENT");
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/data/config.txt"), "CFG-CONTENT");
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#USERPROFILE#/MyUser/settings.ini"), "INI-CONTENT");
 
     /* Empty folders survive as directory entries (with trailing slash). */
     const auto empty_index =
-        zip_name_locate(archive, "filesystem/%ProgramFiles%/MyApp/emptydir/", 0);
+        zip_name_locate(archive, "filesystem/#ProgramFiles#/MyApp/emptydir/", 0);
     EXPECT_GE(empty_index, 0);
+}
+
+TEST(PackService, LoaderEntryNameIsEmptyWithoutAMainProgram)
+{
+    appbox::PackModel model;
+
+    EXPECT_TRUE(appbox::LoaderEntryName(model).empty());
+}
+
+TEST(PackService, LoaderEntryNameDropsTheDirectoryOfTheMainProgram)
+{
+    TempDir     temp;
+    const auto  my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"bin\\tool.exe", "EXE");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"bin\\tool.exe", error)) << error;
+
+    /* Only the file name is used: the loader lives in the archive root. */
+    EXPECT_EQ(appbox::LoaderEntryName(model), L"tool.exe");
+
+    const auto zip_path =
+        temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-entry.zip");
+    const auto result = appbox::Pack(model, "FAKE-LOADER", 11, zip_path.wstring(), nullptr);
+    EXPECT_EQ(result, "") << result;
+
+    ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
+    zip_t*           archive = closer.archive;
+    ASSERT_NE(archive, nullptr);
+
+    EXPECT_EQ(ReadEntry(archive, "tool.exe"), "FAKE-LOADER");
+
+    const auto json_text = ReadEntry(archive, "tool.exe.json");
+    ASSERT_FALSE(json_text.empty());
+    const auto config = nlohmann::json::parse(json_text).get<appbox::LoaderConfig>();
+    EXPECT_EQ(config.launch.executable, "#ProgramFiles#\\MyApp\\bin\\tool.exe");
+
+    /* The entry program itself keeps its place below the layer tree. */
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/bin/tool.exe"), "EXE");
 }
 
 TEST(PackService, PackReportsProgress)
@@ -330,11 +376,11 @@ TEST(PackService, PackWritesImportedFiles)
     ASSERT_NE(archive, nullptr);
 
     /* Imported files share the layer tree of the imported folder. */
-    EXPECT_EQ(ReadEntry(archive, "filesystem/%ProgramFiles%/MyApp/extra.dll"), "EXTRA-CONTENT");
-    EXPECT_EQ(ReadEntry(archive, "filesystem/%ProgramFiles%/MyApp/data/note.txt"), "NOTE-CONTENT");
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/extra.dll"), "EXTRA-CONTENT");
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/data/note.txt"), "NOTE-CONTENT");
 
     /* The imported folder content is untouched. */
-    EXPECT_EQ(ReadEntry(archive, "filesystem/%ProgramFiles%/MyApp/app.exe"), "EXE");
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE");
 }
 
 TEST(PackService, PackCreatesDirectoriesOfImportedFiles)
@@ -365,9 +411,9 @@ TEST(PackService, PackCreatesDirectoriesOfImportedFiles)
     ASSERT_NE(archive, nullptr);
 
     /* Every missing prefix of the target directory becomes a directory entry. */
-    EXPECT_GE(zip_name_locate(archive, "filesystem/%ProgramFiles%/MyApp/plugins/", 0), 0);
-    EXPECT_GE(zip_name_locate(archive, "filesystem/%ProgramFiles%/MyApp/plugins/deep/", 0), 0);
-    EXPECT_EQ(ReadEntry(archive, "filesystem/%ProgramFiles%/MyApp/plugins/deep/extra.dll"), "EXTRA");
+    EXPECT_GE(zip_name_locate(archive, "filesystem/#ProgramFiles#/MyApp/plugins/", 0), 0);
+    EXPECT_GE(zip_name_locate(archive, "filesystem/#ProgramFiles#/MyApp/plugins/deep/", 0), 0);
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/plugins/deep/extra.dll"), "EXTRA");
 }
 
 TEST(PackService, PackCountsImportedFilesInTheProgressTotal)

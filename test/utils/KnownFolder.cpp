@@ -10,7 +10,7 @@ struct KnownFolderMap
 };
 
 static const KnownFolderMap KnownFolders[] = {
-    { L"%APPDATA%", FOLDERID_RoamingAppData },
+    { L"#APPDATA#", FOLDERID_RoamingAppData },
 };
 
 std::wstring appbox::test::GetKnownFolderPath(const std::wstring& folder_id, bool pure)

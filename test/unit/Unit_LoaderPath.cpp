@@ -76,7 +76,7 @@ TEST_F(UnitLoaderPath, MissingDirectoryIsRejected)
 TEST_F(UnitLoaderPath, KnownFolderLayerIsMapped)
 {
     const std::filesystem::path root = MakeTempDirPath();
-    std::filesystem::create_directories(root / "filesystem" / "%APPDATA%");
+    std::filesystem::create_directories(root / "filesystem" / "#APPDATA#");
 
     std::vector<appbox::SandboxLowerFS> mapped;
     ASSERT_EQ(appbox::MapBaseFS(root.string(), mapped), 0u);
@@ -112,7 +112,7 @@ TEST_F(UnitLoaderPath, DriveLetterLayerIsMapped)
 TEST_F(UnitLoaderPath, ReservedLayersAreSkipped)
 {
     const std::filesystem::path root = MakeTempDirPath();
-    std::filesystem::create_directories(root / "filesystem" / "%REGISTRY%");
+    std::filesystem::create_directories(root / "filesystem" / "#REGISTRY#");
 
     std::vector<appbox::SandboxLowerFS> mapped;
     ASSERT_EQ(appbox::MapBaseFS(root.string(), mapped), 0u);
@@ -142,7 +142,7 @@ TEST_F(UnitLoaderPath, UnknownLayerIsRejected)
 TEST_F(UnitLoaderPath, TrailingSeparatorIsAccepted)
 {
     const std::filesystem::path root = MakeTempDirPath();
-    std::filesystem::create_directories(root / "filesystem" / "%APPDATA%");
+    std::filesystem::create_directories(root / "filesystem" / "#APPDATA#");
 
     std::vector<appbox::SandboxLowerFS> mapped;
     ASSERT_EQ(appbox::MapBaseFS(root.string() + "\\", mapped), 0u);

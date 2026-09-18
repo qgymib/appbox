@@ -106,6 +106,7 @@ add_subdirectory(loader)
 set(APPBOX_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 add_executable(AppBox WIN32
+    "${APPBOX_SOURCE_DIR}/core/ApplicationIcon.cpp"
     "${APPBOX_SOURCE_DIR}/core/BuildReport.cpp"
     "${APPBOX_SOURCE_DIR}/core/PackModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/PackService.cpp"
@@ -206,8 +207,5 @@ add_subdirectory(test)
 ###############################################################################
 include(CPack)
 install(TARGETS AppBox
-    DESTINATION bin
-)
-install(TARGETS AppBoxLoader
     DESTINATION bin
 )

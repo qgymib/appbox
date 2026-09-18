@@ -94,12 +94,12 @@ TEST(PresetDirectory, ProvidesExpectedPresets)
     ASSERT_EQ(presets.size(), static_cast<std::size_t>(2));
 
     EXPECT_EQ(presets[0].id, "program_files");
-    EXPECT_EQ(presets[0].layer_key, L"%ProgramFiles%");
+    EXPECT_EQ(presets[0].layer_key, L"#ProgramFiles#");
     EXPECT_FALSE(presets[0].display_name.empty());
     EXPECT_TRUE(std::filesystem::path(presets[0].real_path).is_absolute());
 
     EXPECT_EQ(presets[1].id, "user_profile");
-    EXPECT_EQ(presets[1].layer_key, L"%USERPROFILE%");
+    EXPECT_EQ(presets[1].layer_key, L"#USERPROFILE#");
     EXPECT_TRUE(std::filesystem::path(presets[1].real_path).is_absolute());
 }
 

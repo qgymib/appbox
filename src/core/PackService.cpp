@@ -1,4 +1,5 @@
 #include "PackService.hpp"
+#include "ApplicationIcon.hpp"
 #include "PresetDirectory.hpp"
 #include "ZipWriter.hpp"
 #include "Config.hpp"
@@ -68,7 +69,7 @@ std::string EnsureDirectory(appbox::ZipWriter& writer, std::set<std::string>& ad
  * @param[in,out] writer The zip writer.
  * @param[in] source Host folder to add.
  * @param[in] prefix Zip entry prefix of the import, e.g.
- *                   `"filesystem/%ProgramFiles%/MyApp"`.
+ *                   `"filesystem/#ProgramFiles#/MyApp"`.
  * @param[in,out] added Directory entries which were already added.
  * @param[in,out] done Number of files already packed.
  * @param[in] total Total number of files to pack.
@@ -167,6 +168,20 @@ std::size_t CountFilesBelow(const std::wstring& folder)
     return count;
 }
 
+std::wstring LoaderEntryName(const PackModel& model)
+{
+    if (!model.HasMainProgram())
+    {
+        return {};
+    }
+
+    /*
+     * Only the file name is used: the loader lives in the archive root, which
+     * is the single base filesystem of the extracted application.
+     */
+    return std::filesystem::path(model.MainProgramChoice().relative_path).filename().wstring();
+}
+
 std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t loader_size,
                  const std::wstring& zip_path,
                  const std::function<bool(std::size_t, std::size_t)>& progress)
@@ -205,8 +220,39 @@ std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t l
         ZipWriter writer(zip_path);
         std::string error;
 
-        /* The loader executable itself. */
-        if (!writer.AddFileBuffer("AppBoxLoader.exe", loader_bytes, loader_size, error))
+        /*
+         * The loader executable itself, named after the main program: the
+         * extracted archive shows the packaged application under its own name
+         * instead of the loader name.
+         */
+        const auto loader_entry = WideToUTF8(LoaderEntryName(model));
+        if (loader_entry.empty())
+        {
+            return "no main program selected";
+        }
+
+        /*
+         * The loader carries the file icon of the main program, so Explorer
+         * shows the icon of the packaged application for the extracted
+         * program. A program without an icon never fails the pack run: the
+         * loader then keeps its own icon and the reason is logged.
+         */
+        std::wstring      main_program_path;
+        std::vector<char> patched_loader;
+        if (model.MainProgramPath(main_program_path))
+        {
+            std::string icon_warning;
+            patched_loader =
+                ApplyApplicationIcon(loader_bytes, loader_size, main_program_path, icon_warning);
+            if (!icon_warning.empty())
+            {
+                spdlog::warn("the loader keeps its own icon: {}", icon_warning);
+            }
+        }
+
+        const void* const payload = patched_loader.empty() ? loader_bytes : patched_loader.data();
+        const auto payload_size = patched_loader.empty() ? loader_size : patched_loader.size();
+        if (!writer.AddFileBuffer(loader_entry, payload, payload_size, error))
         {
             return error;
         }
@@ -215,8 +261,8 @@ std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t l
          * Loader configuration: the archive root is the single base
          * filesystem, the overlay lives beside it, and the launch path is
          * the layer key token of the preset expanded by the loader. The
-         * config file name is <executable stem>.json, as resolved by
-         * GetExecutableName() of the loader.
+         * config file carries the name of the loader executable, which loads
+         * `<own file name>.json` from its own directory.
          */
         LoaderConfig config;
         config.base_fs.push_back(".");
@@ -228,7 +274,7 @@ std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t l
         config.launch.executable = WideToUTF8(launch.wstring());
 
         const auto json = nlohmann::json(config).dump(2);
-        if (!writer.AddFileBuffer("AppBoxLoader.json", json.data(), json.size(), error))
+        if (!writer.AddFileBuffer(loader_entry + ".json", json.data(), json.size(), error))
         {
             return error;
         }

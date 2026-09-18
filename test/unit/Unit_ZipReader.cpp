@@ -128,12 +128,12 @@ TEST(ZipReader, ExtractsArchiveWrittenByZipWriter)
         appbox::ZipWriter writer(archive_path.wstring());
         std::string error;
         ASSERT_TRUE(writer.AddDirectory("filesystem", error)) << error;
-        ASSERT_TRUE(writer.AddDirectory("filesystem/%ProgramFiles%", error)) << error;
-        ASSERT_TRUE(writer.AddDirectory("filesystem/%ProgramFiles%/MyApp", error)) << error;
-        ASSERT_TRUE(writer.AddDirectory("filesystem/%ProgramFiles%/MyApp/emptydir", error)) << error;
-        ASSERT_TRUE(writer.AddFileBuffer("filesystem/%ProgramFiles%/MyApp/app.exe", "EXE", 3, error))
+        ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#", error)) << error;
+        ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#/MyApp", error)) << error;
+        ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#/MyApp/emptydir", error)) << error;
+        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/app.exe", "EXE", 3, error))
             << error;
-        ASSERT_TRUE(writer.AddFileBuffer("filesystem/%ProgramFiles%/MyApp/data/config.txt", "CFG", 3,
+        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/data/config.txt", "CFG", 3,
                                          error))
             << error;
         ASSERT_TRUE(writer.Close(error)) << error;
@@ -142,7 +142,7 @@ TEST(ZipReader, ExtractsArchiveWrittenByZipWriter)
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring());
     EXPECT_EQ(result, "") << result;
 
-    const auto root = dest / L"filesystem" / L"%ProgramFiles%" / L"MyApp";
+    const auto root = dest / L"filesystem" / L"#ProgramFiles#" / L"MyApp";
     EXPECT_EQ(ReadFile(root / L"app.exe"), "EXE");
     EXPECT_EQ(ReadFile(root / L"data" / L"config.txt"), "CFG");
     EXPECT_TRUE(std::filesystem::is_directory(root / L"emptydir"));

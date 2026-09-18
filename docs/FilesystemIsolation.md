@@ -48,15 +48,21 @@ The configuration flows from the loader UI down to the sandbox DLL:
 2. `appbox::MapBaseFS` (`loader/utils/MapBaseFS.cpp`) — for every entry of `base_fs`,
    enumerates `<base_fs>\filesystem\*`. Each child directory is one lower layer, and its
    **directory name is the layer key**:
-   * a known folder token such as `%APPDATA%`, `%Windows%`, `%ProgramFiles%` (the full
+   * a known folder token such as `#APPDATA#`, `#Windows#`, `#ProgramFiles#` (the full
      list is in `loader/utils/KnownFolder.cpp`); the token is expanded to the real folder
      path and becomes `mapped_nt_path`;
    * or a single drive letter such as `C`, which maps to `C:` itself;
-   * `%REGISTRY%` and `%NETWORK%` are reserved for the other isolation domains and are
+   * `#REGISTRY#` and `#NETWORK#` are reserved for the other isolation domains and are
      skipped (`s_retain`).
    * `host_nt_path` is `<base_fs>\filesystem\<layer key>`;
    * layers are appended sorted by `mapped_nt_path` length, longest first, so that nested
      prefixes are matched before their parents.
+
+   A layer key is a `#Name#` delimited token, where `#` is an ordinary file name
+   character. A packed path therefore never contains `%`, which a shell (`%%` is the
+   escape sequence) or an environment expanding API would otherwise reinterpret. An
+   archive which was packed with the former `%Name%` form has to be packed again:
+   `MapBaseFS` rejects the unknown layer name.
 3. `appbox::MapOverlayFS` (`loader/Loader.cpp`) — appends `\filesystem` to `overlay_fs`,
    converts it to an NT path, creates the directory and stores it as `fs_upper`. The
    loader also extracts `sandbox32.dll` / `sandbox64.dll` into the overlay root, next to
@@ -101,8 +107,8 @@ The view path is rebased by replacing the layer's `mapped_nt_path` prefix with i
 `...\AppData\RoamingX` does not match the `...\AppData\Roaming` mapping.
 
 Example: with `mapped_nt_path = \??\C:\Users\foo\AppData\Roaming` and
-`host_nt_path = \??\D:\Sandbox\Lower1\filesystem\%APPDATA%`, the view path above maps to
-`\??\D:\Sandbox\Lower1\filesystem\%APPDATA%\data.txt`.
+`host_nt_path = \??\D:\Sandbox\Lower1\filesystem\#APPDATA#`, the view path above maps to
+`\??\D:\Sandbox\Lower1\filesystem\#APPDATA#\data.txt`.
 
 ### Host layer
 
@@ -135,20 +141,28 @@ operation of the child stays inside the view.
 filesystem. The layout matches the loader runtime conventions:
 
 ```
-AppBoxLoader.exe                     embedded loader payload
-AppBoxLoader.json                    launch configuration:
-                                     base_fs = ["."], overlay_fs = "data",
-                                     launch.executable = <layer key>\<import>\<exe>
-filesystem/<layer key>/<import>/...  imported folder content
+<startup file name>                    embedded loader payload
+<startup file name>.json               launch configuration:
+                                       base_fs = ["."], overlay_fs = "data",
+                                       launch.executable = <layer key>\<import>\<exe>
+filesystem/<layer key>/<import>/...    imported folder content
 ```
+
+The loader program and its configuration carry the file name of the startup
+file selected in the startup file tree, so a startup file `foo.exe` (even when
+it lives in a subdirectory of its imported folder) is packed as the archive
+entries `foo.exe` and `foo.exe.json`. The loader resolves its configuration as
+`<own file name>.json` in its own directory and does not fall back to another
+name, so renaming the extracted loader program requires renaming the
+configuration file as well.
 
 The archive root is the single `base_fs` entry (relative `.`, expanded by
 the loader against the executable directory), so `MapBaseFS` maps every
 `filesystem/<layer key>` child directory as a lower layer, and
 `launch.executable` is expanded by `ExpandKnownFolder` into the sandbox
-view. Running the extracted `AppBoxLoader.exe` therefore shows the imported
-folders at their preset locations (`%ProgramFiles%\<import>`,
-`%USERPROFILE%\<import>`) and starts the selected main program inside the
+view. Running the extracted loader program therefore shows the imported
+folders at their preset locations (`#ProgramFiles#\<import>`,
+`#USERPROFILE#\<import>`) and starts the selected main program inside the
 isolation.
 
 ## Path resolution
@@ -236,9 +250,9 @@ Injected `ResolveFs`:
 fs_upper = \??\D:\Tests\Upper\filesystem
 fs_lower = [
   { mapped_nt_path = \??\C:\Users\foo\AppData\Roaming,
-    host_nt_path   = \??\D:\Tests\Lower1\filesystem\%APPDATA% },
+    host_nt_path   = \??\D:\Tests\Lower1\filesystem\#APPDATA# },
   { mapped_nt_path = \??\C:\Users\foo\AppData\Roaming,
-    host_nt_path   = \??\D:\Tests\Lower2\filesystem\%APPDATA% },
+    host_nt_path   = \??\D:\Tests\Lower2\filesystem\#APPDATA# },
 ]
 ```
 
@@ -247,8 +261,8 @@ Resolving `\??\C:\Users\foo\AppData\Roaming\data.txt` yields these candidates:
 | Order | Layer | Layer path |
 | --- | --- | --- |
 | 1 | upper | `\??\D:\Tests\Upper\filesystem\C\Users\foo\AppData\Roaming\data.txt` |
-| 2 | lower 1 | `\??\D:\Tests\Lower1\filesystem\%APPDATA%\data.txt` |
-| 3 | lower 2 | `\??\D:\Tests\Lower2\filesystem\%APPDATA%\data.txt` |
+| 2 | lower 1 | `\??\D:\Tests\Lower1\filesystem\#APPDATA#\data.txt` |
+| 3 | lower 2 | `\??\D:\Tests\Lower2\filesystem\#APPDATA#\data.txt` |
 | 4 | host | `\??\C:\Users\foo\AppData\Roaming\data.txt` |
 
 If only the lower layers contain the file, `hPath` holds the two lower paths and
@@ -372,8 +386,8 @@ filesystems. Each case is documented in its own header comment.
 | `DeleteFile_MultiLower_ExistsInUpper` | `data.txt` | – | – | delete `data.txt` | success, no whiteout (nothing to hide) |
 | `DeleteFile_MultiLower_NonExists` | – | `data1.txt` | `data2.txt` | delete `data.txt` | failure, no whiteout |
 | `DeleteFile_WhiteoutInLower_ExistsInUpper` | `data.txt` | `data.txt.$APPBOX_DELETE$` | `data.txt` | delete `data.txt` | success, upper file deleted, no whiteout in upper |
-| `ListDir_MultiLower_ExistsInLower` | – | `F.txt` | `F.txt` | list `%APPDATA%` | `F.txt` appears exactly once, host entries also listed |
-| `ListDir_MultiLower_ExistsInLower_WhiteoutInUpper` | `F.txt.$APPBOX_DELETE$` | `F.txt` | `F2.txt` | list `%APPDATA%` | `F.txt` hidden, `F2.txt` listed once |
+| `ListDir_MultiLower_ExistsInLower` | – | `F.txt` | `F.txt` | list `#APPDATA#` | `F.txt` appears exactly once, host entries also listed |
+| `ListDir_MultiLower_ExistsInLower_WhiteoutInUpper` | `F.txt.$APPBOX_DELETE$` | `F.txt` | `F2.txt` | list `#APPDATA#` | `F.txt` hidden, `F2.txt` listed once |
 | `NewFile_MultiLower_WhiteoutInLower` | – | `data.txt.$APPBOX_DELETE$` | `data.txt` | create `data.txt` (`CREATE_NEW`) | success, file created in upper |
 | `NewFile_MultiLower_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | `data.txt` | create `data.txt` (`CREATE_NEW`) | success, upper whiteout removed, file created in upper |
 | `ReadFile_MultiLower_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | `data.txt` | read `data.txt` | failure |
@@ -400,7 +414,7 @@ filesystems. Each case is documented in its own header comment.
 * `test/utils/FsBuilder.*` — declarative tree builder. `FsRoot(root, {Upper, Lower1, Lower2})`
   materializes the directories and returns a `LoaderConfig` whose `overlay_fs` is the
   first entry and whose `base_fs` holds the rest; the lower layer directories are named
-  after the known folder token (`%APPDATA%`) so that `MapBaseFS` resolves them.
+  after the known folder token (`#APPDATA#`) so that `MapBaseFS` resolves them.
   `Verify()` re-reads the lower layers and fails if their content changed.
 * `test/utils/CommonFixture.*` — gives every case a private working directory.
 * `test/utils/ProbeCall.*` — writes the `LoaderConfig` to `config.json`, starts the

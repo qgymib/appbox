@@ -6,8 +6,8 @@
 #include <spdlog/spdlog.h>
 
 static const wchar_t* s_retain[] = {
-    L"%REGISTRY%",
-    L"%NETWORK%",
+    L"#REGISTRY#",
+    L"#NETWORK#",
 };
 
 static bool IsRetain(const std::wstring& name)

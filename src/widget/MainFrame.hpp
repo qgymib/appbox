@@ -30,6 +30,14 @@ struct PackOutcome
      * @brief Folder the archive was extracted to, empty when no run was requested.
      */
     std::wstring extract_dir;
+
+    /**
+     * @brief File name of the loader program inside the archive.
+     *
+     * The loader carries the file name of the main program, so the extracted
+     * archive has to be started through this name instead of a fixed one.
+     */
+    std::wstring loader_entry;
 };
 
 /**

@@ -26,12 +26,12 @@ TEST_F(Fs, ListDir_MultiLower_ExistsInLower)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"Upper", {}),
         FsDir(L"Lower1", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(wName, "hello1")
             })
         }),
         FsDir(L"Lower2", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(wName, "hello2")
             })
         })
@@ -45,7 +45,7 @@ TEST_F(Fs, ListDir_MultiLower_ExistsInLower)
     {
         /* List directory entries. */
         ProtocolListDir::Req req;
-        req.path = CLI::narrow(GetKnownFolderPath(L"%APPDATA%", false));
+        req.path = CLI::narrow(GetKnownFolderPath(L"#APPDATA#", false));
         req.method = ProtocolListDir::Req::Method::Std;
         ProbeListDir.Call(req, GetCWD(), config).get_to(rsp);
 
@@ -55,7 +55,7 @@ TEST_F(Fs, ListDir_MultiLower_ExistsInLower)
         ASSERT_NE(it, rsp.entries.end());
     }
 
-    /* Entry count should larger than 1, because nativate filesystem should have files in %APPDATA% */
+    /* Entry count should larger than 1, because nativate filesystem should have files in #APPDATA# */
     ASSERT_GT(rsp.entries.size(), 1);
 
     /* Verify file number */

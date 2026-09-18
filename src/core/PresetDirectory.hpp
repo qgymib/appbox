@@ -28,7 +28,7 @@ struct PresetDirectory
     std::wstring display_name;
 
     /**
-     * @brief Lower layer key token, e.g. `L"%ProgramFiles%"`.
+     * @brief Lower layer key token, e.g. `L"#ProgramFiles#"`.
      */
     std::wstring layer_key;
 

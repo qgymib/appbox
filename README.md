@@ -101,6 +101,10 @@ wxWidgets-based GUI application for managing sandboxed processes:
 - Pipe-based RPC communication with sandbox
 - Configuration management
 - Process injection
+- Window icon taken from the icon resource of the loader executable, so a
+  packed loader keeps the icon of the loader in its title bar and on its
+  taskbar button even when the executable carries the icon of a packaged
+  application as well
 - Read-only sandbox registry browser (admin UI): a registry editor style key
   tree and value list which mounts `<overlay_fs>\registry\user.hiv` directly,
   never touching the host registry (see
@@ -123,7 +127,9 @@ icon navigation on the left and the workspace on the right.
   with the `Name`, `Type` and `Startup` columns, whose `Startup` checkbox
   column marks the executable the packaged application starts. Exactly one
   executable is the startup file, so checking one unchecks the previous one.
-  Groups without a counterpart in the packer are shown disabled.
+  The file name of that executable names the loader program and its launch
+  configuration inside the archive. Groups without a counterpart in the packer
+  are shown disabled.
 - **Navigation**: Filesystem / Registry / Network / Settings; only the
   filesystem workspace is implemented, the other pages are empty states.
 - **Filesystem workspace**: the tree lists the preset directories (Program
@@ -135,17 +141,24 @@ icon navigation on the left and the workspace on the right.
   `Read Only`, `No Upgrade`, `Size` and `Source Path`. The isolation
   attributes are read only: the packer always isolates fully, so they only
   document the runtime behaviour. `Source Path` shows the virtual path of the
-  entry inside the sandbox view, e.g. `%ProgramFiles%\MyApp\app.exe`.
+  entry inside the sandbox view, e.g. `#ProgramFiles#\MyApp\app.exe`.
 - **Imports**: `Add Folder` imports a host folder which becomes a
   subdirectory of a preset directory; `Add Files` imports individual host
   files into a folder of an already imported tree. Both are recorded in
   `PackModel` and participate in packing.
-- The archive contains the embedded `AppBoxLoader.exe` (compiled in via
-  CMakeRC), the generated `AppBoxLoader.json` launch configuration, the
-  imported folders below `filesystem/<layer key>/<import name>` and the
-  individually imported files below `filesystem/<layer key>/<target
-  directory>/<file name>`; extracting it and running `AppBoxLoader.exe`
-  starts the sandboxed application
+- The archive contains the embedded loader (compiled in via CMakeRC), the
+  generated launch configuration, the imported folders below
+  `filesystem/<layer key>/<import name>` and the individually imported files
+  below `filesystem/<layer key>/<target directory>/<file name>`. The loader
+  program and its configuration carry the file name of the startup file, so a
+  startup file named `foo.exe` is packed as the archive entries `foo.exe` and
+  `foo.exe.json`; extracting the archive and running `foo.exe` starts the
+  sandboxed application. The packed loader also carries the file icon of the
+  startup file: the icon group which the shell shows for that program is
+  appended to the loader image, so Explorer shows the icon of the packaged
+  application for `foo.exe` while the icon resources of the loader - and with
+  them its window icon - stay untouched. A startup file without an icon leaves
+  the icon of the loader in place
 - **Build progress**: `Build` and `Build and Run` report through a single
   progress dialog. While the run is going on it shows the number of packed
   files and offers `Cancel`; when the run finished the same dialog keeps its

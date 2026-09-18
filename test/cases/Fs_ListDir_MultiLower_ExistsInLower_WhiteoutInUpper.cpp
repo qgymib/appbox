@@ -32,17 +32,17 @@ TEST_F(Fs, ListDir_MultiLower_ExistsInLower_WhiteoutInUpper)
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"Upper", {
-            FsDir(L"filesystem\\" + GetKnownFolderPath(L"%APPDATA%", true), {
+            FsDir(L"filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true), {
                 FsFile(wName + L".$APPBOX_DELETE$", "")
             })
         }),
         FsDir(L"Lower1", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(wName, "hello1")
             })
         }),
         FsDir(L"Lower2", {
-            FsDir(L"filesystem\\%APPDATA%", {
+            FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(wName2, "hello2")
             })
         })
@@ -56,7 +56,7 @@ TEST_F(Fs, ListDir_MultiLower_ExistsInLower_WhiteoutInUpper)
     {
         /* List directory entries. */
         ProtocolListDir::Req req;
-        req.path = CLI::narrow(GetKnownFolderPath(L"%APPDATA%", false));
+        req.path = CLI::narrow(GetKnownFolderPath(L"#APPDATA#", false));
         req.method = ProtocolListDir::Req::Method::Std;
         ProbeListDir.Call(req, GetCWD(), config).get_to(rsp);
 
