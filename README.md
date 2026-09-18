@@ -160,11 +160,71 @@ icon navigation on the left and the workspace on the right.
   them its window icon - stay untouched. A startup file without an icon leaves
   the icon of the loader in place
 - **Build progress**: `Build` and `Build and Run` report through a single
-  progress dialog. While the run is going on it shows the number of packed
-  files and offers `Cancel`; when the run finished the same dialog keeps its
-  progress bar and presents the result instead - the outcome of the run
-  (success, cancellation or failure) is never reported by a second dialog.
+  progress dialog. While the run is going on its first line shows the number of
+  handled files and the elapsed time in `mm:ss`, e.g.
+  `Packing files: 12 / 340 - Elapsed 00:12`, and the file it is working on
+  follows on a line of its own, which the dialog shows as a detail line in a
+  smaller font; `Cancel` is offered throughout. The file is shown as the path
+  below the import root, so it stays readable for deeply nested host folders.
+  The dialog carries no collapsible details area: the elapsed time is part of
+  the message, because the timing flags of wxWidgets would hide it behind a
+  `Show details` button. The extracting stage of `Build and Run` reports the
+  same way and continues the progress bar where the packing stage ended. The
+  native dialog keeps the size it was created with, so it is re-fitted whenever
+  a message needs more room than every message before it; without this the
+  buttons at its bottom would be cut off as soon as a file path makes the
+  message longer. When the run finished the same dialog keeps its progress bar
+  and presents the result instead - the outcome of the run (success,
+  cancellation or failure) is never reported by a second dialog, and a
+  successful run names the archive it wrote on a `Saved to: <path>` line.
   `Cancel` becomes `Close` then and the dialog stays until it is dismissed
+- **Configuration import and export**: `File -> Export Configuration...` writes
+  the current configuration (imported folders, imported files, main program and
+  the `Output File` path) into a JSON project file, and
+  `File -> Import Configuration...` restores a configuration from such a file.
+  Importing replaces the whole configuration: an existing one is only dropped
+  after the user confirmed the replacement, and a file which cannot be read
+  leaves the current configuration untouched. Imported folders and files
+  recorded in a project file do not have to exist on the machine which imports
+  it, so a project can be exchanged before the packaged application is
+  installed; a missing source is reported by the pack run instead
+
+#### Configuration Project File
+
+A project file only records the configuration - it never copies the imported
+content - and is JSON text encoded as strict UTF-8 without a byte order mark.
+Paths are stored the way they exist on the machine which exported them, so a
+project file is not portable between machines with different install locations.
+
+```json
+{
+  "version": 1,
+  "output_path": "D:\\out\\MyApp.zip",
+  "folders": [
+    { "preset": "program_files", "name": "MyApp", "source": "C:\\Program Files\\MyApp" }
+  ],
+  "files": [
+    { "preset": "user_profile", "target_dir": "MyApp\\data",
+      "name": "settings.ini", "source": "C:\\tmp\\settings.ini" }
+  ],
+  "main_program": { "preset": "program_files", "folder": "MyApp", "path": "bin\\app.exe" }
+}
+```
+
+| Member | Meaning |
+| --- | --- |
+| `version` | Format version of the file; the current format is version 1 and a different version is rejected |
+| `output_path` | Path of the `Output File` box, empty when none was chosen |
+| `folders` | Imported folders; `preset` is the preset directory, `name` the subdirectory below it and `source` the imported host folder |
+| `files` | Individually imported files; `target_dir` is relative to the preset directory and starts with the name of an imported folder |
+| `main_program` | Startup file; omitted while no main program is selected |
+
+The file is written and read as strict UTF-8: a UTF-16 or UTF-32 byte order
+mark and malformed UTF-8 bytes are rejected with an encoding error instead of
+being decoded with replacement characters, while a leading UTF-8 byte order
+mark is accepted. This project file is not the launch configuration of the
+loader inside a packed archive (`<entry name>.json`, see the archive layout
+above), which uses its own schema.
 
 ### Sandbox
 

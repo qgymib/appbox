@@ -110,6 +110,38 @@ bool IsDirectoryEntry(const char* name)
 }
 
 /**
+ * @brief Build the path a progress report shows for one extracted entry.
+ *
+ * The content of the archive lives below `filesystem\<layer key>\`, a prefix
+ * the user never chose; dropping those two segments makes the reported path
+ * match the paths the packing stage reports. Entries of the archive root, like
+ * the entry program and its configuration, keep their own name.
+ *
+ * @param[in] relative Sanitized path of the entry inside the archive.
+ * @return The path to show in the progress report.
+ */
+std::wstring DisplayEntryName(const std::wstring& relative)
+{
+    const auto parts = appbox::Split(relative, L"\\");
+    if (parts.size() < 3 || parts.front() != L"filesystem")
+    {
+        return relative;
+    }
+
+    std::wstring display;
+    for (auto index = static_cast<std::size_t>(2); index < parts.size(); ++index)
+    {
+        if (!display.empty())
+        {
+            display.push_back(L'\\');
+        }
+        display += parts[index];
+    }
+
+    return display;
+}
+
+/**
  * @brief Write one zip entry to disk.
  * @param[in] archive Open archive.
  * @param[in] index Index of the entry.
@@ -164,7 +196,8 @@ std::string WriteEntry(zip_t* archive, zip_uint64_t index, const std::filesystem
 namespace appbox
 {
 
-std::string ExtractArchive(const std::wstring& zip_path, const std::wstring& dest_dir)
+std::string ExtractArchive(const std::wstring& zip_path, const std::wstring& dest_dir,
+                           const BuildProgressCallback& progress)
 {
     const auto path = WideToUTF8(zip_path);
 
@@ -191,6 +224,29 @@ std::string ExtractArchive(const std::wstring& zip_path, const std::wstring& des
     }
 
     const auto count = zip_get_num_entries(archive.get(), 0);
+
+    /*
+     * The progress total is the number of file entries: directory entries only
+     * recreate the folder structure, which matches the packing stage where
+     * only regular files are counted.
+     */
+    std::size_t total = 0;
+    for (auto index = static_cast<zip_uint64_t>(0); index < static_cast<zip_uint64_t>(count); ++index)
+    {
+        zip_stat_t stat = {};
+        if (zip_stat_index(archive.get(), index, 0, &stat) == 0 && stat.name != nullptr
+            && (stat.valid & ZIP_STAT_NAME) != 0 && !IsDirectoryEntry(stat.name))
+        {
+            total++;
+        }
+    }
+
+    if (progress && !progress(BuildProgress{BuildStage::Extracting, 0, total, {}}))
+    {
+        return kBuildCancelledError;
+    }
+
+    std::size_t done = 0;
     for (auto index = static_cast<zip_uint64_t>(0); index < static_cast<zip_uint64_t>(count); ++index)
     {
         zip_stat_t stat = {};
@@ -233,6 +289,17 @@ std::string ExtractArchive(const std::wstring& zip_path, const std::wstring& des
         if (ec)
         {
             return "failed to create '" + WideToUTF8(target.parent_path().wstring()) + "'";
+        }
+
+        /*
+         * The entry is reported before it is written, so the dialog names the
+         * file while it is being extracted instead of after the fact.
+         */
+        done++;
+        if (progress
+            && !progress(BuildProgress{BuildStage::Extracting, done, total, DisplayEntryName(relative)}))
+        {
+            return kBuildCancelledError;
         }
 
         const auto error = WriteEntry(archive.get(), index, target);

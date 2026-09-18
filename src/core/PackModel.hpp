@@ -96,6 +96,21 @@ class PackModel
 {
 public:
     /**
+     * @brief Drop every import and the main program selection.
+     *
+     * The model is left in the state of a fresh session, which is the starting
+     * point of a project import: the imported content of a project file is
+     * restored afterwards.
+     */
+    void Clear();
+
+    /**
+     * @brief Whether the model holds no import and no main program.
+     * @return true when the model describes an empty session.
+     */
+    bool IsEmpty() const;
+
+    /**
      * @brief Import a host folder as a subdirectory of a preset directory.
      *
      * The import name is the last path component of the source folder. The
@@ -183,6 +198,67 @@ public:
      */
     bool SetMainProgram(const std::string& preset_id, const std::wstring& import_name,
                         const std::wstring& relative_path, std::string& error);
+
+    /**
+     * @brief Restore an imported folder without touching the host filesystem.
+     *
+     * Unlike ImportFolder(), which derives the import name from the source
+     * folder and requires that folder to exist, this entry point stores the
+     * given import name and source path as they are. It is used to restore a
+     * project file, so the source folder does not have to exist: a project can
+     * be imported on a machine where the packaged application is not installed
+     * (the pack run reports the missing folder instead).
+     *
+     * The structural rules of ImportFolder() still apply: the preset directory
+     * must be known, the import name must be a plain directory name and it
+     * must be unique below the preset (case insensitive, matching the host
+     * filesystem).
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] import_name Subdirectory name below the preset directory.
+     * @param[in] source_path Host folder which was imported.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool RestoreImportedFolder(const std::string& preset_id, const std::wstring& import_name,
+                               const std::wstring& source_path, std::string& error);
+
+    /**
+     * @brief Restore an individually imported file without touching the host filesystem.
+     *
+     * Unlike ImportFiles(), the source file does not have to exist and the
+     * target directory does not have to be free of a host file of the same
+     * name; the entry is restored as the project file records it. The target
+     * directory is normalized like in ImportFiles() and its first segment must
+     * be an imported folder of the same preset directory, because an imported
+     * file always extends an existing lower layer.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] target_dir Directory relative to the preset directory.
+     * @param[in] file_name Name of the file inside the target directory.
+     * @param[in] source_path Host file which was imported.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool RestoreImportedFile(const std::string& preset_id, const std::wstring& target_dir,
+                             const std::wstring& file_name, const std::wstring& source_path,
+                             std::string& error);
+
+    /**
+     * @brief Restore the main program selection without touching the host filesystem.
+     *
+     * Unlike SetMainProgram(), the referenced executable does not have to
+     * exist; only the shape of the path and the imported folder it lives in
+     * are validated.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] import_name Name of the imported folder containing the file.
+     * @param[in] relative_path Executable path relative to the import root.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool RestoreMainProgram(const std::string& preset_id, const std::wstring& import_name,
+                            const std::wstring& relative_path, std::string& error);
 
     /**
      * @brief Get the imports of one preset directory.

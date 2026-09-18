@@ -1,18 +1,13 @@
 #ifndef APPBOX_PACKER_CORE_PACK_SERVICE_HPP
 #define APPBOX_PACKER_CORE_PACK_SERVICE_HPP
 
+#include "BuildReport.hpp"
 #include "PackModel.hpp"
 #include <cstddef>
-#include <functional>
 #include <string>
 
 namespace appbox
 {
-
-/**
- * @brief Error returned by Pack() when the progress callback aborted the run.
- */
-inline constexpr const char* kPackCancelledError = "cancelled by the user";
 
 /**
  * @brief Count the regular files below a folder.
@@ -70,20 +65,24 @@ std::wstring LoaderEntryName(const PackModel& model);
  *
  * The progress total covers the files of the imported folders plus the
  * individually imported files, so the callback receives a stable upper bound
- * for the whole run.
+ * for the whole run. The loader payload and its configuration are reported as
+ * the preparing stage before the first imported file is packed.
+ *
+ * Every report names the file which is being packed through
+ * BuildProgress::current, using the path below the import root prefixed by the
+ * import name, e.g. `L"MyApp\bin\tool.exe"`.
  *
  * @param[in] model The pack model.
  * @param[in] loader_bytes Embedded AppBoxLoader.exe payload.
  * @param[in] loader_size Payload size in bytes.
  * @param[in] zip_path Destination zip path (truncated when it exists).
- * @param[in] progress Called with (done_files, total_files); returning
- *                     false aborts the pack with kPackCancelledError. May be
- *                     empty to disable progress reporting.
+ * @param[in] progress Called once per packed file; returning false aborts the
+ *                     pack with kBuildCancelledError. May be empty to disable
+ *                     progress reporting.
  * @return Error description, empty on success.
  */
 std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t loader_size,
-                 const std::wstring& zip_path,
-                 const std::function<bool(std::size_t, std::size_t)>& progress);
+                 const std::wstring& zip_path, const BuildProgressCallback& progress);
 
 } // namespace appbox
 

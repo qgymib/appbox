@@ -80,6 +80,72 @@ std::wstring NormalizeRelativeDir(const std::wstring& dir)
 }
 
 /**
+ * @brief Whether a string is usable as a single file or folder name.
+ *
+ * A usable name is neither empty nor the current or the parent directory
+ * reference and holds no path separator, so it always stays inside the
+ * directory it is stored in.
+ *
+ * @param[in] name Name to check.
+ * @return true when the name is usable.
+ */
+bool IsPlainName(const std::wstring& name)
+{
+    if (name.empty() || name == L"." || name == L"..")
+    {
+        return false;
+    }
+
+    return name.find(L'\\') == std::wstring::npos && name.find(L'/') == std::wstring::npos;
+}
+
+/**
+ * @brief Normalize a file path relative to an imported folder.
+ *
+ * Forward slashes are converted to backslashes and empty segments are
+ * dropped. Drive relative paths and parent references are rejected because
+ * the result is used as a path below an imported folder.
+ *
+ * @param[in] path Path to normalize.
+ * @return The normalized path, empty when it is not usable.
+ */
+std::wstring NormalizeRelativeFile(const std::wstring& path)
+{
+    std::wstring converted;
+    converted.reserve(path.size());
+    for (const auto ch : path)
+    {
+        converted.push_back(ch == L'/' ? L'\\' : ch);
+    }
+
+    if (converted.size() >= 2 && converted[1] == L':')
+    {
+        return {};
+    }
+
+    std::wstring result;
+    for (const auto& part : appbox::Split(converted, L"\\"))
+    {
+        if (part.empty() || part == L".")
+        {
+            continue;
+        }
+        if (part == L"..")
+        {
+            return {};
+        }
+
+        if (!result.empty())
+        {
+            result.push_back(L'\\');
+        }
+        result += part;
+    }
+
+    return result;
+}
+
+/**
  * @brief Join the segments of a normalized relative directory.
  * @param[in] segments Segments to join.
  * @param[in] first Index of the first segment to include.
@@ -107,6 +173,19 @@ std::wstring JoinSegments(const std::vector<std::wstring>& segments, std::size_t
 
 namespace appbox
 {
+
+void PackModel::Clear()
+{
+    imports_.clear();
+    imported_files_.clear();
+    main_program_ = MainProgram{};
+    has_main_program_ = false;
+}
+
+bool PackModel::IsEmpty() const
+{
+    return imports_.empty() && imported_files_.empty() && !has_main_program_;
+}
 
 bool PackModel::ImportFolder(const std::string& preset_id, const std::wstring& source_path, std::string& error)
 {
@@ -383,6 +462,154 @@ bool PackModel::SetMainProgram(const std::string& preset_id, const std::wstring&
 
     main_program_.preset_id = preset_id;
     main_program_.import_name = import_name;
+    main_program_.relative_path = relative;
+    has_main_program_ = true;
+    return true;
+}
+
+bool PackModel::RestoreImportedFolder(const std::string& preset_id, const std::wstring& import_name,
+                                      const std::wstring& source_path, std::string& error)
+{
+    PresetDirectory preset;
+    if (!FindPresetDirectory(preset_id, preset))
+    {
+        error = "unknown preset directory: " + preset_id;
+        return false;
+    }
+
+    if (!IsPlainName(import_name))
+    {
+        error = "'" + WideToUTF8(import_name) + "' is not a usable folder name";
+        return false;
+    }
+
+    if (source_path.empty())
+    {
+        error = "'" + WideToUTF8(import_name) + "' has no source folder";
+        return false;
+    }
+
+    for (const auto& imported : imports_)
+    {
+        if (imported.preset_id == preset_id && EqualsIgnoreCase(imported.import_name, import_name))
+        {
+            error = "'" + WideToUTF8(import_name) + "' already exists below "
+                    + WideToUTF8(preset.display_name);
+            return false;
+        }
+    }
+
+    ImportedFolder imported;
+    imported.preset_id = preset_id;
+    imported.import_name = import_name;
+    imported.source_path = source_path;
+    imports_.push_back(std::move(imported));
+    return true;
+}
+
+bool PackModel::RestoreImportedFile(const std::string& preset_id, const std::wstring& target_dir,
+                                    const std::wstring& file_name, const std::wstring& source_path,
+                                    std::string& error)
+{
+    PresetDirectory preset;
+    if (!FindPresetDirectory(preset_id, preset))
+    {
+        error = "unknown preset directory: " + preset_id;
+        return false;
+    }
+
+    if (!IsPlainName(file_name))
+    {
+        error = "'" + WideToUTF8(file_name) + "' is not a usable file name";
+        return false;
+    }
+
+    const auto directory = NormalizeRelativeDir(target_dir);
+    if (directory.empty())
+    {
+        error = "the target directory is not a valid relative path";
+        return false;
+    }
+
+    /*
+     * The first segment has to be an imported folder: the file extends an
+     * existing lower layer instead of creating a new one.
+     */
+    const auto segments = Split(directory, L"\\");
+    ImportedFolder imported;
+    if (!GetImport(preset_id, segments.front(), imported))
+    {
+        error = "'" + WideToUTF8(segments.front()) + "' is not an imported folder";
+        return false;
+    }
+
+    /* Store the canonical spelling of the imported folder. */
+    std::wstring canonical_dir = imported.import_name;
+    const auto remainder = JoinSegments(segments, 1);
+    if (!remainder.empty())
+    {
+        canonical_dir.push_back(L'\\');
+        canonical_dir += remainder;
+    }
+
+    if (source_path.empty())
+    {
+        error = "'" + WideToUTF8(file_name) + "' has no source file";
+        return false;
+    }
+
+    for (const auto& file : imported_files_)
+    {
+        if (file.preset_id == preset_id && EqualsIgnoreCase(file.target_dir, canonical_dir)
+            && EqualsIgnoreCase(file.file_name, file_name))
+        {
+            error = "'" + WideToUTF8(file_name) + "' was already imported into "
+                    + WideToUTF8(canonical_dir);
+            return false;
+        }
+    }
+
+    ImportedFile file;
+    file.preset_id = preset_id;
+    file.target_dir = canonical_dir;
+    file.file_name = file_name;
+    file.source_path = source_path;
+    imported_files_.push_back(std::move(file));
+    return true;
+}
+
+bool PackModel::RestoreMainProgram(const std::string& preset_id, const std::wstring& import_name,
+                                   const std::wstring& relative_path, std::string& error)
+{
+    PresetDirectory preset;
+    if (!FindPresetDirectory(preset_id, preset))
+    {
+        error = "unknown preset directory: " + preset_id;
+        return false;
+    }
+
+    ImportedFolder imported;
+    if (!GetImport(preset_id, import_name, imported))
+    {
+        error = "the imported folder no longer exists";
+        return false;
+    }
+
+    const auto relative = NormalizeRelativeFile(relative_path);
+    if (relative.empty())
+    {
+        error = "the main program path is empty or leaves the imported folder";
+        return false;
+    }
+
+    if (!EqualsIgnoreCase(std::filesystem::path(relative).extension().wstring(), L".exe"))
+    {
+        error = "the main program must be an executable (.exe) file";
+        return false;
+    }
+
+    main_program_.preset_id = preset_id;
+    main_program_.import_name = imported.import_name;
     main_program_.relative_path = relative;
     has_main_program_ = true;
     return true;

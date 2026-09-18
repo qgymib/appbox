@@ -7,9 +7,11 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace
 {
@@ -224,4 +226,96 @@ TEST(ZipReader, OverwritesExistingFiles)
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring());
     EXPECT_EQ(result, "") << result;
     EXPECT_EQ(ReadFile(dest / L"app" / L"config.ini"), "NEW");
+}
+
+/**
+ * @brief Extraction reports every file it writes, using the path below the
+ *        layer tree of the archive.
+ */
+TEST(ZipReader, ReportsEveryExtractedFile)
+{
+    TempDir temp;
+    const auto archive_path = temp.Get() / L"progress.zip";
+    const auto dest = temp.Get() / L"progress-dest";
+
+    {
+        appbox::ZipWriter writer(archive_path.wstring());
+        std::string error;
+        ASSERT_TRUE(writer.AddDirectory("filesystem", error)) << error;
+        ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#", error)) << error;
+        ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#/MyApp", error)) << error;
+        ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#/MyApp/data", error)) << error;
+        ASSERT_TRUE(writer.AddFileBuffer("MyApp.exe", "LOADER", 6, error)) << error;
+        ASSERT_TRUE(writer.AddFileBuffer("MyApp.exe.json", "{}", 2, error)) << error;
+        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/app.exe", "EXE", 3, error))
+            << error;
+        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/data/config.txt", "CFG", 3,
+                                         error))
+            << error;
+        ASSERT_TRUE(writer.Close(error)) << error;
+    }
+
+    std::vector<appbox::BuildProgress> reports;
+    const auto progress = [&reports](const appbox::BuildProgress& report) {
+        reports.emplace_back(report);
+        return true;
+    };
+
+    const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring(), progress);
+    EXPECT_EQ(result, "") << result;
+
+    ASSERT_FALSE(reports.empty());
+
+    /* The run opens with the stage report before the first entry is written. */
+    EXPECT_EQ(reports.front().stage, appbox::BuildStage::Extracting);
+    EXPECT_EQ(reports.front().done, static_cast<std::size_t>(0));
+    EXPECT_EQ(reports.front().total, static_cast<std::size_t>(4));
+    EXPECT_TRUE(reports.front().current.empty());
+
+    /*
+     * Directory entries only recreate the folder structure: the total covers
+     * the two entries of the archive root plus the two content files.
+     */
+    std::set<std::wstring> named;
+    std::size_t seen = 0;
+    for (const auto& report : reports)
+    {
+        EXPECT_EQ(report.stage, appbox::BuildStage::Extracting);
+        EXPECT_EQ(report.total, static_cast<std::size_t>(4));
+        EXPECT_GE(report.done, seen);
+        seen = report.done;
+
+        if (!report.current.empty())
+        {
+            named.insert(report.current);
+        }
+    }
+
+    /* The layer prefix is dropped, the entries of the archive root keep theirs. */
+    EXPECT_EQ(named.count(L"MyApp.exe"), static_cast<std::size_t>(1));
+    EXPECT_EQ(named.count(L"MyApp.exe.json"), static_cast<std::size_t>(1));
+    EXPECT_EQ(named.count(L"MyApp\\app.exe"), static_cast<std::size_t>(1));
+    EXPECT_EQ(named.count(L"MyApp\\data\\config.txt"), static_cast<std::size_t>(1));
+}
+
+/**
+ * @brief A cancelled extraction stops before it writes the pending entry.
+ */
+TEST(ZipReader, ExtractCanBeCancelled)
+{
+    TempDir temp;
+    const auto archive_path = temp.Get() / L"cancel.zip";
+    const auto dest = temp.Get() / L"cancel-dest";
+
+    {
+        appbox::ZipWriter writer(archive_path.wstring());
+        std::string error;
+        ASSERT_TRUE(writer.AddFileBuffer("note.txt", "NOTE", 4, error)) << error;
+        ASSERT_TRUE(writer.Close(error)) << error;
+    }
+
+    const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring(),
+                                               [](const appbox::BuildProgress&) { return false; });
+    EXPECT_EQ(result, appbox::kBuildCancelledError);
+    EXPECT_FALSE(std::filesystem::exists(dest / L"note.txt"));
 }

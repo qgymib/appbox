@@ -6,6 +6,7 @@
 #include <zip.h>
 #include <chrono>
 #include <filesystem>
+#include <set>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -313,9 +314,9 @@ TEST(PackService, PackReportsProgress)
     ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
     ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
 
-    std::vector<std::pair<std::size_t, std::size_t>> reports;
-    const auto progress = [&reports](std::size_t done, std::size_t total) {
-        reports.emplace_back(done, total);
+    std::vector<appbox::BuildProgress> reports;
+    const auto progress = [&reports](const appbox::BuildProgress& report) {
+        reports.emplace_back(report);
         return true;
     };
 
@@ -325,10 +326,33 @@ TEST(PackService, PackReportsProgress)
     EXPECT_EQ(result, "") << result;
 
     ASSERT_FALSE(reports.empty());
-    EXPECT_EQ(reports.front().first, static_cast<std::size_t>(0));
-    EXPECT_EQ(reports.front().second, static_cast<std::size_t>(2));
-    EXPECT_EQ(reports.back().first, static_cast<std::size_t>(2));
-    EXPECT_EQ(reports.back().second, static_cast<std::size_t>(2));
+
+    /* The run opens with the preparing stage, which has no file of its own. */
+    EXPECT_EQ(reports.front().stage, appbox::BuildStage::Preparing);
+    EXPECT_EQ(reports.front().done, static_cast<std::size_t>(0));
+    EXPECT_EQ(reports.front().total, static_cast<std::size_t>(2));
+    EXPECT_TRUE(reports.front().current.empty());
+
+    /* It closes with the complete count of the packing stage. */
+    EXPECT_EQ(reports.back().stage, appbox::BuildStage::Packing);
+    EXPECT_EQ(reports.back().done, static_cast<std::size_t>(2));
+    EXPECT_EQ(reports.back().total, static_cast<std::size_t>(2));
+
+    /* Every packed file is named by its path below the import root. */
+    std::set<std::wstring> named;
+    for (const auto& report : reports)
+    {
+        if (report.stage != appbox::BuildStage::Packing)
+        {
+            continue;
+        }
+        if (!report.current.empty())
+        {
+            named.insert(report.current);
+        }
+    }
+    EXPECT_EQ(named.count(L"MyApp\\app.exe"), static_cast<std::size_t>(1));
+    EXPECT_EQ(named.count(L"MyApp\\data.txt"), static_cast<std::size_t>(1));
 }
 
 TEST(PackService, PackCanBeCancelled)
@@ -345,8 +369,8 @@ TEST(PackService, PackCanBeCancelled)
     const auto zip_path = temp.Get().parent_path()
         / (temp.Get().filename().wstring() + L"-cancel.zip");
     const auto result = appbox::Pack(model, "FAKE", 4, zip_path.wstring(),
-                                     [](std::size_t, std::size_t) { return false; });
-    EXPECT_EQ(result, appbox::kPackCancelledError);
+                                     [](const appbox::BuildProgress&) { return false; });
+    EXPECT_EQ(result, appbox::kBuildCancelledError);
 }
 
 TEST(PackService, PackWritesImportedFiles)
@@ -430,9 +454,9 @@ TEST(PackService, PackCountsImportedFilesInTheProgressTotal)
     ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
     ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp", { extra.wstring() }, error)) << error;
 
-    std::vector<std::pair<std::size_t, std::size_t>> reports;
-    const auto progress = [&reports](std::size_t done, std::size_t total) {
-        reports.emplace_back(done, total);
+    std::vector<appbox::BuildProgress> reports;
+    const auto progress = [&reports](const appbox::BuildProgress& report) {
+        reports.emplace_back(report);
         return true;
     };
 
@@ -443,8 +467,21 @@ TEST(PackService, PackCountsImportedFilesInTheProgressTotal)
 
     ASSERT_FALSE(reports.empty());
     /* Two files of the imported folder plus one imported file. */
-    EXPECT_EQ(reports.front().first, static_cast<std::size_t>(0));
-    EXPECT_EQ(reports.front().second, static_cast<std::size_t>(3));
-    EXPECT_EQ(reports.back().first, static_cast<std::size_t>(3));
-    EXPECT_EQ(reports.back().second, static_cast<std::size_t>(3));
+    EXPECT_EQ(reports.front().stage, appbox::BuildStage::Preparing);
+    EXPECT_EQ(reports.front().done, static_cast<std::size_t>(0));
+    EXPECT_EQ(reports.front().total, static_cast<std::size_t>(3));
+    EXPECT_EQ(reports.back().stage, appbox::BuildStage::Packing);
+    EXPECT_EQ(reports.back().done, static_cast<std::size_t>(3));
+    EXPECT_EQ(reports.back().total, static_cast<std::size_t>(3));
+
+    /* An imported file is named by its target directory and its file name. */
+    std::set<std::wstring> named;
+    for (const auto& report : reports)
+    {
+        if (report.stage == appbox::BuildStage::Packing && !report.current.empty())
+        {
+            named.insert(report.current);
+        }
+    }
+    EXPECT_EQ(named.count(L"MyApp\\extra.dll"), static_cast<std::size_t>(1));
 }

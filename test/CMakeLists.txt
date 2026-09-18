@@ -102,6 +102,7 @@ add_executable(AppBoxUnitTests
     "unit/Unit_ModuleTable.cpp"
     "unit/Unit_PackModel.cpp"
     "unit/Unit_PackService.cpp"
+    "unit/Unit_ProjectFile.cpp"
     "unit/Unit_ProcessJob.cpp"
     "unit/Unit_RegistryEnumMerge.cpp"
     "unit/Unit_RegistryKeyPath.cpp"
@@ -124,6 +125,7 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PresetDirectory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ProjectFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/StartupTree.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipWriter.cpp

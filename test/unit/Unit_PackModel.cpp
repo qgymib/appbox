@@ -525,3 +525,150 @@ TEST(PackModel, RemoveImportCascadesImportedFiles)
     ASSERT_EQ(remaining.size(), static_cast<std::size_t>(1));
     EXPECT_EQ(remaining[0].target_dir, L"OtherApp");
 }
+
+TEST(PackModel, ClearResetsEveryPartOfTheModel)
+{
+    TempDir temp;
+    const auto app = MakeFolder(temp.Get(), L"MyApp");
+    MakeFile(app, L"tool.exe", "TOOL");
+    const auto extra = MakeFile(temp.Get(), L"extra.dll", "EXTRA");
+
+    appbox::PackModel model;
+    EXPECT_TRUE(model.IsEmpty());
+
+    std::string error;
+    ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
+    ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp", { extra.wstring() }, error)) << error;
+    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"tool.exe", error)) << error;
+    EXPECT_FALSE(model.IsEmpty());
+
+    model.Clear();
+
+    EXPECT_TRUE(model.IsEmpty());
+    EXPECT_EQ(model.ImportsOf("program_files").size(), static_cast<std::size_t>(0));
+    EXPECT_EQ(model.AllImportedFiles().size(), static_cast<std::size_t>(0));
+    EXPECT_FALSE(model.HasMainProgram());
+}
+
+TEST(PackModel, RestoreImportedFolderAcceptsMissingSourceFolder)
+{
+    const auto missing = std::filesystem::temp_directory_path() / L"appbox-no-such-restored-folder";
+
+    appbox::PackModel model;
+    std::string error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", missing.wstring(), error))
+        << error;
+
+    const auto imports = model.ImportsOf("program_files");
+    ASSERT_EQ(imports.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(imports[0].import_name, L"MyApp");
+    EXPECT_EQ(imports[0].source_path, missing.wstring());
+    EXPECT_FALSE(model.IsEmpty());
+}
+
+TEST(PackModel, RestoreImportedFolderRejectsUnknownPreset)
+{
+    appbox::PackModel model;
+    std::string error;
+    EXPECT_FALSE(model.RestoreImportedFolder("does_not_exist", L"MyApp", L"C:\\MyApp", error));
+    EXPECT_FALSE(error.empty());
+    EXPECT_TRUE(model.IsEmpty());
+}
+
+TEST(PackModel, RestoreImportedFolderRejectsDuplicateNameIgnoringCase)
+{
+    appbox::PackModel model;
+    std::string error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
+
+    EXPECT_FALSE(model.RestoreImportedFolder("program_files", L"MYAPP", L"C:\\Other", error));
+    EXPECT_FALSE(error.empty());
+    EXPECT_EQ(model.ImportsOf("program_files").size(), static_cast<std::size_t>(1));
+}
+
+TEST(PackModel, RestoreImportedFolderRejectsUnusableName)
+{
+    appbox::PackModel model;
+    std::string error;
+    EXPECT_FALSE(model.RestoreImportedFolder("program_files", L"..", L"C:\\MyApp", error));
+    EXPECT_FALSE(model.RestoreImportedFolder("program_files", L"MyApp\\data", L"C:\\MyApp", error));
+    EXPECT_FALSE(model.RestoreImportedFolder("program_files", L"MyApp", L"", error));
+    EXPECT_TRUE(model.IsEmpty());
+}
+
+TEST(PackModel, RestoreImportedFileAcceptsMissingSourceFile)
+{
+    appbox::PackModel model;
+    std::string error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
+    ASSERT_TRUE(model.RestoreImportedFile("program_files", L"myapp\\data", L"tool.exe",
+                                          L"C:\\tmp\\tool.exe", error))
+        << error;
+
+    const auto files = model.AllImportedFiles();
+    ASSERT_EQ(files.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(files[0].preset_id, "program_files");
+    /* The stored directory uses the canonical spelling of the imported folder. */
+    EXPECT_EQ(files[0].target_dir, L"MyApp\\data");
+    EXPECT_EQ(files[0].file_name, L"tool.exe");
+    EXPECT_EQ(files[0].source_path, L"C:\\tmp\\tool.exe");
+}
+
+TEST(PackModel, RestoreImportedFileRejectsTargetOutsideAnImportedFolder)
+{
+    appbox::PackModel model;
+    std::string error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
+
+    EXPECT_FALSE(model.RestoreImportedFile("program_files", L"Other", L"tool.exe", L"C:\\tool.exe",
+                                           error));
+    EXPECT_NE(error.find("not an imported folder"), std::string::npos);
+    EXPECT_FALSE(model.RestoreImportedFile("program_files", L"MyApp\\..", L"tool.exe",
+                                           L"C:\\tool.exe", error));
+    EXPECT_EQ(model.AllImportedFiles().size(), static_cast<std::size_t>(0));
+}
+
+TEST(PackModel, RestoreImportedFileRejectsDuplicateEntry)
+{
+    appbox::PackModel model;
+    std::string error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
+    ASSERT_TRUE(model.RestoreImportedFile("program_files", L"MyApp", L"tool.exe", L"C:\\tool.exe",
+                                          error))
+        << error;
+
+    EXPECT_FALSE(model.RestoreImportedFile("program_files", L"MyApp", L"TOOL.EXE", L"C:\\other.exe",
+                                           error));
+    EXPECT_EQ(model.AllImportedFiles().size(), static_cast<std::size_t>(1));
+}
+
+TEST(PackModel, RestoreMainProgramAcceptsMissingExecutable)
+{
+    appbox::PackModel model;
+    std::string error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
+    ASSERT_TRUE(model.RestoreMainProgram("program_files", L"myapp", L"bin/app.exe", error)) << error;
+
+    EXPECT_TRUE(model.HasMainProgram());
+    EXPECT_EQ(model.MainProgramChoice().import_name, L"MyApp");
+    EXPECT_EQ(model.MainProgramChoice().relative_path, L"bin\\app.exe");
+
+    std::wstring path;
+    EXPECT_TRUE(model.MainProgramPath(path));
+    EXPECT_EQ(std::filesystem::path(path).lexically_normal(),
+              std::filesystem::path(L"C:\\MyApp\\bin\\app.exe").lexically_normal());
+}
+
+TEST(PackModel, RestoreMainProgramRejectsInvalidSelection)
+{
+    appbox::PackModel model;
+    std::string error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
+
+    EXPECT_FALSE(model.RestoreMainProgram("program_files", L"Missing", L"app.exe", error));
+    EXPECT_FALSE(model.RestoreMainProgram("program_files", L"MyApp", L"", error));
+    EXPECT_FALSE(model.RestoreMainProgram("program_files", L"MyApp", L"..\\app.exe", error));
+    EXPECT_FALSE(model.RestoreMainProgram("program_files", L"MyApp", L"readme.txt", error));
+    EXPECT_NE(error.find(".exe"), std::string::npos);
+    EXPECT_FALSE(model.HasMainProgram());
+}

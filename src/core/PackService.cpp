@@ -61,6 +61,25 @@ std::string EnsureDirectory(appbox::ZipWriter& writer, std::set<std::string>& ad
 }
 
 /**
+ * @brief Build the path a progress report shows for one packed file.
+ *
+ * The reported path is relative to the import root and prefixed by the import
+ * name, which keeps it readable for deeply nested host folders.
+ *
+ * @param[in] root Import name or target directory inside the sandbox view.
+ * @param[in] relative Path below the import root.
+ * @return The display path, e.g. `L"MyApp\bin\tool.exe"`.
+ */
+std::wstring DisplayPath(const std::wstring& root, const std::wstring& relative)
+{
+    if (root.empty())
+    {
+        return relative;
+    }
+    return root + L"\\" + relative;
+}
+
+/**
  * @brief Recursively add one imported folder below a zip prefix.
  *
  * Every visited directory becomes a directory entry, so empty folders are
@@ -70,6 +89,7 @@ std::string EnsureDirectory(appbox::ZipWriter& writer, std::set<std::string>& ad
  * @param[in] source Host folder to add.
  * @param[in] prefix Zip entry prefix of the import, e.g.
  *                   `"filesystem/#ProgramFiles#/MyApp"`.
+ * @param[in] display_root Import name used by the progress reports.
  * @param[in,out] added Directory entries which were already added.
  * @param[in,out] done Number of files already packed.
  * @param[in] total Total number of files to pack.
@@ -77,8 +97,9 @@ std::string EnsureDirectory(appbox::ZipWriter& writer, std::set<std::string>& ad
  * @return Error description, empty on success.
  */
 std::string AddImportedFolder(appbox::ZipWriter& writer, const std::wstring& source, const std::string& prefix,
-                              std::set<std::string>& added, std::size_t& done, std::size_t total,
-                              const std::function<bool(std::size_t, std::size_t)>& progress)
+                              const std::wstring& display_root, std::set<std::string>& added,
+                              std::size_t& done, std::size_t total,
+                              const appbox::BuildProgressCallback& progress)
 {
     const auto root = std::filesystem::path(source).lexically_normal();
     const auto root_string = root.wstring();
@@ -116,6 +137,20 @@ std::string AddImportedFolder(appbox::ZipWriter& writer, const std::wstring& sou
         }
         else if (it->is_regular_file(ec))
         {
+            done++;
+
+            /*
+             * The file is reported before it is written: a single large file
+             * keeps the dialog busy for a while, so naming it while it is
+             * being packed is what makes the report useful.
+             */
+            if (progress
+                && !progress(appbox::BuildProgress{appbox::BuildStage::Packing, done, total,
+                                                   DisplayPath(display_root, relative)}))
+            {
+                return appbox::kBuildCancelledError;
+            }
+
             if (!ec)
             {
                 std::string error;
@@ -123,12 +158,6 @@ std::string AddImportedFolder(appbox::ZipWriter& writer, const std::wstring& sou
                 {
                     return error;
                 }
-            }
-
-            done++;
-            if (progress && !progress(done, total))
-            {
-                return appbox::kPackCancelledError;
             }
         }
 
@@ -183,8 +212,7 @@ std::wstring LoaderEntryName(const PackModel& model)
 }
 
 std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t loader_size,
-                 const std::wstring& zip_path,
-                 const std::function<bool(std::size_t, std::size_t)>& progress)
+                 const std::wstring& zip_path, const BuildProgressCallback& progress)
 {
     if (!model.HasMainProgram())
     {
@@ -210,9 +238,13 @@ std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t l
             total += CountFilesBelow(imported.source_path);
         }
     }
-    if (progress && !progress(0, total))
+    /*
+     * The loader payload and its configuration are added before the first
+     * imported file, which is the preparing stage of the run.
+     */
+    if (progress && !progress(BuildProgress{BuildStage::Preparing, 0, total, {}}))
     {
-        return kPackCancelledError;
+        return kBuildCancelledError;
     }
 
     try
@@ -312,7 +344,8 @@ std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t l
                     return error;
                 }
 
-                error = AddImportedFolder(writer, imported.source_path, prefix, added, done, total, progress);
+                error = AddImportedFolder(writer, imported.source_path, prefix, imported.import_name, added,
+                                          done, total, progress);
                 if (!error.empty())
                 {
                     return error;
@@ -352,15 +385,17 @@ std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t l
                 }
             }
 
+            done++;
+            if (progress
+                && !progress(BuildProgress{BuildStage::Packing, done, total,
+                                           DisplayPath(file.target_dir, file.file_name)}))
+            {
+                return kBuildCancelledError;
+            }
+
             if (!writer.AddFileDisk(file.source_path, prefix + "/" + WideToUTF8(file.file_name), error))
             {
                 return error;
-            }
-
-            done++;
-            if (progress && !progress(done, total))
-            {
-                return kPackCancelledError;
             }
         }
 
@@ -376,7 +411,8 @@ std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t l
 
     if (progress)
     {
-        progress(total, total);
+        /* The run is complete: report the final count without a current file. */
+        progress(BuildProgress{BuildStage::Packing, total, total, {}});
     }
     return {};
 }
