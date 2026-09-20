@@ -51,14 +51,27 @@ struct LoggerF
             return;
         }
 
-        nlohmann::json data;
-        data["method"] = method_;
-        if (with_param)
+        /*
+         * The logger runs inside hooked kernel calls. It must never throw,
+         * otherwise the exception unwinds through the hooked call and breaks
+         * the caller: the parameters come from the application and can be
+         * inconsistent or refer to memory which is not readable.
+         */
+        try
         {
-            data["param"] = fp_(std::forward<Args>(args)...);
-        }
+            nlohmann::json data;
+            data["method"] = method_;
+            if (with_param)
+            {
+                data["param"] = fp_(std::forward<Args>(args)...);
+            }
 
-        appbox::Log(appbox::LOG_LEVEL_TRACE, method_.c_str(), 0, data.dump());
+            appbox::Log(appbox::LOG_LEVEL_TRACE, method_.c_str(), 0, data.dump());
+        }
+        catch (...)
+        {
+            /* Dropping the message is the only safe reaction here. */
+        }
     }
 
     std::string method_;     /* Method name.*/
@@ -115,6 +128,19 @@ nlohmann::json ToJson(const POBJECT_ATTRIBUTES ObjectAttributes);
 nlohmann::json ToJson(const PFILE_NETWORK_OPEN_INFORMATION FileInformation);
 nlohmann::json ToJson(const PUNICODE_STRING FileName);
 nlohmann::json DesiredAccessToJson(ACCESS_MASK DesiredAccess);
+
+/**
+ * @brief Convert a counted unicode string to UTF-8.
+ *
+ * The buffer of an UNICODE_STRING is not required to be null terminated and
+ * the structure comes from the application, which may pass an inconsistent
+ * length. Only the bytes covered by Length are read, never more, and a length
+ * which exceeds MaximumLength is rejected.
+ *
+ * @param[in] str Unicode string. May be null.
+ * @return The UTF-8 representation, empty when the string is not readable.
+ */
+std::string UnicodeStringToUTF8(const PUNICODE_STRING str);
 
 } // namespace appbox
 

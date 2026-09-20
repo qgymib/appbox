@@ -213,6 +213,13 @@ resolution.
 3. the host layer, with `base_fs` = the drive part of the view path (`\??\C`) and
    `file_fs` = the view path itself.
 
+A drive root is a special case: `ResolveFull` keeps its separator (`\??\C:\`) instead of
+stripping it, because `\??\C:` alone is a drive relative path which the layer mapping
+rejects. Without that the root looks like a missing file, and every caller of `Resolve()`
+(`NtOpenFile`, `NtCreateFile`, `NtQueryAttributesFile`, ...) reports a failure for a path
+the operating system opens successfully. Applications do open drive roots, for example to
+query the free space or to watch a volume.
+
 ### Per-layer search
 
 For every candidate layer, `Sequence(file_fs, base_fs.size(), L"\\", true)` produces the
@@ -425,6 +432,23 @@ filesystems. Each case is documented in its own header comment.
   `CreateDirectoryW`, `DeleteFileW`, `ListDir`, `ReadFileFull`).
 * `test/cases/Fs_*.cpp` — the behavior matrix above, plus `ArugmentsPassthrough.cpp`
   and `RPC.cpp`.
+
+## Hook robustness contract
+
+A hook runs inside a kernel call of the application, so a failure inside the hook is a
+failure of the application. Two rules follow from that, both of them are covered by
+`test/unit/Unit_Log.cpp`:
+
+1. **Never read more than the caller declared.** The structures which arrive in a hook
+   belong to the application and can be inconsistent. A `UNICODE_STRING` whose `Length`
+   exceeds `MaximumLength` is not read at all (`appbox::UnicodeStringToUTF8`), and
+   `ConvertToFullNtPath` rejects such a call with `STATUS_INVALID_PARAMETER` so that the
+   hook forwards it unchanged. Applications pass such values on purpose to find a hook
+   which follows the buffer blindly.
+2. **Never throw.** `appbox::LoggerF::Log` swallows every exception of its parameter
+   parser and `appbox::Log` never throws. An exception which leaves a hook unwinds
+   through the hooked call and terminates the application, which is how a packaged
+   application can fail before it shows a window.
 
 ## Known gaps and limitations
 

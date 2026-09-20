@@ -106,6 +106,17 @@ NTSTATUS appbox::ConvertToFullNtPath(const POBJECT_ATTRIBUTES ObjectAttributes, 
         return STATUS_INVALID_PARAMETER;
     }
 
+    /*
+     * An application can pass a name whose length does not fit into the buffer
+     * it owns. Reading such a name would leave the memory of the application,
+     * so the call is left to the operating system instead.
+     */
+    if (ObjectAttributes->ObjectName != nullptr &&
+        ObjectAttributes->ObjectName->Length > ObjectAttributes->ObjectName->MaximumLength)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
     /* Open by FILEI_ID */
     if (CreateOptions & FILE_OPEN_BY_FILE_ID)
     {

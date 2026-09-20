@@ -264,6 +264,11 @@ appbox::NtCreateFileLock::~NtCreateFileLock()
 
 nlohmann::json appbox::ToJson(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG CreateOptions)
 {
+    if (ObjectAttributes == nullptr)
+    {
+        return nullptr;
+    }
+
     nlohmann::json json;
     json["Length"] = ObjectAttributes->Length;
     json["RootDirectory"] = appbox::PointerToString(ObjectAttributes->RootDirectory);
@@ -273,14 +278,26 @@ nlohmann::json appbox::ToJson(const POBJECT_ATTRIBUTES ObjectAttributes, ULONG C
         name["Length"] = ObjectAttributes->ObjectName->Length;
         name["MaximumLength"] = ObjectAttributes->ObjectName->MaximumLength;
 
-        if (CreateOptions & FILE_OPEN_BY_FILE_ID)
+        if ((CreateOptions & FILE_OPEN_BY_FILE_ID) != 0)
         {
-            auto p_file_id = reinterpret_cast<uint64_t*>(ObjectAttributes->ObjectName->Buffer);
-            name["Buffer"] = *p_file_id;
+            /*
+             * The name of such a call is an identifier, not a string. It is
+             * only read when the caller provided a buffer of the right size.
+             */
+            if (ObjectAttributes->ObjectName->Buffer != nullptr &&
+                ObjectAttributes->ObjectName->MaximumLength >= sizeof(uint64_t))
+            {
+                auto p_file_id = reinterpret_cast<uint64_t*>(ObjectAttributes->ObjectName->Buffer);
+                name["Buffer"] = *p_file_id;
+            }
+            else
+            {
+                name["Buffer"] = "";
+            }
         }
         else
         {
-            name["Buffer"] = appbox::WideToUTF8(ObjectAttributes->ObjectName->Buffer);
+            name["Buffer"] = appbox::UnicodeStringToUTF8(ObjectAttributes->ObjectName);
         }
 
         json["ObjectName"] = name;

@@ -173,6 +173,31 @@ nlohmann::json appbox::ToJson(const PFILE_NETWORK_OPEN_INFORMATION FileInformati
     return json;
 }
 
+std::string appbox::UnicodeStringToUTF8(const PUNICODE_STRING str)
+{
+    if (str == nullptr || str->Buffer == nullptr || str->Length == 0)
+    {
+        return std::string();
+    }
+
+    /*
+     * A caller can pass a length which does not fit into the buffer it owns,
+     * for example a probe which looks for a hook that reads the buffer blindly.
+     * Such a string is not read at all.
+     */
+    if (str->Length > str->MaximumLength || (str->Length % sizeof(wchar_t)) != 0)
+    {
+        return std::string();
+    }
+
+    /*
+     * The buffer is counted, not terminated, so it is copied by length first:
+     * reading it as a C string would leave the buffer of the caller.
+     */
+    const std::wstring text(str->Buffer, static_cast<size_t>(str->Length) / sizeof(wchar_t));
+    return appbox::WideToUTF8(text);
+}
+
 nlohmann::json appbox::ToJson(const PUNICODE_STRING FileName)
 {
     if (FileName == nullptr)
@@ -195,7 +220,7 @@ nlohmann::json appbox::ToJson(const PUNICODE_STRING FileName)
     }
     else
     {
-        json["Buffer"] = appbox::WideToUTF8(FileName->Buffer);
+        json["Buffer"] = appbox::UnicodeStringToUTF8(FileName);
     }
     return json;
 }

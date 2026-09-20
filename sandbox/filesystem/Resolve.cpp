@@ -22,6 +22,25 @@ struct FileLayer
 typedef std::vector<FileLayer> FileLayerVec;
 
 /**
+ * @brief Whether a view path addresses the root of a drive.
+ *
+ * The path can carry a "\??\" prefix, only the last two characters matter.
+ *
+ * @param[in] path View path without trailing separators.
+ * @return true when the path is the root of a drive, for example "C:".
+ */
+static bool IsDriveRoot(const std::wstring& path)
+{
+    if (path.size() < 2 || path[path.size() - 1] != L':')
+    {
+        return false;
+    }
+
+    const wchar_t letter = path[path.size() - 2];
+    return (letter >= L'A' && letter <= L'Z') || (letter >= L'a' && letter <= L'z');
+}
+
+/**
  * @brief Mapping file path to upper / lower / host filesystem.
  * @param[in] path Virtual file path. Must has not trailing slash.
  * @return Host file path in upper and lower filesystem.
@@ -175,10 +194,22 @@ appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveFull(const Res
     /* Remove trailing slash */
     auto copy_v_path = vPath;
     bool has_trailing_slash = false;
-    while (copy_v_path.back() == L'\\')
+    while (!copy_v_path.empty() && copy_v_path.back() == L'\\')
     {
         has_trailing_slash = true;
         copy_v_path.pop_back();
+    }
+
+    /*
+     * A drive root has to keep its separator. "C:" alone addresses the current
+     * directory of the drive, which the layer mapping rejects, so the root
+     * would look like a missing file and every caller of Resolve() would report
+     * a path which the operating system resolves successfully.
+     */
+    if (IsDriveRoot(copy_v_path))
+    {
+        copy_v_path += L'\\';
+        has_trailing_slash = false;
     }
 
     /* Generate host path sequence for upper / lower / host filesystem. */

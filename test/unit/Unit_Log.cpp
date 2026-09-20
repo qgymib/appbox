@@ -128,6 +128,66 @@ TEST(UnitLog, LogGuardSuppressesOutput)
 }
 
 /**
+ * @brief The buffer of a counted string is not required to be terminated, the
+ *        conversion has to read the declared length only.
+ */
+TEST(UnitLog, UnicodeStringIsReadByLength)
+{
+    /* No terminator behind the characters. */
+    wchar_t       buffer[] = {L'a', L'b', L'c'};
+    UNICODE_STRING str = {};
+    str.Buffer = buffer;
+    str.Length = static_cast<USHORT>(sizeof(buffer));
+    str.MaximumLength = static_cast<USHORT>(sizeof(buffer));
+
+    EXPECT_EQ(appbox::UnicodeStringToUTF8(&str), "abc");
+}
+
+/**
+ * @brief A string which claims more bytes than the caller owns must not be
+ *        read. An application can pass such a value on purpose, to find a hook
+ *        which follows the buffer blindly.
+ */
+TEST(UnitLog, UnicodeStringWithInconsistentLengthIsNotRead)
+{
+    wchar_t        buffer[4] = {L'a', L'b', L'c', L'd'};
+    UNICODE_STRING str = {};
+    str.Buffer = buffer;
+    str.Length = static_cast<USHORT>(8 * sizeof(wchar_t));
+    str.MaximumLength = static_cast<USHORT>(sizeof(buffer));
+
+    EXPECT_EQ(appbox::UnicodeStringToUTF8(&str), "");
+
+    const nlohmann::json json = appbox::ToJson(&str);
+    EXPECT_EQ(json["Buffer"].get<std::string>(), "");
+}
+
+/**
+ * @brief A missing buffer or a missing string must be reported instead of
+ *        being dereferenced.
+ */
+TEST(UnitLog, UnicodeStringWithoutBufferIsReported)
+{
+    EXPECT_EQ(appbox::UnicodeStringToUTF8(nullptr), "");
+
+    UNICODE_STRING str = {};
+    EXPECT_EQ(appbox::UnicodeStringToUTF8(&str), "");
+    EXPECT_NO_THROW(appbox::ToJson(&str));
+    EXPECT_NO_THROW(appbox::ToJson(static_cast<const PUNICODE_STRING>(nullptr)));
+}
+
+/**
+ * @brief The logger runs inside hooked kernel calls, so a parameter parser
+ *        which fails must not let the exception reach the caller.
+ */
+TEST(UnitLog, LoggerSwallowsParameterFailures)
+{
+    appbox::LoggerF logger("UnitTest", [](int) -> nlohmann::json { throw std::runtime_error("broken parameter"); });
+
+    EXPECT_NO_THROW(logger.Log(1));
+}
+
+/**
  * @brief Logging and toggling the switch from several threads must be race free
  *        and must not crash.
  */

@@ -101,6 +101,7 @@ static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
     std::wstring open_path = resolve_result->bInUpper ? resolve_result->uPath : resolve_result->hPath[0].fPath;
     auto         st = NtOpenFileWrap(open_path, ObjectAttributes->Attributes, FileHandle, DesiredAccess, IoStatusBlock,
                                      ShareAccess, OpenOptions);
+
     if (NT_SUCCESS(st))
     {
         appbox::HandleInfo::Create(
