@@ -40,7 +40,7 @@ static NTSTATUS Hook_NtQueryAttributesFile(POBJECT_ATTRIBUTES ObjectAttributes, 
     resolve_option.NameAttributes = ObjectAttributes->Attributes;
 
     auto resolve_result = appbox::filesystem::Resolve(native_fs_path, resolve_option);
-    LOG_T("resolve: {}", nlohmann::json(*resolve_result).dump());
+    LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
 
     if (!resolve_result->bParentExist)
     {

@@ -74,7 +74,7 @@ static NTSTATUS DeleteAsFile(const appbox::filesystem::ResolveResult& resolve_re
 {
     NTSTATUS st = STATUS_SUCCESS;
 
-    LOG_T("meta: {}", nlohmann::json(resolve_result).dump());
+    LOG_T("meta: {}", appbox::DumpJson(nlohmann::json(resolve_result)));
 
     /* If file exists in upper filesystem, delete it. */
     if (resolve_result.bInUpper)
@@ -217,7 +217,7 @@ NTSTATUS appbox::DeleteViewPath(const std::wstring& path, ULONG Attributes)
     resolve_option.bStopOnFirstFound = false;
 
     auto resolve_result = appbox::filesystem::Resolve(path, resolve_option);
-    LOG_T("resolve: {}", nlohmann::json(*resolve_result).dump());
+    LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
 
     return DeleteViewPath(*resolve_result, Attributes);
 }

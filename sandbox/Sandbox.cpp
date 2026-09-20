@@ -93,7 +93,7 @@ static std::string GetImagePathFromPeb()
 static void SayHello()
 {
     LOG_I("AppBox Sandbox initialized for {} with config: {}", GetImagePathFromPeb(),
-          nlohmann::json(*appbox::sandbox).dump());
+          appbox::DumpJson(nlohmann::json(*appbox::sandbox)));
 }
 
 /**

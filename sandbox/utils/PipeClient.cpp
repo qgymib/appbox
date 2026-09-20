@@ -42,7 +42,20 @@ static bool SendRequest(HANDLE pipe, const std::string& method, const nlohmann::
     req_json["params"] = params;
     req_json["id"] = id;
 
-    auto                   req_data = req_json.dump();
+    /*
+     * The client is called from inside hooks, so a failure of the encoding
+     * is reported through the return value and never thrown.
+     */
+    std::string req_data;
+    try
+    {
+        req_data = req_json.dump();
+    }
+    catch (...)
+    {
+        return false;
+    }
+
     appbox::RemoteProtocol hdr;
     hdr.length = static_cast<uint32_t>(req_data.size());
 
@@ -79,8 +92,28 @@ static bool RecvResponse(HANDLE pipe, uint64_t id, nlohmann::json& rsp)
         return false;
     }
 
-    nlohmann::json json_rsp = nlohmann::json::parse(rsp_data);
-    if (json_rsp["id"].get<uint64_t>() != id)
+    /*
+     * The response comes from the other side of the pipe, so it can be
+     * malformed. Parsing and inspecting it must not throw, the caller only
+     * sees the boolean result.
+     */
+    nlohmann::json json_rsp;
+    try
+    {
+        json_rsp = nlohmann::json::parse(rsp_data);
+    }
+    catch (...)
+    {
+        return false;
+    }
+
+    if (!json_rsp.is_object())
+    {
+        return false;
+    }
+
+    const auto id_it = json_rsp.find("id");
+    if (id_it == json_rsp.end() || !id_it->is_number_unsigned() || id_it->get<uint64_t>() != id)
     {
         return false;
     }

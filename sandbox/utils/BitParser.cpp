@@ -3,6 +3,16 @@
 nlohmann::json appbox::ParseBit(uint64_t bits, const BitData* data, size_t nmemb)
 {
     nlohmann::json arr;
+
+    /*
+     * An empty table carries no name for any bit, the value is not read at
+     * all then. The guard keeps the parsing path free of out of bounds reads.
+     */
+    if (data == nullptr || nmemb == 0)
+    {
+        return arr;
+    }
+
     if (bits == 0 && data[nmemb - 1].mask == 0)
     {
         arr.push_back(data[nmemb - 1].name);

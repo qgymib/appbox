@@ -102,6 +102,7 @@ add_executable(AppBoxUnitTests
     "unit/Unit_ModuleTable.cpp"
     "unit/Unit_PackModel.cpp"
     "unit/Unit_PackService.cpp"
+    "unit/Unit_PipeClient.cpp"
     "unit/Unit_ProjectFile.cpp"
     "unit/Unit_ProcessJob.cpp"
     "unit/Unit_RegistryEnumMerge.cpp"
@@ -135,6 +136,7 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/KeyPath.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/BitParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/Log.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/PipeClient.cpp
 )
 appbox_setup_target_wall(AppBoxUnitTests)
 

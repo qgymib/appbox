@@ -1,10 +1,17 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include <gtest/gtest.h>
 #include <atomic>
+#include <cstdlib>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
+#include "utils/BitParser.hpp"
 #include "utils/Log.hpp"
+
+#ifdef _DEBUG
+#include <crtdbg.h>
+#endif
 
 namespace
 {
@@ -32,6 +39,23 @@ void InstallCountingSink(bool result)
         ++g_received;
         return g_sink_result.load();
     });
+}
+
+/**
+ * @brief Let a test which aborts the process die quietly.
+ *
+ * The logger keeps a hard abort as its last line of defence. A debug build
+ * would open the debug report dialog for it and a release build would ask the
+ * error reporting service, which both hang a death test. This helper switches
+ * the process over to a plain exit code instead.
+ */
+void MakeAbortSilent()
+{
+#ifdef _DEBUG
+    _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+#endif
+    _set_abort_behavior(0, _CALL_REPORTFAULT);
 }
 
 } // namespace
@@ -64,6 +88,27 @@ TEST(UnitLog, FailingSinkDoesNotThrowAndCountsDrop)
     EXPECT_NO_THROW(appbox::Log(appbox::LOG_LEVEL_ERROR, __FILE__, __LINE__, std::string("failing sink")));
 
     EXPECT_EQ(g_received.load(), 1);
+    EXPECT_EQ(appbox::DroppedLogCount(), before + 1);
+
+    appbox::SetLogSink(nullptr);
+}
+
+/**
+ * @brief The sink is an RPC round trip, so it can throw while it decodes the
+ *        response. The exception must stay inside the log path and the message
+ *        is counted as dropped.
+ */
+TEST(UnitLog, ThrowingSinkDoesNotThrowAndCountsDrop)
+{
+    appbox::LogEnable(true);
+    appbox::SetLogSink([](const appbox::MsgLog::Req&, nlohmann::json&) -> bool {
+        throw std::runtime_error("broken transport");
+    });
+
+    const uint64_t before = appbox::DroppedLogCount();
+
+    EXPECT_NO_THROW(appbox::Log(appbox::LOG_LEVEL_ERROR, __FILE__, __LINE__, std::string("throwing sink")));
+
     EXPECT_EQ(appbox::DroppedLogCount(), before + 1);
 
     appbox::SetLogSink(nullptr);
@@ -163,6 +208,21 @@ TEST(UnitLog, UnicodeStringWithInconsistentLengthIsNotRead)
 }
 
 /**
+ * @brief A length which does not describe whole characters can not be read
+ *        either.
+ */
+TEST(UnitLog, UnicodeStringWithUnalignedLengthIsNotRead)
+{
+    wchar_t        buffer[4] = {L'a', L'b', L'c', L'd'};
+    UNICODE_STRING str = {};
+    str.Buffer = buffer;
+    str.Length = 3;
+    str.MaximumLength = static_cast<USHORT>(sizeof(buffer));
+
+    EXPECT_EQ(appbox::UnicodeStringToUTF8(&str), "");
+}
+
+/**
  * @brief A missing buffer or a missing string must be reported instead of
  *        being dereferenced.
  */
@@ -177,14 +237,84 @@ TEST(UnitLog, UnicodeStringWithoutBufferIsReported)
 }
 
 /**
- * @brief The logger runs inside hooked kernel calls, so a parameter parser
- *        which fails must not let the exception reach the caller.
+ * @brief An unpaired surrogate can not be converted. The hook still has to get
+ *        an answer instead of an exception.
  */
-TEST(UnitLog, LoggerSwallowsParameterFailures)
+TEST(UnitLog, UnicodeStringWithAnUnpairedSurrogateIsSafe)
 {
+    wchar_t        buffer[1] = {static_cast<wchar_t>(0xD800)};
+    UNICODE_STRING str = {};
+    str.Buffer = buffer;
+    str.Length = static_cast<USHORT>(sizeof(buffer));
+    str.MaximumLength = static_cast<USHORT>(sizeof(buffer));
+
+    EXPECT_NO_THROW(appbox::UnicodeStringToUTF8(&str));
+    EXPECT_NO_THROW(appbox::ToJson(&str));
+}
+
+/**
+ * @brief Bytes which are not valid UTF-8 can reach the log through the parsed
+ *        parameters of the application. They are replaced instead of throwing,
+ *        so the message survives.
+ */
+TEST(UnitLog, DumpJsonReplacesInvalidUtf8)
+{
+    std::string raw;
+    raw.push_back(static_cast<char>(0xFF));
+    raw.push_back(static_cast<char>(0xFE));
+
+    nlohmann::json value;
+    value["name"] = raw;
+
+    std::string text;
+    EXPECT_NO_THROW(text = appbox::DumpJson(value));
+
+    /* U+FFFD, the replacement character, is encoded as EF BF BD. */
+    EXPECT_NE(text.find("\xEF\xBF\xBD"), std::string::npos);
+}
+
+/**
+ * @brief The bit tables describe the flags of a call. An empty table must not
+ *        read out of bounds and an unknown bit is reported as a number.
+ */
+TEST(UnitLog, ParseBitHandlesEmptyAndUnknownTables)
+{
+    const appbox::BitData table[] = {{ "known", 0x1 }};
+
+    EXPECT_TRUE(appbox::ParseBit(0xFFFF, nullptr, 0).empty());
+    EXPECT_TRUE(appbox::ParseBit(0xFFFF, table, 0).empty());
+
+    const nlohmann::json parsed = appbox::ParseBit(0xFFFF, table, std::size(table));
+    ASSERT_EQ(parsed.size(), 2u);
+    EXPECT_EQ(parsed[0].get<std::string>(), "known");
+    EXPECT_EQ(parsed[1].get<uint64_t>(), 0xFFFEu);
+}
+
+/**
+ * @brief Every access mask has to be described without throwing, also the
+ *        values which no table entry covers.
+ */
+TEST(UnitLog, DesiredAccessToJsonHandlesUnknownBits)
+{
+    EXPECT_NO_THROW(appbox::DesiredAccessToJson(0));
+    EXPECT_NO_THROW(appbox::DesiredAccessToJson(0xFFFFFFFF));
+}
+
+/**
+ * @brief The logger keeps a hard abort as its last line of defence: a
+ *        parameter parser which throws would kill the application which is
+ *        being logged, so such a regression has to be found immediately.
+ *
+ * The parser of this test throws on purpose. Every parser of the sandbox
+ * returns a placeholder instead, which the tests above pin down.
+ */
+TEST(UnitLog, LoggerAbortsWhenAParameterParserThrows)
+{
+    MakeAbortSilent();
+
     appbox::LoggerF logger("UnitTest", [](int) -> nlohmann::json { throw std::runtime_error("broken parameter"); });
 
-    EXPECT_NO_THROW(logger.Log(1));
+    EXPECT_DEATH(logger.Log(1), "");
 }
 
 /**

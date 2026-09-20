@@ -179,7 +179,7 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
 
     /* Resolve path in sandbox. */
     auto resolve_result = appbox::filesystem::Resolve(nativate_fs_path);
-    LOG_T("resolve: {}", nlohmann::json(*resolve_result).dump());
+    LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
     /* In all of conditions, the parent path must exist. */
     if (!resolve_result->bParentExist)
     {

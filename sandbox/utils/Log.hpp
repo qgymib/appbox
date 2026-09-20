@@ -34,6 +34,21 @@ namespace appbox
 {
 
 /**
+ * @brief Serialize a json value for the log.
+ *
+ * The value can hold bytes which are not valid UTF-8, because the parsed
+ * parameters belong to the application. Replacing them keeps the message
+ * readable instead of throwing, which the log path must never do.
+ *
+ * @param[in] value Value to serialize.
+ * @return The serialized value.
+ */
+inline std::string DumpJson(const nlohmann::json& value)
+{
+    return value.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+}
+
+/**
  * @brief Function logger.
  */
 template <typename Fp>
@@ -66,11 +81,18 @@ struct LoggerF
                 data["param"] = fp_(std::forward<Args>(args)...);
             }
 
-            appbox::Log(appbox::LOG_LEVEL_TRACE, method_.c_str(), 0, data.dump());
+            const std::string line = DumpJson(data);
+            appbox::Log(appbox::LOG_LEVEL_TRACE, method_.c_str(), 0, line);
         }
         catch (...)
         {
-            /* Dropping the message is the only safe reaction here. */
+            /*
+             * Unreachable sentinel: every parameter parser and conversion
+             * helper returns a placeholder instead of throwing, so the
+             * message is never lost. Reaching this point means a parser
+             * regression and must be fixed there.
+             */
+            abort();
         }
     }
 

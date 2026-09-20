@@ -10,9 +10,6 @@ namespace
 /** Width of the control. */
 constexpr int kNavWidth = 132;
 
-/** Height of the group caption at the top. */
-constexpr int kCaptionHeight = 28;
-
 /** Height of one navigation item. */
 constexpr int kItemHeight = 34;
 
@@ -49,9 +46,6 @@ const wxColour kTextColour(0x1F, 0x1F, 0x1F);
 /** Label colour of the selected item. */
 const wxColour kSelectionTextColour(0x0B, 0x4C, 0x8C);
 
-/** Colour of the group caption. */
-const wxColour kCaptionColour(0x5A, 0x5A, 0x5A);
-
 } // namespace
 
 SideNav::SideNav(wxWindow* parent, wxWindowID id)
@@ -78,12 +72,7 @@ void SideNav::AddItem(const wxString& label, const wxString& art)
 
 int SideNav::HitTest(const wxPoint& position) const
 {
-    if (position.y < kCaptionHeight)
-    {
-        return wxNOT_FOUND;
-    }
-
-    const auto index = (position.y - kCaptionHeight) / kItemHeight;
+    const auto index = position.y / kItemHeight;
     if (index < 0 || static_cast<std::size_t>(index) >= items_.size())
     {
         return wxNOT_FOUND;
@@ -99,16 +88,12 @@ void SideNav::OnPaint(wxPaintEvent&)
 
     const auto size = GetClientSize();
 
-    dc.SetFont(wxFont(wxFontInfo(8)));
-    dc.SetTextForeground(kCaptionColour);
-    dc.DrawText("Default", kIconLeft, 8);
-
     dc.SetPen(wxPen(kBorderColour));
     dc.DrawLine(size.GetWidth() - 1, 0, size.GetWidth() - 1, size.GetHeight());
 
     for (std::size_t i = 0; i < items_.size(); ++i)
     {
-        const auto top = kCaptionHeight + static_cast<int>(i) * kItemHeight;
+        const auto top = static_cast<int>(i) * kItemHeight;
         const bool selected = i == selection_;
         const bool hovered = static_cast<int>(i) == hovered_;
 

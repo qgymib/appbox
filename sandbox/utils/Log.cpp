@@ -83,7 +83,22 @@ uint64_t appbox::DroppedLogCount()
 
 void appbox::Log(MsgLogLevel level, const char* file, int line, const std::wstring& msg)
 {
-    auto msgu8 = appbox::WideToUTF8(msg.c_str());
+    /*
+     * The logging path runs inside hooks, so a conversion which fails must
+     * not throw. The message is reported as dropped instead, exactly like a
+     * message which the sink could not deliver.
+     */
+    std::string msgu8;
+    try
+    {
+        msgu8 = appbox::WideToUTF8(msg.c_str());
+    }
+    catch (...)
+    {
+        s_dropped_logs.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+
     appbox::Log(level, file, line, msgu8);
 }
 
@@ -117,13 +132,25 @@ void appbox::Log(MsgLogLevel level, const char* file, int line, const std::strin
         return;
     }
 
+    /*
+     * Never throw from the logging path: it is called from inside hooks and an
+     * exception would unwind through the hooked kernel call. The sink is an
+     * RPC round trip, so even a successful looking call can fail while the
+     * response is decoded; such a failure is reported as a dropped message.
+     */
     nlohmann::json rsp;
-    if (!sink(req, rsp))
+    bool           delivered = false;
+    try
     {
-        /*
-         * Never throw from the logging path: it is called from inside hooks and
-         * an exception would unwind through the hooked kernel call.
-         */
+        delivered = sink(req, rsp);
+    }
+    catch (...)
+    {
+        delivered = false;
+    }
+
+    if (!delivered)
+    {
         s_dropped_logs.fetch_add(1, std::memory_order_relaxed);
     }
 }
@@ -195,7 +222,20 @@ std::string appbox::UnicodeStringToUTF8(const PUNICODE_STRING str)
      * reading it as a C string would leave the buffer of the caller.
      */
     const std::wstring text(str->Buffer, static_cast<size_t>(str->Length) / sizeof(wchar_t));
-    return appbox::WideToUTF8(text);
+
+    /*
+     * The conversion itself can fail, for example on an unpaired surrogate.
+     * This function is called from hooks, so it reports an empty string
+     * instead of letting the exception escape.
+     */
+    try
+    {
+        return appbox::WideToUTF8(text);
+    }
+    catch (...)
+    {
+        return std::string();
+    }
 }
 
 nlohmann::json appbox::ToJson(const PUNICODE_STRING FileName)

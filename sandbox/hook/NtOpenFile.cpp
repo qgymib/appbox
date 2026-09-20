@@ -74,7 +74,7 @@ static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
     resolve_option.bStopOnFirstFound = false;
 
     auto resolve_result = appbox::filesystem::Resolve(nativate_fs_path, resolve_option);
-    LOG_T("resolve: {}", nlohmann::json(*resolve_result).dump());
+    LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
 
     if (!resolve_result->bParentExist)
     {

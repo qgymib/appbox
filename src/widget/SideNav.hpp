@@ -14,10 +14,10 @@ wxDECLARE_EVENT(APPBOX_SIDE_NAV, wxCommandEvent);
 /**
  * @brief Vertical icon navigation of the packer workspace.
  *
- * The control draws a small group caption followed by one row per item. The
- * selected row uses the accent background with a bar on its left edge, which
- * is the navigation style of the reference layout. Items are painted by the
- * control itself, so no child windows are involved.
+ * The control draws one row per item, starting at the top edge of the client
+ * area. The selected row uses the accent background with a bar on its left
+ * edge, which is the navigation style of the reference layout. Items are
+ * painted by the control itself, so no child windows are involved.
  */
 class SideNav : public wxPanel
 {

@@ -437,7 +437,7 @@ filesystems. Each case is documented in its own header comment.
 
 A hook runs inside a kernel call of the application, so a failure inside the hook is a
 failure of the application. Two rules follow from that, both of them are covered by
-`test/unit/Unit_Log.cpp`:
+`test/unit/Unit_Log.cpp` and `test/unit/Unit_PipeClient.cpp`:
 
 1. **Never read more than the caller declared.** The structures which arrive in a hook
    belong to the application and can be inconsistent. A `UNICODE_STRING` whose `Length`
@@ -445,10 +445,18 @@ failure of the application. Two rules follow from that, both of them are covered
    `ConvertToFullNtPath` rejects such a call with `STATUS_INVALID_PARAMETER` so that the
    hook forwards it unchanged. Applications pass such values on purpose to find a hook
    which follows the buffer blindly.
-2. **Never throw.** `appbox::LoggerF::Log` swallows every exception of its parameter
-   parser and `appbox::Log` never throws. An exception which leaves a hook unwinds
-   through the hooked call and terminates the application, which is how a packaged
-   application can fail before it shows a window.
+2. **Never throw.** Every parameter parser of the sandbox returns a placeholder instead
+   of throwing: the conversions of `sandbox/utils/Log.cpp` answer with an empty string
+   for a value they can not read, `appbox::DumpJson` replaces bytes which are not valid
+   UTF-8 instead of failing the serialization, and `appbox::Log` treats an exception of
+   its sink like a failed delivery (the message is counted by
+   `appbox::DroppedLogCount()` and never leaves the log path). The RPC transport follows
+   the same rule, `appbox::PipeClient::Call` reports a malformed response through its
+   boolean result. `appbox::LoggerF::Log` keeps a hard `abort()` as an unreachable
+   sentinel: reaching it means that a parser regressed, which the death test
+   `UnitLog.LoggerAbortsWhenAParameterParserThrows` pins down. An exception which leaves
+   a hook unwinds through the hooked call and terminates the application, which is how a
+   packaged application can fail before it shows a window.
 
 ## Known gaps and limitations
 
