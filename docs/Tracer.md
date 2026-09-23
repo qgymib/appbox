@@ -207,12 +207,5 @@ what was collected, so a timeout or an interrupted run never loses its result.
 
 ## Tests
 
-* `test/unit/Unit_Tracer*.cpp` — the parser, the PE reader, the scope rules, the
-  breakpoint plan, the report and the command line, all without a debugger.
-* `test/unit/Unit_TracerIntegration.cpp` — a real run of `cmd.exe` below the real
-  debugger, including a child process; it skips itself when `cdb.exe` is not
-  installed.
-
-```
-ctest --test-dir build/Debug -C Debug --output-on-failure
-```
+The unit tests of the tracer are listed in
+[test/README.md](../test/README.md).

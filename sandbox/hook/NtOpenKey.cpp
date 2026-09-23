@@ -20,11 +20,14 @@ static appbox::LoggerF logger("NtOpenKey", NtOpenKeyLogParam);
 /**
  * @brief Detour of NtOpenKey().
  *
- * Opens the key inside the sandbox hive when the requested path is inside
- * HKCU and the hive holds it. Every other case (not HKCU, or the hive does not
- * hold the key) falls back to the real registry through the view path, so
- * reads see the real registry when the sandbox has no value of its own
- * (read through).
+ * The call is delegated to the open policy of the isolation mode of the key
+ * (appbox::registry::Hive::OpenIsolatedKey): the key is answered from the
+ * sandbox hive first, and the mode decides what happens to a key the hive does
+ * not hold — the host entry stays invisible (`Full`, `Hide`), is read through
+ * (`WriteCopy` read access) or is copied up into the hive (`WriteCopy` write
+ * access). The decision table lives in registry/IsolationPolicy.hpp.
+ *
+ * Paths outside the root keys of the view are forwarded unchanged.
  */
 static NTSTATUS Hook_NtOpenKey(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes)
 {
@@ -34,19 +37,9 @@ static NTSTATUS Hook_NtOpenKey(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess, POB
     std::wstring relative;
     if (appbox::registry::Hive::MapKeyPath(ObjectAttributes, view_path, relative) == appbox::registry::HiveMap::Isolated)
     {
-        HANDLE key = nullptr;
-        NTSTATUS st = appbox::registry::Hive::OpenKey(relative, DesiredAccess, ObjectAttributes->Attributes,
-                                                      ObjectAttributes->SecurityDescriptor,
-                                                      ObjectAttributes->SecurityQualityOfService, &key);
-        if (NT_SUCCESS(st))
-        {
-            *KeyHandle = key;
-            return st;
-        }
-
-        return appbox::registry::Hive::OpenRealKey(view_path, DesiredAccess, ObjectAttributes->Attributes,
-                                                   ObjectAttributes->SecurityDescriptor,
-                                                   ObjectAttributes->SecurityQualityOfService, KeyHandle);
+        return appbox::registry::Hive::OpenIsolatedKey(view_path, relative, DesiredAccess, ObjectAttributes->Attributes,
+                                                       ObjectAttributes->SecurityDescriptor,
+                                                       ObjectAttributes->SecurityQualityOfService, KeyHandle);
     }
 
     return sys_NtOpenKey(KeyHandle, DesiredAccess, ObjectAttributes);

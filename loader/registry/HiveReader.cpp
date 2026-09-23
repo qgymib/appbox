@@ -3,10 +3,12 @@
 #endif
 #include <windows.h>
 #include <spdlog/spdlog.h>
+#include <algorithm>
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
 #include "WString.hpp"
+#include "RegistryIsolation.hpp"
 #include "HiveReader.hpp"
 
 namespace
@@ -263,6 +265,21 @@ bool HiveReader::EnumSubKeys(const std::wstring& relative_path, std::vector<std:
         names.emplace_back(name.data(), name_len);
     }
 
+    /*
+     * The root of the hive carries the whiteout store of the sandbox next to
+     * the five root keys of the view. The store is an implementation detail of
+     * the isolation and not part of the view the browser shows, so it is
+     * dropped here; the key itself keeps working for the sandbox.
+     */
+    if (CleanRelativePath(relative_path).empty())
+    {
+        names.erase(std::remove_if(names.begin(), names.end(),
+                                   [](const std::wstring& name) {
+                                       return _wcsicmp(name.c_str(), appbox::registry_whiteout::kStoreKey) == 0;
+                                   }),
+                    names.end());
+    }
+
     return true;
 }
 
@@ -338,6 +355,17 @@ bool HiveReader::EnumValues(const std::wstring& relative_path, std::vector<Regis
 
 bool HiveReader::HasSubKeys(const std::wstring& relative_path)
 {
+    /*
+     * The root asks the enumeration, because the raw sub key count of the hive
+     * root includes the whiteout store of the sandbox, which is not part of the
+     * view (see EnumSubKeys).
+     */
+    if (CleanRelativePath(relative_path).empty())
+    {
+        std::vector<std::wstring> names;
+        return EnumSubKeys(relative_path, names) && !names.empty();
+    }
+
     ScopedKey key;
     if (!OpenKeyBelow(root_, relative_path, key))
     {

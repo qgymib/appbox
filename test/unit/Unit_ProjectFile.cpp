@@ -498,3 +498,169 @@ TEST(ProjectFile, LoadRejectsAFileOutsideAnImportedFolder)
     EXPECT_NE(error.find("not an imported folder"), std::string::npos);
     EXPECT_TRUE(model.IsEmpty());
 }
+
+TEST(ProjectFile, RoundTripKeepsTheVirtualRegistry)
+{
+    TempDir temp;
+    const auto file = temp.File(L"registry.json");
+
+    appbox::PackModel model;
+    ASSERT_TRUE(BuildSampleModel(model));
+
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(registry.EnsureKey(L"HKEY_CURRENT_USER\\Software\\Vendor\\Deep", error)) << error;
+    ASSERT_TRUE(registry.EnsureKey(L"HKEY_LOCAL_MACHINE\\Software\\AppBox", error)) << error;
+    ASSERT_TRUE(registry.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server",
+                                  appbox::RegistryValueType::String, appbox::RegistryStringData(L"host"),
+                                  error))
+        << error;
+    ASSERT_TRUE(registry.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Count",
+                                  appbox::RegistryValueType::Dword, appbox::RegistryDwordData(42), error))
+        << error;
+    ASSERT_TRUE(registry.SetValue(L"HKEY_LOCAL_MACHINE\\Software\\AppBox", L"", appbox::RegistryValueType::None,
+                                  { 0x01, 0x02, 0x03 }, error))
+        << error;
+
+    ASSERT_TRUE(registry.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::Full));
+    ASSERT_TRUE(registry.SetValueIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server",
+                                           appbox::RegistryIsolation::Hide));
+
+    ASSERT_TRUE(appbox::SaveProject(model, registry, L"D:\\out\\app.zip", file.wstring(), error)) << error;
+
+    appbox::PackModel     loaded;
+    appbox::RegistryModel loaded_registry;
+    std::wstring          loaded_output;
+    ASSERT_TRUE(appbox::LoadProject(file.wstring(), loaded, loaded_registry, loaded_output, error)) << error;
+
+    EXPECT_EQ(loaded_output, L"D:\\out\\app.zip");
+    EXPECT_FALSE(loaded.IsEmpty());
+
+    /* The key tree and the modes come back unchanged. */
+    const auto* vendor = loaded_registry.FindKey(L"HKEY_CURRENT_USER\\Software\\Vendor");
+    ASSERT_NE(vendor, nullptr);
+    EXPECT_EQ(vendor->isolation, appbox::RegistryIsolation::Full);
+    EXPECT_NE(loaded_registry.FindKey(L"HKEY_CURRENT_USER\\Software\\Vendor\\Deep"), nullptr);
+    EXPECT_NE(loaded_registry.FindKey(L"HKEY_LOCAL_MACHINE\\Software\\AppBox"), nullptr);
+
+    /* The sub key comes first, then the values in name order. */
+    const auto rows = loaded_registry.Rows(L"HKEY_CURRENT_USER\\Software\\Vendor");
+    ASSERT_EQ(rows.size(), static_cast<std::size_t>(3));
+
+    EXPECT_EQ(rows[0].kind, appbox::RegistryRow::Kind::Key);
+    EXPECT_EQ(rows[0].name, L"Deep");
+    /* The sub key keeps the mode it was created with: the change of the key
+     * above it never reached it. */
+    EXPECT_EQ(rows[0].isolation, appbox::RegistryIsolation::WriteCopy);
+
+    EXPECT_EQ(rows[1].name, L"Count");
+    EXPECT_EQ(rows[1].type, appbox::RegistryValueType::Dword);
+    EXPECT_EQ(rows[1].isolation, appbox::RegistryIsolation::WriteCopy);
+    uint32_t count = 0;
+    ASSERT_TRUE(appbox::RegistryDwordValue(rows[1].data, count));
+    EXPECT_EQ(count, 42u);
+
+    EXPECT_EQ(rows[2].name, L"Server");
+    EXPECT_EQ(rows[2].type, appbox::RegistryValueType::String);
+    EXPECT_EQ(rows[2].isolation, appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(appbox::RegistryStringValue(rows[2].data), L"host");
+
+    /* The default value of another root keeps its type and its bytes. */
+    const auto appbox_rows = loaded_registry.Rows(L"HKEY_LOCAL_MACHINE\\Software\\AppBox");
+    ASSERT_EQ(appbox_rows.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(appbox_rows[0].name, L"");
+    EXPECT_EQ(appbox_rows[0].type, appbox::RegistryValueType::None);
+    EXPECT_EQ(appbox_rows[0].data, (std::vector<std::uint8_t>{ 0x01, 0x02, 0x03 }));
+}
+
+TEST(ProjectFile, LoadWithoutARegistryMemberRestoresAnEmptyRegistry)
+{
+    TempDir temp;
+    const auto file = temp.File(L"legacy.json");
+    WriteBytes(file, "{ \"version\": 1, \"output_path\": \"D:\\\\out\\\\a.zip\" }");
+
+    std::string error;
+    appbox::RegistryModel registry;
+    ASSERT_TRUE(registry.EnsureKey(L"HKEY_CURRENT_USER\\Software\\Old", error)) << error;
+
+    appbox::PackModel model;
+    std::wstring      output;
+    ASSERT_TRUE(appbox::LoadProject(file.wstring(), model, registry, output, error)) << error;
+
+    /* The file does not describe a registry, so the workspace starts empty. */
+    EXPECT_EQ(registry.Root().children.size(), static_cast<std::size_t>(5));
+    EXPECT_EQ(registry.FindKey(L"HKEY_CURRENT_USER\\Software\\Old"), nullptr);
+}
+
+TEST(ProjectFile, LoadIgnoresTheIsolationSetMemberOfAnOlderFile)
+{
+    TempDir temp;
+    const auto file = temp.File(L"isolation-set.json");
+    WriteBytes(file, "{ \"version\": 1, \"registry\": { \"keys\": [ { \"name\": \"HKEY_CURRENT_USER\", "
+                      "\"isolation\": \"write_copy\", \"isolation_set\": false, \"values\": [ { \"name\": "
+                      "\"Server\", \"type\": \"REG_SZ\", \"data\": \"\", \"isolation\": \"hide\", "
+                      "\"isolation_set\": true } ], \"children\": [ { \"name\": \"Deep\", "
+                      "\"isolation\": \"full\", \"isolation_set\": false } ] } ] } }");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::wstring          output;
+    std::string           error;
+    ASSERT_TRUE(appbox::LoadProject(file.wstring(), model, registry, output, error)) << error;
+
+    /*
+     * The member does not name a mode of its own, so every mode of the file is
+     * read as it is stored.
+     */
+    const auto* current_user = registry.FindKey(L"HKEY_CURRENT_USER");
+    ASSERT_NE(current_user, nullptr);
+    EXPECT_EQ(current_user->isolation, appbox::RegistryIsolation::WriteCopy);
+
+    const auto* deep = registry.FindKey(L"HKEY_CURRENT_USER\\Deep");
+    ASSERT_NE(deep, nullptr);
+    EXPECT_EQ(deep->isolation, appbox::RegistryIsolation::Full);
+
+    ASSERT_EQ(current_user->values.size(), 1u);
+    EXPECT_EQ(current_user->values[0].name, L"Server");
+    EXPECT_EQ(current_user->values[0].isolation, appbox::RegistryIsolation::Hide);
+}
+
+TEST(ProjectFile, LoadRejectsABrokenRegistry)
+{
+    TempDir temp;
+
+    const auto broken = temp.File(L"broken-registry.json");
+    WriteBytes(broken, "{ \"version\": 1, \"registry\": { \"keys\": [ { \"name\": \"HKEY_CURRENT_USER\", "
+                       "\"isolation\": \"sandbox\" } ] } }");
+
+    const auto unknown_root = temp.File(L"unknown-root.json");
+    WriteBytes(unknown_root, "{ \"version\": 1, \"registry\": { \"keys\": [ { \"name\": \"HKEY_OTHER\", "
+                             "\"isolation\": \"full\" } ] } }");
+
+    const auto bad_value = temp.File(L"bad-value.json");
+    WriteBytes(bad_value, "{ \"version\": 1, \"registry\": { \"keys\": [ { \"name\": \"HKEY_CURRENT_USER\", "
+                          "\"isolation\": \"full\", \"values\": [ { \"name\": \"Server\", "
+                          "\"type\": \"REG_SOMETHING\", \"data\": \"\", \"isolation\": \"full\" } ] } ] } }");
+
+    appbox::PackModel model;
+    ASSERT_TRUE(BuildSampleModel(model));
+
+    std::string error;
+    appbox::RegistryModel registry;
+    ASSERT_TRUE(registry.EnsureKey(L"HKEY_CURRENT_USER\\Software\\Keep", error)) << error;
+
+    std::wstring output;
+
+    EXPECT_FALSE(appbox::LoadProject(broken.wstring(), model, registry, output, error));
+    EXPECT_NE(error.find("unknown isolation mode"), std::string::npos);
+
+    EXPECT_FALSE(appbox::LoadProject(unknown_root.wstring(), model, registry, output, error));
+    EXPECT_NE(error.find("unknown root key"), std::string::npos);
+
+    EXPECT_FALSE(appbox::LoadProject(bad_value.wstring(), model, registry, output, error));
+    EXPECT_NE(error.find("unknown value type"), std::string::npos);
+
+    /* A rejected file leaves both models untouched. */
+    EXPECT_FALSE(model.IsEmpty());
+    EXPECT_NE(registry.FindKey(L"HKEY_CURRENT_USER\\Software\\Keep"), nullptr);
+}

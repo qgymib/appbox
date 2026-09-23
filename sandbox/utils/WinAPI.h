@@ -453,6 +453,18 @@ typedef struct _KEY_VALUE_FULL_INFORMATION
     WCHAR Name[1];
 } KEY_VALUE_FULL_INFORMATION, *PKEY_VALUE_FULL_INFORMATION;
 
+/**
+ * @brief One value of a multi value query.
+ * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntquerymultiplevaluekey
+ */
+typedef struct _KEY_VALUE_ENTRY
+{
+    PUNICODE_STRING ValueName;
+    ULONG           DataLength;
+    ULONG           DataOffset;
+    ULONG           Type;
+} KEY_VALUE_ENTRY, *PKEY_VALUE_ENTRY;
+
 typedef struct _OBJECT_NAME_INFORMATION
 {
     UNICODE_STRING Name;
@@ -685,6 +697,20 @@ typedef NTSTATUS (*T_NtQueryValueKey)(
 	/* [OUT] */ PVOID                       KeyValueInformation,
 	/* [IN] */  ULONG                       Length,
 	/* [OUT] */ PULONG                      ResultLength
+);
+/* clang-format on */
+
+/**
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwsetvaluekey
+ */
+/* clang-format off */
+typedef NTSTATUS (*T_NtSetValueKey)(
+	/* [IN] */ HANDLE          KeyHandle,
+	/* [IN] */ PUNICODE_STRING ValueName,
+	/* [IN] */ ULONG           TitleIndex,
+	/* [IN] */ ULONG           Type,
+	/* [IN] */ PVOID           Data,
+	/* [IN] */ ULONG           DataSize
 );
 /* clang-format on */
 

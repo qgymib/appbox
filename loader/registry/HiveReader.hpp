@@ -43,8 +43,11 @@ struct RegistryValue
  * never writes, so the shared hive file cannot be damaged by browsing.
  *
  * The host registry is never touched: only the hive file below the overlay
- * directory is accessed, which is exactly the data the sandbox redirects its
- * HKCU writes into.
+ * directory is accessed, which holds the virtual registry the sandbox
+ * redirects its registry accesses into. The hive keeps one sub key per root
+ * key of the view (`HKEY_LOCAL_MACHINE`, `HKEY_CURRENT_USER`, ...), so the
+ * tree of the browser mirrors the layout of the registry editor below its
+ * container item.
  */
 class HiveReader
 {

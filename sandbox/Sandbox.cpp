@@ -40,6 +40,7 @@ static void ParseInjectData(const std::string& data)
     }
 
     appbox::sandbox->wRegistryHiveDOSPath = appbox::UTF8ToWide(inject_data.registry_hive_dos_path);
+    appbox::sandbox->wRegistryIsolationDOSPath = appbox::UTF8ToWide(inject_data.registry_isolation_dos_path);
 
     appbox::sandbox->client = std::make_shared<appbox::PipeClient>(appbox::sandbox->wPipePath);
     if (!appbox::sandbox->client->Start())
@@ -224,6 +225,7 @@ void appbox::to_json(nlohmann::json& j, const Sandbox& r)
     j["sandbox32_dos_path"] = r.sandbox32_dos_path;
     j["sandbox64_dos_path"] = r.sandbox64_dos_path;
     j["registry_hive_dos_path"] = appbox::WideToUTF8(r.wRegistryHiveDOSPath);
+    j["registry_isolation_dos_path"] = appbox::WideToUTF8(r.wRegistryIsolationDOSPath);
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)

@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_REGISTRY_KEYPATH_HPP
 
 #include <string>
+#include <vector>
 
 namespace appbox
 {
@@ -30,6 +31,20 @@ bool StripKeyPrefix(const std::wstring& path, const std::wstring& prefix, std::w
  * @return The joined path. Empty operands are handled gracefully.
  */
 std::wstring JoinKeyPath(const std::wstring& root, const std::wstring& name);
+
+/**
+ * @brief Split a registry key path into its components.
+ *
+ * The components are separated by backslashes. Empty components — a doubled
+ * separator, a leading or a trailing one — are skipped, so
+ * `HKEY_CURRENT_USER\Software\App` yields three components and
+ * `HKEY_CURRENT_USER\` yields one.
+ *
+ * @param[in] path The registry key path.
+ * @param[out] components The components in order, cleared first.
+ * @return true when the path holds at least one component.
+ */
+bool SplitKeyPath(const std::wstring& path, std::vector<std::wstring>& components);
 
 } // namespace registry
 } // namespace appbox

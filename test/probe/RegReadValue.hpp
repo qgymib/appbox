@@ -13,9 +13,10 @@ struct ProtocolRegReadValue
 
     struct Req
     {
-        std::string Key;   /* Key path relative to HKCU. Encoding in UTF-8. */
+        std::string Root;  /* Root key name, for example HKEY_LOCAL_MACHINE. Empty means HKEY_CURRENT_USER. */
+        std::string Key;   /* Key path relative to the root key. Encoding in UTF-8. */
         std::string Value; /* Value name. Encoding in UTF-8. */
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, Key, Value)
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, Root, Key, Value)
     };
 
     struct Rsp

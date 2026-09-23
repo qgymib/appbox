@@ -200,7 +200,9 @@ static NTSTATUS QueryKeyNameTranslated(HANDLE KeyHandle, KEY_INFORMATION_CLASS K
  *
  * The counts of the hive layer are replaced by the counts of the merged view,
  * and the maximum length fields grow to the maximum of both layers, so a
- * caller which allocates based on them can hold every merged entry.
+ * caller which allocates based on them can hold every merged entry. The real
+ * layer is filtered like the enumeration does, so the counts never announce an
+ * entry which the enumeration hides.
  *
  * @param[in] KeyHandle The hive key handle of the original call.
  * @param[in] view_path The logical view path of the key.
@@ -254,6 +256,10 @@ static NTSTATUS FixMergedCounts(HANDLE KeyHandle, const std::wstring& view_path,
     {
         return forwarded;
     }
+
+    /* The same filter the enumeration applies, so the counts match the view. */
+    appbox::registry::Hive::FilterHiddenEntries(view_path, false, real_sub_keys);
+    appbox::registry::Hive::FilterHiddenEntries(view_path, true, real_values);
 
     /* The maximum length fields of the real layer, when they are available. */
     BYTE  real_buf[sizeof(KEY_FULL_INFORMATION) + 0x100];

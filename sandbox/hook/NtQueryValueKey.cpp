@@ -28,8 +28,11 @@ static appbox::LoggerF logger("NtQueryValueKey", NtQueryValueKeyLogParam);
  * A value query below a hive handle first runs against the hive layer. When
  * the value does not exist there, the query is replayed against the real key
  * which the view path addresses, so a shadow key no longer hides the values of
- * the real key. Buffer related results of the hive layer are returned as they
- * are: the hive holds the value, only the caller buffer is too small.
+ * the real key — unless the isolation mode of the value keeps the host entry
+ * invisible, or the value was deleted inside the sandbox (a whiteout), in
+ * which case the not-found result of the hive layer is reported. Buffer
+ * related results of the hive layer are returned as they are: the hive holds
+ * the value, only the caller buffer is too small.
  *
  * Handles which do not point into the hive are forwarded unchanged.
  */
@@ -54,6 +57,16 @@ static NTSTATUS Hook_NtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName
     }
 
     /* Read through: the value is missing in the hive, try the real registry. */
+    std::wstring relative;
+    std::wstring value_name;
+    if (appbox::registry::Hive::HiveRelativePath(view_path, relative)
+        && appbox::registry::ReadValueName(ValueName, value_name)
+        && (appbox::registry::Hive::HidesHostValue(relative, value_name)
+            || appbox::registry::Hive::IsValueWhitedOut(relative, value_name)))
+    {
+        return st;
+    }
+
     HANDLE real = nullptr;
     if (!NT_SUCCESS(appbox::registry::Hive::OpenRealKey(view_path, KEY_QUERY_VALUE, OBJ_CASE_INSENSITIVE, nullptr,
                                                         nullptr, &real)))

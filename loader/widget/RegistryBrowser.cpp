@@ -13,9 +13,12 @@ namespace
 {
 
 /**
- * @brief Label of the tree root, the hive shadows HKCU of the sandboxed user.
+ * @brief Label of the tree root, the container of the five root keys.
+ *
+ * The hive holds one sub key per root key of the view, so the tree of the
+ * browser mirrors the layout of the registry editor below the container.
  */
-const wchar_t* kRootLabel = L"HKEY_CURRENT_USER";
+const wchar_t* kRootLabel = L"Sandbox Registry";
 
 /**
  * @brief Label of the default value row of the value list.

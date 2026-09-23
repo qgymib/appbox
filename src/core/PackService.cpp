@@ -1,6 +1,8 @@
 #include "PackService.hpp"
 #include "ApplicationIcon.hpp"
 #include "PresetDirectory.hpp"
+#include "RegistryHive.hpp"
+#include "RegistryIsolationFile.hpp"
 #include "ZipWriter.hpp"
 #include "Config.hpp"
 #include "WString.hpp"
@@ -211,8 +213,8 @@ std::wstring LoaderEntryName(const PackModel& model)
     return std::filesystem::path(model.MainProgramChoice().relative_path).filename().wstring();
 }
 
-std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t loader_size,
-                 const std::wstring& zip_path, const BuildProgressCallback& progress)
+std::string Pack(const PackModel& model, const RegistryModel& registry, const void* loader_bytes,
+                 std::size_t loader_size, const std::wstring& zip_path, const BuildProgressCallback& progress)
 {
     if (!model.HasMainProgram())
     {
@@ -230,7 +232,7 @@ std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t l
     }
 
     /* Count the files once so the progress callback has a stable total. */
-    std::size_t total = model.AllImportedFiles().size();
+    std::size_t total = kNonContentArchiveEntries + model.AllImportedFiles().size();
     for (const auto& entry : PresetDirectories())
     {
         for (const auto& imported : model.ImportsOf(entry.id))
@@ -311,8 +313,48 @@ std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t l
             return error;
         }
 
-        /* Imported folders below the lower layer tree of the archive. */
         std::set<std::string> added;
+
+        /*
+         * The registry of the workspace travels inside the overlay: the hive
+         * holds the virtual registry the sandbox mounts, the isolation file
+         * holds the modes which decide which host entries stay visible. Both
+         * live in the registry folder of the overlay, which is exactly where
+         * the loader looks for them at run time.
+         */
+        const std::string registry_prefix = config.overlay_fs + "/registry";
+        error = EnsureDirectory(writer, added, config.overlay_fs);
+        if (!error.empty())
+        {
+            return error;
+        }
+        error = EnsureDirectory(writer, added, registry_prefix);
+        if (!error.empty())
+        {
+            return error;
+        }
+
+        std::vector<std::uint8_t> hive;
+        if (!BuildRegistryHiveBytes(registry, hive, error))
+        {
+            return error;
+        }
+        if (!writer.AddFileBuffer(registry_prefix + "/user.hiv", hive.data(), hive.size(), error))
+        {
+            return error;
+        }
+
+        std::string isolation;
+        if (!BuildRegistryIsolationFile(registry, isolation, error))
+        {
+            return error;
+        }
+        if (!writer.AddFileBuffer(registry_prefix + "/isolation.json", isolation.data(), isolation.size(), error))
+        {
+            return error;
+        }
+
+        /* Imported folders below the lower layer tree of the archive. */
         error = EnsureDirectory(writer, added, "filesystem");
         if (!error.empty())
         {

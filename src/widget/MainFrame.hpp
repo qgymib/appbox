@@ -9,8 +9,10 @@
 #include <thread>
 #include "core/BuildReport.hpp"
 #include "core/PackModel.hpp"
+#include "core/RegistryModel.hpp"
 
 class FilesystemPanel;
+class RegistryPanel;
 class RibbonBar;
 class SideNav;
 class wxProgressDialog;
@@ -157,6 +159,17 @@ private:
     void OnExportConfiguration(wxCommandEvent& event);
 
     /**
+     * @brief Merge a `.reg` file into the registry workspace.
+     *
+     * The file is parsed first and only applied when it is valid as a whole,
+     * so a broken file leaves the registry untouched and reports the reason
+     * instead.
+     *
+     * @param[in] event Command event.
+     */
+    void OnImportRegistry(wxCommandEvent& event);
+
+    /**
      * @brief Open the main program browser and apply the selection.
      * @param[in] event Command event.
      */
@@ -246,10 +259,19 @@ private:
 
     appbox::PackModel model_;
 
+    /**
+     * @brief Registry the packaged application will see.
+     *
+     * The model is filled by `File -> Import Registry` and by the registry
+     * workspace itself; it is not part of the project file yet.
+     */
+    appbox::RegistryModel registry_model_;
+
     RibbonBar*       ribbon_ = nullptr;
     SideNav*         side_nav_ = nullptr;
     wxSimplebook*    workspace_ = nullptr;
     FilesystemPanel* filesystem_panel_ = nullptr;
+    RegistryPanel*   registry_panel_ = nullptr;
 
     bool output_path_edited_ = false;
 

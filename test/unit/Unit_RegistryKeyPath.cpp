@@ -91,3 +91,40 @@ TEST(UnitRegistryKeyPath, JoinKeyPath)
     ASSERT_EQ(appbox::registry::JoinKeyPath(L"\\REGISTRY\\USER\\S-1-5-21", L"Software\\AppBox"),
               L"\\REGISTRY\\USER\\S-1-5-21\\Software\\AppBox");
 }
+
+/**
+ * @brief A path is split on the separators, the components keep their order.
+ */
+TEST(UnitRegistryKeyPath, SplitKeyPath)
+{
+    std::vector<std::wstring> components;
+
+    ASSERT_TRUE(appbox::registry::SplitKeyPath(L"HKEY_CURRENT_USER\\Software\\AppBox", components));
+    ASSERT_EQ(components.size(), 3u);
+    EXPECT_EQ(components[0], L"HKEY_CURRENT_USER");
+    EXPECT_EQ(components[1], L"Software");
+    EXPECT_EQ(components[2], L"AppBox");
+
+    ASSERT_TRUE(appbox::registry::SplitKeyPath(L"HKEY_LOCAL_MACHINE", components));
+    ASSERT_EQ(components.size(), 1u);
+    EXPECT_EQ(components[0], L"HKEY_LOCAL_MACHINE");
+}
+
+/**
+ * @brief Empty components are skipped, an empty path has no component.
+ */
+TEST(UnitRegistryKeyPath, SplitKeyPathEmptyComponents)
+{
+    std::vector<std::wstring> components;
+
+    ASSERT_TRUE(appbox::registry::SplitKeyPath(L"\\HKEY_USERS\\\\Software\\", components));
+    ASSERT_EQ(components.size(), 2u);
+    EXPECT_EQ(components[0], L"HKEY_USERS");
+    EXPECT_EQ(components[1], L"Software");
+
+    EXPECT_FALSE(appbox::registry::SplitKeyPath(L"", components));
+    EXPECT_TRUE(components.empty());
+
+    EXPECT_FALSE(appbox::registry::SplitKeyPath(L"\\\\", components));
+    EXPECT_TRUE(components.empty());
+}

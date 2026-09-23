@@ -37,6 +37,16 @@ struct Sandbox
     std::wstring wRegistryHiveDOSPath;
 
     /**
+     * @brief Registry isolation file path (DOS style).
+     *
+     * The file carries the isolation modes of the virtual registry. An empty
+     * path or a missing file means that no entry was configured, so every
+     * entry keeps the default mode `Write Copy` and the host registry stays
+     * visible.
+     */
+    std::wstring wRegistryIsolationDOSPath;
+
+    /**
      * @brief Path to 32-bit sandbox dll path. Encoding in UTF-8.
      */
     std::string sandbox32_dos_path;

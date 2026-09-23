@@ -32,7 +32,10 @@ struct RealKeyGuard
  * 1. The read through the shadow returns the real value (read through of
  *    NtQueryValueKey), so the shadow no longer hides the values of the real
  *    key.
- * 2. The real value is unchanged afterwards.
+ * 2. The create reports REG_OPENED_EXISTING_KEY: the key exists in the merged
+ *    view of `WriteCopy`, even though the hive layer only just created the
+ *    shadow key.
+ * 3. The real value is unchanged afterwards.
  */
 TEST_F(Reg, ShadowKey_ReadRealValue)
 {
@@ -69,8 +72,8 @@ TEST_F(Reg, ShadowKey_ReadRealValue)
 
     auto rsp = ProbeRegShadowRead.Call(req, GetCWD(), config).get<ProtocolRegShadowRead::Rsp>();
     ASSERT_EQ(rsp.create_code, 0u);
-    /* Known gap: the disposition reflects the hive, not the real registry. */
-    ASSERT_EQ(rsp.disposition, static_cast<DWORD>(REG_CREATED_NEW_KEY));
+    /* The disposition follows the merged view: the host holds the key. */
+    ASSERT_EQ(rsp.disposition, static_cast<DWORD>(REG_OPENED_EXISTING_KEY));
     ASSERT_EQ(rsp.query_code, 0u);
     ASSERT_EQ(rsp.data, expected);
 

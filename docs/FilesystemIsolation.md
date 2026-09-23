@@ -381,24 +381,6 @@ Directory listings are merged across layers for `FileFullDirectoryInformation`:
 
 The plain `NtQueryDirectoryFile` hook is not merged — see the gaps below.
 
-### Behavior matrix (from the test suite)
-
-`test/cases/Fs_*.cpp`, with `Upper` as the overlay and `Lower1` / `Lower2` as base
-filesystems. Each case is documented in its own header comment.
-
-| Case | Upper | Lower1 | Lower2 | Operation | Expected |
-| --- | --- | --- | --- | --- | --- |
-| `DeleteFile_MultiLower_ExistsInLower` | – | `data.txt` | `data.txt` | delete `data.txt` | success, upper whiteout created, no upper file |
-| `DeleteFile_MultiLower_ExistsInLowerUpper` | `data.txt` | `data.txt` | `data.txt` | delete `data.txt` | success, upper file deleted, whiteout created |
-| `DeleteFile_MultiLower_ExistsInUpper` | `data.txt` | – | – | delete `data.txt` | success, no whiteout (nothing to hide) |
-| `DeleteFile_MultiLower_NonExists` | – | `data1.txt` | `data2.txt` | delete `data.txt` | failure, no whiteout |
-| `DeleteFile_WhiteoutInLower_ExistsInUpper` | `data.txt` | `data.txt.$APPBOX_DELETE$` | `data.txt` | delete `data.txt` | success, upper file deleted, no whiteout in upper |
-| `ListDir_MultiLower_ExistsInLower` | – | `F.txt` | `F.txt` | list `#APPDATA#` | `F.txt` appears exactly once, host entries also listed |
-| `ListDir_MultiLower_ExistsInLower_WhiteoutInUpper` | `F.txt.$APPBOX_DELETE$` | `F.txt` | `F2.txt` | list `#APPDATA#` | `F.txt` hidden, `F2.txt` listed once |
-| `NewFile_MultiLower_WhiteoutInLower` | – | `data.txt.$APPBOX_DELETE$` | `data.txt` | create `data.txt` (`CREATE_NEW`) | success, file created in upper |
-| `NewFile_MultiLower_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | `data.txt` | create `data.txt` (`CREATE_NEW`) | success, upper whiteout removed, file created in upper |
-| `ReadFile_MultiLower_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | `data.txt` | read `data.txt` | failure |
-
 ## Supporting modules
 
 | Module | Responsibility |
@@ -416,28 +398,16 @@ filesystems. Each case is documented in its own header comment.
 | `sandbox/utils/HandleInfo.*` | Handle to (view path, resolve result, object attributes) map plus per-handle metadata slots. |
 | `sandbox/utils/FileFullDirInformationWalker.*` | In-place filtering of `FILE_FULL_DIR_INFORMATION` buffers with `NextEntryOffset` fix-ups. |
 
-## Test coverage
+## Tests
 
-* `test/utils/FsBuilder.*` — declarative tree builder. `FsRoot(root, {Upper, Lower1, Lower2})`
-  materializes the directories and returns a `LoaderConfig` whose `overlay_fs` is the
-  first entry and whose `base_fs` holds the rest; the lower layer directories are named
-  after the known folder token (`#APPDATA#`) so that `MapBaseFS` resolves them.
-  `Verify()` re-reads the lower layers and fails if their content changed.
-* `test/utils/CommonFixture.*` — gives every case a private working directory.
-* `test/utils/ProbeCall.*` — writes the `LoaderConfig` to `config.json`, starts the
-  **loader** with `--X-AppBox-ConfigFile`, which launches the test binary as a probe
-  process with the sandbox DLL injected; the probe asks the test process for its task
-  over a named pipe and reports the result back.
-* `test/probe/*` — the operations executed inside the sandbox (`CreateFileW`,
-  `CreateDirectoryW`, `DeleteFileW`, `ListDir`, `ReadFileFull`).
-* `test/cases/Fs_*.cpp` — the behavior matrix above, plus `ArugmentsPassthrough.cpp`
-  and `RPC.cpp`.
+The unit tests and the end-to-end cases of the filesystem isolation are
+listed in [test/README.md](../test/README.md).
 
 ## Hook robustness contract
 
 A hook runs inside a kernel call of the application, so a failure inside the hook is a
-failure of the application. Two rules follow from that, both of them are covered by
-`test/unit/Unit_Log.cpp` and `test/unit/Unit_PipeClient.cpp`:
+failure of the application. Two rules follow from that, both of them are covered by the
+unit tests listed in [test/README.md](../test/README.md):
 
 1. **Never read more than the caller declared.** The structures which arrive in a hook
    belong to the application and can be inconsistent. A `UNICODE_STRING` whose `Length`

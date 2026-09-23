@@ -13,11 +13,29 @@ add_executable(AppBoxTests
     "cases/Fs_NewFile_MultiLower_WhiteoutInUpper.cpp"
     "cases/Fs_QueryAttributes_MultiLower.cpp"
     "cases/Fs_ReadFile_MultiLower_WhiteoutInUpper.cpp"
+    "cases/Reg_DeleteKey_NonEmpty.cpp"
+    "cases/Reg_DeleteKey_ReadHandle.cpp"
+    "cases/Reg_DeleteKey_ShadowKeyRemoved.cpp"
+    "cases/Reg_DeleteKey_WhiteoutHostKey.cpp"
+    "cases/Reg_DeleteValue_ShadowValue.cpp"
+    "cases/Reg_DeleteValue_WhiteoutHostValue.cpp"
     "cases/Reg_EnumerateKey_Merged.cpp"
+    "cases/Reg_EnumerateValue_DefaultValue.cpp"
     "cases/Reg_EnumerateValue_Merged.cpp"
+    "cases/Reg_Full_EnumerateHidesReal.cpp"
+    "cases/Reg_Full_HidesRealKey.cpp"
+    "cases/Reg_Full_HidesRealValue.cpp"
+    "cases/Reg_Full_HiveWinsOverReal.cpp"
+    "cases/Reg_Full_NonHkcuRoot.cpp"
+    "cases/Reg_Hide_CreateInSandbox.cpp"
     "cases/Reg_QueryKeyName_ViewPath.cpp"
+    "cases/Reg_QueryMultipleValues_Mixed.cpp"
     "cases/Reg_ReadValue_RealFallback.cpp"
+    "cases/Reg_SaveKey_MergedSnapshot.cpp"
+    "cases/Reg_ShadowKey_HidesRealEntriesOfSameName.cpp"
     "cases/Reg_ShadowKey_ReadRealValue.cpp"
+    "cases/Reg_WriteCopy_CreateDisposition.cpp"
+    "cases/Reg_WriteCopy_WriteOpen_CopyUp.cpp"
     "cases/Reg_WriteValue_NewKey.cpp"
     "cases/RPC.cpp"
     "probe/__init__.cpp"
@@ -28,18 +46,26 @@ add_executable(AppBoxTests
     "probe/ListDir.cpp"
     "probe/QueryAttributes.cpp"
     "probe/ReadFileFull.cpp"
+    "probe/RegDeleteKey.cpp"
+    "probe/RegDeleteValue.cpp"
     "probe/RegEnumKey.cpp"
     "probe/RegEnumValue.cpp"
+    "probe/RegOpenWriteValue.cpp"
     "probe/RegQueryKeyName.cpp"
+    "probe/RegQueryMultipleValues.cpp"
     "probe/RegReadValue.cpp"
+    "probe/RegSaveKey.cpp"
     "probe/RegShadowRead.cpp"
     "probe/RegWriteValue.cpp"
     "utils/CommonFixture.cpp"
     "utils/CWD.cpp"
     "utils/FsBuilder.cpp"
+    "utils/HiveBuilder.cpp"
     "utils/KnownFolder.cpp"
     "utils/ProbeCall.cpp"
     "utils/ReadFileFull.cpp"
+    "utils/RealHkcuKey.cpp"
+    "utils/RegistryRootKey.cpp"
     "utils/Semaphore.cpp"
     "utils/WriteFileFull.cpp"
     "Test.cpp"
@@ -105,8 +131,15 @@ add_executable(AppBoxUnitTests
     "unit/Unit_PipeClient.cpp"
     "unit/Unit_ProjectFile.cpp"
     "unit/Unit_ProcessJob.cpp"
+    "unit/Unit_RegFile.cpp"
+    "unit/Unit_RegistryModel.cpp"
     "unit/Unit_RegistryEnumMerge.cpp"
+    "unit/Unit_RegistryHive.cpp"
+    "unit/Unit_RegistryIsolation.cpp"
+    "unit/Unit_RegistryIsolationPolicy.cpp"
     "unit/Unit_RegistryKeyPath.cpp"
+    "unit/Unit_RegistryRootMap.cpp"
+    "unit/Unit_RegistryWhiteout.cpp"
     "unit/Unit_RemoteClient.cpp"
     "unit/Unit_RpcCodec.cpp"
     "unit/Unit_StartupTree.cpp"
@@ -136,13 +169,20 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PresetDirectory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ProjectFile.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegFile.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryHive.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryIsolationFile.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/StartupTree.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipWriter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/ModuleTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/hook/HookTransaction.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/EnumMerge.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/IsolationTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/KeyPath.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/RootMap.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/Whiteout.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/BitParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/Log.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/PipeClient.cpp

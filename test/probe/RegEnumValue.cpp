@@ -7,7 +7,8 @@
  *
  * The enumeration and the read back run inside the sandbox. Reading every
  * enumerated value verifies that the merged value enumeration and the read
- * through of the value query stay consistent.
+ * through of the value query stay consistent. The default value of the key is
+ * enumerated with an empty name like every other value.
  */
 static nlohmann::json ProbeRegEnumValue_Entry(const nlohmann::json& data)
 {
@@ -22,6 +23,9 @@ static nlohmann::json ProbeRegEnumValue_Entry(const nlohmann::json& data)
     {
         return rsp;
     }
+
+    rsp.count_code = RegQueryInfoKeyW(key, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &rsp.value_count,
+                                      nullptr, nullptr, nullptr, nullptr);
 
     for (DWORD i = 0;; ++i)
     {

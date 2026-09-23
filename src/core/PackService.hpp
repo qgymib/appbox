@@ -3,11 +3,22 @@
 
 #include "BuildReport.hpp"
 #include "PackModel.hpp"
+#include "RegistryModel.hpp"
 #include <cstddef>
 #include <string>
 
 namespace appbox
 {
+
+/**
+ * @brief Number of archive entries which do not come from an import.
+ *
+ * The loader payload, the loader configuration and the two registry artifacts
+ * (the hive and the isolation file). The pack run and the extraction of a
+ * `Build and Run` run report the same total, so both count this constant
+ * instead of a literal.
+ */
+inline constexpr std::size_t kNonContentArchiveEntries = 4;
 
 /**
  * @brief Count the regular files below a folder.
@@ -45,6 +56,8 @@ std::wstring LoaderEntryName(const PackModel& model);
  * <main program name>                    loader payload (loader_bytes)
  * <main program name>.json               base_fs = ["."], overlay_fs = "data",
  *                                        launch.executable = <layer key>\<import>\<exe>
+ * data/registry/user.hiv                 virtual registry of the workspace
+ * data/registry/isolation.json           isolation modes of the workspace
  * filesystem/<layer key>/<import>/...    imported folder content
  * filesystem/<layer key>/<target>/<file> imported file content
  * ```
@@ -52,6 +65,12 @@ std::wstring LoaderEntryName(const PackModel& model);
  * The loader program and its configuration carry the file name of the main
  * program, see LoaderEntryName(). The entry program itself keeps its place
  * below the layer tree.
+ *
+ * The registry artifacts land in the overlay folder (`overlay_fs`), which is
+ * where the loader mounts the private hive of the sandbox: the hive holds the
+ * virtual registry the packaged application sees and the isolation file holds
+ * the modes which decide which host entries stay visible (see
+ * `common/RegistryIsolation.hpp`).
  *
  * The loader program also carries the file icon of the main program: the icon
  * group which the shell shows for the main program is appended to the loader
@@ -64,15 +83,19 @@ std::wstring LoaderEntryName(const PackModel& model);
  * fake payload without a real loader binary.
  *
  * The progress total covers the files of the imported folders plus the
- * individually imported files, so the callback receives a stable upper bound
- * for the whole run. The loader payload and its configuration are reported as
- * the preparing stage before the first imported file is packed.
+ * individually imported files and kNonContentArchiveEntries, so the callback
+ * receives a stable upper bound for the whole run. The loader payload and its
+ * configuration are reported as the preparing stage before the first imported
+ * file is packed.
  *
  * Every report names the file which is being packed through
  * BuildProgress::current, using the path below the import root prefixed by the
  * import name, e.g. `L"MyApp\bin\tool.exe"`.
  *
  * @param[in] model The pack model.
+ * @param[in] registry Virtual registry of the workspace, which is written into
+ *                     the overlay of the archive as a hive file and an
+ *                     isolation file.
  * @param[in] loader_bytes Embedded AppBoxLoader.exe payload.
  * @param[in] loader_size Payload size in bytes.
  * @param[in] zip_path Destination zip path (truncated when it exists).
@@ -81,8 +104,8 @@ std::wstring LoaderEntryName(const PackModel& model);
  *                     progress reporting.
  * @return Error description, empty on success.
  */
-std::string Pack(const PackModel& model, const void* loader_bytes, std::size_t loader_size,
-                 const std::wstring& zip_path, const BuildProgressCallback& progress);
+std::string Pack(const PackModel& model, const RegistryModel& registry, const void* loader_bytes,
+                 std::size_t loader_size, const std::wstring& zip_path, const BuildProgressCallback& progress);
 
 } // namespace appbox
 

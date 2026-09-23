@@ -11,7 +11,15 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 ### Resource Isolation
 
 - **Filesystem Isolation**: Three-layer filesystem architecture
-- **Registry Isolation**: Registry key isolation (documented)
+- **Registry Isolation**: The virtual registry of the packer travels as a hive
+  file plus an isolation file into the overlay of the archive; the sandbox
+  redirects all five root keys onto the hive and enforces the three isolation
+  modes of the workspace: `Full` and `Hide` hide the host entry, and
+  `WriteCopy` keeps the hive in front and redirects every modification into it.
+  Reads fall back to the host registry (the read through), a delete is recorded
+  inside the hive instead of touching the host registry, and a save exports the
+  merged view of a key
+  (see [Registry Isolation](docs/RegistryIsolation.md))
 - **Network Isolation**: Network access control (documented)
 
 ### Build System
@@ -56,10 +64,10 @@ cmake .. -G "Visual Studio 17 2022" -A x64
 
 # Build
 cmake --build . --config Release
-
-# Run tests
-ctest -C Release --output-on-failure
 ```
+
+See [test/README.md](test/README.md) for the test suites and the way to
+run them.
 
 ### Build Artifacts
 
@@ -108,8 +116,9 @@ wxWidgets-based GUI application for managing sandboxed processes:
   application as well
 - Read-only sandbox registry browser (admin UI): a registry editor style key
   tree and value list which mounts `<overlay_fs>\registry\user.hiv` directly,
-  never touching the host registry (see
-  [Registry Isolation](docs/RegistryIsolation.md))
+  never touching the host registry; the top item of the tree is the
+  `Sandbox Registry` container with the five root keys of the view below it
+  (see [Registry Isolation](docs/RegistryIsolation.md))
 
 ### AppBox
 
@@ -131,13 +140,31 @@ icon navigation on the left and the workspace on the right.
   The file name of that executable names the loader program and its launch
   configuration inside the archive. Groups without a counterpart in the packer
   are shown disabled.
-- **Navigation**: Filesystem / Registry / Network / Settings; only the
-  filesystem workspace is implemented, the other pages are empty states.
+- **Navigation**: Filesystem / Registry / Network / Settings; the filesystem
+  and the registry workspace are implemented, the other pages are empty states.
 - **Filesystem workspace**: the tree lists the preset directories (Program
   Files, Current User Directory) with their imported folders, and expands
   into the host subfolders of an import on demand. The toolbar row above the
   file list offers `Add Files`, `Add Folder`, `New Folder` (reserved),
   `Remove`, `Up Dir` and a filename search box.
+- **Registry workspace**: the tree always shows the `Sandbox Registry`
+  container with the five root keys, so the registry is reachable even before
+  a `.reg` file was imported. The table below it shows the sub keys and the
+  values of the selected key with the columns `Name`, `Isolation`, `Type` and
+  `Value`; the toolbar offers `Add value`, `Add key` and `Remove`. The
+  isolation mode of every key and every value is picked from a dropdown in its
+  row, every other column is edited by double clicking the row, which opens
+  the key dialog or the value dialog (name, type and data, with an editor that
+  follows the type). The dropdown of a row changes that row alone; the context
+  menu of the tree offers `Isolation Mode...`, which overwrites a whole subtree
+  (and, on request, the values below it) when the dialog asks for it.
+  `File -> Import Registry...` merges a
+  `.reg` file into the view, keeping the isolation modes which were set
+  already (see [Registry Isolation](docs/RegistryIsolation.md)). The model
+  reaches the archive: `Build` writes it as `data/registry/user.hiv` and
+  `data/registry/isolation.json` into the overlay of the archive, and the
+  project file stores it as well, so the modes which were picked are the ones
+  the packaged application runs with.
 - **File list**: the columns `Filename`, `Isolation`, `Hidden`, `No Sync`,
   `Read Only`, `No Upgrade`, `Size` and `Source Path`. The isolation
   attributes are read only: the packer always isolates fully, so they only
@@ -256,6 +283,7 @@ Windows DLL providing runtime isolation:
 - [Registry Isolation](docs/RegistryIsolation.md) - Registry isolation architecture
 - [Network Isolation](docs/NetworkIsolation.md) - Network isolation architecture
 - [Tracer](docs/Tracer.md) - API tracer: usage, mechanism and measured cost
+- [Tests](test/README.md) - Unit tests and end-to-end tests of the sandbox
 
 ## License
 

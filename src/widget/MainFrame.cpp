@@ -2,6 +2,7 @@
 #include "FilesystemPanel.hpp"
 #include "MainProgramDialog.hpp"
 #include "PlaceholderPanel.hpp"
+#include "RegistryPanel.hpp"
 #include "RibbonBar.hpp"
 #include "SideNav.hpp"
 #include "LoaderResource.hpp"
@@ -9,6 +10,7 @@
 #include "core/PackService.hpp"
 #include "core/PresetDirectory.hpp"
 #include "core/ProjectFile.hpp"
+#include "core/RegFile.hpp"
 #include "core/ZipReader.hpp"
 #include "WString.hpp"
 #include <wx/artprov.h>
@@ -28,6 +30,7 @@
 #include <limits>
 #include <string>
 #include <utility>
+#include <vector>
 
 wxDEFINE_EVENT(APPBOX_PACK_PROGRESS, wxThreadEvent);
 wxDEFINE_EVENT(APPBOX_PACK_FINISHED, wxThreadEvent);
@@ -70,6 +73,7 @@ constexpr const char* kProjectFileFilter = "JSON configuration (*.json)|*.json";
  */
 const int kMenuImportConfiguration = wxNewId();
 const int kMenuExportConfiguration = wxNewId();
+const int kMenuImportRegistry = wxNewId();
 
 /**
  * @brief Identifier and interval of the timer which refreshes the elapsed time.
@@ -117,6 +121,7 @@ MainFrame::MainFrame()
     Bind(wxEVT_MENU, &MainFrame::OnAbout, this, wxID_ABOUT);
     Bind(wxEVT_MENU, &MainFrame::OnImportConfiguration, this, kMenuImportConfiguration);
     Bind(wxEVT_MENU, &MainFrame::OnExportConfiguration, this, kMenuExportConfiguration);
+    Bind(wxEVT_MENU, &MainFrame::OnImportRegistry, this, kMenuImportRegistry);
     Bind(APPBOX_SIDE_NAV, &MainFrame::OnSideNavChanged, this);
     Bind(wxEVT_RIBBONBUTTONBAR_CLICKED, &MainFrame::OnSelectMainProgram, this, kRibbonStartupFiles);
     Bind(wxEVT_RIBBONBUTTONBAR_CLICKED, &MainFrame::OnBuild, this, kRibbonBuild);
@@ -155,6 +160,8 @@ void MainFrame::CreateMenuBar()
     menu_file->Append(kMenuImportConfiguration, "&Import Configuration...");
     menu_file->Append(kMenuExportConfiguration, "&Export Configuration...");
     menu_file->AppendSeparator();
+    menu_file->Append(kMenuImportRegistry, "&Import Registry...");
+    menu_file->AppendSeparator();
     menu_file->Append(wxID_EXIT);
 
     auto menu_help = new wxMenu();
@@ -180,9 +187,10 @@ void MainFrame::CreateLayout()
 
     filesystem_panel_ = new FilesystemPanel(workspace_, model_);
     workspace_->AddPage(filesystem_panel_, "Filesystem");
-    workspace_->AddPage(new PlaceholderPanel(workspace_, "Registry",
-                                             "Registry isolation of the packaged application."),
-                        "Registry");
+
+    registry_panel_ = new RegistryPanel(workspace_, registry_model_);
+    workspace_->AddPage(registry_panel_, "Registry");
+
     workspace_->AddPage(new PlaceholderPanel(workspace_, "Network",
                                              "Network isolation of the packaged application."),
                         "Network");
@@ -323,11 +331,12 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
         }
     }
 
-    appbox::PackModel loaded;
-    std::wstring      output_path;
-    std::string       error;
+    appbox::PackModel     loaded;
+    appbox::RegistryModel loaded_registry;
+    std::wstring          output_path;
+    std::string           error;
 
-    if (!appbox::LoadProject(dialog.GetPath().ToStdWstring(), loaded, output_path, error))
+    if (!appbox::LoadProject(dialog.GetPath().ToStdWstring(), loaded, loaded_registry, output_path, error))
     {
         spdlog::error("importing the configuration failed: {}", error);
         wxMessageBox("The configuration could not be imported:\n\n" + wxString::FromUTF8(error),
@@ -336,7 +345,9 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     }
 
     model_ = std::move(loaded);
+    registry_model_ = std::move(loaded_registry);
     filesystem_panel_->RefreshModel();
+    registry_panel_->RefreshModel();
 
     /*
      * A path recorded by the project file becomes the authoritative archive
@@ -375,7 +386,7 @@ void MainFrame::OnExportConfiguration(wxCommandEvent&)
     }
 
     std::string error;
-    if (!appbox::SaveProject(model_, OutputPath().ToStdWstring(),
+    if (!appbox::SaveProject(model_, registry_model_, OutputPath().ToStdWstring(),
                              dialog.GetPath().ToStdWstring(), error))
     {
         spdlog::error("exporting the configuration failed: {}", error);
@@ -385,6 +396,44 @@ void MainFrame::OnExportConfiguration(wxCommandEvent&)
     }
 
     SetStatusText("Configuration exported to " + dialog.GetPath());
+}
+
+void MainFrame::OnImportRegistry(wxCommandEvent&)
+{
+    wxFileDialog dialog(this, "Import Registry", wxEmptyString, wxEmptyString,
+                        "Registry files (*.reg)|*.reg|All files (*.*)|*.*",
+                        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dialog.ShowModal() != wxID_OK)
+    {
+        return;
+    }
+
+    /*
+     * The file is parsed and validated before it is applied: a file which
+     * cannot be read or which is not a valid `.reg` file leaves the registry
+     * of the session untouched.
+     */
+    std::vector<appbox::RegFileEntry> entries;
+    std::string error;
+
+    if (!appbox::LoadRegFile(dialog.GetPath().ToStdWstring(), entries, error))
+    {
+        spdlog::error("importing the registry failed: {}", error);
+        wxMessageBox("The registry file could not be imported:\n\n" + wxString::FromUTF8(error),
+                     "Import Registry", wxOK | wxICON_ERROR, this);
+        return;
+    }
+
+    if (!appbox::MergeRegFile(registry_model_, entries, error))
+    {
+        spdlog::error("merging the registry failed: {}", error);
+        wxMessageBox("The registry file could not be applied:\n\n" + wxString::FromUTF8(error),
+                     "Import Registry", wxOK | wxICON_ERROR, this);
+        return;
+    }
+
+    registry_panel_->RefreshModel();
+    SetStatusText("Registry imported from " + dialog.GetPath());
 }
 
 void MainFrame::OnSelectMainProgram(wxCommandEvent&)
@@ -478,7 +527,7 @@ void MainFrame::StartPack(bool run_after)
      * so the packing stage reports this count and the extracting stage of a
      * `Build and Run` run reports the very same number of file entries.
      */
-    std::size_t total = 2 + model_.AllImportedFiles().size();
+    std::size_t total = appbox::kNonContentArchiveEntries + model_.AllImportedFiles().size();
     for (const auto& entry : appbox::PresetDirectories())
     {
         for (const auto& imported : model_.ImportsOf(entry.id))
@@ -536,14 +585,15 @@ void MainFrame::StartPack(bool run_after)
     progress_timer_->Start(kProgressTimerInterval);
 
     /*
-     * The model is copied so a later UI action cannot mutate the archive
+     * The models are copied so a later UI action cannot mutate the archive
      * content while the worker reads it.
      */
     const auto snapshot = model_;
+    const auto registry_snapshot = registry_model_;
     const auto loader_bytes = std::string(loader);
     const auto zip_wide = zip_path.ToStdWstring();
 
-    pack_thread_ = std::thread([this, snapshot, loader_bytes, zip_wide, run_after]() {
+    pack_thread_ = std::thread([this, snapshot, registry_snapshot, loader_bytes, zip_wide, run_after]() {
         const auto report_progress = [this](const appbox::BuildProgress& report) {
             auto* event = new wxThreadEvent(APPBOX_PACK_PROGRESS);
             event->SetPayload(report);
@@ -552,8 +602,8 @@ void MainFrame::StartPack(bool run_after)
         };
 
         PackOutcome outcome;
-        outcome.error =
-            appbox::Pack(snapshot, loader_bytes.data(), loader_bytes.size(), zip_wide, report_progress);
+        outcome.error = appbox::Pack(snapshot, registry_snapshot, loader_bytes.data(), loader_bytes.size(),
+                                     zip_wide, report_progress);
 
         if (outcome.error.empty())
         {

@@ -23,6 +23,7 @@
 #include <ios>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -296,10 +297,7 @@ std::vector<char> MakeIconGroup(WORD first_id, const std::vector<std::vector<cha
 }
 
 /**
- * @brief Add an icon group to an image with the Windows resource API.
- *
- * The helper builds the fixtures of the tests: the application which donates
- * the icon and the loader which already carries its own icon group.
+ * @brief Run one attempt of the resource update of an image.
  *
  * @param[in] path Host path of the image to patch.
  * @param[in] group Resource id or name of the icon group.
@@ -308,8 +306,8 @@ std::vector<char> MakeIconGroup(WORD first_id, const std::vector<std::vector<cha
  * @param[out] error Error description on failure.
  * @return true on success.
  */
-bool AddIconGroup(const std::wstring& path, LPCWSTR group, WORD first_id,
-                  const std::vector<std::vector<char>>& images, std::string& error)
+bool AddIconGroupOnce(const std::wstring& path, LPCWSTR group, WORD first_id,
+                      const std::vector<std::vector<char>>& images, std::string& error)
 {
     const HANDLE update = BeginUpdateResourceW(path.c_str(), FALSE);
     if (update == nullptr)
@@ -348,6 +346,48 @@ bool AddIconGroup(const std::wstring& path, LPCWSTR group, WORD first_id,
     }
 
     return true;
+}
+
+/**
+ * @brief Add an icon group to an image with the Windows resource API.
+ *
+ * The helper builds the fixtures of the tests: the application which donates
+ * the icon and the loader which already carries its own icon group.
+ *
+ * The update is attempted several times, because the image is a freshly copied
+ * executable and a virus scanner which inspects it can hold the file for a
+ * moment, which makes `EndUpdateResourceW` fail with `ERROR_ACCESS_DENIED`.
+ *
+ * @param[in] path Host path of the image to patch.
+ * @param[in] group Resource id or name of the icon group.
+ * @param[in] first_id Resource id of the first image.
+ * @param[in] images Images of the group.
+ * @param[out] error Error description on failure.
+ * @return true on success.
+ */
+bool AddIconGroup(const std::wstring& path, LPCWSTR group, WORD first_id,
+                  const std::vector<std::vector<char>>& images, std::string& error)
+{
+    /** Number of attempts of the resource update. */
+    constexpr int kAttempts = 5;
+
+    /** Delay between two attempts. */
+    constexpr auto kRetryDelay = std::chrono::milliseconds(100);
+
+    for (int attempt = 0; attempt < kAttempts; ++attempt)
+    {
+        if (attempt != 0)
+        {
+            std::this_thread::sleep_for(kRetryDelay);
+        }
+
+        if (AddIconGroupOnce(path, group, first_id, images, error))
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
@@ -650,7 +690,8 @@ TEST(ApplicationIcon, PackWritesTheIconOfTheMainProgram)
     ASSERT_FALSE(payload.empty());
 
     const auto zip_path = temp.Get() / L"out.zip";
-    ASSERT_EQ(appbox::Pack(model, payload.data(), payload.size(), zip_path.wstring(), nullptr), "");
+    const appbox::RegistryModel registry;
+    ASSERT_EQ(appbox::Pack(model, registry, payload.data(), payload.size(), zip_path.wstring(), nullptr), "");
 
     const auto extracted = temp.Get() / L"extracted";
     ASSERT_EQ(appbox::ExtractArchive(zip_path.wstring(), extracted.wstring()), "");

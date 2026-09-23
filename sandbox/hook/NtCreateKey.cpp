@@ -25,10 +25,14 @@ static appbox::LoggerF logger("NtCreateKey", NtCreateKeyLogParam);
 /**
  * @brief Detour of NtCreateKey().
  *
- * Every key creation below HKCU is redirected into the sandbox hive; the real
- * registry is never modified. NtCreateKey creates the intermediate keys of
- * the relative path automatically and reports through Disposition whether the
- * key was created or already existed inside the hive.
+ * Every isolated create lands in the sandbox hive: the call is delegated to
+ * appbox::registry::Hive::CreateIsolatedKey, which walks the path component by
+ * component, creates the intermediate keys inside the hive as well and reports
+ * through Disposition whether the key exists in the merged view of the caller
+ * (see appbox::registry::ViewCreateDisposition). The isolation never modifies
+ * the real registry, so the host key of the same name is left untouched — the
+ * shadow key of the hive hides it, which is the behaviour of `WriteCopy` and
+ * of `Full` and `Hide` alike.
  */
 static NTSTATUS Hook_NtCreateKey(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes,
                                  ULONG TitleIndex, PUNICODE_STRING Class, ULONG CreateOptions, PULONG Disposition)
@@ -39,10 +43,11 @@ static NTSTATUS Hook_NtCreateKey(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess, P
     std::wstring relative;
     if (appbox::registry::Hive::MapKeyPath(ObjectAttributes, view_path, relative) == appbox::registry::HiveMap::Isolated)
     {
-        return appbox::registry::Hive::CreateKey(relative, DesiredAccess, ObjectAttributes->Attributes,
-                                                ObjectAttributes->SecurityDescriptor,
-                                                ObjectAttributes->SecurityQualityOfService, TitleIndex, Class,
-                                                CreateOptions, KeyHandle, Disposition);
+        return appbox::registry::Hive::CreateIsolatedKey(view_path, relative, DesiredAccess,
+                                                        ObjectAttributes->Attributes,
+                                                        ObjectAttributes->SecurityDescriptor,
+                                                        ObjectAttributes->SecurityQualityOfService, TitleIndex, Class,
+                                                        CreateOptions, KeyHandle, Disposition);
     }
 
     return sys_NtCreateKey(KeyHandle, DesiredAccess, ObjectAttributes, TitleIndex, Class, CreateOptions, Disposition);

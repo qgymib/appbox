@@ -21,8 +21,10 @@ static appbox::LoggerF logger("NtOpenKeyEx", NtOpenKeyExLogParam);
 /**
  * @brief Detour of NtOpenKeyEx().
  *
- * Same redirection as Hook_NtOpenKey(), with the open options forwarded.
- * RegOpenKeyExW() reaches this entry point on current Windows versions.
+ * Same open policy as Hook_NtOpenKey()
+ * (appbox::registry::Hive::OpenIsolatedKeyEx), with the open options forwarded
+ * to every attempt. RegOpenKeyExW() reaches this entry point on current
+ * Windows versions.
  */
 static NTSTATUS Hook_NtOpenKeyEx(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes,
                                  ULONG OpenOptions)
@@ -33,21 +35,11 @@ static NTSTATUS Hook_NtOpenKeyEx(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess, P
     std::wstring relative;
     if (appbox::registry::Hive::MapKeyPath(ObjectAttributes, view_path, relative) == appbox::registry::HiveMap::Isolated)
     {
-        HANDLE key = nullptr;
-        NTSTATUS st =
-            appbox::registry::Hive::OpenKeyEx(relative, DesiredAccess, ObjectAttributes->Attributes,
-                                              ObjectAttributes->SecurityDescriptor,
-                                              ObjectAttributes->SecurityQualityOfService, OpenOptions, &key);
-        if (NT_SUCCESS(st))
-        {
-            *KeyHandle = key;
-            return st;
-        }
-
-        return appbox::registry::Hive::OpenRealKeyEx(view_path, DesiredAccess, ObjectAttributes->Attributes,
-                                                     ObjectAttributes->SecurityDescriptor,
-                                                     ObjectAttributes->SecurityQualityOfService, OpenOptions,
-                                                     KeyHandle);
+        return appbox::registry::Hive::OpenIsolatedKeyEx(view_path, relative, DesiredAccess,
+                                                         ObjectAttributes->Attributes,
+                                                         ObjectAttributes->SecurityDescriptor,
+                                                         ObjectAttributes->SecurityQualityOfService, OpenOptions,
+                                                         KeyHandle);
     }
 
     return sys_NtOpenKeyEx(KeyHandle, DesiredAccess, ObjectAttributes, OpenOptions);

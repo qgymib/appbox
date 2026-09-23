@@ -131,3 +131,54 @@ TEST(UnitRegistryEnumMerge, LayerBoundary)
     ASSERT_EQ(LayerOf(hive, real, 1, idx), 'R');
     ASSERT_EQ(idx, 0u);
 }
+
+/**
+ * @brief The empty name of a default value is a name like every other one: it
+ *        takes part in the dedup, so the default value of the hive layer
+ *        shadows the default value of the real layer.
+ */
+TEST(UnitRegistryEnumMerge, DefaultValueIsAnOrdinaryName)
+{
+    std::vector<std::wstring> hive = {L""};
+    std::vector<std::wstring> real = {L"", L"Other"};
+
+    size_t idx = static_cast<size_t>(-1);
+    ASSERT_EQ(LayerOf(hive, real, 0, idx), 'H');
+    ASSERT_EQ(idx, 0u);
+    /* The default value of the real layer is shadowed, "Other" survives. */
+    ASSERT_EQ(LayerOf(hive, real, 1, idx), 'R');
+    ASSERT_EQ(idx, 1u);
+    ASSERT_EQ(LayerOf(hive, real, 2, idx), '.');
+}
+
+/**
+ * @brief A default value keeps the position it was enumerated at, so the layer
+ *        index of the entries behind it is their kernel enumeration index.
+ */
+TEST(UnitRegistryEnumMerge, DefaultValueKeepsItsPosition)
+{
+    /* The default value is enumerated first, so "A" is at kernel index 1. */
+    std::vector<std::wstring> hive = {L"", L"A"};
+    std::vector<std::wstring> real = {L"", L"B"};
+
+    size_t idx = static_cast<size_t>(-1);
+    ASSERT_EQ(LayerOf(hive, real, 0, idx), 'H');
+    ASSERT_EQ(idx, 0u);
+    ASSERT_EQ(LayerOf(hive, real, 1, idx), 'H');
+    ASSERT_EQ(idx, 1u);
+    /* The default value of the real layer is shadowed, "B" stays at index 1. */
+    ASSERT_EQ(LayerOf(hive, real, 2, idx), 'R');
+    ASSERT_EQ(idx, 1u);
+    ASSERT_EQ(LayerOf(hive, real, 3, idx), '.');
+}
+
+/**
+ * @brief The merged count counts the default value of a layer like any other
+ *        entry.
+ */
+TEST(UnitRegistryEnumMerge, CountMergedCountsTheDefaultValue)
+{
+    ASSERT_EQ(appbox::registry::CountMerged({L""}, {L""}), 1u);
+    ASSERT_EQ(appbox::registry::CountMerged({L""}, {L"A"}), 2u);
+    ASSERT_EQ(appbox::registry::CountMerged({L"", L"A"}, {L"", L"B"}), 3u);
+}

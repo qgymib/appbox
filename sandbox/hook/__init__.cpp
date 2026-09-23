@@ -8,6 +8,8 @@
 #include "hook/NtCreateKey.hpp"
 #include "hook/NtCurrentTeb.hpp"
 #include "hook/NtDeleteFile.hpp"
+#include "hook/NtDeleteKey.hpp"
+#include "hook/NtDeleteValueKey.hpp"
 #include "hook/NtDeviceIoControlFile.hpp"
 #include "hook/NtEnumerateKey.hpp"
 #include "hook/NtEnumerateValueKey.hpp"
@@ -22,10 +24,13 @@
 #include "hook/NtQueryInformationByName.hpp"
 #include "hook/NtQueryInformationFile.hpp"
 #include "hook/NtQueryKey.hpp"
+#include "hook/NtQueryMultipleValueKey.hpp"
 #include "hook/NtQueryObject.hpp"
 #include "hook/NtQueryValueKey.hpp"
 #include "hook/NtQueryVolumeInformationFile.hpp"
 #include "hook/NtReadFile.hpp"
+#include "hook/NtSaveKey.hpp"
+#include "hook/NtSaveKeyEx.hpp"
 #include "hook/NtSetInformationFile.hpp"
 #include "hook/NtWriteFile.hpp"
 #include "hook/RtlCompareUnicodeString.hpp"
@@ -46,6 +51,8 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtCreateKey,
     &appbox::HookNtCurrentTeb,
     &appbox::HookNtDeleteFile,
+    &appbox::HookNtDeleteKey,
+    &appbox::HookNtDeleteValueKey,
     &appbox::HookNtDeviceIoControlFile,
     &appbox::HookNtEnumerateKey,
     &appbox::HookNtEnumerateValueKey,
@@ -60,10 +67,13 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtQueryInformationByName,
     &appbox::HookNtQueryInformationFile,
     &appbox::HookNtQueryKey,
+    &appbox::HookNtQueryMultipleValueKey,
     &appbox::HookNtQueryObject,
     &appbox::HookNtQueryValueKey,
     &appbox::HookNtQueryVolumeInformationFile,
     &appbox::HookNtReadFile,
+    &appbox::HookNtSaveKey,
+    &appbox::HookNtSaveKeyEx,
     &appbox::HookNtSetInformationFile,
     &appbox::HookNtWriteFile,
     &appbox::HookRtlCompareUnicodeString,

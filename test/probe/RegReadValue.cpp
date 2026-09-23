@@ -1,12 +1,14 @@
 #include "sandbox/utils/WinAPI.h" /* Must be first include file */
 #include "RegReadValue.hpp"
+#include "utils/RegistryRootKey.hpp"
 #include "WString.hpp"
 
 /**
- * @brief Open a key below HKCU and read a REG_SZ value.
+ * @brief Open a key below a root key and read a REG_SZ value.
  *
  * The read runs inside the sandbox, so the read through fallback has to
- * deliver values which only exist in the real registry.
+ * deliver values which only exist in the real registry, while an entry which
+ * may only be seen through the hive has to report that it does not exist.
  */
 static nlohmann::json ProbeRegReadValue_Entry(const nlohmann::json& data)
 {
@@ -14,9 +16,15 @@ static nlohmann::json ProbeRegReadValue_Entry(const nlohmann::json& data)
 
     appbox::test::ProtocolRegReadValue::Rsp rsp;
 
+    const auto root = appbox::test::RegistryRootHandle(req.Root);
+    if (root == nullptr)
+    {
+        rsp.open_code = ERROR_INVALID_PARAMETER;
+        return rsp;
+    }
+
     HKEY key = nullptr;
-    rsp.open_code =
-        RegOpenKeyExW(HKEY_CURRENT_USER, appbox::UTF8ToWide(req.Key).c_str(), 0, KEY_QUERY_VALUE, &key);
+    rsp.open_code = RegOpenKeyExW(root, appbox::UTF8ToWide(req.Key).c_str(), 0, KEY_QUERY_VALUE, &key);
     if (rsp.open_code == ERROR_SUCCESS)
     {
         wchar_t buf[128] = {};

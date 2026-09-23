@@ -121,6 +121,10 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/PackService.cpp"
     "${APPBOX_SOURCE_DIR}/core/PresetDirectory.cpp"
     "${APPBOX_SOURCE_DIR}/core/ProjectFile.cpp"
+    "${APPBOX_SOURCE_DIR}/core/RegFile.cpp"
+    "${APPBOX_SOURCE_DIR}/core/RegistryHive.cpp"
+    "${APPBOX_SOURCE_DIR}/core/RegistryIsolationFile.cpp"
+    "${APPBOX_SOURCE_DIR}/core/RegistryModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/StartupTree.cpp"
     "${APPBOX_SOURCE_DIR}/core/ZipReader.cpp"
     "${APPBOX_SOURCE_DIR}/core/ZipWriter.cpp"
@@ -129,6 +133,10 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/widget/MainFrame.cpp"
     "${APPBOX_SOURCE_DIR}/widget/MainProgramDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/PlaceholderPanel.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/RegistryIsolationDialog.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/RegistryKeyDialog.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/RegistryPanel.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/RegistryValueDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/RibbonBar.cpp"
     "${APPBOX_SOURCE_DIR}/widget/SideNav.cpp"
     "${APPBOX_SOURCE_DIR}/widget/StartupCheckRenderer.cpp"
@@ -183,6 +191,10 @@ target_link_libraries(AppBox PRIVATE wx::core wx::base wx::adv wx::ribbon)
 
 # Known folder resolution of the loader helper (SHGetKnownFolderPath).
 target_link_libraries(AppBox PRIVATE shell32 ole32)
+
+# Registry access of the packer core, which writes the virtual registry into a
+# hive file (RegLoadAppKeyW and friends).
+target_link_libraries(AppBox PRIVATE advapi32)
 
 # zlib must be configured before libzip: the libzip build performs its own
 # find_package(ZLIB 1.1.2 REQUIRED) which reuses the already built target.

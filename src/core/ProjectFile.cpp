@@ -25,6 +25,15 @@ constexpr const char* kTargetDirKey = "target_dir";
 constexpr const char* kFolderKey = "folder";
 constexpr const char* kPathKey = "path";
 
+/* Member names of the registry part of the schema. */
+constexpr const char* kRegistryKey = "registry";
+constexpr const char* kRegistryKeysKey = "keys";
+constexpr const char* kChildrenKey = "children";
+constexpr const char* kValuesKey = "values";
+constexpr const char* kTypeKey = "type";
+constexpr const char* kDataKey = "data";
+constexpr const char* kIsolationKey = "isolation";
+
 /**
  * @brief Name of the encoding a byte order mark belongs to.
  *
@@ -184,6 +193,254 @@ bool ReadString(const nlohmann::json& object, const char* key, const std::string
 }
 
 /**
+ * @brief Build the JSON object of one key of the virtual registry.
+ *
+ * The object holds the name, the isolation mode and the values of the key and,
+ * recursively, its sub keys. The data of a value is stored as a hexadecimal
+ * byte string, which is the representation the model already uses to read and
+ * write raw registry data.
+ *
+ * @param[in] key The key to store.
+ * @return The JSON object of the key.
+ */
+nlohmann::ordered_json WriteRegistryKey(const appbox::RegistryKeyNode& key)
+{
+    nlohmann::ordered_json entry;
+    entry[kNameKey] = appbox::WideToUTF8(key.name);
+    entry[kIsolationKey] = appbox::registry_isolation::IsolationToken(key.isolation);
+
+    nlohmann::ordered_json values = nlohmann::ordered_json::array();
+    for (const auto& value : key.values)
+    {
+        nlohmann::ordered_json item;
+        item[kNameKey] = appbox::WideToUTF8(value.name);
+        item[kTypeKey] = appbox::WideToUTF8(appbox::RegistryValueTypeName(value.type));
+        item[kDataKey] = appbox::WideToUTF8(appbox::FormatRegistryHexText(value.data));
+        item[kIsolationKey] = appbox::registry_isolation::IsolationToken(value.isolation);
+        values.push_back(std::move(item));
+    }
+    entry[kValuesKey] = std::move(values);
+
+    nlohmann::ordered_json children = nlohmann::ordered_json::array();
+    for (const auto& child : key.children)
+    {
+        children.push_back(WriteRegistryKey(child));
+    }
+    entry[kChildrenKey] = std::move(children);
+
+    return entry;
+}
+
+/**
+ * @brief Read one key of the virtual registry and its subtree.
+ *
+ * @param[in] element JSON object of the key.
+ * @param[in] parent_path Path of the parent key, empty for a root key.
+ * @param[in,out] model Model which receives the key.
+ * @param[in] scope Name of the part of the file for error descriptions.
+ * @param[out] error Error description on failure.
+ * @return true when the key was read.
+ */
+bool DecodeRegistryKey(const nlohmann::json& element, const std::wstring& parent_path,
+                       appbox::RegistryModel& model, const std::string& scope, std::string& error)
+{
+    if (!element.is_object())
+    {
+        error = Scoped(scope, "the entry is not a JSON object");
+        return false;
+    }
+
+    std::string name;
+    if (!ReadString(element, kNameKey, scope, name, error))
+    {
+        return false;
+    }
+
+    const auto key_name = appbox::UTF8ToWide(name);
+    const auto path = appbox::JoinRegistryPath(parent_path, key_name);
+    if (parent_path.empty())
+    {
+        /*
+         * The first level holds the root keys of the view, which the model
+         * creates itself: an unknown name would add a sixth root key.
+         */
+        if (model.FindKey(path) == nullptr)
+        {
+            error = Scoped(scope, "unknown root key '" + name + "'");
+            return false;
+        }
+    }
+    else
+    {
+        std::string detail;
+        if (!model.AddKey(parent_path, key_name, detail))
+        {
+            error = Scoped(scope, detail);
+            return false;
+        }
+    }
+
+    std::string isolation_text;
+    if (!ReadString(element, kIsolationKey, scope, isolation_text, error))
+    {
+        return false;
+    }
+
+    appbox::RegistryIsolation isolation = appbox::RegistryIsolation::WriteCopy;
+    if (!appbox::registry_isolation::ParseIsolationToken(isolation_text, isolation))
+    {
+        error = Scoped(scope, "unknown isolation mode '" + isolation_text + "'");
+        return false;
+    }
+
+    /*
+     * The mode of the key is stored as it is; a project file which still holds
+     * the `isolation_set` member of an older version is read as well, the
+     * member is simply ignored.
+     */
+    if (!model.SetKeyIsolation(path, isolation))
+    {
+        error = Scoped(scope, "the key cannot be restored");
+        return false;
+    }
+
+    if (element.contains(kValuesKey))
+    {
+        const auto& values = element.at(kValuesKey);
+        if (!values.is_array())
+        {
+            error = Scoped(scope, std::string("the '") + kValuesKey + "' member is not an array");
+            return false;
+        }
+
+        std::size_t index = 0;
+        for (const auto& value : values)
+        {
+            const auto value_scope = scope + "." + kValuesKey + "[" + std::to_string(index) + "]";
+            ++index;
+
+            if (!value.is_object())
+            {
+                error = Scoped(value_scope, "the entry is not a JSON object");
+                return false;
+            }
+
+            std::string value_name;
+            std::string type_text;
+            std::string data_text;
+            std::string value_isolation_text;
+            if (!ReadString(value, kNameKey, value_scope, value_name, error)
+                || !ReadString(value, kTypeKey, value_scope, type_text, error)
+                || !ReadString(value, kDataKey, value_scope, data_text, error)
+                || !ReadString(value, kIsolationKey, value_scope, value_isolation_text, error))
+            {
+                return false;
+            }
+
+            appbox::RegistryValueType type = appbox::RegistryValueType::String;
+            if (!appbox::ParseRegistryValueType(appbox::UTF8ToWide(type_text), type))
+            {
+                error = Scoped(value_scope, "unknown value type '" + type_text + "'");
+                return false;
+            }
+
+            std::vector<std::uint8_t> data;
+            std::string               hex_error;
+            if (!appbox::ParseRegistryHexText(appbox::UTF8ToWide(data_text), data, hex_error))
+            {
+                error = Scoped(value_scope, hex_error);
+                return false;
+            }
+
+            appbox::RegistryIsolation value_isolation = appbox::RegistryIsolation::WriteCopy;
+            if (!appbox::registry_isolation::ParseIsolationToken(value_isolation_text, value_isolation))
+            {
+                error = Scoped(value_scope, "unknown isolation mode '" + value_isolation_text + "'");
+                return false;
+            }
+
+            const auto stored_name = appbox::UTF8ToWide(value_name);
+            std::string detail;
+            if (!model.SetValue(path, stored_name, type, data, detail))
+            {
+                error = Scoped(value_scope, detail);
+                return false;
+            }
+            if (!model.SetValueIsolation(path, stored_name, value_isolation))
+            {
+                error = Scoped(value_scope, "the value cannot be restored");
+                return false;
+            }
+        }
+    }
+
+    if (element.contains(kChildrenKey))
+    {
+        const auto& children = element.at(kChildrenKey);
+        if (!children.is_array())
+        {
+            error = Scoped(scope, std::string("the '") + kChildrenKey + "' member is not an array");
+            return false;
+        }
+
+        std::size_t index = 0;
+        for (const auto& child : children)
+        {
+            const auto child_scope = scope + "." + kChildrenKey + "[" + std::to_string(index) + "]";
+            ++index;
+            if (!DecodeRegistryKey(child, path, model, child_scope, error))
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+/**
+ * @brief Read the registry part of a project file.
+ *
+ * @param[in] element JSON object of the `registry` member.
+ * @param[out] registry Registry replaced with the content of the member.
+ * @param[out] error Error description on failure.
+ * @return true when the registry was read.
+ */
+bool DecodeRegistry(const nlohmann::json& element, appbox::RegistryModel& registry, std::string& error)
+{
+    if (!element.is_object())
+    {
+        error = std::string("the '") + kRegistryKey + "' member is not a JSON object";
+        return false;
+    }
+
+    appbox::RegistryModel candidate;
+    const auto           keys = element.find(kRegistryKeysKey);
+    if (keys != element.end())
+    {
+        if (!keys->is_array())
+        {
+            error = std::string("the '") + kRegistryKey + "." + kRegistryKeysKey + "' member is not an array";
+            return false;
+        }
+
+        std::size_t index = 0;
+        for (const auto& key : *keys)
+        {
+            const auto scope = std::string(kRegistryKey) + "." + kRegistryKeysKey + "[" + std::to_string(index) + "]";
+            ++index;
+            if (!DecodeRegistryKey(key, L"", candidate, scope, error))
+            {
+                return false;
+            }
+        }
+    }
+
+    registry = std::move(candidate);
+    return true;
+}
+
+/**
  * @brief Decode the content of a project file.
  *
  * The configuration is built into a local model which is assigned to the
@@ -192,12 +449,13 @@ bool ReadString(const nlohmann::json& object, const char* key, const std::string
  *
  * @param[in] text Content of the project file.
  * @param[out] model Model replaced with the configuration of the file.
+ * @param[out] registry Registry replaced with the registry of the file.
  * @param[out] output_path Destination archive path stored in the file.
  * @param[out] error Error description on failure.
  * @return true on success.
  */
-bool DecodeProject(const std::string& text, appbox::PackModel& model, std::wstring& output_path,
-                   std::string& error)
+bool DecodeProject(const std::string& text, appbox::PackModel& model, appbox::RegistryModel& registry,
+                   std::wstring& output_path, std::string& error)
 {
     nlohmann::json root;
     try
@@ -230,8 +488,9 @@ bool DecodeProject(const std::string& text, appbox::PackModel& model, std::wstri
         return false;
     }
 
-    appbox::PackModel candidate;
-    std::wstring candidate_output;
+    appbox::PackModel      candidate;
+    appbox::RegistryModel  candidate_registry;
+    std::wstring           candidate_output;
 
     if (root.contains(kOutputPathKey))
     {
@@ -356,8 +615,17 @@ bool DecodeProject(const std::string& text, appbox::PackModel& model, std::wstri
         }
     }
 
+    if (root.contains(kRegistryKey))
+    {
+        if (!DecodeRegistry(root.at(kRegistryKey), candidate_registry, error))
+        {
+            return false;
+        }
+    }
+
     /* Every entry was accepted: the configuration can replace the caller. */
     model = std::move(candidate);
+    registry = std::move(candidate_registry);
     output_path = std::move(candidate_output);
     return true;
 }
@@ -367,8 +635,8 @@ bool DecodeProject(const std::string& text, appbox::PackModel& model, std::wstri
 namespace appbox
 {
 
-bool SaveProject(const PackModel& model, const std::wstring& output_path, const std::wstring& path,
-                 std::string& error)
+bool SaveProject(const PackModel& model, const RegistryModel& registry, const std::wstring& output_path,
+                 const std::wstring& path, std::string& error)
 {
     if (path.empty())
     {
@@ -413,6 +681,16 @@ bool SaveProject(const PackModel& model, const std::wstring& output_path, const 
         }
         root[kFilesKey] = std::move(files);
 
+        /* The virtual registry of the workspace, root key by root key. */
+        nlohmann::ordered_json registry_keys = nlohmann::ordered_json::array();
+        for (const auto& key : registry.Root().children)
+        {
+            registry_keys.push_back(WriteRegistryKey(key));
+        }
+        nlohmann::ordered_json registry_entry;
+        registry_entry[kRegistryKeysKey] = std::move(registry_keys);
+        root[kRegistryKey] = std::move(registry_entry);
+
         if (model.HasMainProgram())
         {
             nlohmann::ordered_json entry;
@@ -449,8 +727,15 @@ bool SaveProject(const PackModel& model, const std::wstring& output_path, const 
     return true;
 }
 
-bool LoadProject(const std::wstring& path, PackModel& model, std::wstring& output_path,
+bool SaveProject(const PackModel& model, const std::wstring& output_path, const std::wstring& path,
                  std::string& error)
+{
+    /* A caller without a registry stores an empty one. */
+    return SaveProject(model, RegistryModel{}, output_path, path, error);
+}
+
+bool LoadProject(const std::wstring& path, PackModel& model, RegistryModel& registry,
+                 std::wstring& output_path, std::string& error)
 {
     if (path.empty())
     {
@@ -507,13 +792,22 @@ bool LoadProject(const std::wstring& path, PackModel& model, std::wstring& outpu
 
     try
     {
-        return DecodeProject(text, model, output_path, error);
+        return DecodeProject(text, model, registry, output_path, error);
     }
     catch (const std::exception& ex)
     {
         error = std::string("the project file cannot be decoded: ") + ex.what();
         return false;
     }
+}
+
+bool LoadProject(const std::wstring& path, PackModel& model, std::wstring& output_path,
+                 std::string& error)
+{
+    /* The registry of the file is validated, but a caller without a registry
+     * has no place to keep it. */
+    RegistryModel registry;
+    return LoadProject(path, model, registry, output_path, error);
 }
 
 } // namespace appbox

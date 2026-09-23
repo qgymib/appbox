@@ -22,11 +22,13 @@ struct ProtocolRegEnumValue
 
     struct Rsp
     {
-        DWORD open_code = static_cast<DWORD>(-1); /* RegOpenKeyExW() error code. */
-        DWORD enum_code = static_cast<DWORD>(-1); /* Last RegEnumValueW() error code. */
-        std::vector<std::string> names;           /* Value names in enumeration order. UTF-8. */
+        DWORD open_code = static_cast<DWORD>(-1);  /* RegOpenKeyExW() error code. */
+        DWORD count_code = static_cast<DWORD>(-1); /* RegQueryInfoKeyW() error code. */
+        DWORD value_count = 0;                     /* Value count reported by RegQueryInfoKeyW(). */
+        DWORD enum_code = static_cast<DWORD>(-1);  /* Last RegEnumValueW() error code. */
+        std::vector<std::string> names;            /* Value names in enumeration order. UTF-8. */
         std::map<std::string, std::string> values; /* Value name to REG_SZ data. UTF-8. */
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, open_code, enum_code, names, values)
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, open_code, count_code, value_count, enum_code, names, values)
     };
 };
 

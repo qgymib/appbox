@@ -51,13 +51,15 @@ constexpr std::uint32_t kLastResourceId = 0xFFFF;
 const wchar_t* const kApplicationIconGroup = L"!AppBoxIcon";
 
 /** Number of attempts of the resource update of one image. */
-constexpr int kUpdateAttempts = 4;
+constexpr int kUpdateAttempts = 6;
 
 /**
- * @brief Wait between two attempts of the resource update in milliseconds.
+ * @brief Base wait between two attempts of the resource update in milliseconds.
  *
  * A filter driver which scans the freshly written image holds the file for a
- * moment, so a denied update is repeated after a short wait.
+ * moment, so a denied update is repeated after a wait which grows with the
+ * attempt: a scanner which is still busy with a large image keeps the file
+ * longer than the first short wait.
  */
 constexpr DWORD kUpdateRetryDelayMs = 250;
 
@@ -629,8 +631,8 @@ bool AddIconResources(const std::filesystem::path& path, const std::vector<char>
  *
  * The resource update of an image which was written moments ago can be denied
  * while a file system filter - the on access scanner of an antivirus product
- * for example - still holds the file, so a denied update is repeated a few
- * times before the icon is given up.
+ * for example - still holds the file, so a denied update is repeated with a
+ * growing wait before the icon is given up.
  *
  * @param[in] path Host path of the image to patch.
  * @param[in] group Raw RT_GROUP_ICON content to add.
@@ -666,7 +668,7 @@ bool WriteIconGroup(const std::filesystem::path& path, const std::vector<char>& 
     {
         if (attempt > 0)
         {
-            Sleep(kUpdateRetryDelayMs);
+            Sleep(kUpdateRetryDelayMs * static_cast<DWORD>(attempt));
         }
 
         DWORD code = 0;

@@ -70,18 +70,20 @@ static bool MapOverlayFS(const std::string& fs, std::string& mapped_fs)
 }
 
 /**
- * @brief Derive the registry hive file path from the overlay filesystem.
+ * @brief Derive the registry files of the sandbox from the overlay filesystem.
  *
- * The hive lives in the registry subdirectory of the overlay, next to the
- * filesystem subdirectory which carries the filesystem overlay. The sandbox
- * mounts it as a private application hive, so the file itself is created on
- * the first mount and not here.
+ * Both files live in the registry subdirectory of the overlay, next to the
+ * filesystem subdirectory which carries the filesystem overlay. The packer
+ * writes them into the archive, so a packaged application carries the virtual
+ * registry of the workspace; the sandbox mounts the hive as a private
+ * application hive, so a missing file is created on the first mount.
  *
  * @param[in] fs The overlay filesystem root.
  * @param[out] hive_path The DOS path of the hive file.
+ * @param[out] isolation_path The DOS path of the isolation file.
  * @return true on success.
  */
-static bool MapRegistryHive(const std::string& fs, std::string& hive_path)
+static bool MapRegistryFiles(const std::string& fs, std::string& hive_path, std::string& isolation_path)
 {
     auto dos_path_w = appbox::UTF8ToWide(fs);
     /* Remove trailing slash */
@@ -106,6 +108,7 @@ static bool MapRegistryHive(const std::string& fs, std::string& hive_path)
     }
 
     hive_path = appbox::WideToUTF8((dir / "user.hiv").wstring());
+    isolation_path = appbox::WideToUTF8((dir / "isolation.json").wstring());
     return true;
 }
 
@@ -121,7 +124,8 @@ AppBoxLoaderRuntime::AppBoxLoaderRuntime()
         appbox::MapBaseFS(f, inject_data.fs_lower);
     }
     MapOverlayFS(wxGetApp().loader_config.overlay_fs, inject_data.fs_upper);
-    MapRegistryHive(wxGetApp().loader_config.overlay_fs, inject_data.registry_hive_dos_path);
+    MapRegistryFiles(wxGetApp().loader_config.overlay_fs, inject_data.registry_hive_dos_path,
+                     inject_data.registry_isolation_dos_path);
 
     {
         auto                  w_overlay_path = appbox::UTF8ToWide(wxGetApp().loader_config.overlay_fs);

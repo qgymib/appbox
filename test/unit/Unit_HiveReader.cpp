@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <string>
 #include <vector>
+#include "RegistryIsolation.hpp"
 #include "registry/HiveReader.hpp"
 
 namespace
@@ -290,6 +291,56 @@ TEST(UnitHiveReader, HasSubKeys)
     ASSERT_TRUE(reader.HasSubKeys(L"Software"));
     ASSERT_FALSE(reader.HasSubKeys(L"Software\\Leaf"));
     ASSERT_FALSE(reader.HasSubKeys(L"DoesNotExist"));
+
+    reader.Close();
+    RemoveTestHive();
+}
+
+/**
+ * @brief The whiteout store of the sandbox is not part of the view.
+ *
+ * The store is a reserved key at the root of the hive which carries the
+ * markers of the entries the sandbox deleted. The browser shows the five root
+ * keys of the view, so the root enumeration and the root sub key check skip
+ * it, while the key itself stays reachable for the sandbox.
+ */
+TEST(UnitHiveReader, RootHidesWhiteoutStore)
+{
+    const std::wstring store = appbox::registry_whiteout::kStoreKey;
+
+    {
+        HiveWriter writer;
+        ASSERT_TRUE(writer.IsValid());
+        ASSERT_TRUE(writer.CreateKey(L"HKEY_CURRENT_USER"));
+        ASSERT_TRUE(writer.CreateKey(store));
+        ASSERT_TRUE(writer.CreateKey(store + L"\\K\\HKEY_CURRENT_USER"));
+    }
+
+    appbox::HiveReader reader;
+    ASSERT_TRUE(reader.Open(TestHivePath()));
+
+    std::vector<std::wstring> names;
+    ASSERT_TRUE(reader.EnumSubKeys(L"", names));
+    ASSERT_EQ(names.size(), 1u);
+    ASSERT_EQ(names[0], L"HKEY_CURRENT_USER");
+
+    /* Only the view hides the store, the hive still holds it. */
+    ASSERT_TRUE(reader.HasSubKeys(store));
+
+    reader.Close();
+    RemoveTestHive();
+
+    /* A hive which only holds the store has no visible sub key at its root. */
+    {
+        HiveWriter writer;
+        ASSERT_TRUE(writer.IsValid());
+        ASSERT_TRUE(writer.CreateKey(store));
+    }
+
+    ASSERT_TRUE(reader.Open(TestHivePath()));
+    ASSERT_FALSE(reader.HasSubKeys(L""));
+    ASSERT_TRUE(reader.EnumSubKeys(L"", names));
+    ASSERT_TRUE(names.empty());
 
     reader.Close();
     RemoveTestHive();
