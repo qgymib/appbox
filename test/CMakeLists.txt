@@ -110,6 +110,15 @@ add_executable(AppBoxUnitTests
     "unit/Unit_RemoteClient.cpp"
     "unit/Unit_RpcCodec.cpp"
     "unit/Unit_StartupTree.cpp"
+    "unit/Unit_TracerArmPlan.cpp"
+    "unit/Unit_TracerCdbLocator.cpp"
+    "unit/Unit_TracerCdbOutput.cpp"
+    "unit/Unit_TracerIntegration.cpp"
+    "unit/Unit_TracerOptions.cpp"
+    "unit/Unit_TracerPeImage.cpp"
+    "unit/Unit_TracerReport.cpp"
+    "unit/Unit_TracerScope.cpp"
+    "unit/Unit_TracerTargetProgram.cpp"
     "unit/Unit_WString.cpp"
     "unit/Unit_ZipReader.cpp"
     "unit/Unit_ZipWriter.cpp"
@@ -137,6 +146,17 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/BitParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/Log.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/PipeClient.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/ArmPlan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/CdbLocator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/CdbOutputParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/CdbSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/Console.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/Options.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/PeImage.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/ScopePatterns.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/TargetProgram.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/TraceReport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/TracedModules.cpp
 )
 appbox_setup_target_wall(AppBoxUnitTests)
 

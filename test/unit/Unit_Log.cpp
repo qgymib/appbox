@@ -27,12 +27,23 @@ constexpr int kConcurrentThreads = 4;
 constexpr int kConcurrentIterations = 200;
 
 /**
+ * @brief Forget the messages which the test sink has counted so far.
+ *
+ * The counter is process wide, so a test which asserts that no message
+ * arrives has to clear it first: the tests can run in any order.
+ */
+void ResetReceived()
+{
+    g_received = 0;
+}
+
+/**
  * @brief Install a test sink which counts the received messages.
  * @param[in] result Result the sink returns to the caller.
  */
 void InstallCountingSink(bool result)
 {
-    g_received = 0;
+    ResetReceived();
     g_sink_result = result;
 
     appbox::SetLogSink([](const appbox::MsgLog::Req&, nlohmann::json&) {
@@ -64,9 +75,13 @@ void MakeAbortSilent()
  * @brief Without a sink the message is dropped, the log path must neither crash
  *        nor throw. This is the state outside isolation mode, where the sandbox
  *        has no RPC client at all.
+ *
+ * The counter is cleared before the assertion, so the test does not depend on
+ * being the first test which touches it.
  */
 TEST(UnitLog, LogWithoutSinkDoesNotThrow)
 {
+    ResetReceived();
     appbox::SetLogSink(nullptr);
     appbox::LogEnable(true);
 

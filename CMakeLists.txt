@@ -96,6 +96,15 @@ cmrc_add_resource_library(sandbox_resource
 add_subdirectory(loader)
 
 ###############################################################################
+# Tracer
+#
+# A console tool which drives cdb.exe to report the file, registry and network
+# functions a program uses. It is a build time helper, not a product of the
+# sandbox, so it stays a separate subdirectory next to loader/.
+###############################################################################
+add_subdirectory(tracer)
+
+###############################################################################
 # AppBox
 #
 # The main product is described here instead of in a src/CMakeLists.txt so that

@@ -70,12 +70,13 @@ subdirectory (`Debug` or `Release`):
 | --- | --- |
 | `AppBox.exe` (main product) | `build/<config>/<config>/AppBox.exe` |
 | `AppBoxLoader.exe` | `build/<config>/loader/<config>/AppBoxLoader.exe` |
+| `AppBoxTracer.exe` (API tracer) | `build/<config>/tracer/<config>/AppBoxTracer.exe` |
 | `AppBoxUnitTests.exe` | `build/<config>/test/<config>/AppBoxUnitTests.exe` |
 | `AppBoxTests.exe` (end-to-end) | `build/<config>/test/<config>/AppBoxTests.exe` |
 
 `AppBox.exe` is described directly in the top level `CMakeLists.txt`, so its
-target directory is the top of the build tree; the loader and the test
-executables keep their own subdirectory scripts.
+target directory is the top of the build tree; the loader, the tracer and the
+test executables keep their own subdirectory scripts.
 
 ### Architecture-Specific Build
 
@@ -226,6 +227,22 @@ mark is accepted. This project file is not the launch configuration of the
 loader inside a packed archive (`<entry name>.json`, see the archive layout
 above), which uses its own schema.
 
+### Tracer
+
+Console tool which reports the functions a program uses:
+- Drives `cdb.exe` to arm one-shot breakpoints on `ntdll`, `kernel32` and
+  `kernelbase` and collects the functions which are actually called
+- Traces the child processes of the program as well
+- Default scope: the functions of the three isolation domains (filesystem,
+  registry, network); `--all-exports` widens it, `--list-scope` shows it
+- Writes a UTF-8 report to a file or to the standard output
+
+```
+AppBoxTracer --output cmd.txt cmd.exe /c cmd.exe /c echo child
+```
+
+See [Tracer](docs/Tracer.md) for the usage, the mechanism and the measured cost.
+
 ### Sandbox
 
 Windows DLL providing runtime isolation:
@@ -238,6 +255,7 @@ Windows DLL providing runtime isolation:
 - [Filesystem Isolation](docs/FilesystemIsolation.md) - Filesystem isolation architecture
 - [Registry Isolation](docs/RegistryIsolation.md) - Registry isolation architecture
 - [Network Isolation](docs/NetworkIsolation.md) - Network isolation architecture
+- [Tracer](docs/Tracer.md) - API tracer: usage, mechanism and measured cost
 
 ## License
 
