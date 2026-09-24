@@ -1,4 +1,5 @@
 #include "FilesystemPanel.hpp"
+#include "FilesystemIsolationRenderer.hpp"
 #include "core/PresetDirectory.hpp"
 #include "WString.hpp"
 #include <wx/artprov.h>
@@ -27,6 +28,9 @@ const int kMenuRemoveImport = wxNewId();
 
 /** Minimum width of the tree pane. */
 constexpr int kTreePaneWidth = 260;
+
+/** Model column of the isolation dropdown. */
+constexpr unsigned int kIsolationColumn = 1;
 
 /** Background of the toolbar row above the file list. */
 const wxColour kToolBarBackground(0xF2, 0xF3, 0xF5);
@@ -94,14 +98,18 @@ wxString HostEntrySize(const std::wstring& path)
 }
 
 /**
- * @brief Compose the virtual path shown in the Source Path column.
+ * @brief Compose the virtual path of an entry of the sandbox view.
+ *
+ * The path is the one the `Source Path` column shows and the one the isolation
+ * mode of the entry is stored under.
+ *
  * @param[in] preset Preset directory owning the entry.
  * @param[in] target_dir Directory relative to the preset directory.
  * @param[in] name Entry name.
  * @return The virtual path inside the sandbox view.
  */
-wxString VirtualPath(const appbox::PresetDirectory& preset, const std::wstring& target_dir,
-                     const std::wstring& name)
+std::wstring VirtualPath(const appbox::PresetDirectory& preset, const std::wstring& target_dir,
+                         const std::wstring& name)
 {
     std::wstring path = preset.layer_key;
     if (!target_dir.empty())
@@ -131,9 +139,11 @@ bool SameHostPath(const std::wstring& a, const std::wstring& b)
 
 } // namespace
 
-FilesystemPanel::FilesystemPanel(wxWindow* parent, appbox::PackModel& model)
+FilesystemPanel::FilesystemPanel(wxWindow* parent, appbox::PackModel& model,
+                                 appbox::FilesystemIsolationModel& isolation)
     : wxPanel(parent, wxID_ANY),
-      model_(model)
+      model_(model),
+      isolation_(isolation)
 {
     auto* splitter = new wxSplitterWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                                          wxSP_LIVE_UPDATE | wxSP_3DSASH);
@@ -145,9 +155,24 @@ FilesystemPanel::FilesystemPanel(wxWindow* parent, appbox::PackModel& model)
     images->Add(folder_icon);
     images->Add(open_icon);
 
+    /*
+     * The root item stays visible: the top of the filesystem view is the
+     * `Sandbox Filesystem` container, which the user selects to reach the
+     * preset directories, so the tree must not hide it.
+     */
     tree_ = new wxTreeCtrl(splitter, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                           wxTR_HAS_BUTTONS | wxTR_LINES_AT_ROOT | wxTR_SINGLE | wxTR_HIDE_ROOT);
+                           wxTR_HAS_BUTTONS | wxTR_LINES_AT_ROOT | wxTR_SINGLE);
     tree_->AssignImageList(images);
+
+    /*
+     * The Filename column of the file list carries an icon as well: a folder
+     * for a directory row and a plain file for every other row. Both icons
+     * come from the art provider, so the table never reads the icon of a host
+     * entry. The image list above belongs to the tree and is unrelated to
+     * them.
+     */
+    folder_icon_ = wxArtProvider::GetBitmapBundle(wxART_FOLDER, wxART_OTHER, wxSize(16, 16));
+    file_icon_ = wxArtProvider::GetBitmapBundle(wxART_NORMAL_FILE, wxART_OTHER, wxSize(16, 16));
 
     auto* right = new wxPanel(splitter, wxID_ANY);
     CreateList(right);
@@ -176,10 +201,33 @@ void FilesystemPanel::CreateList(wxWindow* parent)
 {
     list_ = new wxDataViewListCtrl(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                                    wxDV_ROW_LINES | wxDV_SINGLE);
-    list_->AppendTextColumn("Filename", wxDATAVIEW_CELL_INERT, 220);
-    list_->AppendTextColumn("Isolation", wxDATAVIEW_CELL_INERT, 76);
-    list_->AppendToggleColumn("Hidden", wxDATAVIEW_CELL_INERT, 60);
-    list_->AppendToggleColumn("No Sync", wxDATAVIEW_CELL_INERT, 64);
+    /*
+     * The Filename column shows an icon before the name of the row: a folder
+     * for a folder and a plain file for a file, so the kind of a row is
+     * visible without reading the mode column. Its values are icon-text
+     * variants, see AppendRow().
+     */
+    list_->AppendIconTextColumn("Filename", wxDATAVIEW_CELL_INERT, 220);
+
+    /*
+     * The isolation column uses a dropdown whose options depend on the row: a
+     * folder offers `Full`, `Write Copy` and `Whiteout`, a file offers `Full`
+     * and `Whiteout` only. The renderer asks this panel for the options of the
+     * row which is edited, because the choice list of a choice renderer
+     * belongs to the column and not to the row. The renderer is added through
+     * AppendColumn() because it has to claim the model column explicitly.
+     */
+    wxArrayString modes;
+    for (const auto& name : appbox::FilesystemIsolationNames())
+    {
+        modes.Add(wxString(name));
+    }
+    list_->AppendColumn(new wxDataViewColumn(
+        "Isolation",
+        new FilesystemIsolationRenderer(
+            modes, [this](const wxDataViewItem& item) { return IsolationChoices(item); }),
+        kIsolationColumn, 110));
+
     list_->AppendToggleColumn("Read Only", wxDATAVIEW_CELL_INERT, 74);
     list_->AppendToggleColumn("No Upgrade", wxDATAVIEW_CELL_INERT, 80);
     list_->AppendTextColumn("Size", wxDATAVIEW_CELL_INERT, 78, wxALIGN_RIGHT);
@@ -189,6 +237,8 @@ void FilesystemPanel::CreateList(wxWindow* parent)
         UpdateToolBarState();
         event.Skip();
     });
+    list_->Bind(wxEVT_DATAVIEW_ITEM_ACTIVATED, &FilesystemPanel::OnRowActivated, this);
+    list_->Bind(wxEVT_DATAVIEW_ITEM_VALUE_CHANGED, &FilesystemPanel::OnIsolationChanged, this);
 }
 
 wxWindow* FilesystemPanel::CreateToolBarRow(wxWindow* parent)
@@ -245,7 +295,8 @@ void FilesystemPanel::BuildTree()
 {
     tree_->DeleteAllItems();
 
-    const auto root = tree_->AddRoot("Filesystem");
+    /* The container carries no preset, which marks it as the top item. */
+    const auto root = tree_->AddRoot(wxString(appbox::kFilesystemContainerLabel), 0, 1, new TreeNode());
 
     for (const auto& preset : appbox::PresetDirectories())
     {
@@ -265,12 +316,10 @@ void FilesystemPanel::BuildTree()
         tree_->Expand(item);
     }
 
-    wxTreeItemIdValue cookie = nullptr;
-    const auto first = tree_->GetFirstChild(root, cookie);
-    if (first.IsOk())
-    {
-        tree_->SelectItem(first);
-    }
+    tree_->Expand(root);
+
+    /* The workspace starts on the container, which lists the preset directories. */
+    tree_->SelectItem(root);
 }
 
 void FilesystemPanel::PopulateNode(const wxTreeItemId& item)
@@ -329,7 +378,11 @@ void FilesystemPanel::RefreshList()
     auto* node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
     if (node != nullptr)
     {
-        if (node->import_name.empty())
+        if (node->preset_id.empty())
+        {
+            ListPresets();
+        }
+        else if (node->import_name.empty())
         {
             ListPresetImports(*node);
         }
@@ -343,6 +396,24 @@ void FilesystemPanel::RefreshList()
     UpdateToolBarState();
 }
 
+void FilesystemPanel::ListPresets()
+{
+    /*
+     * The container holds the preset directories, so it lists them the way the
+     * registry container lists the root keys. A preset directory is a fixed
+     * entry: it owns neither a size nor an isolation mode of its own.
+     */
+    for (const auto& preset : appbox::PresetDirectories())
+    {
+        RowInfo row;
+        row.kind = RowInfo::Kind::Preset;
+        row.preset_id = preset.id;
+        row.file_name = preset.display_name;
+        row.is_directory = true;
+        rows_.push_back(std::move(row));
+    }
+}
+
 void FilesystemPanel::ListPresetImports(const TreeNode& node)
 {
     for (const auto& imported : model_.ImportsOf(node.preset_id))
@@ -351,7 +422,6 @@ void FilesystemPanel::ListPresetImports(const TreeNode& node)
         row.kind = RowInfo::Kind::ImportedFolder;
         row.preset_id = node.preset_id;
         row.import_name = imported.import_name;
-        row.target_dir = imported.import_name;
         row.file_name = imported.import_name;
         row.source_path = imported.source_path;
         row.is_directory = true;
@@ -444,6 +514,12 @@ void FilesystemPanel::ApplyFilter()
 {
     const auto filter = search_ != nullptr ? search_->GetValue().Lower() : wxString();
 
+    /*
+     * Rebuilding the table changes the values of its cells, which the control
+     * reports like an edit of the user. The flag tells the handler of those
+     * events that they belong to a rebuild and not to a mode the user picked.
+     */
+    updating_ = true;
     list_->DeleteAllItems();
     for (std::size_t i = 0; i < rows_.size(); ++i)
     {
@@ -454,12 +530,18 @@ void FilesystemPanel::ApplyFilter()
         }
         AppendRow(rows_[i], i);
     }
+    updating_ = false;
 }
 
 void FilesystemPanel::AppendRow(const RowInfo& row, std::size_t index)
 {
-    appbox::PresetDirectory preset;
-    if (!appbox::FindPresetDirectory(row.preset_id, preset))
+    /*
+     * The virtual path of the row is the key of its isolation mode and the
+     * value of the source path column, so both use the same helper. A row
+     * without a known preset directory has no path inside the view.
+     */
+    const auto view_path = RowViewPath(row);
+    if (view_path.empty())
     {
         return;
     }
@@ -474,17 +556,40 @@ void FilesystemPanel::AppendRow(const RowInfo& row, std::size_t index)
         size = HostEntrySize(row.host_path);
     }
 
+    /*
+     * A row which carries no mode of its own shows the mode it inherits from
+     * the closest folder above it, so the mode of a folder reaches the rows
+     * below it.
+     */
+    const auto mode = isolation_.EffectiveIsolation(view_path, RowKind(row));
+
+    /*
+     * The filename column carries the icon of the row as well, so its value is
+     * an icon-text variant. The icon-text class declares no implicit variant
+     * constructor, its value is assigned through the stream operator.
+     */
+    wxVariant filename;
+    filename << wxDataViewIconText(wxString(row.file_name), IconOf(row));
+
+    /*
+     * The values follow the column order of CreateList(): filename, isolation,
+     * read only, no upgrade, size and source path. The list control requires
+     * one value per column, so the two lists must be changed together.
+     */
     wxVector<wxVariant> values;
-    values.push_back(wxVariant(wxString(row.file_name)));
-    values.push_back(wxVariant(wxString("Full")));
-    values.push_back(wxVariant(false));
-    values.push_back(wxVariant(false));
+    values.push_back(filename);
+    values.push_back(wxVariant(wxString(appbox::FilesystemIsolationName(mode))));
     values.push_back(wxVariant(false));
     values.push_back(wxVariant(false));
     values.push_back(wxVariant(size));
-    values.push_back(wxVariant(VirtualPath(preset, row.target_dir, row.file_name)));
+    values.push_back(wxVariant(wxString(view_path)));
 
     list_->AppendItem(values, static_cast<wxUIntPtr>(index));
+}
+
+const wxBitmapBundle& FilesystemPanel::IconOf(const RowInfo& row) const
+{
+    return row.is_directory ? folder_icon_ : file_icon_;
 }
 
 void FilesystemPanel::SelectNode(const std::string& preset_id, const std::wstring& import_name)
@@ -539,6 +644,21 @@ bool FilesystemPanel::SelectedTarget(std::string& preset_id, std::wstring& targe
     return true;
 }
 
+int FilesystemPanel::RowIndex(const wxDataViewItem& item) const
+{
+    if (!item.IsOk())
+    {
+        return -1;
+    }
+
+    const auto data = list_->GetItemData(item);
+    if (data >= rows_.size())
+    {
+        return -1;
+    }
+    return static_cast<int>(data);
+}
+
 int FilesystemPanel::SelectedRowIndex() const
 {
     const auto selected = list_->GetSelectedRow();
@@ -546,13 +666,66 @@ int FilesystemPanel::SelectedRowIndex() const
     {
         return -1;
     }
+    return RowIndex(list_->RowToItem(selected));
+}
 
-    const auto index = list_->GetItemData(list_->RowToItem(selected));
-    if (index >= rows_.size())
+appbox::FilesystemEntryKind FilesystemPanel::RowKind(const RowInfo& row)
+{
+    return row.is_directory ? appbox::FilesystemEntryKind::Directory
+                            : appbox::FilesystemEntryKind::File;
+}
+
+std::wstring FilesystemPanel::RowViewPath(const RowInfo& row) const
+{
+    appbox::PresetDirectory preset;
+    if (!appbox::FindPresetDirectory(row.preset_id, preset))
     {
-        return -1;
+        return {};
     }
-    return static_cast<int>(index);
+
+    switch (row.kind)
+    {
+    case RowInfo::Kind::Preset:
+        /* The preset directory is the layer root itself. */
+        return VirtualPath(preset, L"", L"");
+    case RowInfo::Kind::ImportedFolder:
+        /* The imported folder is the entry directly below the layer root. */
+        return VirtualPath(preset, L"", row.import_name);
+    case RowInfo::Kind::HostEntry:
+    case RowInfo::Kind::ImportedFile:
+        return VirtualPath(preset, row.target_dir, row.file_name);
+    }
+    return {};
+}
+
+wxArrayString FilesystemPanel::IsolationChoices(const wxDataViewItem& item) const
+{
+    wxArrayString choices;
+
+    const int index = RowIndex(item);
+    if (index < 0)
+    {
+        return choices;
+    }
+
+    const auto kind = RowKind(rows_[static_cast<std::size_t>(index)]);
+    for (const auto& name : appbox::FilesystemIsolationNamesFor(kind))
+    {
+        choices.Add(wxString(name));
+    }
+    return choices;
+}
+
+void FilesystemPanel::ApplyIsolation(const RowInfo& row, appbox::FilesystemIsolation isolation)
+{
+    std::string error;
+    if (!isolation_.SetIsolation(RowViewPath(row), RowKind(row), isolation, error))
+    {
+        wxMessageBox(wxString::FromUTF8(error), "Isolation", wxOK | wxICON_ERROR, this);
+        return;
+    }
+
+    RefreshList();
 }
 
 void FilesystemPanel::UpdateToolBarState()
@@ -563,23 +736,103 @@ void FilesystemPanel::UpdateToolBarState()
     const bool has_node = node != nullptr;
     const bool inside_import = has_node && !node->import_name.empty();
 
+    /* The container holds the preset directories only, so it owns no import. */
+    const bool has_preset = has_node && !node->preset_id.empty();
+
     if (add_files_ != nullptr)
     {
         add_files_->Enable(inside_import);
     }
     if (add_folder_ != nullptr)
     {
-        add_folder_->Enable(has_node);
+        add_folder_->Enable(has_preset);
     }
     if (remove_ != nullptr)
     {
-        remove_->Enable(SelectedRowIndex() >= 0);
+        /*
+         * The preset directories are fixed and the host entries of an import
+         * belong to it, so only an imported folder and an individually
+         * imported file can be removed.
+         */
+        bool removable = false;
+        const int index = SelectedRowIndex();
+        if (index >= 0)
+        {
+            const auto kind = rows_[static_cast<std::size_t>(index)].kind;
+            removable = kind == RowInfo::Kind::ImportedFolder || kind == RowInfo::Kind::ImportedFile;
+        }
+        remove_->Enable(removable);
     }
     if (up_dir_ != nullptr)
     {
         const auto parent = selection.IsOk() ? tree_->GetItemParent(selection) : wxTreeItemId();
         up_dir_->Enable(parent.IsOk() && parent != tree_->GetRootItem());
     }
+}
+
+void FilesystemPanel::OnRowActivated(wxDataViewEvent& event)
+{
+    const auto item = event.GetItem();
+    const auto index = item.IsOk() ? static_cast<std::size_t>(list_->GetItemData(item)) : rows_.size();
+
+    if (index >= rows_.size() || rows_[index].kind != RowInfo::Kind::Preset)
+    {
+        /* The rows of a preset keep the default behaviour of the table. */
+        event.Skip();
+        return;
+    }
+
+    /*
+     * Entering a preset selects its tree node, which rebuilds the table. The
+     * table must not be rebuilt from inside its own activation event: the
+     * control keeps using the row index it captured before the event and
+     * selects a row which the rebuilt model no longer holds, which makes
+     * wxDataViewCtrl::GetSelections() report an invalid item of the selection
+     * (a failed assertion in a debug build, an out of bounds read in a release
+     * build). The selection is therefore applied once the event was processed,
+     * and the activation counts as handled so that the control does not fall
+     * back to its plain click handling either.
+     */
+    const auto preset_id = rows_[index].preset_id;
+    CallAfter([this, preset_id]() { SelectNode(preset_id, std::wstring()); });
+}
+
+void FilesystemPanel::OnIsolationChanged(wxDataViewEvent& event)
+{
+    if (updating_ || event.GetColumn() != kIsolationColumn)
+    {
+        event.Skip();
+        return;
+    }
+
+    const int index = RowIndex(event.GetItem());
+    if (index < 0)
+    {
+        return;
+    }
+
+    const int row_in_control = list_->ItemToRow(event.GetItem());
+    if (row_in_control == wxNOT_FOUND)
+    {
+        return;
+    }
+
+    const auto chosen =
+        list_->GetTextValue(static_cast<unsigned int>(row_in_control), kIsolationColumn).ToStdWstring();
+
+    appbox::FilesystemIsolation isolation = appbox::FilesystemIsolation::Full;
+    if (!appbox::ParseFilesystemIsolationName(chosen, isolation))
+    {
+        return;
+    }
+
+    /*
+     * The table is rebuilt once the control finished its edit; doing it inside
+     * the event would delete the row the control still holds while it commits
+     * the value.
+     */
+    const auto row = rows_[static_cast<std::size_t>(index)];
+    CallAfter([this, row, isolation]() { ApplyIsolation(row, isolation); });
 }
 
 void FilesystemPanel::OnTreeSelectionChanged(wxTreeEvent& event)
@@ -598,8 +851,9 @@ void FilesystemPanel::OnTreeItemContextMenu(wxTreeEvent& event)
 {
     const auto item = event.GetItem();
     auto* node = item.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(item)) : nullptr;
-    if (node == nullptr)
+    if (node == nullptr || node->preset_id.empty())
     {
+        /* The container holds the preset directories, which are fixed. */
         return;
     }
 
@@ -659,8 +913,9 @@ void FilesystemPanel::OnAddFolder(wxCommandEvent&)
 {
     const auto selection = tree_->GetSelection();
     auto* node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
-    if (node == nullptr)
+    if (node == nullptr || node->preset_id.empty())
     {
+        /* The container holds the preset directories only, so nothing is imported into it. */
         return;
     }
 
@@ -694,6 +949,13 @@ void FilesystemPanel::OnRemove(wxCommandEvent&)
     }
 
     const auto row = rows_[static_cast<std::size_t>(index)];
+    if (row.kind == RowInfo::Kind::Preset)
+    {
+        wxMessageBox("The preset directories of the filesystem view cannot be removed.", "Remove",
+                     wxOK | wxICON_INFORMATION, this);
+        return;
+    }
+
     if (row.kind == RowInfo::Kind::HostEntry)
     {
         wxMessageBox("'" + wxString(row.file_name)
@@ -714,8 +976,13 @@ void FilesystemPanel::OnRemove(wxCommandEvent&)
         return;
     }
 
+    /*
+     * The isolation modes of the removed subtree go with it: an entry which is
+     * imported under the same name later must not inherit the stale mode.
+     */
     if (is_folder)
     {
+        isolation_.RemoveSubtree(RowViewPath(row));
         model_.RemoveImport(row.preset_id, row.import_name);
         BuildTree();
         SelectNode(row.preset_id, std::wstring());
@@ -723,6 +990,7 @@ void FilesystemPanel::OnRemove(wxCommandEvent&)
         return;
     }
 
+    isolation_.RemoveSubtree(RowViewPath(row));
     model_.RemoveImportedFile(row.preset_id, row.target_dir, row.file_name);
     RefreshList();
 }
@@ -746,6 +1014,14 @@ void FilesystemPanel::OnRemoveImportFromTree(wxCommandEvent&)
     }
 
     const auto preset_id = node->preset_id;
+
+    /* The isolation modes of the removed import go with it, see OnRemove(). */
+    appbox::PresetDirectory preset;
+    if (appbox::FindPresetDirectory(preset_id, preset))
+    {
+        isolation_.RemoveSubtree(appbox::JoinViewPath(preset.layer_key, node->import_name));
+    }
+
     model_.RemoveImport(preset_id, node->import_name);
 
     BuildTree();

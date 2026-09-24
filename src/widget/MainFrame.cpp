@@ -185,7 +185,7 @@ void MainFrame::CreateLayout()
 
     workspace_ = new wxSimplebook(this, wxID_ANY);
 
-    filesystem_panel_ = new FilesystemPanel(workspace_, model_);
+    filesystem_panel_ = new FilesystemPanel(workspace_, model_, filesystem_isolation_);
     workspace_->AddPage(filesystem_panel_, "Filesystem");
 
     registry_panel_ = new RegistryPanel(workspace_, registry_model_);
@@ -322,7 +322,8 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     {
         const auto answer =
             wxMessageBox("Importing a configuration replaces the imported folders, the imported "
-                         "files and the main program selection of the current session.\n\n"
+                         "files, the isolation modes and the main program selection of the "
+                         "current session.\n\n"
                          "Continue?",
                          "Import Configuration", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING, this);
         if (answer != wxYES)
@@ -331,12 +332,14 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
         }
     }
 
-    appbox::PackModel     loaded;
-    appbox::RegistryModel loaded_registry;
-    std::wstring          output_path;
-    std::string           error;
+    appbox::PackModel                loaded;
+    appbox::RegistryModel            loaded_registry;
+    appbox::FilesystemIsolationModel loaded_isolation;
+    std::wstring                     output_path;
+    std::string                      error;
 
-    if (!appbox::LoadProject(dialog.GetPath().ToStdWstring(), loaded, loaded_registry, output_path, error))
+    if (!appbox::LoadProject(dialog.GetPath().ToStdWstring(), loaded, loaded_registry, loaded_isolation,
+                             output_path, error))
     {
         spdlog::error("importing the configuration failed: {}", error);
         wxMessageBox("The configuration could not be imported:\n\n" + wxString::FromUTF8(error),
@@ -346,6 +349,7 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
 
     model_ = std::move(loaded);
     registry_model_ = std::move(loaded_registry);
+    filesystem_isolation_ = std::move(loaded_isolation);
     filesystem_panel_->RefreshModel();
     registry_panel_->RefreshModel();
 
@@ -386,8 +390,8 @@ void MainFrame::OnExportConfiguration(wxCommandEvent&)
     }
 
     std::string error;
-    if (!appbox::SaveProject(model_, registry_model_, OutputPath().ToStdWstring(),
-                             dialog.GetPath().ToStdWstring(), error))
+    if (!appbox::SaveProject(model_, registry_model_, filesystem_isolation_,
+                             OutputPath().ToStdWstring(), dialog.GetPath().ToStdWstring(), error))
     {
         spdlog::error("exporting the configuration failed: {}", error);
         wxMessageBox("The configuration could not be exported:\n\n" + wxString::FromUTF8(error),
@@ -590,10 +594,12 @@ void MainFrame::StartPack(bool run_after)
      */
     const auto snapshot = model_;
     const auto registry_snapshot = registry_model_;
+    const auto isolation_snapshot = filesystem_isolation_;
     const auto loader_bytes = std::string(loader);
     const auto zip_wide = zip_path.ToStdWstring();
 
-    pack_thread_ = std::thread([this, snapshot, registry_snapshot, loader_bytes, zip_wide, run_after]() {
+    pack_thread_ = std::thread([this, snapshot, registry_snapshot, isolation_snapshot, loader_bytes, zip_wide,
+                                run_after]() {
         const auto report_progress = [this](const appbox::BuildProgress& report) {
             auto* event = new wxThreadEvent(APPBOX_PACK_PROGRESS);
             event->SetPayload(report);
@@ -602,8 +608,8 @@ void MainFrame::StartPack(bool run_after)
         };
 
         PackOutcome outcome;
-        outcome.error = appbox::Pack(snapshot, registry_snapshot, loader_bytes.data(), loader_bytes.size(),
-                                     zip_wide, report_progress);
+        outcome.error = appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, loader_bytes.data(),
+                                     loader_bytes.size(), zip_wide, report_progress);
 
         if (outcome.error.empty())
         {

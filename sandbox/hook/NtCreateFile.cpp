@@ -202,6 +202,20 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
     const bool want_edit = (DesiredAccess & (DELETE | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA |
                                              FILE_APPEND_DATA | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE | GENERIC_ALL));
 
+    /*
+     * An entry which the isolation hides does not exist in the view: a call
+     * which does not ask for a creation reports the same failure as a missing
+     * file instead of a missing path, because the parent directory of the
+     * entry is hidden as well. A creation is allowed and lands in the upper
+     * layer, which is what makes the entry visible from then on.
+     */
+    if (!want_create && resolve_result->status != appbox::filesystem::ResolveResult::Status::Exists &&
+        (resolve_result->status == appbox::filesystem::ResolveResult::Status::HiddenByIsolation ||
+         resolve_result->bIsolationMasked))
+    {
+        return STATUS_OBJECT_NAME_NOT_FOUND;
+    }
+
     /* If file is hidden by whiteout, remove the whiteout file */
     if (want_create && resolve_result->status == appbox::filesystem::ResolveResult::Status::HiddenByWhiteout &&
         resolve_result->bWhiteoutInUpper)
@@ -214,10 +228,15 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
             auto rResult = appbox::filesystem::Resolve(nativate_fs_path);
             if (rResult->status == appbox::filesystem::ResolveResult::Status::Exists)
             {
-                NtCreateFileOpenFS(nativate_fs_path, ObjectAttributes->Attributes, nullptr, DesiredAccess,
+                /*
+                 * The directory still exists in a lower layer: it is created
+                 * in the upper layer and an opaque marker hides the content of
+                 * the lower layer, so the re-created directory starts empty.
+                 */
+                NtCreateFileOpenFS(resolve_result->uPath, ObjectAttributes->Attributes, nullptr, DesiredAccess,
                                    IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
                                    CreateOptions, EaBuffer, EaLength);
-                return NtCreateFileOpenFS(nativate_fs_path + L"\\" + APPBOX_SANDBOX_OPAQUE_NAME_W,
+                return NtCreateFileOpenFS(resolve_result->uPath + L"\\" + APPBOX_SANDBOX_OPAQUE_NAME_W,
                                           ObjectAttributes->Attributes, nullptr, DELETE | FILE_WRITE_DATA, nullptr,
                                           nullptr, FILE_ATTRIBUTE_NORMAL,
                                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN_IF,

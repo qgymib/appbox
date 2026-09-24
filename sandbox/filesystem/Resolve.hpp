@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_FILESYSTEM_RESOLVE_HPP
 
 #include "utils/WinAPI.h"
+#include "IsolationTable.hpp"
 #include <string>
 #include <vector>
 #include <memory>
@@ -16,10 +17,11 @@ struct ResolveResult
 
     enum class Status
     {
-        Exists,           /* File exists. */
-        NotFound,         /* File not exists. */
-        HiddenByWhiteout, /* File not found because of whiteout. */
-        BlockedByOpaque,  /* File not found because of opaque. */
+        Exists,            /* File exists. */
+        NotFound,          /* File not exists. */
+        HiddenByWhiteout,  /* File not found because of whiteout. */
+        BlockedByOpaque,   /* File not found because of opaque. */
+        HiddenByIsolation, /* File not found because the isolation hides it. */
     };
 
     struct Path
@@ -33,6 +35,16 @@ struct ResolveResult
          * @brief Path information
          */
         FILE_BASIC_INFORMATION fInfo = {};
+
+        /**
+         * @brief Index of the layer which holds the path.
+         *
+         * 0 is the upper layer (the overlay), 1 to N are the lower layers and
+         * the last index is the host layer. The isolation masks the hits of
+         * the layers a mode hides, which is why the layer of a hit is
+         * recorded.
+         */
+        size_t layer = 0;
     };
 
     /**
@@ -92,6 +104,41 @@ struct ResolveResult
      * @brief True if opaque file is exists in upper filesystem.
      */
     bool bOpaqueInUpper = false;
+
+    /**
+     * @brief Isolation mode which applies to the path.
+     *
+     * The mode of the closest entry of the isolation table at or above the
+     * path. Without such an entry the field keeps `WriteCopy`, which is the
+     * default of a folder and the behaviour of a sandbox without an isolation
+     * file: every layer of the view stays visible.
+     */
+    FilesystemIsolation isolation = FilesystemIsolation::WriteCopy;
+
+    /**
+     * @brief Kind of the entry which carries the isolation mode.
+     *
+     * The mode alone does not say which layers stay visible: `Full` of a
+     * folder hides the host folder together with its subtree, while `Full` of
+     * a file keeps the host file readable.
+     */
+    FilesystemEntryKind isolationSource = FilesystemEntryKind::Directory;
+
+    /**
+     * @brief Whether an entry of the isolation table decided the mode.
+     */
+    bool bIsolationListed = false;
+
+    /**
+     * @brief Whether the isolation hides a layer of the path.
+     *
+     * Set when the mode of the path hides the host layer, a lower layer or the
+     * entry itself. A call which does not create such an entry reports a
+     * missing file instead of a missing path, because the parent directory of
+     * the entry is hidden as well: the entry simply does not exist in the
+     * view.
+     */
+    bool bIsolationMasked = false;
 };
 void to_json(nlohmann::json& j, const ResolveResult& r);
 
@@ -136,12 +183,16 @@ ResolveResult::Ptr Resolve(const std::wstring& vPath, const ResolveOption& optio
 
 /**
  * @brief Resolve virtual path to host path.
+ *
  * @param[in] fs Resolve file system.
  * @param[in] vPath Virtual path in mapped view.
  * @param[in] option Resolve option.
+ * @param[in] isolation Isolation modes of the virtual filesystem, null when
+ *                      the view is resolved without an isolation.
  * @return Resolve result.
  */
-ResolveResult::Ptr ResolveFull(const ResolveFs& fs, const std::wstring& vPath, const ResolveOption& option);
+ResolveResult::Ptr ResolveFull(const ResolveFs& fs, const std::wstring& vPath, const ResolveOption& option,
+                               const IsolationTable* isolation = nullptr);
 
 } // namespace appbox::filesystem
 

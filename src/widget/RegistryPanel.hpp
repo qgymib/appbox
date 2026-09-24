@@ -158,6 +158,14 @@ private:
     void AppendRow(const RowInfo& row, std::size_t index);
 
     /**
+     * @brief Get the icon shown in the Name column of one row.
+     * @param[in] row Row description.
+     * @return The icon of the row: a folder for a sub key row, a plain file
+     *         for a value row.
+     */
+    const wxBitmapBundle& IconOf(const RowInfo& row) const;
+
+    /**
      * @brief Update the enabled state of the toolbar buttons.
      */
     void UpdateToolBarState();
@@ -257,6 +265,16 @@ private:
     wxButton*           add_value_ = nullptr;
     wxButton*           add_key_ = nullptr;
     wxButton*           remove_ = nullptr;
+
+    /**
+     * @brief Icon shown before the name of a sub key row of the table.
+     */
+    wxBitmapBundle folder_icon_;
+
+    /**
+     * @brief Icon shown before the name of a value row of the table.
+     */
+    wxBitmapBundle file_icon_;
 
     /**
      * @brief Rows shown by the table, indexed by the item data of the control.

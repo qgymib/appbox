@@ -664,3 +664,139 @@ TEST(ProjectFile, LoadRejectsABrokenRegistry)
     EXPECT_FALSE(model.IsEmpty());
     EXPECT_NE(registry.FindKey(L"HKEY_CURRENT_USER\\Software\\Keep"), nullptr);
 }
+
+TEST(ProjectFile, RoundTripKeepsTheFilesystemModes)
+{
+    TempDir temp;
+    const auto file = temp.File(L"filesystem.json");
+
+    appbox::PackModel model;
+    ASSERT_TRUE(BuildSampleModel(model));
+
+    appbox::FilesystemIsolationModel isolation;
+    std::string                      error;
+    ASSERT_TRUE(isolation.SetIsolation(L"#ProgramFiles#\\MyApp\\data",
+                                       appbox::FilesystemEntryKind::Directory,
+                                       appbox::FilesystemIsolation::Whiteout, error))
+        << error;
+    ASSERT_TRUE(isolation.SetIsolation(L"#ProgramFiles#\\MyApp\\app.exe",
+                                       appbox::FilesystemEntryKind::File,
+                                       appbox::FilesystemIsolation::Whiteout, error))
+        << error;
+
+    ASSERT_TRUE(appbox::SaveProject(model, appbox::RegistryModel{}, isolation, L"D:\\out\\app.zip",
+                                    file.wstring(), error))
+        << error;
+
+    /* The member is part of the document, even when it holds no entry. */
+    EXPECT_NE(ReadBytes(file).find("\"filesystem\""), std::string::npos);
+
+    appbox::PackModel                loaded;
+    appbox::RegistryModel            loaded_registry;
+    appbox::FilesystemIsolationModel loaded_isolation;
+    std::wstring                     loaded_output;
+    ASSERT_TRUE(appbox::LoadProject(file.wstring(), loaded, loaded_registry, loaded_isolation,
+                                    loaded_output, error))
+        << error;
+
+    /* The entries come back in path order, with their kind and their mode. */
+    const auto& entries = loaded_isolation.Entries();
+    ASSERT_EQ(entries.size(), 2u);
+    EXPECT_EQ(entries[0].path, L"#ProgramFiles#\\MyApp\\app.exe");
+    EXPECT_EQ(entries[0].kind, appbox::FilesystemEntryKind::File);
+    EXPECT_EQ(entries[0].isolation, appbox::FilesystemIsolation::Whiteout);
+    EXPECT_EQ(entries[1].path, L"#ProgramFiles#\\MyApp\\data");
+    EXPECT_EQ(entries[1].kind, appbox::FilesystemEntryKind::Directory);
+    EXPECT_EQ(entries[1].isolation, appbox::FilesystemIsolation::Whiteout);
+
+    /* The inheritance of the restored model works like before the round trip. */
+    EXPECT_EQ(loaded_isolation.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\data\\settings.ini",
+                                                 appbox::FilesystemEntryKind::File),
+              appbox::FilesystemIsolation::Whiteout);
+    EXPECT_EQ(loaded_isolation.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\bin\\tool.exe",
+                                                 appbox::FilesystemEntryKind::File),
+              appbox::FilesystemIsolation::Full);
+}
+
+TEST(ProjectFile, LoadWithoutAFilesystemMemberRestoresAnEmptyModel)
+{
+    TempDir temp;
+    const auto file = temp.File(L"legacy-filesystem.json");
+    WriteBytes(file, "{ \"version\": 1, \"output_path\": \"D:\\\\out\\\\a.zip\" }");
+
+    appbox::FilesystemIsolationModel isolation;
+    std::string                      error;
+    ASSERT_TRUE(isolation.SetIsolation(L"#Windows#", appbox::FilesystemEntryKind::Directory,
+                                       appbox::FilesystemIsolation::Whiteout, error))
+        << error;
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::wstring          output;
+    ASSERT_TRUE(appbox::LoadProject(file.wstring(), model, registry, isolation, output, error)) << error;
+
+    /* The file does not describe the filesystem, so every entry follows its default. */
+    EXPECT_TRUE(isolation.IsEmpty());
+    EXPECT_EQ(isolation.EffectiveIsolation(L"#Windows#", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::WriteCopy);
+}
+
+TEST(ProjectFile, LoadRejectsABrokenFilesystemMember)
+{
+    TempDir temp;
+
+    const auto bad_mode = temp.File(L"fs-bad-mode.json");
+    WriteBytes(bad_mode, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\", "
+                         "\"kind\": \"directory\", \"isolation\": \"hide\" } ] }");
+
+    const auto bad_kind = temp.File(L"fs-bad-kind.json");
+    WriteBytes(bad_kind, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\", "
+                         "\"kind\": \"link\", \"isolation\": \"full\" } ] }");
+
+    const auto file_mode = temp.File(L"fs-file-mode.json");
+    WriteBytes(file_mode, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\\\\a.dll\", "
+                          "\"kind\": \"file\", \"isolation\": \"write_copy\" } ] }");
+
+    const auto duplicate = temp.File(L"fs-duplicate.json");
+    WriteBytes(duplicate, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\", \"kind\": "
+                          "\"directory\", \"isolation\": \"full\" }, { \"path\": \"#windows#\", \"kind\": "
+                          "\"directory\", \"isolation\": \"whiteout\" } ] }");
+
+    const auto missing = temp.File(L"fs-missing.json");
+    WriteBytes(missing, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\" } ] }");
+
+    const auto not_array = temp.File(L"fs-not-array.json");
+    WriteBytes(not_array, "{ \"version\": 1, \"filesystem\": {} }");
+
+    appbox::FilesystemIsolationModel isolation;
+    std::string                      error;
+    ASSERT_TRUE(isolation.SetIsolation(L"#Windows#", appbox::FilesystemEntryKind::Directory,
+                                       appbox::FilesystemIsolation::Whiteout, error))
+        << error;
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::wstring          output;
+
+    EXPECT_FALSE(appbox::LoadProject(bad_mode.wstring(), model, registry, isolation, output, error));
+    EXPECT_NE(error.find("unknown isolation mode"), std::string::npos);
+
+    EXPECT_FALSE(appbox::LoadProject(bad_kind.wstring(), model, registry, isolation, output, error));
+    EXPECT_NE(error.find("unknown entry kind"), std::string::npos);
+
+    EXPECT_FALSE(appbox::LoadProject(file_mode.wstring(), model, registry, isolation, output, error));
+    EXPECT_NE(error.find("write_copy"), std::string::npos);
+
+    EXPECT_FALSE(appbox::LoadProject(duplicate.wstring(), model, registry, isolation, output, error));
+    EXPECT_NE(error.find("listed twice"), std::string::npos);
+
+    EXPECT_FALSE(appbox::LoadProject(missing.wstring(), model, registry, isolation, output, error));
+    EXPECT_NE(error.find("'kind'"), std::string::npos);
+
+    EXPECT_FALSE(appbox::LoadProject(not_array.wstring(), model, registry, isolation, output, error));
+    EXPECT_NE(error.find("not an array"), std::string::npos);
+
+    /* A rejected file leaves the model untouched. */
+    ASSERT_EQ(isolation.Entries().size(), 1u);
+    EXPECT_EQ(isolation.Entries()[0].isolation, appbox::FilesystemIsolation::Whiteout);
+}

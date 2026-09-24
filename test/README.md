@@ -105,10 +105,31 @@ The unit tests of the registry isolation:
   mode of a single row and the explicit recursion of the isolation dialog.
 * `test/unit/Unit_RegFile.cpp` — the `.reg` parser and the merge of a file into
   the model.
-* `test/unit/Unit_ProjectFile.cpp` — the round trip of the virtual registry
-  through a project file.
-* `test/unit/Unit_PackService.cpp` — the archive carries the hive and the
-  isolation file of the workspace.
+* `test/unit/Unit_FilesystemIsolation.cpp` — the vocabulary of the filesystem
+  isolation (the tokens and the display names of the modes, the modes an entry
+  kind accepts, the default of a kind, the fold of `Write Copy` to `Full` for a
+  file) and the model of the packer: the path helpers of the virtual
+  filesystem, the explicit mode of an entry, the inheritance of the closest
+  folder above an entry, the removal of a subtree and the order of the entries.
+  It also pins the isolation file the packer writes, including the round trip
+  through the table of the sandbox, so the two sides of the schema cannot drift
+  apart.
+* `test/unit/Unit_FilesystemIsolationPolicy.cpp` — the decision table of the
+  filesystem isolation: which layers stay visible for the mode and the kind of
+  the closest listed entry, and which mode hides an entry until the sandbox
+  holds it.
+* `test/unit/Unit_FilesystemIsolationTable.cpp` — the isolation table of the
+  sandbox: the document of the packer, the translation of the virtual paths into
+  paths of the view, the lookup of the closest listed entry (the folder above an
+  entry, a folder below which overrides it, the case insensitivity, the
+  separator), the entries without a layer of the view, and the atomic failure of
+  a malformed document.
+* `test/unit/Unit_ProjectFile.cpp` — the round trip of the virtual registry and
+  of the filesystem isolation modes through a project file, including a file
+  without the `filesystem` member, an unknown isolation mode, an unknown entry
+  kind and a mode which a file cannot hold.
+* `test/unit/Unit_PackService.cpp` — the archive carries the hive, the isolation
+  file of the registry and the isolation file of the filesystem workspace.
 * `test/unit/Unit_HiveReader.cpp` — the mounting, the enumeration and the
   formatting of the loader registry browser, including the root of the hive
   which hides the whiteout store of the sandbox.
@@ -153,6 +174,20 @@ header comment.
 `test/cases/Fs_LaunchProcess_FromLower.cpp` and
 `test/cases/Fs_QueryAttributes_MultiLower.cpp` are the remaining filesystem
 cases; they are not part of the matrix above.
+
+The cases which exercise the isolation modes of the workspace write the
+isolation file of the case into the overlay (`test/utils/FsIsolationBuilder.*`)
+and use a folder below `#APPDATA#` of the host as the entry of the host layer
+(`test/utils/RealFsFolder.*`, which removes it again when the case ends):
+
+| Case | Isolation | Operation | Expected |
+| --- | --- | --- | --- |
+| `Fs_Full_HidesHostFolder` | folder `Full` | read the packed file and a host file, query a host folder, list the folder, create a file | the packed content is visible, the host entries report `File Not Found` and are not listed, the new file lands in the overlay |
+| `Fs_Full_SubFolderWriteCopy` | folder `Full`, folder below `Write Copy` | read the host files of both folders | the folder below shows the host content again, because the mode of a folder below overrides the folder above |
+| `Fs_Whiteout_FileNotFound` | file `Whiteout` | read, query, delete and list | every call reports `File Not Found`, the host file and the packed file are unchanged |
+| `Fs_Whiteout_CreateInSandbox` | file `Whiteout` | create the file, read it back, query it, list the folder | the create lands in the overlay, the entry is visible afterwards, the host file keeps its content |
+| `Fs_Whiteout_FolderHidesSubtree` | folder `Whiteout` | query and read the folder, create it, read the packed file, create a file inside it | the folder and its packed content are hidden until the sandbox creates the folder, the created file lands in the overlay |
+| `Fs_ListDir_IsolationFiltered` | folder `Full`, file `Whiteout` | enumerate the folder with `std::filesystem`, `FindFirstFile`, `_findfirst` and both NT entry points | every enumeration reports the visible entry of the lower layer only; the hidden file, the host file and the host folder are not listed |
 
 ### Registry isolation cases
 
@@ -278,13 +313,22 @@ cases; they are not part of the matrix above.
 * `test/utils/RegistryRootKey.*` — resolves the predefined handle of a registry
   root key, which is what a probe passes to the registry API.
 * `test/utils/KnownFolder.*` — path of a known folder.
+* `test/utils/RealFsFolder.*` — RAII helper which owns a folder below a known
+  folder of the host, so a case which needs an entry of the host filesystem
+  leaves nothing behind.
+* `test/utils/FsIsolationBuilder.*` — writes the isolation file of a test
+  sandbox (`<overlay>/filesystem-isolation.json`) from the modes of the case.
 * `test/utils/ReadFileFull.*` / `test/utils/WriteFileFull.*` — file I/O
   helpers.
 * `test/utils/Semaphore.*` — synchronization between the test process and the
   probe process.
 * `test/probe/*` — the operations executed inside the sandbox (`CreateFileW`,
-  `CreateDirectoryW`, `DeleteFileW`, `ListDir`, `ReadFileFull`), plus the
-  probes of the remaining cases (`LaunchProcess`, `QueryAttributes`).
+  `CreateDirectoryW`, `DeleteFileW`, `ListDir`, `ListDirNt`, `ReadFileFull`),
+  plus the probes of the remaining cases (`LaunchProcess`, `QueryAttributes`).
+  `ListDirNt` opens a directory with `NtOpenFile` and enumerates it with
+  `NtQueryDirectoryFile` or `NtQueryDirectoryFileEx`, so it pins both entry
+  points of the merged view directly, while the user mode wrappers may use
+  either of them.
 * `test/probe/RegWriteValue.cpp` / `RegReadValue.cpp` — the operations
   executed inside the sandbox.
 * `test/probe/RegEnumKey.cpp` / `RegEnumValue.cpp` — sub key and value

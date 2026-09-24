@@ -8,6 +8,7 @@
 #include <string>
 #include <thread>
 #include "core/BuildReport.hpp"
+#include "core/FilesystemIsolationModel.hpp"
 #include "core/PackModel.hpp"
 #include "core/RegistryModel.hpp"
 
@@ -263,9 +264,17 @@ private:
      * @brief Registry the packaged application will see.
      *
      * The model is filled by `File -> Import Registry` and by the registry
-     * workspace itself; it is not part of the project file yet.
+     * workspace itself, and it travels with the project file.
      */
     appbox::RegistryModel registry_model_;
+
+    /**
+     * @brief Isolation modes of the virtual filesystem.
+     *
+     * The model is filled by the isolation dropdown of the filesystem
+     * workspace and travels with the project file.
+     */
+    appbox::FilesystemIsolationModel filesystem_isolation_;
 
     RibbonBar*       ribbon_ = nullptr;
     SideNav*         side_nav_ = nullptr;

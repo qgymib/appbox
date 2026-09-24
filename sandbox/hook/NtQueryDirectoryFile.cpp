@@ -1,5 +1,7 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
+#include "utils/HandleInfo.hpp"
+#include "filesystem/DirectoryMerge.hpp"
 #include "NtQueryDirectoryFile.hpp"
 
 T_NtQueryDirectoryFile sys_NtQueryDirectoryFile = nullptr;
@@ -34,6 +36,29 @@ static NTSTATUS Hook_NtQueryDirectoryFile(HANDLE FileHandle, HANDLE Event, PIO_A
 {
     logger.Log(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, FileInformation, Length, FileInformationClass,
                ReturnSingleEntry, FileName, RestartScan);
+
+    /*
+     * The plain entry point reports a directory of the view like the extended
+     * one: both share the merge of the layers, which is what keeps the two
+     * enumerations of the same handle consistent.
+     */
+    if (appbox::filesystem::IsSupportedDirectoryInformationClass(FileInformationClass) &&
+        appbox::HandleInfo::Find(FileHandle) != nullptr)
+    {
+        ULONG query_flags = 0;
+        if (ReturnSingleEntry)
+        {
+            query_flags |= appbox::filesystem::kQueryReturnSingleEntry;
+        }
+        if (RestartScan)
+        {
+            query_flags |= appbox::filesystem::kQueryRestartScan;
+        }
+
+        return appbox::filesystem::QueryDirectoryInformation(FileHandle, IoStatusBlock, FileInformation, Length,
+                                                             query_flags, FileName, FileInformationClass, false);
+    }
+
     return sys_NtQueryDirectoryFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, FileInformation, Length,
                                     FileInformationClass, ReturnSingleEntry, FileName, RestartScan);
 }

@@ -117,6 +117,8 @@ set(APPBOX_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/ApplicationIcon.cpp"
     "${APPBOX_SOURCE_DIR}/core/BuildReport.cpp"
+    "${APPBOX_SOURCE_DIR}/core/FilesystemIsolationFile.cpp"
+    "${APPBOX_SOURCE_DIR}/core/FilesystemIsolationModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/PackModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/PackService.cpp"
     "${APPBOX_SOURCE_DIR}/core/PresetDirectory.cpp"
@@ -128,6 +130,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/StartupTree.cpp"
     "${APPBOX_SOURCE_DIR}/core/ZipReader.cpp"
     "${APPBOX_SOURCE_DIR}/core/ZipWriter.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/FilesystemIsolationRenderer.cpp"
     "${APPBOX_SOURCE_DIR}/widget/FilesystemPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/LoaderResource.cpp"
     "${APPBOX_SOURCE_DIR}/widget/MainFrame.cpp"

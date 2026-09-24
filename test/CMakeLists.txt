@@ -6,13 +6,19 @@ add_executable(AppBoxTests
     "cases/Fs_DeleteFile_MultiLower_ExistsInUpper.cpp"
     "cases/Fs_DeleteFile_MultiLower_NonExists.cpp"
     "cases/Fs_DeleteFile_WhiteoutInLower_ExistsInUpper.cpp"
+    "cases/Fs_Full_HidesHostFolder.cpp"
+    "cases/Fs_Full_SubFolderWriteCopy.cpp"
     "cases/Fs_LaunchProcess_FromLower.cpp"
+    "cases/Fs_ListDir_IsolationFiltered.cpp"
     "cases/Fs_ListDir_MultiLower_ExistsInLower_WhiteoutInUpper.cpp"
     "cases/Fs_ListDir_MultiLower_ExistsInLower.cpp"
     "cases/Fs_NewFile_MultiLower_WhiteoutInLower.cpp"
     "cases/Fs_NewFile_MultiLower_WhiteoutInUpper.cpp"
     "cases/Fs_QueryAttributes_MultiLower.cpp"
     "cases/Fs_ReadFile_MultiLower_WhiteoutInUpper.cpp"
+    "cases/Fs_Whiteout_CreateInSandbox.cpp"
+    "cases/Fs_Whiteout_FileNotFound.cpp"
+    "cases/Fs_Whiteout_FolderHidesSubtree.cpp"
     "cases/Reg_DeleteKey_NonEmpty.cpp"
     "cases/Reg_DeleteKey_ReadHandle.cpp"
     "cases/Reg_DeleteKey_ShadowKeyRemoved.cpp"
@@ -44,6 +50,7 @@ add_executable(AppBoxTests
     "probe/DeleteFileW.cpp"
     "probe/LaunchProcess.cpp"
     "probe/ListDir.cpp"
+    "probe/ListDirNt.cpp"
     "probe/QueryAttributes.cpp"
     "probe/ReadFileFull.cpp"
     "probe/RegDeleteKey.cpp"
@@ -60,10 +67,12 @@ add_executable(AppBoxTests
     "utils/CommonFixture.cpp"
     "utils/CWD.cpp"
     "utils/FsBuilder.cpp"
+    "utils/FsIsolationBuilder.cpp"
     "utils/HiveBuilder.cpp"
     "utils/KnownFolder.cpp"
     "utils/ProbeCall.cpp"
     "utils/ReadFileFull.cpp"
+    "utils/RealFsFolder.cpp"
     "utils/RealHkcuKey.cpp"
     "utils/RegistryRootKey.cpp"
     "utils/Semaphore.cpp"
@@ -121,6 +130,9 @@ add_executable(AppBoxUnitTests
     "unit/Unit_HiveReader.cpp"
     "unit/Unit_HookTransaction.cpp"
     "unit/Unit_ExpandKnownFolder.cpp"
+    "unit/Unit_FilesystemIsolation.cpp"
+    "unit/Unit_FilesystemIsolationPolicy.cpp"
+    "unit/Unit_FilesystemIsolationTable.cpp"
     "unit/Unit_GetExecutableDir.cpp"
     "unit/Unit_LoaderPath.cpp"
     "unit/Unit_Log.cpp"
@@ -165,6 +177,8 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/WinCall.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationIcon.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationFile.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PresetDirectory.cpp
@@ -177,6 +191,7 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipWriter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/ModuleTable.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/IsolationTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/hook/HookTransaction.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/EnumMerge.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/IsolationTable.cpp

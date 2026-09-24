@@ -113,6 +113,22 @@ TEST(PresetDirectory, FindsKnownAndRejectsUnknownIds)
     EXPECT_FALSE(appbox::FindPresetDirectory("does_not_exist", preset));
 }
 
+TEST(PresetDirectory, ContainerLabelNamesTheFilesystemTreeRoot)
+{
+    /*
+     * The label is the top item of the filesystem tree of the packer, so it is
+     * user visible text which must not drift apart from the container of the
+     * registry view.
+     */
+    EXPECT_STREQ(appbox::kFilesystemContainerLabel, L"Sandbox Filesystem");
+    EXPECT_STRNE(appbox::kFilesystemContainerLabel, L"Sandbox Registry");
+
+    for (const auto& preset : appbox::PresetDirectories())
+    {
+        EXPECT_STRNE(appbox::kFilesystemContainerLabel, preset.display_name.c_str());
+    }
+}
+
 TEST(PackModel, ImportFolderAcceptsValidFolder)
 {
     TempDir temp;

@@ -79,6 +79,15 @@ RegistryPanel::RegistryPanel(wxWindow* parent, appbox::RegistryModel& model)
                            wxTR_HAS_BUTTONS | wxTR_LINES_AT_ROOT | wxTR_SINGLE);
     tree_->AssignImageList(images);
 
+    /*
+     * The Name column of the table carries an icon as well: a folder for a sub
+     * key row and a plain file for a value row. Both icons come from the art
+     * provider, so the table never reads the icon of a host registry entry.
+     * The image list above belongs to the tree and is unrelated to them.
+     */
+    folder_icon_ = wxArtProvider::GetBitmapBundle(wxART_FOLDER, wxART_OTHER, wxSize(16, 16));
+    file_icon_ = wxArtProvider::GetBitmapBundle(wxART_NORMAL_FILE, wxART_OTHER, wxSize(16, 16));
+
     auto* right = new wxPanel(splitter, wxID_ANY);
     CreateList(right);
 
@@ -105,7 +114,13 @@ void RegistryPanel::CreateList(wxWindow* parent)
 {
     list_ = new wxDataViewListCtrl(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                                    wxDV_ROW_LINES | wxDV_SINGLE);
-    list_->AppendTextColumn("Name", wxDATAVIEW_CELL_INERT, 260);
+    /*
+     * The Name column shows an icon before the name of the row: a folder for a
+     * sub key and a plain file for a value, so the kind of a row is visible
+     * without reading the type column. Its values are icon-text variants, see
+     * AppendRow().
+     */
+    list_->AppendIconTextColumn("Name", wxDATAVIEW_CELL_INERT, 260);
 
     /*
      * The isolation column uses a choice renderer: the mode of a row is picked
@@ -287,8 +302,16 @@ void RegistryPanel::AppendRow(const RowInfo& row, std::size_t index)
 {
     const bool is_value = row.kind == RowInfo::Kind::Value;
 
+    /*
+     * The name column carries the icon of the row as well, so its value is an
+     * icon-text variant. The icon-text class declares no implicit variant
+     * constructor, its value is assigned through the stream operator.
+     */
+    wxVariant name;
+    name << wxDataViewIconText(RowLabel(row.name, is_value), IconOf(row));
+
     wxVector<wxVariant> values;
-    values.push_back(wxVariant(RowLabel(row.name, is_value)));
+    values.push_back(name);
     values.push_back(wxVariant(wxString(appbox::RegistryIsolationName(row.isolation))));
     values.push_back(wxVariant(is_value ? wxString(appbox::RegistryValueTypeName(row.type)) : wxString()));
     values.push_back(wxVariant(is_value ? wxString(appbox::FormatRegistryValueData(
@@ -296,6 +319,11 @@ void RegistryPanel::AppendRow(const RowInfo& row, std::size_t index)
                                         : wxString()));
 
     list_->AppendItem(values, static_cast<wxUIntPtr>(index));
+}
+
+const wxBitmapBundle& RegistryPanel::IconOf(const RowInfo& row) const
+{
+    return row.kind == RowInfo::Kind::Key ? folder_icon_ : file_icon_;
 }
 
 void RegistryPanel::UpdateToolBarState()

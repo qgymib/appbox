@@ -1,6 +1,7 @@
 #ifndef APPBOX_PACKER_CORE_PROJECT_FILE_HPP
 #define APPBOX_PACKER_CORE_PROJECT_FILE_HPP
 
+#include "FilesystemIsolationModel.hpp"
 #include "PackModel.hpp"
 #include "RegistryModel.hpp"
 #include <string>
@@ -22,7 +23,8 @@ inline constexpr int kProjectFileVersion = 1;
  *
  * The file is JSON text encoded as strict UTF-8 without a byte order mark:
  * the members of the schema are `version`, `output_path`, `folders`, `files`,
- * `registry` and, when a main program is selected, `main_program`.
+ * `registry`, `filesystem` and, when a main program is selected,
+ * `main_program`.
  *
  * ```
  * {
@@ -48,6 +50,15 @@ inline constexpr int kProjectFileVersion = 1;
  * every value as a hexadecimal byte string, so all supported types survive the
  * round trip. Every mode is stored as it is; the `isolation_set` member which
  * older versions wrote is ignored when such a file is read.
+ *
+ * The `filesystem` member describes the isolation modes of the virtual
+ * filesystem: one entry per path the user set a mode for, with the kind of the
+ * entry (`file` or `directory`) and the mode (`full`, `write_copy` or
+ * `whiteout`). The paths are the ones the `Source Path` column shows, for
+ * example `#ProgramFiles#\MyApp`. Entries which are not listed follow the
+ * closest folder above them, and a file or folder without such a folder
+ * follows the default of its kind, so a hand written document may list the
+ * modes which differ from the default only.
  *
  * Every path is stored as the host path it has on the machine which exported
  * the configuration; the file only records the imports, it never copies the
@@ -85,6 +96,27 @@ bool SaveProject(const PackModel& model, const std::wstring& output_path, const 
  * @return true on success.
  */
 bool SaveProject(const PackModel& model, const RegistryModel& registry, const std::wstring& output_path,
+                 const std::wstring& path, std::string& error);
+
+/**
+ * @brief Write the packer configuration, the registry and the filesystem modes.
+ *
+ * This overload stores the isolation modes of the filesystem workspace as
+ * well, so a saved project keeps the modes the user picked for the files and
+ * folders of the virtual filesystem. The overloads without the isolation model
+ * write an empty one.
+ *
+ * @param[in] model The configuration to store.
+ * @param[in] registry Virtual registry of the workspace.
+ * @param[in] isolation Isolation modes of the virtual filesystem.
+ * @param[in] output_path Destination archive path of the configuration, which
+ *                        may be empty when no path was chosen yet.
+ * @param[in] path Destination project file path.
+ * @param[out] error Error description on failure.
+ * @return true on success.
+ */
+bool SaveProject(const PackModel& model, const RegistryModel& registry,
+                 const FilesystemIsolationModel& isolation, const std::wstring& output_path,
                  const std::wstring& path, std::string& error);
 
 /**
@@ -131,6 +163,26 @@ bool LoadProject(const std::wstring& path, PackModel& model, std::wstring& outpu
  */
 bool LoadProject(const std::wstring& path, PackModel& model, RegistryModel& registry,
                  std::wstring& output_path, std::string& error);
+
+/**
+ * @brief Replace the packer configuration, the registry and the filesystem modes.
+ *
+ * This overload restores the isolation modes of the filesystem workspace as
+ * well. A file which does not hold a `filesystem` member (a file written
+ * before the filesystem modes were part of the schema) restores an empty
+ * model, in which every entry follows the default of its kind.
+ *
+ * @param[in] path Project file path.
+ * @param[out] model Model replaced with the configuration of the file.
+ * @param[out] registry Registry replaced with the registry of the file.
+ * @param[out] isolation Isolation modes replaced with the modes of the file.
+ * @param[out] output_path Destination archive path stored in the file, empty
+ *                         when the file records none.
+ * @param[out] error Error description on failure.
+ * @return true on success.
+ */
+bool LoadProject(const std::wstring& path, PackModel& model, RegistryModel& registry,
+                 FilesystemIsolationModel& isolation, std::wstring& output_path, std::string& error);
 
 } // namespace appbox
 

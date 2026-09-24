@@ -225,10 +225,14 @@ the left, the child view of the selected key on the right.
   `HKEY_USERS`, `HKEY_CURRENT_CONFIG`) are always shown, even when nothing was
   imported. They can neither be renamed nor removed.
 * **Child view.** The table shows the sub keys and the values of the selected
-  key with the columns `Name`, `Isolation`, `Type` and `Value`. A sub key row
-  leaves the type and the value empty, the default value of a key is shown as
-  `(Default)`. The toolbar above the table holds `Add value`, `Add key` and
-  `Remove`; removing a key removes everything below it after a confirmation.
+  key with the columns `Name`, `Isolation`, `Type` and `Value`. The `Name`
+  column carries an icon before the name: a folder for a sub key and a plain
+  file for a value, so the kind of a row is visible at a glance. Both icons
+  come from the art provider of wxWidgets, the table never reads the icon of a
+  host registry entry. A sub key row leaves the type and the value empty, the
+  default value of a key is shown as `(Default)`. The toolbar above the table
+  holds `Add value`, `Add key` and `Remove`; removing a key removes everything
+  below it after a confirmation.
 * **Editing.** The isolation mode of a row is picked from a dropdown in the
   row itself and reaches that row alone; every other column is read only and
   edited by double clicking the row, which opens the key dialog (name) or the

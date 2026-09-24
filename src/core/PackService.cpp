@@ -1,5 +1,6 @@
 #include "PackService.hpp"
 #include "ApplicationIcon.hpp"
+#include "FilesystemIsolationFile.hpp"
 #include "PresetDirectory.hpp"
 #include "RegistryHive.hpp"
 #include "RegistryIsolationFile.hpp"
@@ -213,8 +214,9 @@ std::wstring LoaderEntryName(const PackModel& model)
     return std::filesystem::path(model.MainProgramChoice().relative_path).filename().wstring();
 }
 
-std::string Pack(const PackModel& model, const RegistryModel& registry, const void* loader_bytes,
-                 std::size_t loader_size, const std::wstring& zip_path, const BuildProgressCallback& progress)
+std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
+                 const void* loader_bytes, std::size_t loader_size, const std::wstring& zip_path,
+                 const BuildProgressCallback& progress)
 {
     if (!model.HasMainProgram())
     {
@@ -344,12 +346,32 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const vo
             return error;
         }
 
-        std::string isolation;
-        if (!BuildRegistryIsolationFile(registry, isolation, error))
+        std::string registry_isolation;
+        if (!BuildRegistryIsolationFile(registry, registry_isolation, error))
         {
             return error;
         }
-        if (!writer.AddFileBuffer(registry_prefix + "/isolation.json", isolation.data(), isolation.size(), error))
+        if (!writer.AddFileBuffer(registry_prefix + "/isolation.json", registry_isolation.data(),
+                                  registry_isolation.size(), error))
+        {
+            return error;
+        }
+
+        /*
+         * The isolation modes of the virtual filesystem travel in the overlay
+         * root, next to the registry folder: the loader hands the file to the
+         * sandbox, which redirects the filesystem of the packaged application
+         * through the modes. The file must not live below `filesystem`,
+         * because the loader treats every child of that folder as a layer of
+         * the view.
+         */
+        std::string filesystem_isolation;
+        if (!BuildFilesystemIsolationFile(isolation, filesystem_isolation, error))
+        {
+            return error;
+        }
+        if (!writer.AddFileBuffer(config.overlay_fs + "/filesystem-isolation.json", filesystem_isolation.data(),
+                                  filesystem_isolation.size(), error))
         {
             return error;
         }

@@ -34,6 +34,10 @@ constexpr const char* kTypeKey = "type";
 constexpr const char* kDataKey = "data";
 constexpr const char* kIsolationKey = "isolation";
 
+/* Member names of the filesystem part of the schema. */
+constexpr const char* kFilesystemKey = "filesystem";
+constexpr const char* kKindKey = "kind";
+
 /**
  * @brief Name of the encoding a byte order mark belongs to.
  *
@@ -441,6 +445,82 @@ bool DecodeRegistry(const nlohmann::json& element, appbox::RegistryModel& regist
 }
 
 /**
+ * @brief Read the filesystem part of a project file.
+ *
+ * Every entry lists the path of an entry of the virtual filesystem, its kind
+ * and the mode the user picked for it. An entry which the document does not
+ * mention follows the closest folder above it, so the document may hold the
+ * modes which differ from the default only.
+ *
+ * @param[in] element JSON array of the `filesystem` member.
+ * @param[out] isolation Model replaced with the content of the member.
+ * @param[out] error Error description on failure.
+ * @return true when the isolation modes were read.
+ */
+bool DecodeFilesystem(const nlohmann::json& element, appbox::FilesystemIsolationModel& isolation,
+                      std::string& error)
+{
+    if (!element.is_array())
+    {
+        error = std::string("the '") + kFilesystemKey + "' member is not an array";
+        return false;
+    }
+
+    appbox::FilesystemIsolationModel candidate;
+    std::size_t                     index = 0;
+    for (const auto& element_entry : element)
+    {
+        const auto scope = std::string(kFilesystemKey) + "[" + std::to_string(index) + "]";
+        ++index;
+
+        if (!element_entry.is_object())
+        {
+            error = Scoped(scope, "the entry is not a JSON object");
+            return false;
+        }
+
+        std::string path;
+        std::string kind_text;
+        std::string isolation_text;
+        if (!ReadString(element_entry, kPathKey, scope, path, error)
+            || !ReadString(element_entry, kKindKey, scope, kind_text, error)
+            || !ReadString(element_entry, kIsolationKey, scope, isolation_text, error))
+        {
+            return false;
+        }
+
+        appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::Directory;
+        if (!appbox::filesystem_isolation::ParseEntryKindToken(kind_text, kind))
+        {
+            error = Scoped(scope, "unknown entry kind '" + kind_text + "'");
+            return false;
+        }
+
+        appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::WriteCopy;
+        if (!appbox::filesystem_isolation::ParseIsolationToken(isolation_text, mode))
+        {
+            error = Scoped(scope, "unknown isolation mode '" + isolation_text + "'");
+            return false;
+        }
+
+        appbox::FilesystemIsolationEntry entry;
+        entry.path = appbox::UTF8ToWide(path);
+        entry.kind = kind;
+        entry.isolation = mode;
+
+        std::string detail;
+        if (!candidate.AddEntry(entry, detail))
+        {
+            error = Scoped(scope, detail);
+            return false;
+        }
+    }
+
+    isolation = std::move(candidate);
+    return true;
+}
+
+/**
  * @brief Decode the content of a project file.
  *
  * The configuration is built into a local model which is assigned to the
@@ -450,12 +530,14 @@ bool DecodeRegistry(const nlohmann::json& element, appbox::RegistryModel& regist
  * @param[in] text Content of the project file.
  * @param[out] model Model replaced with the configuration of the file.
  * @param[out] registry Registry replaced with the registry of the file.
+ * @param[out] isolation Isolation modes replaced with the modes of the file.
  * @param[out] output_path Destination archive path stored in the file.
  * @param[out] error Error description on failure.
  * @return true on success.
  */
 bool DecodeProject(const std::string& text, appbox::PackModel& model, appbox::RegistryModel& registry,
-                   std::wstring& output_path, std::string& error)
+                   appbox::FilesystemIsolationModel& isolation, std::wstring& output_path,
+                   std::string& error)
 {
     nlohmann::json root;
     try
@@ -488,9 +570,10 @@ bool DecodeProject(const std::string& text, appbox::PackModel& model, appbox::Re
         return false;
     }
 
-    appbox::PackModel      candidate;
-    appbox::RegistryModel  candidate_registry;
-    std::wstring           candidate_output;
+    appbox::PackModel                candidate;
+    appbox::RegistryModel            candidate_registry;
+    appbox::FilesystemIsolationModel candidate_isolation;
+    std::wstring                     candidate_output;
 
     if (root.contains(kOutputPathKey))
     {
@@ -623,9 +706,18 @@ bool DecodeProject(const std::string& text, appbox::PackModel& model, appbox::Re
         }
     }
 
+    if (root.contains(kFilesystemKey))
+    {
+        if (!DecodeFilesystem(root.at(kFilesystemKey), candidate_isolation, error))
+        {
+            return false;
+        }
+    }
+
     /* Every entry was accepted: the configuration can replace the caller. */
     model = std::move(candidate);
     registry = std::move(candidate_registry);
+    isolation = std::move(candidate_isolation);
     output_path = std::move(candidate_output);
     return true;
 }
@@ -635,7 +727,8 @@ bool DecodeProject(const std::string& text, appbox::PackModel& model, appbox::Re
 namespace appbox
 {
 
-bool SaveProject(const PackModel& model, const RegistryModel& registry, const std::wstring& output_path,
+bool SaveProject(const PackModel& model, const RegistryModel& registry,
+                 const FilesystemIsolationModel& isolation, const std::wstring& output_path,
                  const std::wstring& path, std::string& error)
 {
     if (path.empty())
@@ -691,6 +784,23 @@ bool SaveProject(const PackModel& model, const RegistryModel& registry, const st
         registry_entry[kRegistryKeysKey] = std::move(registry_keys);
         root[kRegistryKey] = std::move(registry_entry);
 
+        /*
+         * The isolation modes of the virtual filesystem, one entry per path
+         * the user picked a mode for. An entry which is not listed follows the
+         * closest folder above it, so the default of the workspace is not
+         * written at all.
+         */
+        nlohmann::ordered_json filesystem = nlohmann::ordered_json::array();
+        for (const auto& entry : isolation.Entries())
+        {
+            nlohmann::ordered_json item;
+            item[kPathKey] = WideToUTF8(entry.path);
+            item[kKindKey] = filesystem_isolation::EntryKindToken(entry.kind);
+            item[kIsolationKey] = filesystem_isolation::IsolationToken(entry.isolation);
+            filesystem.push_back(std::move(item));
+        }
+        root[kFilesystemKey] = std::move(filesystem);
+
         if (model.HasMainProgram())
         {
             nlohmann::ordered_json entry;
@@ -730,12 +840,19 @@ bool SaveProject(const PackModel& model, const RegistryModel& registry, const st
 bool SaveProject(const PackModel& model, const std::wstring& output_path, const std::wstring& path,
                  std::string& error)
 {
-    /* A caller without a registry stores an empty one. */
-    return SaveProject(model, RegistryModel{}, output_path, path, error);
+    /* A caller without a registry and without filesystem modes stores empty ones. */
+    return SaveProject(model, RegistryModel{}, FilesystemIsolationModel{}, output_path, path, error);
+}
+
+bool SaveProject(const PackModel& model, const RegistryModel& registry, const std::wstring& output_path,
+                 const std::wstring& path, std::string& error)
+{
+    /* A caller without filesystem modes stores an empty model. */
+    return SaveProject(model, registry, FilesystemIsolationModel{}, output_path, path, error);
 }
 
 bool LoadProject(const std::wstring& path, PackModel& model, RegistryModel& registry,
-                 std::wstring& output_path, std::string& error)
+                 FilesystemIsolationModel& isolation, std::wstring& output_path, std::string& error)
 {
     if (path.empty())
     {
@@ -792,7 +909,7 @@ bool LoadProject(const std::wstring& path, PackModel& model, RegistryModel& regi
 
     try
     {
-        return DecodeProject(text, model, registry, output_path, error);
+        return DecodeProject(text, model, registry, isolation, output_path, error);
     }
     catch (const std::exception& ex)
     {
@@ -801,13 +918,22 @@ bool LoadProject(const std::wstring& path, PackModel& model, RegistryModel& regi
     }
 }
 
+bool LoadProject(const std::wstring& path, PackModel& model, RegistryModel& registry,
+                 std::wstring& output_path, std::string& error)
+{
+    /* A caller without filesystem modes reads them into a model it drops. */
+    FilesystemIsolationModel isolation;
+    return LoadProject(path, model, registry, isolation, output_path, error);
+}
+
 bool LoadProject(const std::wstring& path, PackModel& model, std::wstring& output_path,
                  std::string& error)
 {
-    /* The registry of the file is validated, but a caller without a registry
-     * has no place to keep it. */
-    RegistryModel registry;
-    return LoadProject(path, model, registry, output_path, error);
+    /* The registry and the filesystem modes of the file are validated, but a
+     * caller without them has no place to keep them. */
+    RegistryModel            registry;
+    FilesystemIsolationModel isolation;
+    return LoadProject(path, model, registry, isolation, output_path, error);
 }
 
 } // namespace appbox

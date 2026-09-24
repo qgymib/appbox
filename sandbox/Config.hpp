@@ -41,9 +41,11 @@ struct SandboxConfig
     std::vector<SandboxLowerFS> fs_lower;           /* Sandbox read-only filesystem layers. */
     std::string                 registry_hive_dos_path; /* Registry hive file path. Encoding in UTF-8. */
     std::string                 registry_isolation_dos_path; /* Registry isolation file path. Encoding in UTF-8. */
+    std::string filesystem_isolation_dos_path; /* Filesystem isolation file path. Encoding in UTF-8. */
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(SandboxConfig, pipe_path, sandbox32_dos_path, sandbox64_dos_path, fs_upper,
-                                   fs_lower, registry_hive_dos_path, registry_isolation_dos_path)
+                                   fs_lower, registry_hive_dos_path, registry_isolation_dos_path,
+                                   filesystem_isolation_dos_path)
 };
 
 } // namespace appbox

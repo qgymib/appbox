@@ -76,6 +76,93 @@ The configuration flows from the loader UI down to the sandbox DLL:
    struct ResolveFsMapping { std::wstring mapped_nt_path; std::wstring host_nt_path; };
    struct ResolveFs { std::wstring fs_upper; std::vector<ResolveFsMapping> fs_lower; };
    ```
+6. `appbox::Sandbox::fs_isolation` (`sandbox/filesystem/IsolationTable.*`,
+   filled by the isolation module) — the modes of the virtual filesystem,
+   translated from the virtual paths of the isolation file into paths of the
+   view with the layer mapping of step 5. An empty table keeps every layer of
+   the view visible.
+
+## Workspace isolation modes
+
+The packer offers an isolation mode for every file and folder of the virtual
+filesystem. The mode is picked in the `Isolation` column of the filesystem
+workspace (see [README.md](../README.md)), stored in the project file and
+written into the isolation file of the archive, which the sandbox reads back
+and enforces (see [The isolation file](#the-isolation-file)).
+
+| Kind | Modes | Default |
+| --- | --- | --- |
+| folder | `Full`, `Write Copy`, `Whiteout` | `Write Copy` |
+| file | `Full`, `Whiteout` | `Full` |
+
+* **Full** (folder) - only the virtual filesystem is visible, even when the
+  host holds the folder: the host entry of the folder and of everything below
+  it is masked, so a modification of the folder or of the files below it lands
+  in the sandbox.
+* **Write Copy** (folder) - the host filesystem and the virtual filesystem are
+  both visible with the virtual one taking precedence. Every modification lands
+  in the sandbox.
+* **Whiteout** (folder and file) - the entry is invisible for the sandboxed
+  process, even when the host or the packed content holds it: opening, reading,
+  writing and deleting report `File Not Found`. Creating the entry succeeds
+  inside the sandbox, and the entry is readable and writable afterwards while
+  the hidden layers stay hidden.
+* **Full** (file) - every write of the file lands in the sandbox, while the
+  host file stays readable through the view.
+
+The mode of a folder reaches the entries below it: an entry which carries no
+mode of its own follows the closest folder above it which does, so the scope of
+a folder mode is its own subtree and a folder below it can override it. A
+conflict between the virtual filesystem and the host filesystem is resolved in
+favour of the virtual filesystem.
+
+The mode of a path and the kind of the entry which carries it decide which
+layers of the view stay visible (see
+[`IsolationPolicy`](#supporting-modules)):
+
+| Mode of the closest listed entry | Kind of that entry | host layer | lower layers | upper layer |
+| --- | --- | --- | --- | --- |
+| `Full` | folder | masked | visible | visible |
+| `Full` | file | visible | visible | visible |
+| `Write Copy` | folder | visible | visible | visible |
+| `Whiteout` | folder or file | masked | masked | visible |
+
+The vocabulary is shared (`common/FilesystemIsolation.hpp`), the modes of the
+workspace are held by `src/core/FilesystemIsolationModel.*` of the packer.
+
+### The isolation file
+
+`BuildFilesystemIsolationFile` (`src/core/FilesystemIsolationFile.cpp`) writes
+the modes of the workspace as a JSON document, which `Pack` stores in the
+overlay of the archive as `data/filesystem-isolation.json` — next to the
+`registry` folder, not below `filesystem`, because the loader treats every child
+of that folder as a layer of the view:
+
+```json
+{
+  "version": 1,
+  "entries": [
+    { "path": "#ProgramFiles#\\MyApp", "kind": "directory", "isolation": "full" },
+    { "path": "#ProgramFiles#\\MyApp\\app.exe", "kind": "file", "isolation": "whiteout" }
+  ]
+}
+```
+
+The `path` of an entry is a path of the virtual filesystem, which is the path
+the `Source Path` column shows: the first component is the layer key of a preset
+directory and the remaining ones are the path below it. Only the entries the
+user set a mode for are listed; an entry which the document does not mention
+follows the closest listed folder above it and falls back to the default of its
+kind.
+
+The loader derives the path of the file from the overlay
+(`MapFilesystemIsolationFile` in `loader/Loader.cpp`) and passes it to the
+sandbox as `SandboxConfig.filesystem_isolation_dos_path`. The sandbox module
+`appbox::filesystem::Isolation` reads the document while it initializes — before
+the hooks are attached — and fills `appbox::sandbox->fs_isolation`. A missing
+file, a missing configuration or a malformed document is not an error: the
+sandbox then behaves like one without an isolation file, in which every entry
+keeps the default of its kind and the host filesystem stays visible.
 
 ## On-disk layout
 
@@ -145,6 +232,7 @@ filesystem. The layout matches the loader runtime conventions:
 <startup file name>.json               launch configuration:
                                        base_fs = ["."], overlay_fs = "data",
                                        launch.executable = <layer key>\<import>\<exe>
+data/filesystem-isolation.json         isolation modes of the filesystem workspace
 filesystem/<layer key>/<import>/...    imported folder content
 ```
 
@@ -174,11 +262,14 @@ Implementation: `sandbox/filesystem/Resolve.hpp` / `Resolve.cpp`.
 ```cpp
 ResolveResult::Ptr Resolve(const std::wstring& vPath, const ResolveOption& option = {});
 ResolveResult::Ptr ResolveFull(const ResolveFs& fs, const std::wstring& vPath,
-                               const ResolveOption& option);
+                               const ResolveOption& option,
+                               const IsolationTable* isolation = nullptr);
 ```
 
-`Resolve` is a thin wrapper that passes the global `appbox::sandbox->fs`; `ResolveFull`
-takes an explicit `ResolveFs` and is the layer the sandbox itself is built on.
+`Resolve` is a thin wrapper that passes the global `appbox::sandbox->fs` and the
+global `appbox::sandbox->fs_isolation`; `ResolveFull` takes an explicit
+`ResolveFs` and an explicit isolation table (null resolves the view without an
+isolation) and is the layer the sandbox itself is built on.
 
 `ResolveOption` controls the search:
 
@@ -191,14 +282,16 @@ takes an explicit `ResolveFs` and is the layer the sandbox itself is built on.
 
 | Field | Meaning |
 | --- | --- |
-| `status` | `Exists`, `NotFound`, `HiddenByWhiteout` or `BlockedByOpaque`. |
+| `status` | `Exists`, `NotFound`, `HiddenByWhiteout`, `BlockedByOpaque` or `HiddenByIsolation`. |
 | `bParentExist` | The direct parent directory exists; set while the parent level of a candidate layer is checked. |
 | `uPath` | The layer path in the **upper** layer (may not exist yet). |
 | `uPathBaseSize` | `fs_upper.size()`, the offset of the mutable part of `uPath`; used to create missing parent directories. |
 | `bInUpper` | The object itself exists in the upper layer. |
-| `hPath` | Layer paths of the object, in layer order, with the `FILE_BASIC_INFORMATION` of each one. Empty when the object does not exist. |
+| `hPath` | Layer paths of the object, in layer order, with the `FILE_BASIC_INFORMATION` and the index of the layer of each one. Empty when the object does not exist. |
 | `whiteoutPath` / `bWhiteoutInUpper` | The whiteout that hid the object, and whether it is in the upper layer. |
 | `opaquePath` / `bOpaqueInUpper` | The opaque marker that blocked the lookup, and whether it is in the upper layer. |
+| `isolation` / `isolationSource` / `bIsolationListed` | The mode of the closest listed entry of the isolation table, the kind of that entry, and whether such an entry decided the mode. |
+| `bIsolationMasked` | Whether the isolation hides a layer of the path; a call which does not create the entry then reports a missing file instead of a missing path. |
 
 `ResolveResult` has a `to_json` overload and is dumped into the trace log on every
 resolution.
@@ -212,6 +305,12 @@ resolution.
    configuration order;
 3. the host layer, with `base_fs` = the drive part of the view path (`\??\C`) and
    `file_fs` = the view path itself.
+
+The isolation does not change the candidate list: it masks the **hits** of the
+layers the mode of the path hides (see [Isolation of a path](#isolation-of-a-path)).
+Masking instead of dropping a candidate keeps the parent check intact, so a
+parent directory which only a hidden layer holds still decides whether the path
+can be created.
 
 A drive root is a special case: `ResolveFull` keeps its separator (`\??\C:\`) instead of
 stripping it, because `\??\C:` alone is a drive relative path which the layer mapping
@@ -245,8 +344,39 @@ in the first candidate layer sets `bInUpper`; a whiteout or opaque marker found 
 first layer sets `bWhiteoutInUpper` / `bOpaqueInUpper`.
 
 Status is then derived: `hPath` non-empty means `Exists`, otherwise the recorded whiteout
-or opaque marker decides between `HiddenByWhiteout` and `BlockedByOpaque`, and everything
-else is `NotFound`.
+or opaque marker decides between `HiddenByWhiteout` and `BlockedByOpaque`, an entry which
+the isolation hides reports `HiddenByIsolation`, and everything else is `NotFound`.
+
+### Isolation of a path
+
+`ApplyIsolation` (`sandbox/filesystem/Resolve.cpp`) runs after the search and before the
+status is derived. It asks the isolation table for the **closest listed entry** at or
+above the view path, which yields the mode of the path and the kind of the entry that
+carries it, and then drops the hits of the layers that mode hides (see the table of
+[Workspace isolation modes](#workspace-isolation-modes)):
+
+* the host layer is masked when the mode is `Whiteout` or when it is `Full` and the
+  listed entry is a folder, so the host folder and its whole subtree are invisible;
+* the lower layers are masked when the mode is `Whiteout`, so the packed content of a
+  hidden entry is invisible as well;
+* the upper layer is never masked: it holds the entries the sandboxed process created
+  itself, which is what makes a `Whiteout` entry visible after its creation.
+
+An entry without a listed entry keeps the default of its kind, which hides nothing, so a
+sandbox without an isolation file resolves every path exactly like before.
+
+A `Whiteout` entry has no visible layer of its own, so the resolver reports
+`HiddenByIsolation`; the hooks turn that into `File Not Found` for every call which does
+not create the entry, while a create lands in the upper layer (see
+[`NtCreateFile`](#ntcreatefile-sandboxhookntcreatefilecpp)) and the entry is visible from
+then on. The mask is recorded in `bIsolationMasked`, so a call which does not create an
+entry that only a hidden layer holds reports a missing **file** instead of a missing
+**path** (its parent directory is hidden as well).
+
+The inheritance rule follows from the lookup: the closest listed entry decides, so a
+folder below a `Full` folder which is set to `Write Copy` shows the host content of its
+own subtree again, and an entry which a `Whiteout` folder covers stays invisible until
+the sandboxed process creates it.
 
 ### Worked example
 
@@ -302,18 +432,22 @@ isolation domain).
 3. Disposition checks: `FILE_CREATE` on an existing object fails with
    `STATUS_OBJECT_NAME_COLLISION`; `FILE_OVERWRITE` on a missing object fails with
    `STATUS_OBJECT_NAME_NOT_FOUND`.
-4. If the object is hidden by a whiteout **in the upper layer** and the disposition
+4. An entry which the isolation hides (`HiddenByIsolation`) or which only a hidden layer
+   holds (`bIsolationMasked`) does not exist in the view: a call which does not ask for a
+   creation fails with `STATUS_OBJECT_NAME_NOT_FOUND`, while a creating disposition
+   writes the entry into the upper layer and the entry is visible from then on.
+5. If the object is hidden by a whiteout **in the upper layer** and the disposition
    allows creation, the whiteout is removed first (`RemoveAll`). If the new object is a
    directory, the resolver runs again; when the directory still exists in a lower layer
-   an opaque marker is created so that the lower contents stay hidden.
-5. `want_create` (`FILE_SUPERSEDE`, `FILE_CREATE`, `FILE_OPEN_IF`, `FILE_OVERWRITE_IF`)
+   an opaque marker is created next to `uPath` so that the lower contents stay hidden.
+6. `want_create` (`FILE_SUPERSEDE`, `FILE_CREATE`, `FILE_OPEN_IF`, `FILE_OVERWRITE_IF`)
    or `want_edit` (any of `DELETE`, `FILE_WRITE_DATA`, `FILE_WRITE_ATTRIBUTES`,
    `FILE_WRITE_EA`, `FILE_APPEND_DATA`, `WRITE_DAC`, `WRITE_OWNER`, `GENERIC_WRITE`,
    `GENERIC_ALL`) creates the missing parent directories inside the upper layer
    (`CreateDirectories(DirName(uPath), uPathBaseSize)`).
-6. `want_edit` on an object that exists only in a lower or host layer triggers a
+7. `want_edit` on an object that exists only in a lower or host layer triggers a
    **copy-up**: the object is copied to `uPath` (`appbox::CopyFileNt`).
-7. The call is forwarded to the original API with the upper path when the object is
+8. The call is forwarded to the original API with the upper path when the object is
    created or modified, otherwise with the layer path where it was found.
 
 Reentrancy is controlled by `ThreadLocal::disable_NtCreateFile_hook` (see
@@ -360,26 +494,39 @@ called by `NtClose`:
 before closing; when it was pending and the close succeeded, `DeleteViewPath` runs so the
 whiteout is created after the real object is gone.
 
-### `NtQueryDirectoryFileEx` (`sandbox/hook/NtQueryDirectoryFileEx.cpp`)
+### `NtQueryDirectoryFileEx` and `NtQueryDirectoryFile`
 
-Directory listings are merged across layers for `FileFullDirectoryInformation`:
+Directory listings are merged across layers by
+`sandbox/filesystem/DirectoryMerge.*`, which both entry points share
+(`sandbox/hook/NtQueryDirectoryFileEx.cpp` and
+`sandbox/hook/NtQueryDirectoryFile.cpp` call it, so a caller may mix them on the same
+handle):
 
 1. A per-handle `FullDirectoryInformationMeta` is created from the resolve result; its
-   `PendingDir` queue holds the layer paths of the directory that actually exist.
+   `PendingDir` queue holds the layer paths of the directory that actually exist, which
+   is the merge of the layers the isolation of the directory leaves visible.
 2. Each real directory is opened with
    `FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_FOR_BACKUP_INTENT`
-   and queried in turn, so entries from upper and from every lower layer are seen once.
+   and queried in turn with the entry point and the information class of the caller, so
+   entries from upper and from every visible lower layer are seen once.
 3. `FixNameInfo` rewrites the returned buffer in place through
-   `appbox::FileFullDirInformationWalker` and drops entries that are
+   `appbox::DirectoryInformationWalker` and drops entries that are
    * marker files (`*.$APPBOX_DELETE$` or `.$APPBOX_OPAQUE$`), or
    * not visible in the view, i.e. `Resolve(BasePath + "\" + name)` is not `Exists`
-     (this is what makes whiteouts and opaque markers effective in listings), or
+     (this is what makes whiteouts, opaque markers and the isolation of the view
+     effective in listings), or
    * duplicates of a name already emitted (case insensitive comparison when
      `OBJ_CASE_INSENSITIVE` is set).
 4. `SL_RESTART_SCAN` discards the cached state and restarts from the upper layer; the
-   state is released when the handle is closed.
+   restart flag is applied to the first query of a call only, because the merge queries
+   the layer again after it dropped an entry. The state is released when the handle is
+   closed.
 
-The plain `NtQueryDirectoryFile` hook is not merged — see the gaps below.
+The merge reads and rewrites the entry list, so it covers the information classes which
+carry the name of an entry: `FileDirectoryInformation`,
+`FileFullDirectoryInformation` and `FileBothDirectoryInformation`. Every other class —
+and every call whose handle was not registered by `NtOpenFile` — is forwarded unchanged
+and therefore sees the layer the handle was opened with (see the gaps below).
 
 ## Supporting modules
 
@@ -396,7 +543,11 @@ The plain `NtQueryDirectoryFile` hook is not merged — see the gaps below.
 | `sandbox/utils/CheckPathExist.*` | Existence probe used by the resolver, built on `NtQueryAttributesFile`. |
 | `sandbox/utils/CopyFileNt.*` | Copy-up: NT level copy with 64 KiB chunks, creates missing parents. |
 | `sandbox/utils/HandleInfo.*` | Handle to (view path, resolve result, object attributes) map plus per-handle metadata slots. |
-| `sandbox/utils/FileFullDirInformationWalker.*` | In-place filtering of `FILE_FULL_DIR_INFORMATION` buffers with `NextEntryOffset` fix-ups. |
+| `sandbox/utils/DirectoryInformationWalker.*` | Layout of the directory information classes plus in-place filtering of their buffers with `NextEntryOffset` fix-ups. |
+| `sandbox/filesystem/DirectoryMerge.*` | Shared merge of the layers of a directory for both enumeration entry points. |
+| `sandbox/filesystem/IsolationTable.*` | The isolation modes of the virtual filesystem: the document of the packer, translated into paths of the view, with the lookup of the closest listed entry. |
+| `sandbox/filesystem/IsolationPolicy.hpp` | The decision table of the modes (`HidesHost`, `HidesLower`, `HidesEntry`), shared by the resolver and the hooks. |
+| `sandbox/filesystem/Isolation.*` | The sandbox module which reads the isolation file of the injected configuration. |
 
 ## Tests
 
@@ -433,13 +584,12 @@ unit tests listed in [test/README.md](../test/README.md):
 The following points are visible in the current code and should be kept in mind when
 extending or testing the isolation:
 
-1. **Path-based queries are not redirected.** `NtQueryFullAttributesFile`,
-   `NtQueryInformationByName` and
-   `NtQueryDirectoryFile` log their arguments and forward the call unchanged, so the
+1. **Path-based queries are not redirected.** `NtQueryFullAttributesFile` and
+   `NtQueryInformationByName` log their arguments and forward the call unchanged, so the
    query hits the raw path (a lower layer or the host filesystem) instead of the view.
-   `NtQueryAttributesFile` is redirected (see above). The resolver itself is not
-   affected, because `CheckPathExist` calls the original `NtQueryAttributesFile`
-   with paths that are already rebased into a layer.
+   `NtQueryAttributesFile` and both directory enumeration entry points are redirected
+   (see above). The resolver itself is not affected, because `CheckPathExist` calls the
+   original `NtQueryAttributesFile` with paths that are already rebased into a layer.
 2. **Handle-based hooks only log.** `NtQueryInformationFile`, `NtSetInformationFile`,
    `NtQueryVolumeInformationFile`, `NtDeviceIoControlFile` and `NtFsControlFile` forward
    unchanged. The handle already refers to the layer that was selected at open time
@@ -457,16 +607,18 @@ extending or testing the isolation:
    `NtCreateFile` hook and marked for deletion has no handle information, so closing it
    deletes the layer object without creating the whiteout that would hide the lower
    layers.
-5. **Directory merging is limited to one information class.** Only
-   `FileFullDirectoryInformation` is merged, and only on `NtQueryDirectoryFileEx`.
-   Callers that use `NtQueryDirectoryFile` or another information class see the single
-   layer that the directory handle was opened with.
-6. **Opaque marker creation needs verification.** In the re-creation branch of
-   `NtCreateFile`, the marker path is derived from the view path
-   (`nativate_fs_path + "\\" + APPBOX_SANDBOX_OPAQUE_NAME_W`) instead of the upper layer
-   path `uPath`, and the call bypasses the hooks. The marker is therefore not written
-   into the upper layer as intended, so masking of a re-created directory's lower
-   contents cannot be relied on yet.
+5. **Directory merging covers the name carrying information classes only.** The merge
+   reads and rewrites the entry list, so it understands `FileDirectoryInformation`,
+   `FileFullDirectoryInformation` and `FileBothDirectoryInformation`. A caller which uses
+   one of the `FileId...DirectoryInformation` classes, an information class which does
+   not carry a name, or a directory handle which was not registered by `NtOpenFile`
+   (a handle of `CreateFileW`, for example) sees the single layer the handle was opened
+   with.
+6. **A mode does not reach the alternate data streams of its file.** The lookup of the
+   isolation walks the path upwards component by component, and a stream name such as
+   `file.txt:stream` is the last component of its own path, so it does not inherit the
+   mode of `file.txt`. The mode of a folder still covers the streams of the files below
+   it.
 7. **Copy-up copies the default data stream only.** Alternate data streams are not
    handled specially: a stream name such as `file.txt:stream` is carried into the upper
    layer path as part of the file name, while copy-up reads only the file content, and
@@ -476,4 +628,6 @@ extending or testing the isolation:
    forward them unchanged.
 9. **`ResolveFs` is fixed at injection time.** There is no way to add or remove a lower
    layer while a sandboxed process is running; the layers come from the injected
-   configuration and live in the `appbox::sandbox` singleton.
+   configuration and live in the `appbox::sandbox` singleton. The isolation modes are
+   loaded once as well, so a mode which is changed in the packer afterwards needs a new
+   archive.

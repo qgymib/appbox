@@ -112,6 +112,40 @@ static bool MapRegistryFiles(const std::string& fs, std::string& hive_path, std:
     return true;
 }
 
+/**
+ * @brief Derive the filesystem isolation file of the sandbox from the overlay.
+ *
+ * The file lives in the overlay root, next to the `filesystem` and the
+ * `registry` subdirectories, because the loader treats every child of
+ * `filesystem` as a layer of the view. The packer writes the file into the
+ * archive, so a packaged application carries the isolation modes of the
+ * workspace; the file is not created here, because a missing file means that
+ * every entry keeps the default mode of its kind.
+ *
+ * @param[in] fs The overlay filesystem root.
+ * @param[out] isolation_path The DOS path of the isolation file.
+ * @return true on success.
+ */
+static bool MapFilesystemIsolationFile(const std::string& fs, std::string& isolation_path)
+{
+    auto dos_path_w = appbox::UTF8ToWide(fs);
+    /* Remove trailing slash */
+    while (!dos_path_w.empty() && dos_path_w.back() == L'\\')
+    {
+        dos_path_w.pop_back();
+    }
+
+    if (dos_path_w.empty())
+    {
+        SPDLOG_ERROR("overlay filesystem path is empty");
+        return false;
+    }
+
+    std::filesystem::path file = std::filesystem::path(dos_path_w) / "filesystem-isolation.json";
+    isolation_path = appbox::WideToUTF8(file.wstring());
+    return true;
+}
+
 AppBoxLoaderRuntime::AppBoxLoaderRuntime()
 {
     std::time_t timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
@@ -126,6 +160,7 @@ AppBoxLoaderRuntime::AppBoxLoaderRuntime()
     MapOverlayFS(wxGetApp().loader_config.overlay_fs, inject_data.fs_upper);
     MapRegistryFiles(wxGetApp().loader_config.overlay_fs, inject_data.registry_hive_dos_path,
                      inject_data.registry_isolation_dos_path);
+    MapFilesystemIsolationFile(wxGetApp().loader_config.overlay_fs, inject_data.filesystem_isolation_dos_path);
 
     {
         auto                  w_overlay_path = appbox::UTF8ToWide(wxGetApp().loader_config.overlay_fs);

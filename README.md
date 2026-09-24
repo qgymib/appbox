@@ -10,7 +10,17 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 
 ### Resource Isolation
 
-- **Filesystem Isolation**: Three-layer filesystem architecture
+- **Filesystem Isolation**: Three-layer filesystem architecture: the virtual
+  filesystem of the packer travels as a lower layer of the view plus an
+  isolation file into the overlay of the archive; the sandbox redirects every
+  file operation onto the view and enforces the isolation modes of the
+  workspace: `Full` of a folder hides the host folder together with its
+  subtree, `Write Copy` keeps the host entry visible behind the virtual
+  filesystem and copies every modification up into the overlay, and `Whiteout`
+  hides an entry in every layer until the sandboxed process creates it. Reads
+  fall back to the host filesystem (the read through) and a delete is recorded
+  inside the overlay instead of touching the host
+  (see [Filesystem Isolation](docs/FilesystemIsolation.md))
 - **Registry Isolation**: The virtual registry of the packer travels as a hive
   file plus an isolation file into the overlay of the archive; the sandbox
   redirects all five root keys onto the hive and enforces the three isolation
@@ -142,16 +152,24 @@ icon navigation on the left and the workspace on the right.
   are shown disabled.
 - **Navigation**: Filesystem / Registry / Network / Settings; the filesystem
   and the registry workspace are implemented, the other pages are empty states.
-- **Filesystem workspace**: the tree lists the preset directories (Program
-  Files, Current User Directory) with their imported folders, and expands
-  into the host subfolders of an import on demand. The toolbar row above the
-  file list offers `Add Files`, `Add Folder`, `New Folder` (reserved),
-  `Remove`, `Up Dir` and a filename search box.
+- **Filesystem workspace**: the top item of the tree is the
+  `Sandbox Filesystem` container, which is selected when the workspace is
+  opened. The container lists the preset directories (`Program Files`,
+  `Current User Directory`) in the table below the tree, so they are reachable
+  without an import; they are fixed, so they can neither be removed nor
+  renamed, and a double click on one of them enters it. Below a preset
+  directory the tree shows its imported folders and expands into the host
+  subfolders of an import on demand. The toolbar row above the file list
+  offers `Add Files`, `Add Folder`, `New Folder` (reserved), `Remove`,
+  `Up Dir` and a filename search box.
 - **Registry workspace**: the tree always shows the `Sandbox Registry`
   container with the five root keys, so the registry is reachable even before
   a `.reg` file was imported. The table below it shows the sub keys and the
   values of the selected key with the columns `Name`, `Isolation`, `Type` and
-  `Value`; the toolbar offers `Add value`, `Add key` and `Remove`. The
+  `Value`; `Name` shows an icon before the name of the row, a folder for a sub
+  key and a plain file for a value, using the standard icons of wxWidgets
+  instead of the icons of the host entries. The
+  toolbar offers `Add value`, `Add key` and `Remove`. The
   isolation mode of every key and every value is picked from a dropdown in its
   row, every other column is edited by double clicking the row, which opens
   the key dialog or the value dialog (name, type and data, with an editor that
@@ -165,11 +183,22 @@ icon navigation on the left and the workspace on the right.
   `data/registry/isolation.json` into the overlay of the archive, and the
   project file stores it as well, so the modes which were picked are the ones
   the packaged application runs with.
-- **File list**: the columns `Filename`, `Isolation`, `Hidden`, `No Sync`,
-  `Read Only`, `No Upgrade`, `Size` and `Source Path`. The isolation
-  attributes are read only: the packer always isolates fully, so they only
-  document the runtime behaviour. `Source Path` shows the virtual path of the
-  entry inside the sandbox view, e.g. `#ProgramFiles#\MyApp\app.exe`.
+- **File list**: the columns `Filename`, `Isolation`, `Read Only`,
+  `No Upgrade`, `Size` and `Source Path`. `Filename` shows an icon before the
+  name of the row, a folder for a folder and a plain file for a file; the icons
+  are the standard icons of wxWidgets and not the icons of the host entries.
+  The isolation mode of a row is picked from a dropdown in the row itself: a
+  folder offers `Full`, `Write Copy` and `Whiteout`, a file offers `Full` and
+  `Whiteout`. The mode of a folder reaches
+  the entries below it, so a row which was never touched shows the mode it
+  inherits from the closest folder above it; a folder defaults to
+  `Write Copy`, a file to `Full`. `Read Only` and `No Upgrade` are reserved and
+  stay read only. `Source Path` shows the virtual path of the entry inside the
+  sandbox view, e.g. `#ProgramFiles#\MyApp\app.exe`, which is also the key the
+  mode is stored under. The modes travel with the project file and into the
+  archive, which carries them as `data/filesystem-isolation.json` for the
+  sandbox, so the modes which were picked are the ones the packaged application
+  runs with (see [Filesystem Isolation](docs/FilesystemIsolation.md)).
 - **Imports**: `Add Folder` imports a host folder which becomes a
   subdirectory of a preset directory; `Add Files` imports individual host
   files into a folder of an already imported tree. Both are recorded in

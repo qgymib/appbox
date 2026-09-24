@@ -4,6 +4,7 @@
 #include <wx/wx.h>
 #include <wx/dataview.h>
 #include <wx/treectrl.h>
+#include "core/FilesystemIsolationModel.hpp"
 #include "core/PackModel.hpp"
 #include <string>
 #include <vector>
@@ -13,14 +14,21 @@ class wxSearchCtrl;
 /**
  * @brief Filesystem workspace of the packer.
  *
- * Left side: the tree of the preset directories with their imported folders
- * and the host subfolders of the imports, expanded on demand. Right side: a
- * toolbar row (Add Files, Add Folder, New Folder, Remove, Up Dir and a search
- * box) above the report style list of the selected folder.
+ * Left side: the tree of the virtual filesystem. Its top item is the
+ * `Sandbox Filesystem` container with the preset directories below it, which
+ * hold their imported folders and the host subfolders of the imports,
+ * expanded on demand. Right side: a toolbar row (Add Files, Add Folder, New
+ * Folder, Remove, Up Dir and a search box) above the report style list of the
+ * selected folder.
  *
- * The list shows the filename, the read only isolation attributes, the size
- * and the virtual source path of every entry, following the layout of the
- * reference packaging tool.
+ * The list shows the filename, the isolation mode, the size and the virtual
+ * source path of every entry, following the layout of the reference packaging
+ * tool. The mode of a row is picked from a dropdown in the row itself: a
+ * folder offers `Full`, `Write Copy` and `Whiteout`, a file offers `Full` and
+ * `Whiteout`. A row which the user never touched shows the mode it inherits
+ * from the closest folder above it, so the mode of a folder reaches the
+ * entries below it. The container lists the preset directories themselves;
+ * they are fixed, so they can neither be removed nor renamed.
  */
 class FilesystemPanel : public wxPanel
 {
@@ -29,8 +37,10 @@ public:
      * @brief Create the filesystem workspace.
      * @param[in] parent Parent window.
      * @param[in,out] model The shared pack model.
+     * @param[in,out] isolation The shared isolation modes of the view.
      */
-    FilesystemPanel(wxWindow* parent, appbox::PackModel& model);
+    FilesystemPanel(wxWindow* parent, appbox::PackModel& model,
+                    appbox::FilesystemIsolationModel& isolation);
 
     /**
      * @brief Rebuild tree and list after the model changed externally.
@@ -44,7 +54,8 @@ private:
     struct TreeNode : public wxTreeItemData
     {
         /**
-         * @brief Identifier of the preset directory.
+         * @brief Identifier of the preset directory, empty for the container
+         *        item.
          */
         std::string preset_id;
 
@@ -74,6 +85,7 @@ private:
          */
         enum class Kind
         {
+            Preset,         ///< A preset directory below the filesystem container.
             ImportedFolder, ///< An imported folder below a preset directory.
             HostEntry,      ///< An entry of the host folder of an import.
             ImportedFile    ///< A file imported on its own.
@@ -155,6 +167,11 @@ private:
     void RefreshList();
 
     /**
+     * @brief Fill the rows with the preset directories held by the container.
+     */
+    void ListPresets();
+
+    /**
      * @brief Fill the rows with the imports below one preset directory.
      * @param[in] node Data of the selected preset node.
      */
@@ -179,6 +196,14 @@ private:
     void AppendRow(const RowInfo& row, std::size_t index);
 
     /**
+     * @brief Get the icon shown in the Filename column of one row.
+     * @param[in] row Row description.
+     * @return The icon of the row: a folder for a directory row, a plain file
+     *         for every other row.
+     */
+    const wxBitmapBundle& IconOf(const RowInfo& row) const;
+
+    /**
      * @brief Select one tree node by its preset and import.
      * @param[in] preset_id Identifier of the preset directory.
      * @param[in] import_name Name of the imported folder, empty for presets.
@@ -196,10 +221,55 @@ private:
                         std::wstring& import_name) const;
 
     /**
+     * @brief Get the index of a row inside the row vector.
+     * @param[in] item Item of the row.
+     * @return The row index, -1 when the item does not describe a row.
+     */
+    int RowIndex(const wxDataViewItem& item) const;
+
+    /**
      * @brief Get the index of the selected row inside the row vector.
      * @return The row index, -1 when no row is selected.
      */
     int SelectedRowIndex() const;
+
+    /**
+     * @brief Get the kind of the entry behind a row.
+     * @param[in] row Row description.
+     * @return The kind of the entry.
+     */
+    static appbox::FilesystemEntryKind RowKind(const RowInfo& row);
+
+    /**
+     * @brief Compose the virtual path of a row inside the sandbox view.
+     *
+     * The path is the one the `Source Path` column shows and the one the
+     * isolation mode of the row is stored under: the layer key of the owning
+     * preset directory followed by the path of the entry below it.
+     *
+     * @param[in] row Row description.
+     * @return The virtual path, empty when the owning preset is unknown.
+     */
+    std::wstring RowViewPath(const RowInfo& row) const;
+
+    /**
+     * @brief Get the isolation modes a row accepts.
+     *
+     * The renderer of the isolation column calls this for the row which is
+     * about to be edited, so a file is never offered a mode it cannot hold.
+     *
+     * @param[in] item Item of the row.
+     * @return The display names of the modes, empty when the item does not
+     *         describe a row.
+     */
+    wxArrayString IsolationChoices(const wxDataViewItem& item) const;
+
+    /**
+     * @brief Store the isolation mode picked for a row.
+     * @param[in] row Row description.
+     * @param[in] isolation New isolation mode.
+     */
+    void ApplyIsolation(const RowInfo& row, appbox::FilesystemIsolation isolation);
 
     /**
      * @brief Update the enabled state of the toolbar buttons.
@@ -260,7 +330,39 @@ private:
      */
     void OnSearch(wxCommandEvent& event);
 
-    appbox::PackModel& model_;
+    /**
+     * @brief Follow a double click on a row of the file list.
+     *
+     * A double click on a preset directory enters it by selecting its tree
+     * node, which rebuilds the table. That rebuild is deferred to the next
+     * event loop iteration, because the table still holds the activated row
+     * while it dispatches the activation event.
+     *
+     * @param[in] event Table item activation event.
+     */
+    void OnRowActivated(wxDataViewEvent& event);
+
+    /**
+     * @brief Handle a mode picked from the isolation dropdown of a row.
+     *
+     * The table is rebuilt once the control finished its edit, because a
+     * rebuild inside the event would delete the row the control still holds
+     * while it commits the value.
+     *
+     * @param[in] event Table value change event.
+     */
+    void OnIsolationChanged(wxDataViewEvent& event);
+
+    appbox::PackModel&                model_;
+    appbox::FilesystemIsolationModel& isolation_;
+
+    /**
+     * @brief Whether the table is being rebuilt.
+     *
+     * The rebuild suppresses the value change events of the control, which
+     * would otherwise be read as a mode the user picked.
+     */
+    bool updating_ = false;
 
     wxTreeCtrl*    tree_ = nullptr;
     wxDataViewListCtrl* list_ = nullptr;
@@ -271,6 +373,16 @@ private:
     wxButton*      up_dir_ = nullptr;
 
     std::vector<RowInfo> rows_;
+
+    /**
+     * @brief Icon shown before the name of a folder row of the file list.
+     */
+    wxBitmapBundle folder_icon_;
+
+    /**
+     * @brief Icon shown before the name of a file row of the file list.
+     */
+    wxBitmapBundle file_icon_;
 };
 
 #endif // APPBOX_PACKER_WIDGET_FILESYSTEM_PANEL_HPP

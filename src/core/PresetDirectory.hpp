@@ -8,6 +8,17 @@ namespace appbox
 {
 
 /**
+ * @brief Label of the virtual filesystem container shown as the top tree item.
+ *
+ * The container is not a node of the pack model: it holds the preset
+ * directories of the filesystem view and is the parent of every imported
+ * folder below them. It mirrors the `Sandbox Registry` container of the
+ * registry view, which is why the label lives next to the preset directories
+ * it carries.
+ */
+inline constexpr const wchar_t* kFilesystemContainerLabel = L"Sandbox Filesystem";
+
+/**
  * @brief A system preset directory offered by the packer tree.
  *
  * A preset directory is a well known host location (such as Program Files)

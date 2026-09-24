@@ -614,6 +614,24 @@ typedef struct _FILE_FULL_DIR_INFORMATION
     WCHAR         FileName[1];
 } FILE_FULL_DIR_INFORMATION, *PFILE_FULL_DIR_INFORMATION;
 
+typedef struct _FILE_BOTH_DIR_INFORMATION
+{
+    ULONG         NextEntryOffset;
+    ULONG         FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG         FileAttributes;
+    ULONG         FileNameLength;
+    ULONG         EaSize;
+    CCHAR         ShortNameLength;
+    WCHAR         ShortName[12];
+    WCHAR         FileName[1];
+} FILE_BOTH_DIR_INFORMATION, *PFILE_BOTH_DIR_INFORMATION;
+
 typedef void(NTAPI* PIO_APC_ROUTINE)(IN PVOID ApcContext, IN PIO_STATUS_BLOCK IoStatusBlock, IN ULONG Reserved);
 
 /**

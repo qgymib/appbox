@@ -1,4 +1,5 @@
 #include <vector>
+#include "filesystem/IsolationPolicy.hpp"
 #include "filesystem/Sequence.hpp"
 #include "utils/CheckPathExist.hpp"
 #include "utils/MappingAsSandboxNtPath.hpp"
@@ -79,7 +80,7 @@ static FileLayerVec MapViewPathToHost(const appbox::filesystem::ResolveFs& fs, c
     return ret;
 }
 
-static void SearchInSingleLayer(const std::vector<std::wstring>& path_seq, bool has_trailing_slash,
+static void SearchInSingleLayer(const std::vector<std::wstring>& path_seq, size_t layer, bool has_trailing_slash,
                                 SearchResult& search_result, appbox::filesystem::ResolveResult& resolve_result)
 {
     NTSTATUS   st;
@@ -135,6 +136,7 @@ static void SearchInSingleLayer(const std::vector<std::wstring>& path_seq, bool 
         else
         {
             appbox::filesystem::ResolveResult::Path path;
+            path.layer = layer;
             st = appbox::CheckPathExist(comp_path, resolve_result.NameAttributes, &path.fInfo);
             /* For file self, check if exists. */
             if (NT_SUCCESS(st))
@@ -158,7 +160,7 @@ static void SearchInMultipleLayer(const FileLayerVec& path_vec, const appbox::fi
             appbox::filesystem::Sequence(path_vec[i].file_fs, path_vec[i].base_fs.size(), L"\\", true);
 
         /* Check each level of path. */
-        SearchInSingleLayer(path_seq, has_trailing_slash, search_result, resolve_result);
+        SearchInSingleLayer(path_seq, i, has_trailing_slash, search_result, resolve_result);
 
         /* Check if file exists in upper layer. */
         if (i == 0 && !resolve_result.hPath.empty())
@@ -184,8 +186,70 @@ static void SearchInMultipleLayer(const FileLayerVec& path_vec, const appbox::fi
     }
 }
 
+/**
+ * @brief Mask the hits of the layers the isolation of a path hides.
+ *
+ * The search itself stays untouched: every layer is looked up as before, so a
+ * parent directory which only the host holds still decides whether the path
+ * can be created. The isolation only removes the hits of the layers a mode
+ * hides from the result, which is what makes an isolated folder invisible in
+ * the host without breaking the creation of its entries.
+ *
+ * @param[in] isolation Isolation modes of the virtual filesystem, may be null.
+ * @param[in] view_path Path which was resolved.
+ * @param[in] host_layer Index of the host layer of the candidate list.
+ * @param[in,out] resolve_result The result which is masked.
+ */
+static void ApplyIsolation(const appbox::filesystem::IsolationTable* isolation, const std::wstring& view_path,
+                           size_t host_layer, appbox::filesystem::ResolveResult& resolve_result)
+{
+    if (isolation == nullptr || isolation->Empty())
+    {
+        return;
+    }
+
+    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::WriteCopy;
+    appbox::FilesystemEntryKind source_kind = appbox::FilesystemEntryKind::Directory;
+    if (!isolation->Lookup(view_path, mode, source_kind))
+    {
+        /* Without a listed entry the default of every kind keeps the whole
+         * view visible, so there is nothing to mask. */
+        return;
+    }
+
+    resolve_result.isolation = mode;
+    resolve_result.isolationSource = source_kind;
+    resolve_result.bIsolationListed = true;
+
+    const bool hides_host = appbox::filesystem::HidesHost(mode, source_kind);
+    const bool hides_lower = appbox::filesystem::HidesLower(mode);
+    resolve_result.bIsolationMasked = hides_host || hides_lower || appbox::filesystem::HidesEntry(mode);
+    if (!hides_host && !hides_lower)
+    {
+        return;
+    }
+
+    /*
+     * The upper layer is never masked: it holds the objects the sandboxed
+     * process created itself, which is what keeps a `Whiteout` entry visible
+     * after its creation.
+     */
+    std::vector<appbox::filesystem::ResolveResult::Path> visible;
+    visible.reserve(resolve_result.hPath.size());
+    for (const auto& path : resolve_result.hPath)
+    {
+        if (path.layer != 0 && (hides_lower || (hides_host && path.layer == host_layer)))
+        {
+            continue;
+        }
+        visible.push_back(path);
+    }
+    resolve_result.hPath.swap(visible);
+}
+
 appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveFull(const ResolveFs& fs, const std::wstring& vPath,
-                                                                       const appbox::filesystem::ResolveOption& option)
+                                                                       const appbox::filesystem::ResolveOption& option,
+                                                                       const IsolationTable* isolation)
 {
     auto resolve_result = std::make_shared<appbox::filesystem::ResolveResult>();
     resolve_result->status = appbox::filesystem::ResolveResult::Status::Exists;
@@ -221,6 +285,15 @@ appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveFull(const Res
     SearchResult search_result;
     SearchInMultipleLayer(path_vec, option, has_trailing_slash, search_result, *resolve_result);
 
+    /*
+     * The isolation of the path decides which of the hits stay visible: the
+     * host layer of a `Full` folder and every layer but the upper one of a
+     * `Whiteout` entry are masked. The search itself ran over every layer, so
+     * a parent directory which only the host holds still decided whether the
+     * path can be created.
+     */
+    ApplyIsolation(isolation, copy_v_path, path_vec.size() - 1, *resolve_result);
+
     /* Fix status. */
     if (resolve_result->hPath.empty())
     {
@@ -236,6 +309,14 @@ appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveFull(const Res
             return resolve_result;
         }
 
+        if (resolve_result->bIsolationListed && HidesEntry(resolve_result->isolation))
+        {
+            /* `Whiteout`: the entry is visible in no layer, so it does not
+             * exist in the view until the sandboxed process creates it. */
+            resolve_result->status = appbox::filesystem::ResolveResult::Status::HiddenByIsolation;
+            return resolve_result;
+        }
+
         resolve_result->status = appbox::filesystem::ResolveResult::Status::NotFound;
     }
 
@@ -245,7 +326,7 @@ appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveFull(const Res
 appbox::filesystem::ResolveResult::Ptr appbox::filesystem::Resolve(const std::wstring&  vPath,
                                                                    const ResolveOption& option)
 {
-    return ResolveFull(appbox::sandbox->fs, vPath, option);
+    return ResolveFull(appbox::sandbox->fs, vPath, option, &appbox::sandbox->fs_isolation);
 }
 
 void appbox::filesystem::to_json(nlohmann::json& j, const ResolveFsMapping& r)
@@ -293,4 +374,9 @@ void appbox::filesystem::to_json(nlohmann::json& j, const ResolveResult& r)
     j["opaquePath"] = appbox::WideToUTF8(r.opaquePath);
     j["bWhiteoutInUpper"] = r.bWhiteoutInUpper;
     j["bOpaqueInUpper"] = r.bOpaqueInUpper;
+
+    j["bIsolationListed"] = r.bIsolationListed;
+    j["bIsolationMasked"] = r.bIsolationMasked;
+    j["isolation"] = appbox::filesystem_isolation::IsolationToken(r.isolation);
+    j["isolationSource"] = appbox::filesystem_isolation::EntryKindToken(r.isolationSource);
 }

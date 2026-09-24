@@ -2,6 +2,7 @@
 #define APPBOX_PACKER_CORE_PACK_SERVICE_HPP
 
 #include "BuildReport.hpp"
+#include "FilesystemIsolationModel.hpp"
 #include "PackModel.hpp"
 #include "RegistryModel.hpp"
 #include <cstddef>
@@ -13,12 +14,12 @@ namespace appbox
 /**
  * @brief Number of archive entries which do not come from an import.
  *
- * The loader payload, the loader configuration and the two registry artifacts
- * (the hive and the isolation file). The pack run and the extraction of a
- * `Build and Run` run report the same total, so both count this constant
- * instead of a literal.
+ * The loader payload, the loader configuration, the two registry artifacts
+ * (the hive and the isolation file) and the isolation file of the filesystem
+ * workspace. The pack run and the extraction of a `Build and Run` run report
+ * the same total, so both count this constant instead of a literal.
  */
-inline constexpr std::size_t kNonContentArchiveEntries = 4;
+inline constexpr std::size_t kNonContentArchiveEntries = 5;
 
 /**
  * @brief Count the regular files below a folder.
@@ -57,7 +58,8 @@ std::wstring LoaderEntryName(const PackModel& model);
  * <main program name>.json               base_fs = ["."], overlay_fs = "data",
  *                                        launch.executable = <layer key>\<import>\<exe>
  * data/registry/user.hiv                 virtual registry of the workspace
- * data/registry/isolation.json           isolation modes of the workspace
+ * data/registry/isolation.json           isolation modes of the registry
+ * data/filesystem-isolation.json         isolation modes of the filesystem
  * filesystem/<layer key>/<import>/...    imported folder content
  * filesystem/<layer key>/<target>/<file> imported file content
  * ```
@@ -92,10 +94,18 @@ std::wstring LoaderEntryName(const PackModel& model);
  * BuildProgress::current, using the path below the import root prefixed by the
  * import name, e.g. `L"MyApp\bin\tool.exe"`.
  *
+ * The filesystem isolation modes land in the overlay as well, as
+ * `data/filesystem-isolation.json`: the loader hands the file to the sandbox,
+ * which redirects the filesystem of the packaged application through the modes
+ * (see `common/FilesystemIsolation.hpp`).
+ *
  * @param[in] model The pack model.
  * @param[in] registry Virtual registry of the workspace, which is written into
  *                     the overlay of the archive as a hive file and an
  *                     isolation file.
+ * @param[in] isolation Isolation modes of the virtual filesystem, which are
+ *                      written into the overlay of the archive as an isolation
+ *                      file.
  * @param[in] loader_bytes Embedded AppBoxLoader.exe payload.
  * @param[in] loader_size Payload size in bytes.
  * @param[in] zip_path Destination zip path (truncated when it exists).
@@ -104,8 +114,9 @@ std::wstring LoaderEntryName(const PackModel& model);
  *                     progress reporting.
  * @return Error description, empty on success.
  */
-std::string Pack(const PackModel& model, const RegistryModel& registry, const void* loader_bytes,
-                 std::size_t loader_size, const std::wstring& zip_path, const BuildProgressCallback& progress);
+std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
+                 const void* loader_bytes, std::size_t loader_size, const std::wstring& zip_path,
+                 const BuildProgressCallback& progress);
 
 } // namespace appbox
 
