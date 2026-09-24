@@ -30,7 +30,11 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
   inside the hive instead of touching the host registry, and a save exports the
   merged view of a key
   (see [Registry Isolation](docs/RegistryIsolation.md))
-- **Network Isolation**: Network access control (documented)
+- **Network Isolation**: Network access control (documented). The packer side
+  offers the `Network` workspace with the DNS redirections of the packaged
+  application; the redirections are kept in the session and are not enforced
+  by the sandbox yet
+  (see [Network Isolation](docs/NetworkIsolation.md))
 
 ### Build System
 
@@ -150,8 +154,9 @@ icon navigation on the left and the workspace on the right.
   The file name of that executable names the loader program and its launch
   configuration inside the archive. Groups without a counterpart in the packer
   are shown disabled.
-- **Navigation**: Filesystem / Registry / Network / Settings; the filesystem
-  and the registry workspace are implemented, the other pages are empty states.
+- **Navigation**: Filesystem / Registry / Network / Settings; the filesystem,
+  the registry and the network workspace are implemented, the settings page is
+  an empty state.
 - **Filesystem workspace**: the top item of the tree is the
   `Sandbox Filesystem` container, which is selected when the workspace is
   opened. The container lists the preset directories (`Program Files`,
@@ -183,6 +188,20 @@ icon navigation on the left and the workspace on the right.
   `data/registry/isolation.json` into the overlay of the archive, and the
   project file stores it as well, so the modes which were picked are the ones
   the packaged application runs with.
+- **Network workspace**: a flat tab strip with the pages `Proxy`, `DNS` and
+  `IP Restrictions`, which opens on `DNS`. The `DNS` page carries the `Add...`
+  and `Remove` buttons above the table of the DNS redirections of the packaged
+  application, whose columns `Hostname or IP Address` and `Redirect` are edited
+  inside the cell: `Add...` appends a row and opens its first cell, and the row
+  reaches the model as soon as both of its cells carry a value, so the table
+  holds at most one row which is still being filled in. The hostname of a
+  redirection has to be unique and neither field may be empty or contain a
+  whitespace character; a refused value is reported and the stored value is put
+  back into the cell. The redirections live in the session only: they are
+  neither written into a project file nor into a packed archive, and the
+  sandbox does not enforce them yet. `Proxy` and `IP Restrictions` show the
+  empty state of a reserved isolation domain
+  (see [Network Isolation](docs/NetworkIsolation.md)).
 - **File list**: the columns `Filename`, `Isolation`, `Read Only`,
   `No Upgrade`, `Size` and `Source Path`. `Filename` shows an icon before the
   name of the row, a folder for a folder and a plain file for a file; the icons

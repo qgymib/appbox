@@ -2,6 +2,7 @@
 #include "AboutDialog.hpp"
 #include "FilesystemPanel.hpp"
 #include "MainProgramDialog.hpp"
+#include "NetworkPanel.hpp"
 #include "PlaceholderPanel.hpp"
 #include "RegistryPanel.hpp"
 #include "RibbonBar.hpp"
@@ -192,9 +193,7 @@ void MainFrame::CreateLayout()
     registry_panel_ = new RegistryPanel(workspace_, registry_model_);
     workspace_->AddPage(registry_panel_, "Registry");
 
-    workspace_->AddPage(new PlaceholderPanel(workspace_, "Network",
-                                             "Network isolation of the packaged application."),
-                        "Network");
+    workspace_->AddPage(new NetworkPanel(workspace_, network_), "Network");
     workspace_->AddPage(new PlaceholderPanel(workspace_, "Settings",
                                              "Launch configuration of the packaged application."),
                         "Settings");

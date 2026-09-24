@@ -216,6 +216,12 @@ The unit tests of the registry isolation:
   including a mode which a file cannot hold and a path which is listed twice.
 * `test/unit/Unit_PackService.cpp` — the archive carries the hive, the isolation
   file of the registry and the isolation file of the filesystem workspace.
+* `test/unit/Unit_NetworkModel.cpp` — the model of the network workspace: the
+  insertion order of the DNS redirections, the uniqueness of a hostname
+  (ignoring the case), the rejection of an empty field, of a field which
+  carries a whitespace character and of an index outside the model, the in
+  place replacement of an entry, and the fact that a refused call leaves the
+  model untouched.
 * `test/unit/Unit_HiveReader.cpp` — the mounting, the enumeration and the
   formatting of the loader registry browser, including the root of the hive
   which hides the whiteout store of the sandbox.

@@ -9,6 +9,7 @@
 #include <thread>
 #include "core/BuildReport.hpp"
 #include "core/FilesystemIsolationModel.hpp"
+#include "core/NetworkModel.hpp"
 #include "core/PackModel.hpp"
 #include "core/RegistryModel.hpp"
 
@@ -281,6 +282,15 @@ private:
      * workspace and travels with the project file.
      */
     appbox::FilesystemIsolationModel filesystem_isolation_;
+
+    /**
+     * @brief DNS redirections of the network workspace.
+     *
+     * The model is filled by the network workspace itself. It lives in the
+     * session only: it is neither part of a project file nor of a packed
+     * archive, so closing the application drops it.
+     */
+    appbox::NetworkModel network_;
 
     RibbonBar*       ribbon_ = nullptr;
     SideNav*         side_nav_ = nullptr;

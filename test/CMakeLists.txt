@@ -145,6 +145,7 @@ add_executable(AppBoxUnitTests
     "unit/Unit_Log.cpp"
     "unit/Unit_MiniLauncher.cpp"
     "unit/Unit_ModuleTable.cpp"
+    "unit/Unit_NetworkModel.cpp"
     "unit/Unit_PackModel.cpp"
     "unit/Unit_PackService.cpp"
     "unit/Unit_PipeClient.cpp"
@@ -192,6 +193,7 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/NetworkModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PresetDirectory.cpp
