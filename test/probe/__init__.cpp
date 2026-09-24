@@ -70,7 +70,19 @@ static void ProbeRun()
     ret.key = s_probe_ctx->probe_key;
     ret.result = ProbeCallLocal(name, data);
 
-    s_probe_ctx->rpc_client->Call<appbox::test::ProbeResponse>(ret);
+    /*
+     * The report has to be acknowledged before this process leaves: the message
+     * is written asynchronously by the IO thread of the client, so leaving
+     * right after the call could drop it and the caller of ProbeCall() would
+     * wait for the result of this probe forever.
+     */
+    auto ack = s_probe_ctx->rpc_client->Call<appbox::test::ProbeResponse>(ret).get();
+    if (!ack.has_value())
+    {
+        SPDLOG_ERROR("ProbeResponse failed: {}", ack.error().message);
+        throw CLI::RuntimeError(EXIT_FAILURE);
+    }
+
     throw CLI::Success();
 }
 

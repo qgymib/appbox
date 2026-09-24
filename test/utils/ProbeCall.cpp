@@ -105,7 +105,19 @@ static void OnProbeResponse(uint64_t id, const nlohmann::json& req)
     }
 
     ctx->result = c_req.result;
+
+    /*
+     * The semaphore is released before the acknowledgment is sent: the probe
+     * waits for the acknowledgment before it leaves, so a received
+     * acknowledgment proves that the result is visible to ProbeCall(). The
+     * response is written by the IO thread after this handler returned, which
+     * keeps the order of the two steps above intact.
+     */
     ctx->sem.Release();
+
+    appbox::test::ProbeResponse::Rsp c_rsp{};
+    nlohmann::json                   j_rsp = c_rsp;
+    s_probe_srv->rpc_server->SendResponse(id, j_rsp);
 }
 
 static std::wstring GetExePath()
