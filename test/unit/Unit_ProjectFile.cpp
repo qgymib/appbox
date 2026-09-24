@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "src/core/ProjectDocument.hpp"
 #include "src/core/ProjectFile.hpp"
 #include <nlohmann/json.hpp>
 #include <chrono>
@@ -7,6 +8,7 @@
 #include <iterator>
 #include <string>
 #include <system_error>
+#include <utility>
 
 namespace
 {
@@ -18,7 +20,7 @@ namespace
 std::wstring UniqueFragment()
 {
     static unsigned counter = 0;
-    const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto      ticks = std::chrono::steady_clock::now().time_since_epoch().count();
     return std::to_wstring(ticks) + L"-" + std::to_wstring(++counter);
 }
 
@@ -94,10 +96,84 @@ std::string ReadBytes(const std::filesystem::path& path)
 bool BuildSampleModel(appbox::PackModel& model)
 {
     std::string detail;
-    return model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\Program Files\\MyApp", detail)
-           && model.RestoreImportedFile("program_files", L"MyApp\\data", L"settings.ini",
-                                        L"C:\\tmp\\settings.ini", detail)
-           && model.RestoreMainProgram("program_files", L"MyApp", L"bin\\app.exe", detail);
+    return model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\Program Files\\MyApp", detail) &&
+           model.RestoreImportedFile("program_files", L"MyApp\\data", L"settings.ini", L"C:\\tmp\\settings.ini",
+                                     detail) &&
+           model.RestoreMainProgram("program_files", L"MyApp", L"bin\\app.exe", detail);
+}
+
+/**
+ * @brief Build a registry with a nested key, three values and their modes.
+ * @param[out] registry Registry to fill.
+ * @return true when every entry was accepted.
+ */
+bool BuildSampleRegistry(appbox::RegistryModel& registry)
+{
+    std::string detail;
+    return registry.EnsureKey(L"HKEY_CURRENT_USER\\Software\\Vendor\\Deep", detail) &&
+           registry.EnsureKey(L"HKEY_LOCAL_MACHINE\\Software\\AppBox", detail) &&
+           registry.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server", appbox::RegistryValueType::String,
+                             appbox::RegistryStringData(L"host"), detail) &&
+           registry.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Count", appbox::RegistryValueType::Dword,
+                             appbox::RegistryDwordData(42), detail) &&
+           registry.SetValue(L"HKEY_LOCAL_MACHINE\\Software\\AppBox", L"", appbox::RegistryValueType::None,
+                             { 0x01, 0x02, 0x03 }, detail) &&
+           registry.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::Full) &&
+           registry.SetValueIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server",
+                                      appbox::RegistryIsolation::Hide);
+}
+
+/**
+ * @brief Build filesystem modes with a hidden folder and a hidden file.
+ * @param[out] isolation Isolation model to fill.
+ * @return true when every entry was accepted.
+ */
+bool BuildSampleIsolation(appbox::FilesystemIsolationModel& isolation)
+{
+    std::string detail;
+    return isolation.SetIsolation(L"#ProgramFiles#\\MyApp\\data", appbox::FilesystemEntryKind::Directory,
+                                  appbox::FilesystemIsolation::Whiteout, detail) &&
+           isolation.SetIsolation(L"#ProgramFiles#\\MyApp\\app.exe", appbox::FilesystemEntryKind::File,
+                                  appbox::FilesystemIsolation::Whiteout, detail);
+}
+
+/**
+ * @brief Save a session and read it back into the models of a fresh session.
+ *
+ * The document is built from the models, written to the file and read back,
+ * which is what the export and import commands do.
+ *
+ * @param[in] path Project file path.
+ * @param[in] model Configuration to store.
+ * @param[in] registry Registry to store.
+ * @param[in] isolation Filesystem modes to store.
+ * @param[in] output_path Output path to store.
+ * @param[out] loaded Model of the file.
+ * @param[out] loaded_registry Registry of the file.
+ * @param[out] loaded_isolation Filesystem modes of the file.
+ * @param[out] loaded_output Output path of the file.
+ * @param[out] error Error description on failure.
+ * @return true when the file was written and read back.
+ */
+bool RoundTrip(const std::filesystem::path& path, const appbox::PackModel& model, const appbox::RegistryModel& registry,
+               const appbox::FilesystemIsolationModel& isolation, const std::wstring& output_path,
+               appbox::PackModel& loaded, appbox::RegistryModel& loaded_registry,
+               appbox::FilesystemIsolationModel& loaded_isolation, std::wstring& loaded_output, std::string& error)
+{
+    const auto document = appbox::MakeProjectDocument(model, registry, isolation, output_path);
+    if (!appbox::SaveProject(document, path.wstring(), error))
+    {
+        return false;
+    }
+
+    appbox::ProjectDocument loaded_document;
+    if (!appbox::LoadProject(path.wstring(), loaded_document, error))
+    {
+        return false;
+    }
+
+    return appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_output,
+                                        error);
 }
 
 /*
@@ -113,32 +189,34 @@ constexpr char kChineseNameUtf8[] = "\xE6\x88\x91\xE7\x9A\x84\xE5\xBA\x94\xE7\x9
 
 } // namespace
 
-TEST(ProjectFile, RoundTripKeepsModelAndOutputPath)
+TEST(ProjectFile, RoundTripKeepsTheModelsAndTheOutputPath)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto file = temp.File(L"project.json");
 
-    appbox::PackModel saved;
-    ASSERT_TRUE(BuildSampleModel(saved));
+    appbox::PackModel model;
+    ASSERT_TRUE(BuildSampleModel(model));
     const std::wstring output = std::wstring(L"D:\\out\\") + kChineseName + L".zip";
 
-    std::string error;
-    ASSERT_TRUE(appbox::SaveProject(saved, output, file.wstring(), error)) << error;
-
-    appbox::PackModel loaded;
-    std::wstring loaded_output;
-    ASSERT_TRUE(appbox::LoadProject(file.wstring(), loaded, loaded_output, error)) << error;
+    appbox::PackModel                loaded;
+    appbox::RegistryModel            loaded_registry;
+    appbox::FilesystemIsolationModel loaded_isolation;
+    std::wstring                     loaded_output;
+    std::string                      error;
+    ASSERT_TRUE(RoundTrip(file, model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, output, loaded,
+                          loaded_registry, loaded_isolation, loaded_output, error))
+        << error;
 
     EXPECT_EQ(loaded_output, output);
     EXPECT_FALSE(loaded.IsEmpty());
 
     const auto imports = loaded.ImportsOf("program_files");
-    ASSERT_EQ(imports.size(), static_cast<std::size_t>(1));
+    ASSERT_EQ(imports.size(), 1u);
     EXPECT_EQ(imports[0].import_name, L"MyApp");
     EXPECT_EQ(imports[0].source_path, L"C:\\Program Files\\MyApp");
 
     const auto files = loaded.AllImportedFiles();
-    ASSERT_EQ(files.size(), static_cast<std::size_t>(1));
+    ASSERT_EQ(files.size(), 1u);
     EXPECT_EQ(files[0].preset_id, "program_files");
     EXPECT_EQ(files[0].target_dir, L"MyApp\\data");
     EXPECT_EQ(files[0].file_name, L"settings.ini");
@@ -152,19 +230,19 @@ TEST(ProjectFile, RoundTripKeepsModelAndOutputPath)
 
 TEST(ProjectFile, ExportWritesStrictUtf8WithoutByteOrderMark)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto file = temp.File(L"project.json");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.RestoreImportedFolder("program_files", kChineseName,
-                                            std::wstring(L"C:\\Program Files\\") + kChineseName,
-                                            error))
+                                            std::wstring(L"C:\\Program Files\\") + kChineseName, error))
         << error;
 
-    ASSERT_TRUE(appbox::SaveProject(model, std::wstring(L"D:\\") + kChineseName + L".zip",
-                                    file.wstring(), error))
-        << error;
+    const auto document =
+        appbox::MakeProjectDocument(model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
+                                    std::wstring(L"D:\\") + kChineseName + L".zip");
+    ASSERT_TRUE(appbox::SaveProject(document, file.wstring(), error)) << error;
 
     const auto text = ReadBytes(file);
     ASSERT_FALSE(text.empty());
@@ -177,169 +255,224 @@ TEST(ProjectFile, ExportWritesStrictUtf8WithoutByteOrderMark)
     EXPECT_EQ(text.find("\\u6211"), std::string::npos);
     EXPECT_NE(text.find(kChineseNameUtf8), std::string::npos);
 
-    const auto root = nlohmann::json::parse(text);
+    const auto root = nlohmann::ordered_json::parse(text);
     EXPECT_EQ(root.at("version").get<int>(), appbox::kProjectFileVersion);
     EXPECT_EQ(root.at("folders").at(0).at("name").get<std::string>(), kChineseNameUtf8);
 }
 
-TEST(ProjectFile, RoundTripOfEmptyConfiguration)
+TEST(ProjectFile, RoundTripOfAnEmptyConfiguration)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto file = temp.File(L"empty.json");
 
-    appbox::PackModel empty;
+    const auto  document = appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{},
+                                                       appbox::FilesystemIsolationModel{}, L"");
     std::string error;
-    ASSERT_TRUE(appbox::SaveProject(empty, L"", file.wstring(), error)) << error;
+    ASSERT_TRUE(appbox::SaveProject(document, file.wstring(), error)) << error;
 
-    appbox::PackModel loaded;
-    std::wstring loaded_output = L"untouched";
-    ASSERT_TRUE(appbox::LoadProject(file.wstring(), loaded, loaded_output, error)) << error;
+    appbox::ProjectDocument loaded;
+    ASSERT_TRUE(appbox::LoadProject(file.wstring(), loaded, error)) << error;
 
-    EXPECT_TRUE(loaded.IsEmpty());
-    EXPECT_TRUE(loaded_output.empty());
+    EXPECT_TRUE(loaded.output_path.empty());
+    EXPECT_TRUE(loaded.folders.empty());
+    EXPECT_TRUE(loaded.files.empty());
+    EXPECT_FALSE(loaded.main_program.has_value());
+    EXPECT_TRUE(loaded.filesystem.empty());
+
+    /* The registry of a fresh session is its five root keys, all of them empty. */
+    ASSERT_EQ(loaded.registry.size(), 5u);
+    for (const auto& key : loaded.registry)
+    {
+        EXPECT_TRUE(key.values.empty());
+        EXPECT_TRUE(key.children.empty());
+    }
+
+    /* The registry of a fresh session is restored as well. */
+    appbox::PackModel                model;
+    appbox::RegistryModel            registry;
+    appbox::FilesystemIsolationModel isolation;
+    std::wstring                     output = L"untouched";
+    ASSERT_TRUE(appbox::ApplyProjectDocument(loaded, model, registry, isolation, output, error)) << error;
+
+    EXPECT_TRUE(model.IsEmpty());
+    EXPECT_TRUE(output.empty());
+    EXPECT_EQ(registry.Root().children.size(), 5u);
+}
+
+TEST(ProjectFile, MakeProjectDocumentListsTheFoldersInPresetOrder)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.RestoreImportedFolder("user_profile", L"Tool", L"C:\\Tool", error)) << error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
+
+    const auto document =
+        appbox::MakeProjectDocument(model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, L"");
+
+    /* The order of the document follows the preset directories, not the user. */
+    ASSERT_EQ(document.folders.size(), 2u);
+    EXPECT_EQ(document.folders[0].preset_id, "program_files");
+    EXPECT_EQ(document.folders[0].name, L"MyApp");
+    EXPECT_EQ(document.folders[1].preset_id, "user_profile");
+    EXPECT_EQ(document.folders[1].name, L"Tool");
+    EXPECT_FALSE(document.main_program.has_value());
 }
 
 TEST(ProjectFile, LoadKeepsSourcePathsWhichDoNotExist)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto file = temp.File(L"missing.json");
 
-    appbox::PackModel saved;
-    std::string error;
-    ASSERT_TRUE(saved.RestoreImportedFolder("user_profile", L"Gone",
-                                            L"C:\\appbox-no-such-folder\\Gone", error))
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.RestoreImportedFolder("user_profile", L"Gone", L"C:\\appbox-no-such-folder\\Gone", error))
         << error;
-    ASSERT_TRUE(saved.RestoreImportedFile("user_profile", L"Gone", L"tool.exe",
-                                          L"C:\\appbox-no-such-folder\\tool.exe", error))
+    ASSERT_TRUE(
+        model.RestoreImportedFile("user_profile", L"Gone", L"tool.exe", L"C:\\appbox-no-such-folder\\tool.exe", error))
         << error;
-    ASSERT_TRUE(appbox::SaveProject(saved, L"", file.wstring(), error)) << error;
 
-    appbox::PackModel loaded;
-    std::wstring loaded_output;
-    ASSERT_TRUE(appbox::LoadProject(file.wstring(), loaded, loaded_output, error)) << error;
+    appbox::PackModel                loaded;
+    appbox::RegistryModel            loaded_registry;
+    appbox::FilesystemIsolationModel loaded_isolation;
+    std::wstring                     loaded_output;
+    ASSERT_TRUE(RoundTrip(file, model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, L"", loaded,
+                          loaded_registry, loaded_isolation, loaded_output, error))
+        << error;
 
     const auto imports = loaded.ImportsOf("user_profile");
-    ASSERT_EQ(imports.size(), static_cast<std::size_t>(1));
+    ASSERT_EQ(imports.size(), 1u);
     EXPECT_EQ(imports[0].source_path, L"C:\\appbox-no-such-folder\\Gone");
-    EXPECT_EQ(loaded.AllImportedFiles().size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(loaded.AllImportedFiles().size(), 1u);
 }
 
-TEST(ProjectFile, LoadReplacesTheExistingConfiguration)
+TEST(ProjectFile, ApplyReplacesTheExistingConfiguration)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto file = temp.File(L"replace.json");
 
-    appbox::PackModel saved;
-    ASSERT_TRUE(BuildSampleModel(saved));
+    appbox::PackModel model;
+    ASSERT_TRUE(BuildSampleModel(model));
 
-    std::string error;
-    ASSERT_TRUE(appbox::SaveProject(saved, L"D:\\out\\MyApp.zip", file.wstring(), error)) << error;
+    appbox::ProjectDocument document;
+    std::string             error;
+    ASSERT_TRUE(
+        appbox::SaveProject(appbox::MakeProjectDocument(model, appbox::RegistryModel{},
+                                                        appbox::FilesystemIsolationModel{}, L"D:\\out\\MyApp.zip"),
+                            file.wstring(), error))
+        << error;
+    ASSERT_TRUE(appbox::LoadProject(file.wstring(), document, error)) << error;
 
     /* The target starts with a different, unrelated configuration. */
     appbox::PackModel loaded;
     ASSERT_TRUE(loaded.RestoreImportedFolder("user_profile", L"Other", L"C:\\Other", error)) << error;
-    ASSERT_TRUE(loaded.RestoreImportedFile("user_profile", L"Other", L"other.exe", L"C:\\other.exe",
-                                           error))
-        << error;
+    ASSERT_TRUE(loaded.RestoreImportedFile("user_profile", L"Other", L"other.exe", L"C:\\other.exe", error)) << error;
     ASSERT_TRUE(loaded.RestoreMainProgram("user_profile", L"Other", L"other.exe", error)) << error;
 
-    std::wstring loaded_output;
-    ASSERT_TRUE(appbox::LoadProject(file.wstring(), loaded, loaded_output, error)) << error;
+    appbox::RegistryModel            registry;
+    appbox::FilesystemIsolationModel isolation;
+    std::wstring                     output;
 
-    /* Loading twice must not append either. */
-    ASSERT_TRUE(appbox::LoadProject(file.wstring(), loaded, loaded_output, error)) << error;
+    /* Applying twice must not append either. */
+    ASSERT_TRUE(appbox::ApplyProjectDocument(document, loaded, registry, isolation, output, error)) << error;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(document, loaded, registry, isolation, output, error)) << error;
 
-    EXPECT_EQ(loaded.ImportsOf("user_profile").size(), static_cast<std::size_t>(0));
-    EXPECT_EQ(loaded.ImportsOf("program_files").size(), static_cast<std::size_t>(1));
-    EXPECT_EQ(loaded.AllImportedFiles().size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(loaded.ImportsOf("user_profile").size(), 0u);
+    EXPECT_EQ(loaded.ImportsOf("program_files").size(), 1u);
+    EXPECT_EQ(loaded.AllImportedFiles().size(), 1u);
     EXPECT_EQ(loaded.MainProgramChoice().import_name, L"MyApp");
-    EXPECT_EQ(loaded_output, L"D:\\out\\MyApp.zip");
+    EXPECT_EQ(output, L"D:\\out\\MyApp.zip");
 }
 
-TEST(ProjectFile, LoadKeepsTheModelUntouchedOnFailure)
+TEST(ProjectFile, ApplyKeepsTheModelsUntouchedOnFailure)
 {
-    TempDir temp;
-
     appbox::PackModel model;
     ASSERT_TRUE(BuildSampleModel(model));
-    const std::wstring output = L"D:\\out\\MyApp.zip";
 
-    const auto broken = temp.File(L"broken.json");
-    WriteBytes(broken, "{ \"version\": 1, \"folders\": [ { \"preset\": \"program_files\" } ] }");
+    appbox::ProjectDocument document = appbox::MakeProjectDocument(
+        model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, L"D:\\out\\MyApp.zip");
 
-    std::wstring loaded_output = output;
-    std::string error;
-    EXPECT_FALSE(appbox::LoadProject(broken.wstring(), model, loaded_output, error));
-    EXPECT_FALSE(error.empty());
+    /* The second folder names a preset directory which does not exist. */
+    appbox::ProjectFolderRecord unknown;
+    unknown.preset_id = "does_not_exist";
+    unknown.name = L"Other";
+    unknown.source_path = L"C:\\Other";
+    document.folders.push_back(unknown);
 
-    EXPECT_EQ(model.ImportsOf("program_files").size(), static_cast<std::size_t>(1));
-    EXPECT_EQ(model.AllImportedFiles().size(), static_cast<std::size_t>(1));
-    EXPECT_TRUE(model.HasMainProgram());
-    EXPECT_EQ(loaded_output, output);
+    appbox::PackModel                loaded;
+    appbox::RegistryModel            loaded_registry;
+    appbox::FilesystemIsolationModel loaded_isolation;
+    std::wstring                     loaded_output = L"untouched";
+    std::string                      error;
+
+    EXPECT_FALSE(
+        appbox::ApplyProjectDocument(document, loaded, loaded_registry, loaded_isolation, loaded_output, error));
+    EXPECT_NE(error.find("folders[1]"), std::string::npos);
+    EXPECT_NE(error.find("unknown preset directory"), std::string::npos);
+
+    /* A rejected document leaves every model and the output path untouched. */
+    EXPECT_TRUE(loaded.IsEmpty());
+    EXPECT_EQ(loaded_registry.Root().children.size(), 5u);
+    EXPECT_TRUE(loaded_isolation.IsEmpty());
+    EXPECT_EQ(loaded_output, L"untouched");
 }
 
 TEST(ProjectFile, SaveAndLoadRejectAnEmptyPath)
 {
-    appbox::PackModel model;
-    std::string error;
-    EXPECT_FALSE(appbox::SaveProject(model, L"", L"", error));
+    appbox::ProjectDocument document;
+    std::string             error;
+    EXPECT_FALSE(appbox::SaveProject(document, L"", error));
     EXPECT_FALSE(error.empty());
 
-    std::wstring output;
-    EXPECT_FALSE(appbox::LoadProject(L"", model, output, error));
+    EXPECT_FALSE(appbox::LoadProject(L"", document, error));
     EXPECT_FALSE(error.empty());
 }
 
 TEST(ProjectFile, LoadRejectsAMissingFile)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto missing = temp.File(L"does-not-exist.json");
 
-    appbox::PackModel model;
-    std::wstring output;
-    std::string error;
-    EXPECT_FALSE(appbox::LoadProject(missing.wstring(), model, output, error));
+    appbox::ProjectDocument document;
+    std::string             error;
+    EXPECT_FALSE(appbox::LoadProject(missing.wstring(), document, error));
     EXPECT_NE(error.find("cannot open"), std::string::npos);
-    EXPECT_TRUE(model.IsEmpty());
+    EXPECT_TRUE(document.folders.empty());
 }
 
 TEST(ProjectFile, LoadRejectsAnEmptyFile)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto file = temp.File(L"empty.json");
     WriteBytes(file, "");
 
-    appbox::PackModel model;
-    std::wstring output;
-    std::string error;
-    EXPECT_FALSE(appbox::LoadProject(file.wstring(), model, output, error));
+    appbox::ProjectDocument document;
+    std::string             error;
+    EXPECT_FALSE(appbox::LoadProject(file.wstring(), document, error));
     EXPECT_NE(error.find("empty"), std::string::npos);
 }
 
 TEST(ProjectFile, LoadRejectsInvalidJson)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto file = temp.File(L"invalid.json");
     WriteBytes(file, "{ \"version\": 1, \"folders\": [ }");
 
-    appbox::PackModel model;
-    std::wstring output;
-    std::string error;
-    EXPECT_FALSE(appbox::LoadProject(file.wstring(), model, output, error));
+    appbox::ProjectDocument document;
+    std::string             error;
+    EXPECT_FALSE(appbox::LoadProject(file.wstring(), document, error));
     EXPECT_NE(error.find("not valid JSON"), std::string::npos);
-    EXPECT_TRUE(model.IsEmpty());
+    EXPECT_TRUE(document.folders.empty());
 }
 
 TEST(ProjectFile, LoadRejectsANonObjectDocument)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto file = temp.File(L"array.json");
     WriteBytes(file, "[1, 2, 3]");
 
-    appbox::PackModel model;
-    std::wstring output;
-    std::string error;
-    EXPECT_FALSE(appbox::LoadProject(file.wstring(), model, output, error));
+    appbox::ProjectDocument document;
+    std::string             error;
+    EXPECT_FALSE(appbox::LoadProject(file.wstring(), document, error));
     EXPECT_NE(error.find("JSON object"), std::string::npos);
 }
 
@@ -353,19 +486,18 @@ TEST(ProjectFile, LoadRejectsUtf16AndUtf32Content)
     const auto utf32 = temp.File(L"utf32.json");
     WriteBytes(utf32, std::string("\xFF\xFE\x00\x00", 4) + std::string("{\0\0\0}\0\0\0", 8));
 
-    appbox::PackModel model;
-    std::wstring output;
-    std::string error;
-    EXPECT_FALSE(appbox::LoadProject(utf16.wstring(), model, output, error));
+    appbox::ProjectDocument document;
+    std::string             error;
+    EXPECT_FALSE(appbox::LoadProject(utf16.wstring(), document, error));
     EXPECT_NE(error.find("UTF-16"), std::string::npos);
 
-    EXPECT_FALSE(appbox::LoadProject(utf32.wstring(), model, output, error));
+    EXPECT_FALSE(appbox::LoadProject(utf32.wstring(), document, error));
     EXPECT_NE(error.find("UTF-32"), std::string::npos);
 }
 
 TEST(ProjectFile, LoadRejectsBytesWhichAreNotUtf8)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto file = temp.File(L"ansi.json");
 
     /*
@@ -375,24 +507,22 @@ TEST(ProjectFile, LoadRejectsBytesWhichAreNotUtf8)
      */
     WriteBytes(file, "{ \"version\": 1, \"output_path\": \"\xB0\xA1\" }");
 
-    appbox::PackModel model;
-    std::wstring output;
-    std::string error;
-    EXPECT_FALSE(appbox::LoadProject(file.wstring(), model, output, error));
+    appbox::ProjectDocument document;
+    std::string             error;
+    EXPECT_FALSE(appbox::LoadProject(file.wstring(), document, error));
     EXPECT_NE(error.find("UTF-8"), std::string::npos);
 }
 
 TEST(ProjectFile, LoadAcceptsAUtf8ByteOrderMark)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto file = temp.File(L"bom.json");
     WriteBytes(file, "\xEF\xBB\xBF{ \"version\": 1, \"output_path\": \"D:\\\\out\\\\a.zip\" }");
 
-    appbox::PackModel model;
-    std::wstring output;
-    std::string error;
-    ASSERT_TRUE(appbox::LoadProject(file.wstring(), model, output, error)) << error;
-    EXPECT_EQ(output, L"D:\\out\\a.zip");
+    appbox::ProjectDocument document;
+    std::string             error;
+    ASSERT_TRUE(appbox::LoadProject(file.wstring(), document, error)) << error;
+    EXPECT_EQ(document.output_path, L"D:\\out\\a.zip");
 }
 
 TEST(ProjectFile, LoadRejectsAnUnsupportedVersion)
@@ -402,40 +532,23 @@ TEST(ProjectFile, LoadRejectsAnUnsupportedVersion)
     const auto future = temp.File(L"future.json");
     WriteBytes(future, "{ \"version\": 2 }");
 
-    const auto missing = temp.File(L"missing.json");
+    const auto missing = temp.File(L"missing-version.json");
     WriteBytes(missing, "{ \"output_path\": \"D:\\\\out\\\\a.zip\" }");
 
     const auto text = temp.File(L"text.json");
     WriteBytes(text, "{ \"version\": \"1\" }");
 
-    appbox::PackModel model;
-    std::wstring output;
-    std::string error;
+    appbox::ProjectDocument document;
+    std::string             error;
 
-    EXPECT_FALSE(appbox::LoadProject(future.wstring(), model, output, error));
+    EXPECT_FALSE(appbox::LoadProject(future.wstring(), document, error));
     EXPECT_NE(error.find("unsupported project file version 2"), std::string::npos);
 
-    EXPECT_FALSE(appbox::LoadProject(missing.wstring(), model, output, error));
+    EXPECT_FALSE(appbox::LoadProject(missing.wstring(), document, error));
     EXPECT_NE(error.find("version"), std::string::npos);
 
-    EXPECT_FALSE(appbox::LoadProject(text.wstring(), model, output, error));
+    EXPECT_FALSE(appbox::LoadProject(text.wstring(), document, error));
     EXPECT_FALSE(error.empty());
-}
-
-TEST(ProjectFile, LoadRejectsUnknownPresetDirectories)
-{
-    TempDir temp;
-    const auto file = temp.File(L"preset.json");
-    WriteBytes(file, "{ \"version\": 1, \"folders\": [ { \"preset\": \"does_not_exist\", "
-                     "\"name\": \"MyApp\", \"source\": \"C:\\\\MyApp\" } ] }");
-
-    appbox::PackModel model;
-    std::wstring output;
-    std::string error;
-    EXPECT_FALSE(appbox::LoadProject(file.wstring(), model, output, error));
-    EXPECT_NE(error.find("folders[0]"), std::string::npos);
-    EXPECT_NE(error.find("unknown preset directory"), std::string::npos);
-    EXPECT_TRUE(model.IsEmpty());
 }
 
 TEST(ProjectFile, LoadRejectsMalformedMembers)
@@ -455,83 +568,107 @@ TEST(ProjectFile, LoadRejectsMalformedMembers)
     const auto program = temp.File(L"program.json");
     WriteBytes(program, "{ \"version\": 1, \"main_program\": 7 }");
 
-    const auto duplicates = temp.File(L"duplicates.json");
-    WriteBytes(duplicates,
-               "{ \"version\": 1, \"folders\": [ "
-               "{ \"preset\": \"program_files\", \"name\": \"MyApp\", \"source\": \"C:\\\\MyApp\" }, "
-               "{ \"preset\": \"program_files\", \"name\": \"myapp\", \"source\": \"C:\\\\Other\" } ] }");
+    appbox::ProjectDocument document;
+    std::string             error;
 
-    appbox::PackModel model;
-    std::wstring output;
-    std::string error;
-
-    EXPECT_FALSE(appbox::LoadProject(folders.wstring(), model, output, error));
+    EXPECT_FALSE(appbox::LoadProject(folders.wstring(), document, error));
     EXPECT_NE(error.find("not an array"), std::string::npos);
 
-    EXPECT_FALSE(appbox::LoadProject(entry.wstring(), model, output, error));
+    EXPECT_FALSE(appbox::LoadProject(entry.wstring(), document, error));
+    EXPECT_NE(error.find("folders[0]"), std::string::npos);
     EXPECT_NE(error.find("'source' member"), std::string::npos);
 
-    EXPECT_FALSE(appbox::LoadProject(files.wstring(), model, output, error));
+    EXPECT_FALSE(appbox::LoadProject(files.wstring(), document, error));
     EXPECT_NE(error.find("files[0]"), std::string::npos);
 
-    EXPECT_FALSE(appbox::LoadProject(program.wstring(), model, output, error));
+    EXPECT_FALSE(appbox::LoadProject(program.wstring(), document, error));
     EXPECT_NE(error.find("main_program"), std::string::npos);
+}
 
-    EXPECT_FALSE(appbox::LoadProject(duplicates.wstring(), model, output, error));
+TEST(ProjectFile, ApplyRejectsUnknownPresetDirectories)
+{
+    TempDir    temp;
+    const auto file = temp.File(L"preset.json");
+    WriteBytes(file, "{ \"version\": 1, \"folders\": [ { \"preset\": \"does_not_exist\", "
+                     "\"name\": \"MyApp\", \"source\": \"C:\\\\MyApp\" } ] }");
+
+    appbox::ProjectDocument document;
+    std::string             error;
+    ASSERT_TRUE(appbox::LoadProject(file.wstring(), document, error)) << error;
+
+    appbox::PackModel                model;
+    appbox::RegistryModel            registry;
+    appbox::FilesystemIsolationModel isolation;
+    std::wstring                     output;
+    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error));
+    EXPECT_NE(error.find("folders[0]"), std::string::npos);
+    EXPECT_NE(error.find("unknown preset directory"), std::string::npos);
+    EXPECT_TRUE(model.IsEmpty());
+}
+
+TEST(ProjectFile, ApplyRejectsDuplicateImports)
+{
+    TempDir    temp;
+    const auto file = temp.File(L"duplicates.json");
+    WriteBytes(file, "{ \"version\": 1, \"folders\": [ "
+                     "{ \"preset\": \"program_files\", \"name\": \"MyApp\", \"source\": \"C:\\\\MyApp\" }, "
+                     "{ \"preset\": \"program_files\", \"name\": \"myapp\", \"source\": \"C:\\\\Other\" } ] }");
+
+    appbox::ProjectDocument document;
+    std::string             error;
+    ASSERT_TRUE(appbox::LoadProject(file.wstring(), document, error)) << error;
+
+    appbox::PackModel                model;
+    appbox::RegistryModel            registry;
+    appbox::FilesystemIsolationModel isolation;
+    std::wstring                     output;
+    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error));
     EXPECT_NE(error.find("folders[1]"), std::string::npos);
     EXPECT_TRUE(model.IsEmpty());
 }
 
-TEST(ProjectFile, LoadRejectsAFileOutsideAnImportedFolder)
+TEST(ProjectFile, ApplyRejectsAFileOutsideAnImportedFolder)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto file = temp.File(L"target.json");
     WriteBytes(file, "{ \"version\": 1, \"folders\": [ { \"preset\": \"program_files\", "
                      "\"name\": \"MyApp\", \"source\": \"C:\\\\MyApp\" } ], "
                      "\"files\": [ { \"preset\": \"program_files\", \"target_dir\": \"Other\", "
                      "\"name\": \"tool.exe\", \"source\": \"C:\\\\tool.exe\" } ] }");
 
-    appbox::PackModel model;
-    std::wstring output;
-    std::string error;
-    EXPECT_FALSE(appbox::LoadProject(file.wstring(), model, output, error));
+    appbox::ProjectDocument document;
+    std::string             error;
+    ASSERT_TRUE(appbox::LoadProject(file.wstring(), document, error)) << error;
+
+    appbox::PackModel                model;
+    appbox::RegistryModel            registry;
+    appbox::FilesystemIsolationModel isolation;
+    std::wstring                     output;
+    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error));
+    EXPECT_NE(error.find("files[0]"), std::string::npos);
     EXPECT_NE(error.find("not an imported folder"), std::string::npos);
     EXPECT_TRUE(model.IsEmpty());
 }
 
 TEST(ProjectFile, RoundTripKeepsTheVirtualRegistry)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto file = temp.File(L"registry.json");
 
     appbox::PackModel model;
     ASSERT_TRUE(BuildSampleModel(model));
 
     appbox::RegistryModel registry;
-    std::string           error;
-    ASSERT_TRUE(registry.EnsureKey(L"HKEY_CURRENT_USER\\Software\\Vendor\\Deep", error)) << error;
-    ASSERT_TRUE(registry.EnsureKey(L"HKEY_LOCAL_MACHINE\\Software\\AppBox", error)) << error;
-    ASSERT_TRUE(registry.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server",
-                                  appbox::RegistryValueType::String, appbox::RegistryStringData(L"host"),
-                                  error))
-        << error;
-    ASSERT_TRUE(registry.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Count",
-                                  appbox::RegistryValueType::Dword, appbox::RegistryDwordData(42), error))
-        << error;
-    ASSERT_TRUE(registry.SetValue(L"HKEY_LOCAL_MACHINE\\Software\\AppBox", L"", appbox::RegistryValueType::None,
-                                  { 0x01, 0x02, 0x03 }, error))
-        << error;
+    ASSERT_TRUE(BuildSampleRegistry(registry));
 
-    ASSERT_TRUE(registry.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::Full));
-    ASSERT_TRUE(registry.SetValueIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server",
-                                           appbox::RegistryIsolation::Hide));
-
-    ASSERT_TRUE(appbox::SaveProject(model, registry, L"D:\\out\\app.zip", file.wstring(), error)) << error;
-
-    appbox::PackModel     loaded;
-    appbox::RegistryModel loaded_registry;
-    std::wstring          loaded_output;
-    ASSERT_TRUE(appbox::LoadProject(file.wstring(), loaded, loaded_registry, loaded_output, error)) << error;
+    appbox::PackModel                loaded;
+    appbox::RegistryModel            loaded_registry;
+    appbox::FilesystemIsolationModel loaded_isolation;
+    std::wstring                     loaded_output;
+    std::string                      error;
+    ASSERT_TRUE(RoundTrip(file, model, registry, appbox::FilesystemIsolationModel{}, L"D:\\out\\app.zip", loaded,
+                          loaded_registry, loaded_isolation, loaded_output, error))
+        << error;
 
     EXPECT_EQ(loaded_output, L"D:\\out\\app.zip");
     EXPECT_FALSE(loaded.IsEmpty());
@@ -545,7 +682,7 @@ TEST(ProjectFile, RoundTripKeepsTheVirtualRegistry)
 
     /* The sub key comes first, then the values in name order. */
     const auto rows = loaded_registry.Rows(L"HKEY_CURRENT_USER\\Software\\Vendor");
-    ASSERT_EQ(rows.size(), static_cast<std::size_t>(3));
+    ASSERT_EQ(rows.size(), 3u);
 
     EXPECT_EQ(rows[0].kind, appbox::RegistryRow::Kind::Key);
     EXPECT_EQ(rows[0].name, L"Deep");
@@ -567,62 +704,30 @@ TEST(ProjectFile, RoundTripKeepsTheVirtualRegistry)
 
     /* The default value of another root keeps its type and its bytes. */
     const auto appbox_rows = loaded_registry.Rows(L"HKEY_LOCAL_MACHINE\\Software\\AppBox");
-    ASSERT_EQ(appbox_rows.size(), static_cast<std::size_t>(1));
+    ASSERT_EQ(appbox_rows.size(), 1u);
     EXPECT_EQ(appbox_rows[0].name, L"");
     EXPECT_EQ(appbox_rows[0].type, appbox::RegistryValueType::None);
     EXPECT_EQ(appbox_rows[0].data, (std::vector<std::uint8_t>{ 0x01, 0x02, 0x03 }));
 }
 
-TEST(ProjectFile, LoadWithoutARegistryMemberRestoresAnEmptyRegistry)
+TEST(ProjectFile, ApplyOfADocumentWithoutARegistryRestoresAnEmptyRegistry)
 {
-    TempDir temp;
-    const auto file = temp.File(L"legacy.json");
-    WriteBytes(file, "{ \"version\": 1, \"output_path\": \"D:\\\\out\\\\a.zip\" }");
-
-    std::string error;
     appbox::RegistryModel registry;
+    std::string           error;
     ASSERT_TRUE(registry.EnsureKey(L"HKEY_CURRENT_USER\\Software\\Old", error)) << error;
 
-    appbox::PackModel model;
-    std::wstring      output;
-    ASSERT_TRUE(appbox::LoadProject(file.wstring(), model, registry, output, error)) << error;
+    appbox::ProjectDocument document;
+    document.output_path = L"D:\\out\\a.zip";
 
-    /* The file does not describe a registry, so the workspace starts empty. */
-    EXPECT_EQ(registry.Root().children.size(), static_cast<std::size_t>(5));
+    appbox::PackModel                model;
+    appbox::FilesystemIsolationModel isolation;
+    std::wstring                     output;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error)) << error;
+
+    /* The document does not describe a registry, so the workspace starts empty. */
+    EXPECT_EQ(registry.Root().children.size(), 5u);
     EXPECT_EQ(registry.FindKey(L"HKEY_CURRENT_USER\\Software\\Old"), nullptr);
-}
-
-TEST(ProjectFile, LoadIgnoresTheIsolationSetMemberOfAnOlderFile)
-{
-    TempDir temp;
-    const auto file = temp.File(L"isolation-set.json");
-    WriteBytes(file, "{ \"version\": 1, \"registry\": { \"keys\": [ { \"name\": \"HKEY_CURRENT_USER\", "
-                      "\"isolation\": \"write_copy\", \"isolation_set\": false, \"values\": [ { \"name\": "
-                      "\"Server\", \"type\": \"REG_SZ\", \"data\": \"\", \"isolation\": \"hide\", "
-                      "\"isolation_set\": true } ], \"children\": [ { \"name\": \"Deep\", "
-                      "\"isolation\": \"full\", \"isolation_set\": false } ] } ] } }");
-
-    appbox::PackModel     model;
-    appbox::RegistryModel registry;
-    std::wstring          output;
-    std::string           error;
-    ASSERT_TRUE(appbox::LoadProject(file.wstring(), model, registry, output, error)) << error;
-
-    /*
-     * The member does not name a mode of its own, so every mode of the file is
-     * read as it is stored.
-     */
-    const auto* current_user = registry.FindKey(L"HKEY_CURRENT_USER");
-    ASSERT_NE(current_user, nullptr);
-    EXPECT_EQ(current_user->isolation, appbox::RegistryIsolation::WriteCopy);
-
-    const auto* deep = registry.FindKey(L"HKEY_CURRENT_USER\\Deep");
-    ASSERT_NE(deep, nullptr);
-    EXPECT_EQ(deep->isolation, appbox::RegistryIsolation::Full);
-
-    ASSERT_EQ(current_user->values.size(), 1u);
-    EXPECT_EQ(current_user->values[0].name, L"Server");
-    EXPECT_EQ(current_user->values[0].isolation, appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(output, L"D:\\out\\a.zip");
 }
 
 TEST(ProjectFile, LoadRejectsABrokenRegistry)
@@ -630,74 +735,71 @@ TEST(ProjectFile, LoadRejectsABrokenRegistry)
     TempDir temp;
 
     const auto broken = temp.File(L"broken-registry.json");
-    WriteBytes(broken, "{ \"version\": 1, \"registry\": { \"keys\": [ { \"name\": \"HKEY_CURRENT_USER\", "
-                       "\"isolation\": \"sandbox\" } ] } }");
+    WriteBytes(broken, "{ \"version\": 1, \"registry\": [ { \"name\": \"HKEY_CURRENT_USER\", "
+                       "\"isolation\": \"sandbox\" } ] }");
 
     const auto unknown_root = temp.File(L"unknown-root.json");
-    WriteBytes(unknown_root, "{ \"version\": 1, \"registry\": { \"keys\": [ { \"name\": \"HKEY_OTHER\", "
-                             "\"isolation\": \"full\" } ] } }");
+    WriteBytes(unknown_root, "{ \"version\": 1, \"registry\": [ { \"name\": \"HKEY_OTHER\", "
+                             "\"isolation\": \"full\" } ] }");
 
     const auto bad_value = temp.File(L"bad-value.json");
-    WriteBytes(bad_value, "{ \"version\": 1, \"registry\": { \"keys\": [ { \"name\": \"HKEY_CURRENT_USER\", "
+    WriteBytes(bad_value, "{ \"version\": 1, \"registry\": [ { \"name\": \"HKEY_CURRENT_USER\", "
                           "\"isolation\": \"full\", \"values\": [ { \"name\": \"Server\", "
-                          "\"type\": \"REG_SOMETHING\", \"data\": \"\", \"isolation\": \"full\" } ] } ] } }");
+                          "\"type\": \"REG_SOMETHING\", \"data\": \"\", \"isolation\": \"full\" } ] } ] }");
 
     appbox::PackModel model;
     ASSERT_TRUE(BuildSampleModel(model));
 
-    std::string error;
+    std::string           error;
     appbox::RegistryModel registry;
     ASSERT_TRUE(registry.EnsureKey(L"HKEY_CURRENT_USER\\Software\\Keep", error)) << error;
 
-    std::wstring output;
+    appbox::FilesystemIsolationModel isolation;
+    std::wstring                     output;
+    appbox::ProjectDocument          document;
 
-    EXPECT_FALSE(appbox::LoadProject(broken.wstring(), model, registry, output, error));
+    EXPECT_FALSE(appbox::LoadProject(broken.wstring(), document, error));
     EXPECT_NE(error.find("unknown isolation mode"), std::string::npos);
 
-    EXPECT_FALSE(appbox::LoadProject(unknown_root.wstring(), model, registry, output, error));
-    EXPECT_NE(error.find("unknown root key"), std::string::npos);
-
-    EXPECT_FALSE(appbox::LoadProject(bad_value.wstring(), model, registry, output, error));
+    EXPECT_FALSE(appbox::LoadProject(bad_value.wstring(), document, error));
     EXPECT_NE(error.find("unknown value type"), std::string::npos);
 
-    /* A rejected file leaves both models untouched. */
+    /*
+     * The unknown root key is a rule of the model, so the document is read and
+     * the failure is reported while it is applied.
+     */
+    ASSERT_TRUE(appbox::LoadProject(unknown_root.wstring(), document, error)) << error;
+    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error));
+    EXPECT_NE(error.find("registry[0]"), std::string::npos);
+    EXPECT_NE(error.find("unknown root key 'HKEY_OTHER'"), std::string::npos);
+
+    /* A rejected document leaves both models untouched. */
     EXPECT_FALSE(model.IsEmpty());
     EXPECT_NE(registry.FindKey(L"HKEY_CURRENT_USER\\Software\\Keep"), nullptr);
 }
 
 TEST(ProjectFile, RoundTripKeepsTheFilesystemModes)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto file = temp.File(L"filesystem.json");
 
     appbox::PackModel model;
     ASSERT_TRUE(BuildSampleModel(model));
 
     appbox::FilesystemIsolationModel isolation;
-    std::string                      error;
-    ASSERT_TRUE(isolation.SetIsolation(L"#ProgramFiles#\\MyApp\\data",
-                                       appbox::FilesystemEntryKind::Directory,
-                                       appbox::FilesystemIsolation::Whiteout, error))
-        << error;
-    ASSERT_TRUE(isolation.SetIsolation(L"#ProgramFiles#\\MyApp\\app.exe",
-                                       appbox::FilesystemEntryKind::File,
-                                       appbox::FilesystemIsolation::Whiteout, error))
-        << error;
-
-    ASSERT_TRUE(appbox::SaveProject(model, appbox::RegistryModel{}, isolation, L"D:\\out\\app.zip",
-                                    file.wstring(), error))
-        << error;
-
-    /* The member is part of the document, even when it holds no entry. */
-    EXPECT_NE(ReadBytes(file).find("\"filesystem\""), std::string::npos);
+    ASSERT_TRUE(BuildSampleIsolation(isolation));
 
     appbox::PackModel                loaded;
     appbox::RegistryModel            loaded_registry;
     appbox::FilesystemIsolationModel loaded_isolation;
     std::wstring                     loaded_output;
-    ASSERT_TRUE(appbox::LoadProject(file.wstring(), loaded, loaded_registry, loaded_isolation,
-                                    loaded_output, error))
+    std::string                      error;
+    ASSERT_TRUE(RoundTrip(file, model, appbox::RegistryModel{}, isolation, L"D:\\out\\app.zip", loaded, loaded_registry,
+                          loaded_isolation, loaded_output, error))
         << error;
+
+    /* The member is part of the document, even when it holds no entry. */
+    EXPECT_NE(ReadBytes(file).find("\"filesystem\""), std::string::npos);
 
     /* The entries come back in path order, with their kind and their mode. */
     const auto& entries = loaded_isolation.Entries();
@@ -711,37 +813,35 @@ TEST(ProjectFile, RoundTripKeepsTheFilesystemModes)
 
     /* The inheritance of the restored model works like before the round trip. */
     EXPECT_EQ(loaded_isolation.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\data\\settings.ini",
-                                                 appbox::FilesystemEntryKind::File),
+                                                  appbox::FilesystemEntryKind::File),
               appbox::FilesystemIsolation::Whiteout);
-    EXPECT_EQ(loaded_isolation.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\bin\\tool.exe",
-                                                 appbox::FilesystemEntryKind::File),
-              appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(
+        loaded_isolation.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\bin\\tool.exe", appbox::FilesystemEntryKind::File),
+        appbox::FilesystemIsolation::Full);
 }
 
-TEST(ProjectFile, LoadWithoutAFilesystemMemberRestoresAnEmptyModel)
+TEST(ProjectFile, ApplyOfADocumentWithoutAFilesystemRestoresAnEmptyModel)
 {
-    TempDir temp;
-    const auto file = temp.File(L"legacy-filesystem.json");
-    WriteBytes(file, "{ \"version\": 1, \"output_path\": \"D:\\\\out\\\\a.zip\" }");
-
     appbox::FilesystemIsolationModel isolation;
     std::string                      error;
     ASSERT_TRUE(isolation.SetIsolation(L"#Windows#", appbox::FilesystemEntryKind::Directory,
                                        appbox::FilesystemIsolation::Whiteout, error))
         << error;
 
+    appbox::ProjectDocument document;
+
     appbox::PackModel     model;
     appbox::RegistryModel registry;
     std::wstring          output;
-    ASSERT_TRUE(appbox::LoadProject(file.wstring(), model, registry, isolation, output, error)) << error;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error)) << error;
 
-    /* The file does not describe the filesystem, so every entry follows its default. */
+    /* The document does not describe the filesystem, so every entry follows its default. */
     EXPECT_TRUE(isolation.IsEmpty());
     EXPECT_EQ(isolation.EffectiveIsolation(L"#Windows#", appbox::FilesystemEntryKind::Directory),
               appbox::FilesystemIsolation::WriteCopy);
 }
 
-TEST(ProjectFile, LoadRejectsABrokenFilesystemMember)
+TEST(ProjectFile, ApplyRejectsABrokenFilesystemMember)
 {
     TempDir temp;
 
@@ -774,29 +874,36 @@ TEST(ProjectFile, LoadRejectsABrokenFilesystemMember)
                                        appbox::FilesystemIsolation::Whiteout, error))
         << error;
 
-    appbox::PackModel     model;
-    appbox::RegistryModel registry;
-    std::wstring          output;
+    appbox::PackModel       model;
+    appbox::RegistryModel   registry;
+    std::wstring            output;
+    appbox::ProjectDocument document;
 
-    EXPECT_FALSE(appbox::LoadProject(bad_mode.wstring(), model, registry, isolation, output, error));
+    EXPECT_FALSE(appbox::LoadProject(bad_mode.wstring(), document, error));
     EXPECT_NE(error.find("unknown isolation mode"), std::string::npos);
 
-    EXPECT_FALSE(appbox::LoadProject(bad_kind.wstring(), model, registry, isolation, output, error));
+    EXPECT_FALSE(appbox::LoadProject(bad_kind.wstring(), document, error));
     EXPECT_NE(error.find("unknown entry kind"), std::string::npos);
 
-    EXPECT_FALSE(appbox::LoadProject(file_mode.wstring(), model, registry, isolation, output, error));
-    EXPECT_NE(error.find("write_copy"), std::string::npos);
-
-    EXPECT_FALSE(appbox::LoadProject(duplicate.wstring(), model, registry, isolation, output, error));
-    EXPECT_NE(error.find("listed twice"), std::string::npos);
-
-    EXPECT_FALSE(appbox::LoadProject(missing.wstring(), model, registry, isolation, output, error));
+    EXPECT_FALSE(appbox::LoadProject(missing.wstring(), document, error));
     EXPECT_NE(error.find("'kind'"), std::string::npos);
 
-    EXPECT_FALSE(appbox::LoadProject(not_array.wstring(), model, registry, isolation, output, error));
+    EXPECT_FALSE(appbox::LoadProject(not_array.wstring(), document, error));
     EXPECT_NE(error.find("not an array"), std::string::npos);
 
-    /* A rejected file leaves the model untouched. */
+    /* The mode a file cannot hold and a path which is listed twice are rules of
+     * the model, so the failure is reported while the document is applied. */
+    ASSERT_TRUE(appbox::LoadProject(file_mode.wstring(), document, error)) << error;
+    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error));
+    EXPECT_NE(error.find("filesystem[0]"), std::string::npos);
+    EXPECT_NE(error.find("write_copy"), std::string::npos);
+
+    ASSERT_TRUE(appbox::LoadProject(duplicate.wstring(), document, error)) << error;
+    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error));
+    EXPECT_NE(error.find("filesystem[1]"), std::string::npos);
+    EXPECT_NE(error.find("listed twice"), std::string::npos);
+
+    /* A rejected document leaves the model untouched. */
     ASSERT_EQ(isolation.Entries().size(), 1u);
     EXPECT_EQ(isolation.Entries()[0].isolation, appbox::FilesystemIsolation::Whiteout);
 }

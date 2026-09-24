@@ -204,10 +204,16 @@ The unit tests of the registry isolation:
   entry, a folder below which overrides it, the case insensitivity, the
   separator), the entries without a layer of the view, and the atomic failure of
   a malformed document.
-* `test/unit/Unit_ProjectFile.cpp` — the round trip of the virtual registry and
-  of the filesystem isolation modes through a project file, including a file
-  without the `filesystem` member, an unknown isolation mode, an unknown entry
-  kind and a mode which a file cannot hold.
+* `test/unit/Unit_ProjectDocument.cpp` — the document of a project file: the
+  round trip of every member of the schema, the version and the order of the
+  written members, the paths as UTF-8 bytes, the members an entry needs, the
+  path of a rejected entry, the unknown isolation, kind and value type tokens,
+  malformed value data and the atomic read.
+* `test/unit/Unit_ProjectFile.cpp` — the file layer of a project file: the
+  round trip of the configuration, of the virtual registry and of the
+  filesystem isolation modes, the strict UTF-8 encoding, the failures of a
+  malformed document and the atomicity of applying a document to the models,
+  including a mode which a file cannot hold and a path which is listed twice.
 * `test/unit/Unit_PackService.cpp` — the archive carries the hive, the isolation
   file of the registry and the isolation file of the filesystem workspace.
 * `test/unit/Unit_HiveReader.cpp` — the mounting, the enumeration and the

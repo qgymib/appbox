@@ -12,32 +12,6 @@
 namespace
 {
 
-/* Member names of the project file schema. */
-constexpr const char* kVersionKey = "version";
-constexpr const char* kOutputPathKey = "output_path";
-constexpr const char* kFoldersKey = "folders";
-constexpr const char* kFilesKey = "files";
-constexpr const char* kMainProgramKey = "main_program";
-constexpr const char* kPresetKey = "preset";
-constexpr const char* kNameKey = "name";
-constexpr const char* kSourceKey = "source";
-constexpr const char* kTargetDirKey = "target_dir";
-constexpr const char* kFolderKey = "folder";
-constexpr const char* kPathKey = "path";
-
-/* Member names of the registry part of the schema. */
-constexpr const char* kRegistryKey = "registry";
-constexpr const char* kRegistryKeysKey = "keys";
-constexpr const char* kChildrenKey = "children";
-constexpr const char* kValuesKey = "values";
-constexpr const char* kTypeKey = "type";
-constexpr const char* kDataKey = "data";
-constexpr const char* kIsolationKey = "isolation";
-
-/* Member names of the filesystem part of the schema. */
-constexpr const char* kFilesystemKey = "filesystem";
-constexpr const char* kKindKey = "kind";
-
 /**
  * @brief Name of the encoding a byte order mark belongs to.
  *
@@ -83,9 +57,8 @@ std::string ForeignEncoding(const std::string& text)
  */
 bool HasUtf8Bom(const std::string& text)
 {
-    return text.size() >= 3 && static_cast<unsigned char>(text[0]) == 0xEF
-           && static_cast<unsigned char>(text[1]) == 0xBB
-           && static_cast<unsigned char>(text[2]) == 0xBF;
+    return text.size() >= 3 && static_cast<unsigned char>(text[0]) == 0xEF &&
+           static_cast<unsigned char>(text[1]) == 0xBB && static_cast<unsigned char>(text[2]) == 0xBF;
 }
 
 /**
@@ -164,9 +137,9 @@ bool IsValidUTF8(const std::string& text)
 }
 
 /**
- * @brief Prefix an error description with the part of the file it belongs to.
- * @param[in] scope Name of the member which was being read.
- * @param[in] message Error description of the member.
+ * @brief Prefix an error description with the part of the document it belongs to.
+ * @param[in] scope Path of the entry which was being applied.
+ * @param[in] message Error description of the entry.
  * @return The combined description.
  */
 std::string Scoped(const std::string& scope, const std::string& message)
@@ -175,550 +148,171 @@ std::string Scoped(const std::string& scope, const std::string& message)
 }
 
 /**
- * @brief Read a required string member of a JSON object.
- * @param[in] object JSON object to read from.
- * @param[in] key Name of the member.
- * @param[in] scope Name of the part of the file for error descriptions.
- * @param[out] out Value of the member.
- * @param[out] error Error description on failure.
- * @return true when the member is present and holds a string.
- */
-bool ReadString(const nlohmann::json& object, const char* key, const std::string& scope,
-                std::string& out, std::string& error)
-{
-    if (!object.contains(key) || !object.at(key).is_string())
-    {
-        error = Scoped(scope, std::string("the '") + key + "' member is missing or not a string");
-        return false;
-    }
-
-    out = object.at(key).get<std::string>();
-    return true;
-}
-
-/**
- * @brief Build the JSON object of one key of the virtual registry.
+ * @brief Build the record of one key of the virtual registry.
  *
- * The object holds the name, the isolation mode and the values of the key and,
- * recursively, its sub keys. The data of a value is stored as a hexadecimal
- * byte string, which is the representation the model already uses to read and
- * write raw registry data.
+ * The values and the sub keys are stored in the order the model keeps them in,
+ * which is the order the tree and the table show.
  *
  * @param[in] key The key to store.
- * @return The JSON object of the key.
+ * @return The record of the key.
  */
-nlohmann::ordered_json WriteRegistryKey(const appbox::RegistryKeyNode& key)
+appbox::ProjectRegistryKeyRecord MakeRegistryKeyRecord(const appbox::RegistryKeyNode& key)
 {
-    nlohmann::ordered_json entry;
-    entry[kNameKey] = appbox::WideToUTF8(key.name);
-    entry[kIsolationKey] = appbox::registry_isolation::IsolationToken(key.isolation);
+    appbox::ProjectRegistryKeyRecord record;
+    record.name = key.name;
+    record.isolation = key.isolation;
 
-    nlohmann::ordered_json values = nlohmann::ordered_json::array();
     for (const auto& value : key.values)
     {
-        nlohmann::ordered_json item;
-        item[kNameKey] = appbox::WideToUTF8(value.name);
-        item[kTypeKey] = appbox::WideToUTF8(appbox::RegistryValueTypeName(value.type));
-        item[kDataKey] = appbox::WideToUTF8(appbox::FormatRegistryHexText(value.data));
-        item[kIsolationKey] = appbox::registry_isolation::IsolationToken(value.isolation);
-        values.push_back(std::move(item));
+        appbox::ProjectRegistryValueRecord value_record;
+        value_record.name = value.name;
+        value_record.type = value.type;
+        value_record.data = value.data;
+        value_record.isolation = value.isolation;
+        record.values.push_back(std::move(value_record));
     }
-    entry[kValuesKey] = std::move(values);
 
-    nlohmann::ordered_json children = nlohmann::ordered_json::array();
     for (const auto& child : key.children)
     {
-        children.push_back(WriteRegistryKey(child));
+        record.children.push_back(MakeRegistryKeyRecord(child));
     }
-    entry[kChildrenKey] = std::move(children);
 
-    return entry;
+    return record;
 }
 
 /**
- * @brief Read one key of the virtual registry and its subtree.
+ * @brief Restore one key of the virtual registry and its subtree.
  *
- * @param[in] element JSON object of the key.
+ * The first level holds the root keys of the view, which the model creates
+ * itself: a name which is not one of them is rejected instead of adding a
+ * sixth root key.
+ *
+ * @param[in] record The key to restore.
  * @param[in] parent_path Path of the parent key, empty for a root key.
  * @param[in,out] model Model which receives the key.
- * @param[in] scope Name of the part of the file for error descriptions.
+ * @param[in] scope Path of the entry inside the document.
  * @param[out] error Error description on failure.
- * @return true when the key was read.
+ * @return true when the key was restored.
  */
-bool DecodeRegistryKey(const nlohmann::json& element, const std::wstring& parent_path,
-                       appbox::RegistryModel& model, const std::string& scope, std::string& error)
+bool ApplyRegistryKey(const appbox::ProjectRegistryKeyRecord& record, const std::wstring& parent_path,
+                      appbox::RegistryModel& model, const std::string& scope, std::string& error)
 {
-    if (!element.is_object())
-    {
-        error = Scoped(scope, "the entry is not a JSON object");
-        return false;
-    }
+    const auto path = appbox::JoinRegistryPath(parent_path, record.name);
 
-    std::string name;
-    if (!ReadString(element, kNameKey, scope, name, error))
-    {
-        return false;
-    }
-
-    const auto key_name = appbox::UTF8ToWide(name);
-    const auto path = appbox::JoinRegistryPath(parent_path, key_name);
     if (parent_path.empty())
     {
-        /*
-         * The first level holds the root keys of the view, which the model
-         * creates itself: an unknown name would add a sixth root key.
-         */
         if (model.FindKey(path) == nullptr)
         {
-            error = Scoped(scope, "unknown root key '" + name + "'");
+            error = Scoped(scope, "unknown root key '" + appbox::WideToUTF8(record.name) + "'");
             return false;
         }
     }
     else
     {
         std::string detail;
-        if (!model.AddKey(parent_path, key_name, detail))
+        if (!model.AddKey(parent_path, record.name, detail))
         {
             error = Scoped(scope, detail);
             return false;
         }
     }
 
-    std::string isolation_text;
-    if (!ReadString(element, kIsolationKey, scope, isolation_text, error))
-    {
-        return false;
-    }
-
-    appbox::RegistryIsolation isolation = appbox::RegistryIsolation::WriteCopy;
-    if (!appbox::registry_isolation::ParseIsolationToken(isolation_text, isolation))
-    {
-        error = Scoped(scope, "unknown isolation mode '" + isolation_text + "'");
-        return false;
-    }
-
     /*
-     * The mode of the key is stored as it is; a project file which still holds
-     * the `isolation_set` member of an older version is read as well, the
-     * member is simply ignored.
+     * The mode of the key is stored as it is; a document which holds the member
+     * of an entry which never set a mode is read with the mode of the key.
      */
-    if (!model.SetKeyIsolation(path, isolation))
+    if (!model.SetKeyIsolation(path, record.isolation))
     {
         error = Scoped(scope, "the key cannot be restored");
         return false;
     }
 
-    if (element.contains(kValuesKey))
+    std::size_t index = 0;
+    for (const auto& value : record.values)
     {
-        const auto& values = element.at(kValuesKey);
-        if (!values.is_array())
-        {
-            error = Scoped(scope, std::string("the '") + kValuesKey + "' member is not an array");
-            return false;
-        }
-
-        std::size_t index = 0;
-        for (const auto& value : values)
-        {
-            const auto value_scope = scope + "." + kValuesKey + "[" + std::to_string(index) + "]";
-            ++index;
-
-            if (!value.is_object())
-            {
-                error = Scoped(value_scope, "the entry is not a JSON object");
-                return false;
-            }
-
-            std::string value_name;
-            std::string type_text;
-            std::string data_text;
-            std::string value_isolation_text;
-            if (!ReadString(value, kNameKey, value_scope, value_name, error)
-                || !ReadString(value, kTypeKey, value_scope, type_text, error)
-                || !ReadString(value, kDataKey, value_scope, data_text, error)
-                || !ReadString(value, kIsolationKey, value_scope, value_isolation_text, error))
-            {
-                return false;
-            }
-
-            appbox::RegistryValueType type = appbox::RegistryValueType::String;
-            if (!appbox::ParseRegistryValueType(appbox::UTF8ToWide(type_text), type))
-            {
-                error = Scoped(value_scope, "unknown value type '" + type_text + "'");
-                return false;
-            }
-
-            std::vector<std::uint8_t> data;
-            std::string               hex_error;
-            if (!appbox::ParseRegistryHexText(appbox::UTF8ToWide(data_text), data, hex_error))
-            {
-                error = Scoped(value_scope, hex_error);
-                return false;
-            }
-
-            appbox::RegistryIsolation value_isolation = appbox::RegistryIsolation::WriteCopy;
-            if (!appbox::registry_isolation::ParseIsolationToken(value_isolation_text, value_isolation))
-            {
-                error = Scoped(value_scope, "unknown isolation mode '" + value_isolation_text + "'");
-                return false;
-            }
-
-            const auto stored_name = appbox::UTF8ToWide(value_name);
-            std::string detail;
-            if (!model.SetValue(path, stored_name, type, data, detail))
-            {
-                error = Scoped(value_scope, detail);
-                return false;
-            }
-            if (!model.SetValueIsolation(path, stored_name, value_isolation))
-            {
-                error = Scoped(value_scope, "the value cannot be restored");
-                return false;
-            }
-        }
-    }
-
-    if (element.contains(kChildrenKey))
-    {
-        const auto& children = element.at(kChildrenKey);
-        if (!children.is_array())
-        {
-            error = Scoped(scope, std::string("the '") + kChildrenKey + "' member is not an array");
-            return false;
-        }
-
-        std::size_t index = 0;
-        for (const auto& child : children)
-        {
-            const auto child_scope = scope + "." + kChildrenKey + "[" + std::to_string(index) + "]";
-            ++index;
-            if (!DecodeRegistryKey(child, path, model, child_scope, error))
-            {
-                return false;
-            }
-        }
-    }
-
-    return true;
-}
-
-/**
- * @brief Read the registry part of a project file.
- *
- * @param[in] element JSON object of the `registry` member.
- * @param[out] registry Registry replaced with the content of the member.
- * @param[out] error Error description on failure.
- * @return true when the registry was read.
- */
-bool DecodeRegistry(const nlohmann::json& element, appbox::RegistryModel& registry, std::string& error)
-{
-    if (!element.is_object())
-    {
-        error = std::string("the '") + kRegistryKey + "' member is not a JSON object";
-        return false;
-    }
-
-    appbox::RegistryModel candidate;
-    const auto           keys = element.find(kRegistryKeysKey);
-    if (keys != element.end())
-    {
-        if (!keys->is_array())
-        {
-            error = std::string("the '") + kRegistryKey + "." + kRegistryKeysKey + "' member is not an array";
-            return false;
-        }
-
-        std::size_t index = 0;
-        for (const auto& key : *keys)
-        {
-            const auto scope = std::string(kRegistryKey) + "." + kRegistryKeysKey + "[" + std::to_string(index) + "]";
-            ++index;
-            if (!DecodeRegistryKey(key, L"", candidate, scope, error))
-            {
-                return false;
-            }
-        }
-    }
-
-    registry = std::move(candidate);
-    return true;
-}
-
-/**
- * @brief Read the filesystem part of a project file.
- *
- * Every entry lists the path of an entry of the virtual filesystem, its kind
- * and the mode the user picked for it. An entry which the document does not
- * mention follows the closest folder above it, so the document may hold the
- * modes which differ from the default only.
- *
- * @param[in] element JSON array of the `filesystem` member.
- * @param[out] isolation Model replaced with the content of the member.
- * @param[out] error Error description on failure.
- * @return true when the isolation modes were read.
- */
-bool DecodeFilesystem(const nlohmann::json& element, appbox::FilesystemIsolationModel& isolation,
-                      std::string& error)
-{
-    if (!element.is_array())
-    {
-        error = std::string("the '") + kFilesystemKey + "' member is not an array";
-        return false;
-    }
-
-    appbox::FilesystemIsolationModel candidate;
-    std::size_t                     index = 0;
-    for (const auto& element_entry : element)
-    {
-        const auto scope = std::string(kFilesystemKey) + "[" + std::to_string(index) + "]";
+        const auto value_scope = scope + ".values[" + std::to_string(index) + "]";
         ++index;
 
-        if (!element_entry.is_object())
+        std::string detail;
+        if (!model.SetValue(path, value.name, value.type, value.data, detail))
         {
-            error = Scoped(scope, "the entry is not a JSON object");
+            error = Scoped(value_scope, detail);
             return false;
         }
+        if (!model.SetValueIsolation(path, value.name, value.isolation))
+        {
+            error = Scoped(value_scope, "the value cannot be restored");
+            return false;
+        }
+    }
 
-        std::string path;
-        std::string kind_text;
-        std::string isolation_text;
-        if (!ReadString(element_entry, kPathKey, scope, path, error)
-            || !ReadString(element_entry, kKindKey, scope, kind_text, error)
-            || !ReadString(element_entry, kIsolationKey, scope, isolation_text, error))
+    index = 0;
+    for (const auto& child : record.children)
+    {
+        const auto child_scope = scope + ".children[" + std::to_string(index) + "]";
+        ++index;
+        if (!ApplyRegistryKey(child, path, model, child_scope, error))
         {
             return false;
         }
+    }
 
-        appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::Directory;
-        if (!appbox::filesystem_isolation::ParseEntryKindToken(kind_text, kind))
-        {
-            error = Scoped(scope, "unknown entry kind '" + kind_text + "'");
-            return false;
-        }
+    return true;
+}
 
-        appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::WriteCopy;
-        if (!appbox::filesystem_isolation::ParseIsolationToken(isolation_text, mode))
+/**
+ * @brief Restore the registry of a document.
+ * @param[in] keys Root keys of the document.
+ * @param[in,out] model Model which receives the keys.
+ * @param[out] error Error description on failure.
+ * @return true when the registry was restored.
+ */
+bool ApplyRegistryKeys(const std::vector<appbox::ProjectRegistryKeyRecord>& keys, appbox::RegistryModel& model,
+                       std::string& error)
+{
+    std::size_t index = 0;
+    for (const auto& key : keys)
+    {
+        const auto scope = "registry[" + std::to_string(index) + "]";
+        ++index;
+        if (!ApplyRegistryKey(key, L"", model, scope, error))
         {
-            error = Scoped(scope, "unknown isolation mode '" + isolation_text + "'");
             return false;
         }
+    }
+
+    return true;
+}
+
+/**
+ * @brief Restore the isolation modes of the virtual filesystem of a document.
+ * @param[in] records Entries of the document.
+ * @param[in,out] model Model which receives the modes.
+ * @param[out] error Error description on failure.
+ * @return true when the modes were restored.
+ */
+bool ApplyFilesystemRecords(const std::vector<appbox::ProjectFilesystemRecord>& records,
+                            appbox::FilesystemIsolationModel& model, std::string& error)
+{
+    std::size_t index = 0;
+    for (const auto& record : records)
+    {
+        const auto scope = "filesystem[" + std::to_string(index) + "]";
+        ++index;
 
         appbox::FilesystemIsolationEntry entry;
-        entry.path = appbox::UTF8ToWide(path);
-        entry.kind = kind;
-        entry.isolation = mode;
+        entry.path = record.path;
+        entry.kind = record.kind;
+        entry.isolation = record.isolation;
 
         std::string detail;
-        if (!candidate.AddEntry(entry, detail))
+        if (!model.AddEntry(entry, detail))
         {
             error = Scoped(scope, detail);
             return false;
         }
     }
 
-    isolation = std::move(candidate);
-    return true;
-}
-
-/**
- * @brief Decode the content of a project file.
- *
- * The configuration is built into a local model which is assigned to the
- * caller only when every entry was accepted, so a failure leaves the caller
- * untouched.
- *
- * @param[in] text Content of the project file.
- * @param[out] model Model replaced with the configuration of the file.
- * @param[out] registry Registry replaced with the registry of the file.
- * @param[out] isolation Isolation modes replaced with the modes of the file.
- * @param[out] output_path Destination archive path stored in the file.
- * @param[out] error Error description on failure.
- * @return true on success.
- */
-bool DecodeProject(const std::string& text, appbox::PackModel& model, appbox::RegistryModel& registry,
-                   appbox::FilesystemIsolationModel& isolation, std::wstring& output_path,
-                   std::string& error)
-{
-    nlohmann::json root;
-    try
-    {
-        root = nlohmann::json::parse(text);
-    }
-    catch (const nlohmann::json::exception& ex)
-    {
-        error = std::string("the project file is not valid JSON: ") + ex.what();
-        return false;
-    }
-
-    if (!root.is_object())
-    {
-        error = "the project file does not hold a JSON object";
-        return false;
-    }
-
-    if (!root.contains(kVersionKey) || !root.at(kVersionKey).is_number_integer())
-    {
-        error = std::string("the project file has no '") + kVersionKey + "' number";
-        return false;
-    }
-
-    const auto version = root.at(kVersionKey).get<int>();
-    if (version != appbox::kProjectFileVersion)
-    {
-        error = "unsupported project file version " + std::to_string(version) + " (expected "
-                + std::to_string(appbox::kProjectFileVersion) + ")";
-        return false;
-    }
-
-    appbox::PackModel                candidate;
-    appbox::RegistryModel            candidate_registry;
-    appbox::FilesystemIsolationModel candidate_isolation;
-    std::wstring                     candidate_output;
-
-    if (root.contains(kOutputPathKey))
-    {
-        std::string value;
-        if (!ReadString(root, kOutputPathKey, kOutputPathKey, value, error))
-        {
-            return false;
-        }
-        candidate_output = appbox::UTF8ToWide(value);
-    }
-
-    if (root.contains(kFoldersKey))
-    {
-        const auto& folders = root.at(kFoldersKey);
-        if (!folders.is_array())
-        {
-            error = std::string("the '") + kFoldersKey + "' member is not an array";
-            return false;
-        }
-
-        std::size_t index = 0;
-        for (const auto& element : folders)
-        {
-            const auto scope = std::string(kFoldersKey) + "[" + std::to_string(index) + "]";
-            ++index;
-
-            if (!element.is_object())
-            {
-                error = Scoped(scope, "the entry is not a JSON object");
-                return false;
-            }
-
-            std::string preset;
-            std::string name;
-            std::string source;
-            if (!ReadString(element, kPresetKey, scope, preset, error)
-                || !ReadString(element, kNameKey, scope, name, error)
-                || !ReadString(element, kSourceKey, scope, source, error))
-            {
-                return false;
-            }
-
-            std::string detail;
-            if (!candidate.RestoreImportedFolder(preset, appbox::UTF8ToWide(name),
-                                                 appbox::UTF8ToWide(source), detail))
-            {
-                error = Scoped(scope, detail);
-                return false;
-            }
-        }
-    }
-
-    if (root.contains(kFilesKey))
-    {
-        const auto& files = root.at(kFilesKey);
-        if (!files.is_array())
-        {
-            error = std::string("the '") + kFilesKey + "' member is not an array";
-            return false;
-        }
-
-        std::size_t index = 0;
-        for (const auto& element : files)
-        {
-            const auto scope = std::string(kFilesKey) + "[" + std::to_string(index) + "]";
-            ++index;
-
-            if (!element.is_object())
-            {
-                error = Scoped(scope, "the entry is not a JSON object");
-                return false;
-            }
-
-            std::string preset;
-            std::string target_dir;
-            std::string name;
-            std::string source;
-            if (!ReadString(element, kPresetKey, scope, preset, error)
-                || !ReadString(element, kTargetDirKey, scope, target_dir, error)
-                || !ReadString(element, kNameKey, scope, name, error)
-                || !ReadString(element, kSourceKey, scope, source, error))
-            {
-                return false;
-            }
-
-            std::string detail;
-            if (!candidate.RestoreImportedFile(preset, appbox::UTF8ToWide(target_dir),
-                                               appbox::UTF8ToWide(name),
-                                               appbox::UTF8ToWide(source), detail))
-            {
-                error = Scoped(scope, detail);
-                return false;
-            }
-        }
-    }
-
-    if (root.contains(kMainProgramKey) && !root.at(kMainProgramKey).is_null())
-    {
-        const auto& element = root.at(kMainProgramKey);
-        if (!element.is_object())
-        {
-            error = std::string("the '") + kMainProgramKey + "' member is not a JSON object";
-            return false;
-        }
-
-        std::string preset;
-        std::string folder;
-        std::string relative;
-        if (!ReadString(element, kPresetKey, kMainProgramKey, preset, error)
-            || !ReadString(element, kFolderKey, kMainProgramKey, folder, error)
-            || !ReadString(element, kPathKey, kMainProgramKey, relative, error))
-        {
-            return false;
-        }
-
-        std::string detail;
-        if (!candidate.RestoreMainProgram(preset, appbox::UTF8ToWide(folder),
-                                          appbox::UTF8ToWide(relative), detail))
-        {
-            error = Scoped(kMainProgramKey, detail);
-            return false;
-        }
-    }
-
-    if (root.contains(kRegistryKey))
-    {
-        if (!DecodeRegistry(root.at(kRegistryKey), candidate_registry, error))
-        {
-            return false;
-        }
-    }
-
-    if (root.contains(kFilesystemKey))
-    {
-        if (!DecodeFilesystem(root.at(kFilesystemKey), candidate_isolation, error))
-        {
-            return false;
-        }
-    }
-
-    /* Every entry was accepted: the configuration can replace the caller. */
-    model = std::move(candidate);
-    registry = std::move(candidate_registry);
-    isolation = std::move(candidate_isolation);
-    output_path = std::move(candidate_output);
     return true;
 }
 
@@ -727,9 +321,126 @@ bool DecodeProject(const std::string& text, appbox::PackModel& model, appbox::Re
 namespace appbox
 {
 
-bool SaveProject(const PackModel& model, const RegistryModel& registry,
-                 const FilesystemIsolationModel& isolation, const std::wstring& output_path,
-                 const std::wstring& path, std::string& error)
+ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel& registry,
+                                    const FilesystemIsolationModel& isolation, const std::wstring& output_path)
+{
+    ProjectDocument document;
+    document.output_path = output_path;
+
+    for (const auto& preset : PresetDirectories())
+    {
+        for (const auto& imported : model.ImportsOf(preset.id))
+        {
+            ProjectFolderRecord record;
+            record.preset_id = imported.preset_id;
+            record.name = imported.import_name;
+            record.source_path = imported.source_path;
+            document.folders.push_back(std::move(record));
+        }
+    }
+
+    for (const auto& file : model.AllImportedFiles())
+    {
+        ProjectFileRecord record;
+        record.preset_id = file.preset_id;
+        record.target_dir = file.target_dir;
+        record.name = file.file_name;
+        record.source_path = file.source_path;
+        document.files.push_back(std::move(record));
+    }
+
+    if (model.HasMainProgram())
+    {
+        ProjectMainProgramRecord record;
+        record.preset_id = model.MainProgramChoice().preset_id;
+        record.folder = model.MainProgramChoice().import_name;
+        record.relative_path = model.MainProgramChoice().relative_path;
+        document.main_program = std::move(record);
+    }
+
+    for (const auto& key : registry.Root().children)
+    {
+        document.registry.push_back(MakeRegistryKeyRecord(key));
+    }
+
+    for (const auto& entry : isolation.Entries())
+    {
+        ProjectFilesystemRecord record;
+        record.path = entry.path;
+        record.kind = entry.kind;
+        record.isolation = entry.isolation;
+        document.filesystem.push_back(std::move(record));
+    }
+
+    return document;
+}
+
+bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, RegistryModel& registry,
+                          FilesystemIsolationModel& isolation, std::wstring& output_path, std::string& error)
+{
+    PackModel                candidate;
+    RegistryModel            candidate_registry;
+    FilesystemIsolationModel candidate_isolation;
+
+    std::size_t index = 0;
+    for (const auto& folder : document.folders)
+    {
+        const auto scope = "folders[" + std::to_string(index) + "]";
+        ++index;
+
+        std::string detail;
+        if (!candidate.RestoreImportedFolder(folder.preset_id, folder.name, folder.source_path, detail))
+        {
+            error = Scoped(scope, detail);
+            return false;
+        }
+    }
+
+    index = 0;
+    for (const auto& file : document.files)
+    {
+        const auto scope = "files[" + std::to_string(index) + "]";
+        ++index;
+
+        std::string detail;
+        if (!candidate.RestoreImportedFile(file.preset_id, file.target_dir, file.name, file.source_path, detail))
+        {
+            error = Scoped(scope, detail);
+            return false;
+        }
+    }
+
+    if (document.main_program.has_value())
+    {
+        const auto& program = *document.main_program;
+
+        std::string detail;
+        if (!candidate.RestoreMainProgram(program.preset_id, program.folder, program.relative_path, detail))
+        {
+            error = Scoped("main_program", detail);
+            return false;
+        }
+    }
+
+    if (!ApplyRegistryKeys(document.registry, candidate_registry, error))
+    {
+        return false;
+    }
+
+    if (!ApplyFilesystemRecords(document.filesystem, candidate_isolation, error))
+    {
+        return false;
+    }
+
+    /* Every entry was accepted: the document can replace the caller. */
+    model = std::move(candidate);
+    registry = std::move(candidate_registry);
+    isolation = std::move(candidate_isolation);
+    output_path = document.output_path;
+    return true;
+}
+
+bool SaveProject(const ProjectDocument& document, const std::wstring& path, std::string& error)
 {
     if (path.empty())
     {
@@ -739,79 +450,8 @@ bool SaveProject(const PackModel& model, const RegistryModel& registry,
 
     try
     {
-        /*
-         * The members are written in a fixed order (version first) so the file
-         * stays easy to read and diff, which is why the ordered object is used
-         * instead of the member name order of the default JSON object.
-         */
-        nlohmann::ordered_json root;
-        root[kVersionKey] = kProjectFileVersion;
-        root[kOutputPathKey] = WideToUTF8(output_path);
-
-        nlohmann::ordered_json folders = nlohmann::ordered_json::array();
-        for (const auto& preset : PresetDirectories())
-        {
-            for (const auto& imported : model.ImportsOf(preset.id))
-            {
-                nlohmann::ordered_json entry;
-                entry[kPresetKey] = imported.preset_id;
-                entry[kNameKey] = WideToUTF8(imported.import_name);
-                entry[kSourceKey] = WideToUTF8(imported.source_path);
-                folders.push_back(std::move(entry));
-            }
-        }
-        root[kFoldersKey] = std::move(folders);
-
-        nlohmann::ordered_json files = nlohmann::ordered_json::array();
-        for (const auto& file : model.AllImportedFiles())
-        {
-            nlohmann::ordered_json entry;
-            entry[kPresetKey] = file.preset_id;
-            entry[kTargetDirKey] = WideToUTF8(file.target_dir);
-            entry[kNameKey] = WideToUTF8(file.file_name);
-            entry[kSourceKey] = WideToUTF8(file.source_path);
-            files.push_back(std::move(entry));
-        }
-        root[kFilesKey] = std::move(files);
-
-        /* The virtual registry of the workspace, root key by root key. */
-        nlohmann::ordered_json registry_keys = nlohmann::ordered_json::array();
-        for (const auto& key : registry.Root().children)
-        {
-            registry_keys.push_back(WriteRegistryKey(key));
-        }
-        nlohmann::ordered_json registry_entry;
-        registry_entry[kRegistryKeysKey] = std::move(registry_keys);
-        root[kRegistryKey] = std::move(registry_entry);
-
-        /*
-         * The isolation modes of the virtual filesystem, one entry per path
-         * the user picked a mode for. An entry which is not listed follows the
-         * closest folder above it, so the default of the workspace is not
-         * written at all.
-         */
-        nlohmann::ordered_json filesystem = nlohmann::ordered_json::array();
-        for (const auto& entry : isolation.Entries())
-        {
-            nlohmann::ordered_json item;
-            item[kPathKey] = WideToUTF8(entry.path);
-            item[kKindKey] = filesystem_isolation::EntryKindToken(entry.kind);
-            item[kIsolationKey] = filesystem_isolation::IsolationToken(entry.isolation);
-            filesystem.push_back(std::move(item));
-        }
-        root[kFilesystemKey] = std::move(filesystem);
-
-        if (model.HasMainProgram())
-        {
-            nlohmann::ordered_json entry;
-            entry[kPresetKey] = model.MainProgramChoice().preset_id;
-            entry[kFolderKey] = WideToUTF8(model.MainProgramChoice().import_name);
-            entry[kPathKey] = WideToUTF8(model.MainProgramChoice().relative_path);
-            root[kMainProgramKey] = std::move(entry);
-        }
-
         /* dump() escapes nothing by default, so paths keep their UTF-8 bytes. */
-        const auto text = root.dump(2);
+        const auto text = nlohmann::ordered_json(document).dump(2);
 
         std::ofstream out(std::filesystem::path(path), std::ios::binary | std::ios::trunc);
         if (!out.is_open())
@@ -837,22 +477,7 @@ bool SaveProject(const PackModel& model, const RegistryModel& registry,
     return true;
 }
 
-bool SaveProject(const PackModel& model, const std::wstring& output_path, const std::wstring& path,
-                 std::string& error)
-{
-    /* A caller without a registry and without filesystem modes stores empty ones. */
-    return SaveProject(model, RegistryModel{}, FilesystemIsolationModel{}, output_path, path, error);
-}
-
-bool SaveProject(const PackModel& model, const RegistryModel& registry, const std::wstring& output_path,
-                 const std::wstring& path, std::string& error)
-{
-    /* A caller without filesystem modes stores an empty model. */
-    return SaveProject(model, registry, FilesystemIsolationModel{}, output_path, path, error);
-}
-
-bool LoadProject(const std::wstring& path, PackModel& model, RegistryModel& registry,
-                 FilesystemIsolationModel& isolation, std::wstring& output_path, std::string& error)
+bool LoadProject(const std::wstring& path, ProjectDocument& document, std::string& error)
 {
     if (path.empty())
     {
@@ -909,31 +534,26 @@ bool LoadProject(const std::wstring& path, PackModel& model, RegistryModel& regi
 
     try
     {
-        return DecodeProject(text, model, registry, isolation, output_path, error);
+        const auto root = nlohmann::ordered_json::parse(text);
+        document = root.get<ProjectDocument>();
+        return true;
+    }
+    catch (const nlohmann::json::exception& ex)
+    {
+        error = std::string("the project file is not valid JSON: ") + ex.what();
+        return false;
+    }
+    catch (const ProjectDocumentError& ex)
+    {
+        /* The conversion describes the member which does not fit the schema. */
+        error = ex.what();
+        return false;
     }
     catch (const std::exception& ex)
     {
         error = std::string("the project file cannot be decoded: ") + ex.what();
         return false;
     }
-}
-
-bool LoadProject(const std::wstring& path, PackModel& model, RegistryModel& registry,
-                 std::wstring& output_path, std::string& error)
-{
-    /* A caller without filesystem modes reads them into a model it drops. */
-    FilesystemIsolationModel isolation;
-    return LoadProject(path, model, registry, isolation, output_path, error);
-}
-
-bool LoadProject(const std::wstring& path, PackModel& model, std::wstring& output_path,
-                 std::string& error)
-{
-    /* The registry and the filesystem modes of the file are validated, but a
-     * caller without them has no place to keep them. */
-    RegistryModel            registry;
-    FilesystemIsolationModel isolation;
-    return LoadProject(path, model, registry, isolation, output_path, error);
 }
 
 } // namespace appbox

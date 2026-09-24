@@ -3,6 +3,7 @@
 
 #include "FilesystemIsolationModel.hpp"
 #include "PackModel.hpp"
+#include "ProjectDocument.hpp"
 #include "RegistryModel.hpp"
 #include <string>
 
@@ -10,179 +11,91 @@ namespace appbox
 {
 
 /**
- * @brief Version of the project file format written by SaveProject().
+ * @brief Build the document of a project file from the models of a session.
  *
- * The version is the first member of every project file and is required to
- * match exactly when a file is read, so a file of a future format is rejected
- * instead of being interpreted with the rules of the current one.
+ * The document describes the current configuration: the imported folders, the
+ * imported files, the main program, the virtual registry with the isolation
+ * modes of every key and value, the isolation modes of the virtual filesystem
+ * and the path of the `Output File` box. The structure and the schema of the
+ * document are described by ProjectDocument.
+ *
+ * The imported folders are listed preset directory by preset directory, so the
+ * order of the document does not depend on the order the user imported them
+ * in.
+ *
+ * @param[in] model Configuration of the packer session.
+ * @param[in] registry Virtual registry of the workspace.
+ * @param[in] isolation Isolation modes of the virtual filesystem.
+ * @param[in] output_path Destination archive path of the configuration, which
+ *                        may be empty when no path was chosen yet.
+ * @return The document of the session.
  */
-inline constexpr int kProjectFileVersion = 1;
+ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel& registry,
+                                    const FilesystemIsolationModel& isolation, const std::wstring& output_path);
 
 /**
- * @brief Write the current packer configuration into a project file.
+ * @brief Replace the models of a session with the content of a document.
  *
- * The file is JSON text encoded as strict UTF-8 without a byte order mark:
- * the members of the schema are `version`, `output_path`, `folders`, `files`,
- * `registry`, `filesystem` and, when a main program is selected,
- * `main_program`.
+ * Every entry of the document is validated by the model it belongs to, so a
+ * document which names an unknown preset directory, a file outside an imported
+ * folder, an unknown root key or a mode a file cannot hold is rejected with the
+ * description of the model.
  *
- * ```
- * {
- *   "version": 1,
- *   "output_path": "D:\\out\\MyApp.zip",
- *   "folders": [ { "preset": "program_files", "name": "MyApp",
- *                  "source": "C:\\Program Files\\MyApp" } ],
- *   "files": [ { "preset": "user_profile", "target_dir": "MyApp\\data",
- *                "name": "settings.ini", "source": "C:\\tmp\\settings.ini" } ],
- *   "registry": { "keys": [ { "name": "HKEY_CURRENT_USER",
- *                             "isolation": "full",
- *                             "values": [ { "name": "Server", "type": "REG_SZ",
- *                                           "data": "680065006c006c006f00",
- *                                           "isolation": "write_copy" } ],
- *                             "children": [] } ] },
- *   "main_program": { "preset": "program_files", "folder": "MyApp",
- *                     "path": "bin\\app.exe" }
- * }
- * ```
+ * The call is atomic: the entries are applied to local models which replace the
+ * caller only when every entry was accepted, so a failure leaves all models and
+ * the output path untouched. The source folders and files recorded in the
+ * document are not required to exist - a project can be imported on a machine
+ * where the packaged application is not installed yet - so only the structure
+ * of the document is validated.
  *
- * The `registry` member describes the virtual registry of the workspace: the
- * key tree with the isolation mode of every key and value, and the raw data of
- * every value as a hexadecimal byte string, so all supported types survive the
- * round trip. Every mode is stored as it is; the `isolation_set` member which
- * older versions wrote is ignored when such a file is read.
+ * @param[in] document Document to apply.
+ * @param[out] model Model replaced with the configuration of the document.
+ * @param[out] registry Registry replaced with the registry of the document.
+ * @param[out] isolation Isolation modes replaced with the modes of the document.
+ * @param[out] output_path Destination archive path of the document.
+ * @param[out] error Error description on failure, prefixed with the path of the
+ *                   entry which was rejected, for example `folders[1]: ...`.
+ * @return true on success.
+ */
+bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, RegistryModel& registry,
+                          FilesystemIsolationModel& isolation, std::wstring& output_path, std::string& error);
+
+/**
+ * @brief Write the content of a document into a project file.
  *
- * The `filesystem` member describes the isolation modes of the virtual
- * filesystem: one entry per path the user set a mode for, with the kind of the
- * entry (`file` or `directory`) and the mode (`full`, `write_copy` or
- * `whiteout`). The paths are the ones the `Source Path` column shows, for
- * example `#ProgramFiles#\MyApp`. Entries which are not listed follow the
- * closest folder above them, and a file or folder without such a folder
- * follows the default of its kind, so a hand written document may list the
- * modes which differ from the default only.
- *
- * Every path is stored as the host path it has on the machine which exported
- * the configuration; the file only records the imports, it never copies the
- * imported content itself. The project file is not the launch configuration
- * of the loader inside a packed archive (`<entry name>.json`), which uses its
- * own schema.
+ * The file is JSON text encoded as strict UTF-8 without a byte order mark; the
+ * members are written in the order of the schema with the version first, so the
+ * text of a given document is stable and easy to read and diff.
  *
  * An existing file is truncated. A partial file can be left behind when the
  * write fails, in which case the call reports the failure and the caller
  * decides how to react.
  *
- * @param[in] model The configuration to store.
- * @param[in] output_path Destination archive path of the configuration, which
- *                        may be empty when no path was chosen yet.
+ * @param[in] document The document to store.
  * @param[in] path Destination project file path.
  * @param[out] error Error description on failure.
  * @return true on success.
  */
-bool SaveProject(const PackModel& model, const std::wstring& output_path, const std::wstring& path,
-                 std::string& error);
+bool SaveProject(const ProjectDocument& document, const std::wstring& path, std::string& error);
 
 /**
- * @brief Write the packer configuration and the virtual registry into a file.
- *
- * This overload stores the registry of the workspace as well, so a saved
- * project keeps the keys, the values and the isolation modes the user set.
- * The overload without a registry writes an empty one.
- *
- * @param[in] model The configuration to store.
- * @param[in] registry Virtual registry of the workspace.
- * @param[in] output_path Destination archive path of the configuration, which
- *                        may be empty when no path was chosen yet.
- * @param[in] path Destination project file path.
- * @param[out] error Error description on failure.
- * @return true on success.
- */
-bool SaveProject(const PackModel& model, const RegistryModel& registry, const std::wstring& output_path,
-                 const std::wstring& path, std::string& error);
-
-/**
- * @brief Write the packer configuration, the registry and the filesystem modes.
- *
- * This overload stores the isolation modes of the filesystem workspace as
- * well, so a saved project keeps the modes the user picked for the files and
- * folders of the virtual filesystem. The overloads without the isolation model
- * write an empty one.
- *
- * @param[in] model The configuration to store.
- * @param[in] registry Virtual registry of the workspace.
- * @param[in] isolation Isolation modes of the virtual filesystem.
- * @param[in] output_path Destination archive path of the configuration, which
- *                        may be empty when no path was chosen yet.
- * @param[in] path Destination project file path.
- * @param[out] error Error description on failure.
- * @return true on success.
- */
-bool SaveProject(const PackModel& model, const RegistryModel& registry,
-                 const FilesystemIsolationModel& isolation, const std::wstring& output_path,
-                 const std::wstring& path, std::string& error);
-
-/**
- * @brief Replace the packer configuration with the content of a project file.
+ * @brief Read the content of a project file into a document.
  *
  * The file has to be JSON text encoded as strict UTF-8; a UTF-16 or UTF-32
  * byte order mark and malformed UTF-8 bytes are rejected with an encoding
  * error instead of being decoded with replacement characters. A leading UTF-8
  * byte order mark is accepted and ignored.
  *
- * The call is atomic: the configuration is decoded and validated into a local
- * model first and is assigned to the caller only when every entry was
- * accepted. A failure therefore leaves both the model and the output path
- * untouched. The source folders and files recorded in the file are not
- * required to exist - a project can be imported on a machine where the
- * packaged application is not installed yet - so only the structure of the
- * file is validated.
+ * The call is atomic: the document is decoded into a local structure which
+ * replaces the caller only when the whole file was accepted, so a failure
+ * leaves the document untouched.
  *
  * @param[in] path Project file path.
- * @param[out] model Model replaced with the configuration of the file.
- * @param[out] output_path Destination archive path stored in the file, empty
- *                         when the file records none.
+ * @param[out] document Document replaced with the content of the file.
  * @param[out] error Error description on failure.
  * @return true on success.
  */
-bool LoadProject(const std::wstring& path, PackModel& model, std::wstring& output_path,
-                 std::string& error);
-
-/**
- * @brief Replace the packer configuration and the virtual registry with a file.
- *
- * This overload restores the registry of the workspace as well. A file which
- * does not hold a `registry` member (a file written before the registry was
- * part of the schema) restores an empty registry, which is the state a fresh
- * session starts with.
- *
- * @param[in] path Project file path.
- * @param[out] model Model replaced with the configuration of the file.
- * @param[out] registry Registry replaced with the registry of the file.
- * @param[out] output_path Destination archive path stored in the file, empty
- *                         when the file records none.
- * @param[out] error Error description on failure.
- * @return true on success.
- */
-bool LoadProject(const std::wstring& path, PackModel& model, RegistryModel& registry,
-                 std::wstring& output_path, std::string& error);
-
-/**
- * @brief Replace the packer configuration, the registry and the filesystem modes.
- *
- * This overload restores the isolation modes of the filesystem workspace as
- * well. A file which does not hold a `filesystem` member (a file written
- * before the filesystem modes were part of the schema) restores an empty
- * model, in which every entry follows the default of its kind.
- *
- * @param[in] path Project file path.
- * @param[out] model Model replaced with the configuration of the file.
- * @param[out] registry Registry replaced with the registry of the file.
- * @param[out] isolation Isolation modes replaced with the modes of the file.
- * @param[out] output_path Destination archive path stored in the file, empty
- *                         when the file records none.
- * @param[out] error Error description on failure.
- * @return true on success.
- */
-bool LoadProject(const std::wstring& path, PackModel& model, RegistryModel& registry,
-                 FilesystemIsolationModel& isolation, std::wstring& output_path, std::string& error);
+bool LoadProject(const std::wstring& path, ProjectDocument& document, std::string& error);
 
 } // namespace appbox
 

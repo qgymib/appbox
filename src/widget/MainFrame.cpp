@@ -333,18 +333,24 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
         }
     }
 
+    /*
+     * The document is read first and applied to the models afterwards, so the
+     * configuration of the session is only replaced when the whole file was
+     * accepted and every entry of it fits the models.
+     */
+    appbox::ProjectDocument          document;
     appbox::PackModel                loaded;
     appbox::RegistryModel            loaded_registry;
     appbox::FilesystemIsolationModel loaded_isolation;
     std::wstring                     output_path;
     std::string                      error;
 
-    if (!appbox::LoadProject(dialog.GetPath().ToStdWstring(), loaded, loaded_registry, loaded_isolation,
-                             output_path, error))
+    if (!appbox::LoadProject(dialog.GetPath().ToStdWstring(), document, error) ||
+        !appbox::ApplyProjectDocument(document, loaded, loaded_registry, loaded_isolation, output_path, error))
     {
         spdlog::error("importing the configuration failed: {}", error);
-        wxMessageBox("The configuration could not be imported:\n\n" + wxString::FromUTF8(error),
-                     "Import Configuration", wxOK | wxICON_ERROR, this);
+        wxMessageBox("The configuration could not be imported:\n\n" + wxString::FromUTF8(error), "Import Configuration",
+                     wxOK | wxICON_ERROR, this);
         return;
     }
 
@@ -391,8 +397,9 @@ void MainFrame::OnExportConfiguration(wxCommandEvent&)
     }
 
     std::string error;
-    if (!appbox::SaveProject(model_, registry_model_, filesystem_isolation_,
-                             OutputPath().ToStdWstring(), dialog.GetPath().ToStdWstring(), error))
+    const auto  document = appbox::MakeProjectDocument(model_, registry_model_, filesystem_isolation_,
+                                                      OutputPath().ToStdWstring());
+    if (!appbox::SaveProject(document, dialog.GetPath().ToStdWstring(), error))
     {
         spdlog::error("exporting the configuration failed: {}", error);
         wxMessageBox("The configuration could not be exported:\n\n" + wxString::FromUTF8(error),

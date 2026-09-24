@@ -275,7 +275,17 @@ project file is not portable between machines with different install locations.
     { "preset": "user_profile", "target_dir": "MyApp\\data",
       "name": "settings.ini", "source": "C:\\tmp\\settings.ini" }
   ],
-  "main_program": { "preset": "program_files", "folder": "MyApp", "path": "bin\\app.exe" }
+  "main_program": { "preset": "program_files", "folder": "MyApp", "path": "bin\\app.exe" },
+  "registry": [
+    { "name": "HKEY_CURRENT_USER", "isolation": "full",
+      "values": [ { "name": "Server", "type": "REG_SZ",
+                    "data": "68 00 65 00 6C 00 6C 00 6F 00",
+                    "isolation": "write_copy" } ],
+      "children": [] }
+  ],
+  "filesystem": [
+    { "path": "#ProgramFiles#\\MyApp\\app.exe", "kind": "file", "isolation": "whiteout" }
+  ]
 }
 ```
 
@@ -286,6 +296,12 @@ project file is not portable between machines with different install locations.
 | `folders` | Imported folders; `preset` is the preset directory, `name` the subdirectory below it and `source` the imported host folder |
 | `files` | Individually imported files; `target_dir` is relative to the preset directory and starts with the name of an imported folder |
 | `main_program` | Startup file; omitted while no main program is selected |
+| `registry` | The virtual registry, one entry per root key; every key carries its `isolation` mode, its `values` and its `children`, and the data of a value is its raw bytes as a hexadecimal string |
+| `filesystem` | The isolation modes of the virtual filesystem, one entry per path the user picked a mode for; `path` is the virtual path the `Source Path` column shows, `kind` is `file` or `directory` and `isolation` is `full`, `write_copy` or `whiteout` |
+
+`version` is the only required member: a top level member which the document
+does not hold is read as empty, while an entry which is present has to carry
+every member of its record.
 
 The file is written and read as strict UTF-8: a UTF-16 or UTF-32 byte order
 mark and malformed UTF-8 bytes are rejected with an encoding error instead of
@@ -293,6 +309,10 @@ being decoded with replacement characters, while a leading UTF-8 byte order
 mark is accepted. This project file is not the launch configuration of the
 loader inside a packed archive (`<entry name>.json`, see the archive layout
 above), which uses its own schema.
+
+Implementation: `src/core/ProjectDocument.*` holds the document structure and
+the `to_json()` / `from_json()` conversion of the schema, `src/core/ProjectFile.*`
+writes and reads the file and maps the document to the models of the workspace.
 
 ### Tracer
 

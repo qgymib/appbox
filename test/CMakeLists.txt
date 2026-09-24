@@ -148,6 +148,7 @@ add_executable(AppBoxUnitTests
     "unit/Unit_PackModel.cpp"
     "unit/Unit_PackService.cpp"
     "unit/Unit_PipeClient.cpp"
+    "unit/Unit_ProjectDocument.cpp"
     "unit/Unit_ProjectFile.cpp"
     "unit/Unit_ProcessJob.cpp"
     "unit/Unit_RegFile.cpp"
@@ -194,6 +195,7 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PresetDirectory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ProjectDocument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ProjectFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryHive.cpp
