@@ -64,7 +64,9 @@ add_executable(AppBoxTests
     "probe/RegSaveKey.cpp"
     "probe/RegShadowRead.cpp"
     "probe/RegWriteValue.cpp"
+    "utils/CommandLine.cpp"
     "utils/CommonFixture.cpp"
+    "utils/Coredump.cpp"
     "utils/CWD.cpp"
     "utils/FsBuilder.cpp"
     "utils/FsIsolationBuilder.cpp"
@@ -76,6 +78,7 @@ add_executable(AppBoxTests
     "utils/RealHkcuKey.cpp"
     "utils/RegistryRootKey.cpp"
     "utils/Semaphore.cpp"
+    "utils/TestTimeout.cpp"
     "utils/WriteFileFull.cpp"
     "Test.cpp"
     "main.cpp"
@@ -109,6 +112,9 @@ find_package(spdlog REQUIRED)
 target_link_libraries(AppBoxTests PRIVATE spdlog::spdlog)
 target_compile_options(AppBoxTests PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
 
+# The coredump of a timed out test case is written with MiniDumpWriteDump.
+target_link_libraries(AppBoxTests PRIVATE dbghelp)
+
 ###############################################################################
 # Export test
 ###############################################################################
@@ -125,6 +131,7 @@ add_test(NAME AppBoxTests
 ###############################################################################
 add_executable(AppBoxUnitTests
     "unit/main.cpp"
+    "unit/Unit_AboutInfo.cpp"
     "unit/Unit_ApplicationIcon.cpp"
     "unit/Unit_BuildReport.cpp"
     "unit/Unit_HiveReader.cpp"
@@ -155,6 +162,7 @@ add_executable(AppBoxUnitTests
     "unit/Unit_RemoteClient.cpp"
     "unit/Unit_RpcCodec.cpp"
     "unit/Unit_StartupTree.cpp"
+    "unit/Unit_TestTimeout.cpp"
     "unit/Unit_TracerArmPlan.cpp"
     "unit/Unit_TracerCdbLocator.cpp"
     "unit/Unit_TracerCdbOutput.cpp"
@@ -167,6 +175,9 @@ add_executable(AppBoxUnitTests
     "unit/Unit_WString.cpp"
     "unit/Unit_ZipReader.cpp"
     "unit/Unit_ZipWriter.cpp"
+    "utils/CommandLine.cpp"
+    "utils/Coredump.cpp"
+    "utils/TestTimeout.cpp"
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/registry/HiveReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ConvertDosPathToNtPath.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/GetExecutableDir.cpp
@@ -175,6 +186,7 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/MiniLauncher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ProcessJob.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/WinCall.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/AboutInfo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationIcon.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationFile.cpp
@@ -223,7 +235,11 @@ target_include_directories(AppBoxUnitTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../loader
         ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${APPBOX_GENERATED_DIR}
 )
+
+# The build information header has to exist before the sources are compiled.
+add_dependencies(AppBoxUnitTests appbox_build_info)
 
 target_link_libraries(AppBoxUnitTests PRIVATE AppBoxCommon)
 
@@ -247,6 +263,9 @@ target_link_libraries(AppBoxUnitTests PRIVATE shell32 ole32)
 
 # Registry access of the sandbox hive reader (RegLoadAppKeyW and friends).
 target_link_libraries(AppBoxUnitTests PRIVATE advapi32)
+
+# The coredump of a timed out test case is written with MiniDumpWriteDump.
+target_link_libraries(AppBoxUnitTests PRIVATE dbghelp)
 
 # Zip archive creation of the packer core (zlib must be found first so the
 # libzip build reuses the already configured target).

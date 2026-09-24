@@ -3,15 +3,17 @@
 
 #include <string>
 #include <CLI/CLI.hpp>
+#include "utils/TestTimeout.hpp"
 
 namespace appbox::test
 {
 
 struct TestConfig
 {
-    std::wstring loader_path;         /* Path to loader */
-    std::wstring log_level = L"info"; /* Log level */
-    bool         no_cleanup = false;  /* Do not cleanup the test directory */
+    std::wstring      loader_path;         /* Path to loader */
+    std::wstring      log_level = L"info"; /* Log level */
+    bool              no_cleanup = false;  /* Do not cleanup the test directory */
+    TestTimeoutConfig test_timeout;        /* Timeout of a test case and the coredumps of a timeout */
 };
 
 /**

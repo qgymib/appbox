@@ -3,10 +3,22 @@
 #include <spdlog/spdlog.h>
 #include <base64.hpp>
 #include "probe/__init__.hpp"
+#include "utils/Coredump.hpp"
+#include "utils/TestTimeout.hpp"
 #include "Test.hpp"
 
 int wmain(int argc, wchar_t* argv[])
 {
+    /*
+     * The coredump writer is this executable itself. It has to return before
+     * CLI11 and GoogleTest look at the command line, which holds the options
+     * of the writer instead of the options of a test run.
+     */
+    if (appbox::test::RunCoredumpWriterIfRequested())
+    {
+        return 0;
+    }
+
     CLI::App app("AppBox unit tests");
     appbox::test::SetupTestConfig(app);
     appbox::test::ProbeInit(app);
@@ -14,7 +26,11 @@ int wmain(int argc, wchar_t* argv[])
     testing::InitGoogleTest(&argc, argv);
     CLI11_PARSE(app, argc, argv);
 
-    return RUN_ALL_TESTS();
+    appbox::test::InstallTestTimeoutHook(appbox::test::config.test_timeout);
+
+    const int result = RUN_ALL_TESTS();
+    appbox::test::StopTestTimeoutHook();
+    return result;
 }
 
 #if defined(__MINGW32__)

@@ -1,4 +1,5 @@
 #include "MainFrame.hpp"
+#include "AboutDialog.hpp"
 #include "FilesystemPanel.hpp"
 #include "MainProgramDialog.hpp"
 #include "PlaceholderPanel.hpp"
@@ -296,13 +297,13 @@ void MainFrame::OnExit(wxCommandEvent&)
 
 void MainFrame::OnAbout(wxCommandEvent&)
 {
-    wxMessageBox("AppBox packages an installed application into a portable zip "
-                 "archive: the imported folders become lower filesystem layers and the "
-                 "embedded loader starts the sandboxed application.\n\n"
-                 "The loader and its configuration carry the file name of the startup "
-                 "file, so extracting the archive and running that program requires no "
-                 "further installation.",
-                 "About AppBox", wxOK | wxICON_INFORMATION, this);
+    /*
+     * The dialog lays out the build information which is compiled into the
+     * binary, so it shows what this executable is instead of reading a version
+     * file or calling git while it is open.
+     */
+    AboutDialog dialog(this);
+    dialog.ShowModal();
 }
 
 void MainFrame::OnImportConfiguration(wxCommandEvent&)

@@ -4,6 +4,7 @@
 #include "tracer/CdbSession.hpp"
 #include "tracer/TargetProgram.hpp"
 #include "tracer/TracedModules.hpp"
+#include "utils/TestTimeout.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <string>
@@ -92,6 +93,13 @@ IntegrationSetup Prepare()
 appbox::tracer::TraceResult RunCmd(const IntegrationSetup& setup,
                                    const std::vector<std::wstring>& arguments)
 {
+    /*
+     * The run below the debugger has a budget of its own which is longer than
+     * the timeout of a test case, so the watchdog of the test run has to wait
+     * for the debugger instead of stopping the test in the middle of its work.
+     */
+    appbox::test::SetTestTimeout(static_cast<int>(kRunTimeoutSeconds + kStallTimeoutSeconds + 60));
+
     appbox::tracer::TraceRequest request;
     request.debugger = setup.debugger;
     request.program = setup.target;

@@ -45,9 +45,77 @@ variable counterpart:
 | `--loader` | `APPBOX_TEST_LOADER` | Path of the loader executable the cases start. |
 | `--log-level` | `APPBOX_TEST_LOG_LEVEL` | `trace`, `debug`, `info`, `warn`, `err`, `critical` or `off`; default `info`. |
 | `--no-cleanup` | `APPBOX_TEST_NO_CLEANUP` | Keep the working directory of a case instead of removing it. |
+| `--test-timeout` | `APPBOX_TEST_TIMEOUT` | Timeout of one test case, in seconds; `0` turns the watchdog off. Default `300`. |
+| `--test-dump-dir` | `APPBOX_TEST_DUMP_DIR` | Directory of the coredumps of a timed out test case; default a `coredump` directory below the test executable. |
 
 `AppBoxUnitTests` takes `--loader=<path>` as well: it names the loader
-executable for the tests which work on the real loader payload.
+executable for the tests which work on the real loader payload. It takes the
+timeout options of the table above too, so a single case of it can be run with
+a shorter timeout.
+
+## Timeouts and coredumps
+
+Every test case has a timeout. A case which runs longer than the timeout is
+stopped, and the run writes a coredump of the test process and of its child
+processes first, so a debugger can show what the case was waiting for.
+
+| Item | Value |
+| --- | --- |
+| Default timeout | 300 seconds per test case |
+| Exit code of a run which was stopped | `124`, the convention of the `timeout` utility of GNU |
+| Directory of the dumps | `--test-dump-dir` / `APPBOX_TEST_DUMP_DIR`, default `<test executable>\coredump` |
+
+The environment is read before the command line, so an option wins over a
+variable of the same name. A case whose own budget is longer than the budget of
+the run, like the cases of `Unit_TracerIntegration`, asks for it from the test
+body with `appbox::test::SetTestTimeout(seconds)`.
+
+The watchdog is a listener of the GoogleTest events `OnTestStart` and
+`OnTestEnd` plus one thread which waits for the deadline of the running case
+(`test/utils/TestTimeout.*`). It is armed between those two events only, so a
+run whose cases finish in time pays nothing for it.
+
+A case which times out ends the run:
+
+1. The watchdog starts the coredump writer, which is the test executable
+   itself (`test/utils/Coredump.*`). `MiniDumpWriteDump` suspends every thread
+   of the process it dumps, so it must not run inside that process.
+2. The writer takes one snapshot of the process list, walks the tree below the
+   test process - the test process, the loader, the sandbox host and the probe
+   of an end-to-end case - and writes one full memory dump per process.
+3. The watchdog terminates the child processes of the test and then the test
+   process itself with the exit code `124`, so CTest reports the failure at
+   once instead of waiting for a run which will not end.
+
+A dump holds the full memory, the thread information, the handle table and the
+unloaded modules. Its name carries the test case, the process id, the name of
+the image and the time of the dump:
+
+```
+coredump/Reg.WriteValue_NewKey-66956-AppBoxTests-20260924-124051.dmp
+```
+
+`cdb` opens a dump and shows the stacks of every thread of it:
+
+```bash
+"C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe" -z <dump> -c "~*k; q"
+```
+
+The limits which are worth knowing:
+
+* The watchdog is armed between `OnTestStart` and `OnTestEnd` only. A hang
+  outside of a test case, in a global environment or in a static initializer,
+  is left to the timeout of CTest itself.
+* A stopped run does not run the destructors of its fixture and does not flush
+  the buffered output of GoogleTest, so the working directory of the case and
+  the dumps stay behind and the log is incomplete. The messages of the watchdog
+  and of the writer go to the standard error stream and are flushed, so they
+  are always part of the log.
+* The dumps of an end-to-end case reach several hundred megabytes, because
+  every process of the probe chain is dumped with its full memory.
+* The dump of a process which is still starting up fails; the writer tries
+  three times before it reports the failure, and the dumps of the other
+  processes of the tree are written either way.
 
 ## Layout
 
@@ -57,7 +125,10 @@ executable for the tests which work on the real loader payload.
 | `test/cases/` | The end-to-end cases. |
 | `test/probe/` | The operations which are executed **inside** the sandbox. A probe registers itself by name (`test/probe/__init__.hpp`) and is called from a case through `ProbeCall`. |
 | `test/utils/` | The builders and helpers which the cases share, see [Test helpers](#test-helpers). |
-| `test/Test.cpp` / `test/Test.hpp` | The configuration of `AppBoxTests`: `--loader`, `--log-level` and `--no-cleanup`. |
+| `test/utils/TestTimeout.*` | The timeout of a test case: the GoogleTest hook, the watchdog thread and the options of a run. |
+| `test/utils/Coredump.*` | The coredump writer: the full memory dump of a process, the walk of a process tree and the termination of its processes. |
+| `test/utils/CommandLine.*` | The command line and the environment of a run, which the timeout and the coredump writer read before GoogleTest and CLI11 look at them. |
+| `test/Test.cpp` / `test/Test.hpp` | The configuration of `AppBoxTests`: `--loader`, `--log-level`, `--no-cleanup` and the timeout options. |
 | `test/unit/LoaderPath.hpp` | The loader path of `AppBoxUnitTests`. |
 | `test/main.cpp` | Entry point of `AppBoxTests`. |
 | `test/unit/main.cpp` | Entry point of `AppBoxUnitTests`. |
@@ -69,6 +140,15 @@ directories first, because `test/utils` holds headers with the same name as the
 loader ones and the loader headers have to win.
 
 ## Unit tests
+
+The build information the About dialog shows:
+
+* `test/unit/Unit_AboutInfo.cpp` — the values which are compiled into the binary
+  by `cmake/GenerateAboutInfo.cmake`: the one sentence summary of the
+  application, the dotted project version, the timestamp of the build, the git
+  revision and branch (including the degradation to `unknown` of a build which
+  was made without git) and the list of the linked third-party libraries with
+  their versions and their order.
 
 The unit tests of the registry isolation:
 
@@ -143,6 +223,17 @@ The remaining unit tests cover one module of the packer, the loader, the
 sandbox or the tracer each; the complete list is the source list of
 `AppBoxUnitTests` in `test/CMakeLists.txt`. The tracer has its own section
 below.
+
+The timeout and the coredumps of a run have a unit test of their own:
+
+* `test/unit/Unit_TestTimeout.cpp` — the helpers of the timeout and of the
+  coredump writer: the scan of an option of the command line, the name of a
+  dump, the timeout and the dump directory of the environment, the default
+  directory of the dumps, and the request of the writer together with the
+  command line it is built from. The suite holds no case which drives a test run
+  of its own, so the watchdog, the dumps of a timed out case and the termination
+  of a process tree have no automated coverage; they are verified by hand (see
+  [Timeouts and coredumps](#timeouts-and-coredumps)).
 
 ## End-to-end tests
 

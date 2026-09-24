@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 #include "unit/LoaderPath.hpp"
+#include "utils/Coredump.hpp"
+#include "utils/TestTimeout.hpp"
 #include "WString.hpp"
 #include <cstring>
 #include <string>
@@ -49,16 +51,39 @@ void TakeLoaderPath(std::vector<char*>& arguments)
  * the end-to-end probe chain. The optional `--loader=<path>` argument names
  * the loader executable for the tests which work on the real loader payload.
  *
+ * The timeout options are read from the command line and from the environment;
+ * GoogleTest leaves the arguments it does not know in place, so they do not
+ * have to be taken out of the argument list.
+ *
  * @param[in] argc Number of command line arguments.
  * @param[in] argv Command line arguments.
  * @return The result of the test run.
  */
 int main(int argc, char** argv)
 {
+    /*
+     * The coredump writer is this executable itself. It has to return before
+     * GoogleTest looks at the command line, which holds the options of the
+     * writer instead of the options of a test run.
+     */
+    if (appbox::test::RunCoredumpWriterIfRequested())
+    {
+        return 0;
+    }
+
     std::vector<char*> arguments(argv, argv + argc);
     TakeLoaderPath(arguments);
 
+    appbox::test::TestTimeoutConfig timeout_config;
+    appbox::test::LoadTestTimeoutFromEnvironment(timeout_config);
+    appbox::test::LoadTestTimeoutFromCommandLine(timeout_config);
+
     auto count = static_cast<int>(arguments.size());
     testing::InitGoogleTest(&count, arguments.data());
-    return RUN_ALL_TESTS();
+
+    appbox::test::InstallTestTimeoutHook(timeout_config);
+
+    const int result = RUN_ALL_TESTS();
+    appbox::test::StopTestTimeoutHook();
+    return result;
 }

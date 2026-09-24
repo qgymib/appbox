@@ -137,6 +137,12 @@ private:
 
     /**
      * @brief Show the about dialog.
+     *
+     * The dialog presents the information which was compiled into the binary:
+     * the one sentence summary of the application, its version, the date and
+     * the git revision of the build and the versions of the linked third-party
+     * libraries.
+     *
      * @param[in] event Command event.
      */
     void OnAbout(wxCommandEvent& event);
