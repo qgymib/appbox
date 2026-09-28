@@ -36,5 +36,5 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          path: ./build/appbox-*.zip
+          path: ./build/Release/appbox-*.zip
           archive: false
