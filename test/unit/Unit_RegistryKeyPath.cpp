@@ -7,8 +7,8 @@
 TEST(UnitRegistryKeyPath, StripKeyPrefixExactMatch)
 {
     std::wstring relative = L"<invalid>";
-    ASSERT_TRUE(appbox::registry::StripKeyPrefix(L"\\REGISTRY\\USER\\S-1-5-21", L"\\REGISTRY\\USER\\S-1-5-21",
-                                                 relative));
+    ASSERT_TRUE(
+        appbox::registry::StripKeyPrefix(L"\\REGISTRY\\USER\\S-1-5-21", L"\\REGISTRY\\USER\\S-1-5-21", relative));
     ASSERT_EQ(relative, L"");
 }
 
@@ -19,7 +19,7 @@ TEST(UnitRegistryKeyPath, StripKeyPrefixChild)
 {
     std::wstring relative;
     ASSERT_TRUE(appbox::registry::StripKeyPrefix(L"\\REGISTRY\\USER\\S-1-5-21\\Software\\AppBox",
-                                                L"\\REGISTRY\\USER\\S-1-5-21", relative));
+                                                 L"\\REGISTRY\\USER\\S-1-5-21", relative));
     ASSERT_EQ(relative, L"Software\\AppBox");
 }
 
@@ -29,8 +29,8 @@ TEST(UnitRegistryKeyPath, StripKeyPrefixChild)
 TEST(UnitRegistryKeyPath, StripKeyPrefixIgnoreCase)
 {
     std::wstring relative;
-    ASSERT_TRUE(appbox::registry::StripKeyPrefix(L"\\registry\\user\\S-1-5-21\\Software",
-                                                 L"\\REGISTRY\\USER\\S-1-5-21", relative));
+    ASSERT_TRUE(appbox::registry::StripKeyPrefix(L"\\registry\\user\\S-1-5-21\\Software", L"\\REGISTRY\\USER\\S-1-5-21",
+                                                 relative));
     ASSERT_EQ(relative, L"Software");
 }
 
@@ -43,8 +43,8 @@ TEST(UnitRegistryKeyPath, StripKeyPrefixBoundary)
     ASSERT_FALSE(appbox::registry::StripKeyPrefix(L"\\REGISTRY\\USER\\S-1-5-212\\Software",
                                                   L"\\REGISTRY\\USER\\S-1-5-21", relative));
 
-    ASSERT_FALSE(appbox::registry::StripKeyPrefix(L"\\REGISTRY\\USERS-1-5-21", L"\\REGISTRY\\USER\\S-1-5-21",
-                                                   relative));
+    ASSERT_FALSE(
+        appbox::registry::StripKeyPrefix(L"\\REGISTRY\\USERS-1-5-21", L"\\REGISTRY\\USER\\S-1-5-21", relative));
 }
 
 /**
@@ -56,8 +56,8 @@ TEST(UnitRegistryKeyPath, StripKeyPrefixOtherUser)
     ASSERT_FALSE(appbox::registry::StripKeyPrefix(L"\\REGISTRY\\USER\\S-1-5-21-OTHER\\Software",
                                                   L"\\REGISTRY\\USER\\S-1-5-21-MINE", relative));
 
-    ASSERT_FALSE(appbox::registry::StripKeyPrefix(L"\\REGISTRY\\MACHINE\\Software", L"\\REGISTRY\\USER\\S-1-5-21",
-                                                   relative));
+    ASSERT_FALSE(
+        appbox::registry::StripKeyPrefix(L"\\REGISTRY\\MACHINE\\Software", L"\\REGISTRY\\USER\\S-1-5-21", relative));
 }
 
 /**
@@ -75,8 +75,8 @@ TEST(UnitRegistryKeyPath, StripKeyPrefixLongerPrefix)
 TEST(UnitRegistryKeyPath, StripKeyPrefixTrailingSeparator)
 {
     std::wstring relative;
-    ASSERT_TRUE(appbox::registry::StripKeyPrefix(L"\\REGISTRY\\USER\\S-1-5-21\\Software\\", L"\\REGISTRY\\USER\\S-1-5-21",
-                                                 relative));
+    ASSERT_TRUE(appbox::registry::StripKeyPrefix(L"\\REGISTRY\\USER\\S-1-5-21\\Software\\",
+                                                 L"\\REGISTRY\\USER\\S-1-5-21", relative));
     ASSERT_EQ(relative, L"Software\\");
 }
 

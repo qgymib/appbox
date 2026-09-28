@@ -18,7 +18,7 @@ namespace
 std::wstring UniqueFragment()
 {
     static unsigned counter = 0;
-    const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto      ticks = std::chrono::steady_clock::now().time_since_epoch().count();
     return std::to_wstring(ticks) + L"-" + std::to_wstring(++counter);
 }
 
@@ -89,8 +89,7 @@ std::vector<unsigned char> Utf16Le(const std::wstring& text)
  * @param[in] name Name of the value.
  * @return The entry, null when it does not exist.
  */
-const appbox::RegFileEntry* FindEntry(const std::vector<appbox::RegFileEntry>& entries,
-                                      const std::wstring& name)
+const appbox::RegFileEntry* FindEntry(const std::vector<appbox::RegFileEntry>& entries, const std::wstring& name)
 {
     for (const auto& entry : entries)
     {
@@ -103,35 +102,34 @@ const appbox::RegFileEntry* FindEntry(const std::vector<appbox::RegFileEntry>& e
 }
 
 /** Text of a registry file which uses every supported data form. */
-const wchar_t* const kSampleText =
-    L"Windows Registry Editor Version 5.00\r\n"
-    L"\r\n"
-    L"; a comment\r\n"
-    L"[HKEY_CURRENT_USER\\Software\\Vendor]\r\n"
-    L"@=\"default\"\r\n"
-    L"\"Name\"=\"App\"\r\n"
-    L"\"Count\"=dword:0000001e\r\n"
-    L"\"Small\"=dword:1e\r\n"
-    L"\"Multi\"=hex(7):6f,00,6e,00,65,00,00,00,74,00,77,00,6f,00,00,00,00,00\r\n"
-    L"\"Wide\"=hex(b):01,00,00,00,00,00,00,00\r\n"
-    L"\"Expand\"=hex(2):25,00,50,00,41,00,54,00,48,00,25,00,00,00\r\n"
-    L"\"Text\"=hex(1):61,00,00,00\r\n"
-    L"\"Raw\"=hex:01,02\r\n"
-    L"\"Empty\"=hex(0):\r\n"
-    L"\"Blob\"=hex:01,02,\\\r\n"
-    L"  03,04\r\n"
-    L"\"Gone\"=-\r\n"
-    L"[HKEY_CURRENT_USER\\Software\\Temp]\r\n"
-    L"[-HKEY_CURRENT_USER\\Software\\Temp]\r\n"
-    L"[HKLM\\Software\\Legacy]\r\n"
-    L"\"Path\"=\"C:\\\\App\\\\\"\r\n";
+const wchar_t* const kSampleText = L"Windows Registry Editor Version 5.00\r\n"
+                                   L"\r\n"
+                                   L"; a comment\r\n"
+                                   L"[HKEY_CURRENT_USER\\Software\\Vendor]\r\n"
+                                   L"@=\"default\"\r\n"
+                                   L"\"Name\"=\"App\"\r\n"
+                                   L"\"Count\"=dword:0000001e\r\n"
+                                   L"\"Small\"=dword:1e\r\n"
+                                   L"\"Multi\"=hex(7):6f,00,6e,00,65,00,00,00,74,00,77,00,6f,00,00,00,00,00\r\n"
+                                   L"\"Wide\"=hex(b):01,00,00,00,00,00,00,00\r\n"
+                                   L"\"Expand\"=hex(2):25,00,50,00,41,00,54,00,48,00,25,00,00,00\r\n"
+                                   L"\"Text\"=hex(1):61,00,00,00\r\n"
+                                   L"\"Raw\"=hex:01,02\r\n"
+                                   L"\"Empty\"=hex(0):\r\n"
+                                   L"\"Blob\"=hex:01,02,\\\r\n"
+                                   L"  03,04\r\n"
+                                   L"\"Gone\"=-\r\n"
+                                   L"[HKEY_CURRENT_USER\\Software\\Temp]\r\n"
+                                   L"[-HKEY_CURRENT_USER\\Software\\Temp]\r\n"
+                                   L"[HKLM\\Software\\Legacy]\r\n"
+                                   L"\"Path\"=\"C:\\\\App\\\\\"\r\n";
 
 } // namespace
 
 TEST(UnitRegFile, ParsesEverySupportedDataForm)
 {
     std::vector<appbox::RegFileEntry> entries;
-    std::string error;
+    std::string                       error;
 
     ASSERT_TRUE(appbox::ParseRegText(kSampleText, entries, error)) << error;
     ASSERT_EQ(entries.size(), 17u);
@@ -222,7 +220,7 @@ TEST(UnitRegFile, ParsesEverySupportedDataForm)
 TEST(UnitRegFile, ParsesEscapedStrings)
 {
     std::vector<appbox::RegFileEntry> entries;
-    std::string error;
+    std::string                       error;
 
     const std::wstring text = L"REGEDIT4\r\n"
                               L"[HKEY_CURRENT_USER\\Software\\Vendor]\r\n"
@@ -239,7 +237,7 @@ TEST(UnitRegFile, ParsesEscapedStrings)
 TEST(UnitRegFile, ParsesKeyPathsSplitOverSeveralLines)
 {
     std::vector<appbox::RegFileEntry> entries;
-    std::string error;
+    std::string                       error;
 
     const std::wstring text = L"Windows Registry Editor Version 5.00\r\n"
                               L"[HKEY_CURRENT_USER\\Soft\\\r\n"
@@ -254,7 +252,7 @@ TEST(UnitRegFile, ParsesKeyPathsSplitOverSeveralLines)
 TEST(UnitRegFile, RejectsMalformedFiles)
 {
     std::vector<appbox::RegFileEntry> entries;
-    std::string error;
+    std::string                       error;
 
     EXPECT_FALSE(appbox::ParseRegText(L"", entries, error));
     EXPECT_FALSE(error.empty());
@@ -317,14 +315,14 @@ TEST(UnitRegFile, LoadsUtf16AndUtf8Files)
     const auto utf16_path = folder.File(L"sample16.reg");
     WriteBytes(utf16_path, Utf16Le(text));
 
-    const auto utf8_path = folder.File(L"sample8.reg");
+    const auto        utf8_path = folder.File(L"sample8.reg");
     const std::string utf8_text = "Windows Registry Editor Version 5.00\r\n"
                                   "[HKEY_CURRENT_USER\\Software\\Vendor]\r\n"
                                   "\"Name\"=\"\xC3\x84pp\"\r\n";
     WriteBytes(utf8_path, std::vector<unsigned char>(utf8_text.begin(), utf8_text.end()));
 
     std::vector<appbox::RegFileEntry> entries;
-    std::string error;
+    std::string                       error;
 
     ASSERT_TRUE(appbox::LoadRegFile(utf16_path.wstring(), entries, error)) << error;
     ASSERT_EQ(entries.size(), 2u);
@@ -342,7 +340,7 @@ TEST(UnitRegFile, LoadReportsAMissingFile)
     TempDir folder;
 
     std::vector<appbox::RegFileEntry> entries;
-    std::string error;
+    std::string                       error;
 
     EXPECT_FALSE(appbox::LoadRegFile(folder.File(L"missing.reg").wstring(), entries, error));
     EXPECT_FALSE(error.empty());
@@ -351,9 +349,9 @@ TEST(UnitRegFile, LoadReportsAMissingFile)
 
 TEST(UnitRegFile, MergeCreatesKeysAndValues)
 {
-    appbox::RegistryModel model;
+    appbox::RegistryModel             model;
     std::vector<appbox::RegFileEntry> entries;
-    std::string error;
+    std::string                       error;
 
     ASSERT_TRUE(appbox::ParseRegText(kSampleText, entries, error)) << error;
     ASSERT_TRUE(appbox::MergeRegFile(model, entries, error)) << error;
@@ -374,16 +372,15 @@ TEST(UnitRegFile, MergeCreatesKeysAndValues)
 TEST(UnitRegFile, MergeKeepsTheIsolationModesOfTheModel)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Software\\Vendor", error)) << error;
-    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Name",
-                               appbox::RegistryValueType::String, appbox::RegistryStringData(L"Old"), error))
+    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Name", appbox::RegistryValueType::String,
+                               appbox::RegistryStringData(L"Old"), error))
         << error;
-    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor",
-                                      appbox::RegistryIsolation::Hide));
-    ASSERT_TRUE(model.SetValueIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Name",
-                                        appbox::RegistryIsolation::Full));
+    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::Hide));
+    ASSERT_TRUE(
+        model.SetValueIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Name", appbox::RegistryIsolation::Full));
 
     std::vector<appbox::RegFileEntry> entries;
     ASSERT_TRUE(appbox::ParseRegText(L"Windows Registry Editor Version 5.00\r\n"
@@ -414,11 +411,11 @@ TEST(UnitRegFile, MergeKeepsTheIsolationModesOfTheModel)
 TEST(UnitRegFile, MergeRemovesKeysAndValues)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Software\\Vendor\\App", error)) << error;
-    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Name",
-                               appbox::RegistryValueType::String, {}, error))
+    ASSERT_TRUE(
+        model.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Name", appbox::RegistryValueType::String, {}, error))
         << error;
 
     std::vector<appbox::RegFileEntry> entries;
@@ -440,7 +437,7 @@ TEST(UnitRegFile, MergeRemovesKeysAndValues)
 TEST(UnitRegFile, MergeRejectsTheRemovalOfARootKeyWithoutChangingTheModel)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Software", error)) << error;
 

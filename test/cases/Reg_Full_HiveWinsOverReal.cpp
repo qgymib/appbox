@@ -63,7 +63,7 @@ TEST_F(Reg, Full_HiveWinsOverReal)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegReadValue::Req req;
-    req.Key   = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey);
     req.Value = "TestValue";
 
     const auto rsp = ProbeRegReadValue.Call(req, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
@@ -72,10 +72,10 @@ TEST_F(Reg, Full_HiveWinsOverReal)
     EXPECT_EQ(rsp.data, hive_data);
 
     /* The host value is still the one the test wrote. */
-    HKEY  key = nullptr;
-    DWORD type = 0;
+    HKEY    key = nullptr;
+    DWORD   type = 0;
     wchar_t buffer[64] = {};
-    DWORD size = sizeof(buffer);
+    DWORD   size = sizeof(buffer);
     ASSERT_EQ(RegOpenKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, KEY_QUERY_VALUE, &key), ERROR_SUCCESS);
     ASSERT_EQ(RegQueryValueExW(key, L"TestValue", nullptr, &type, reinterpret_cast<LPBYTE>(buffer), &size),
               ERROR_SUCCESS);

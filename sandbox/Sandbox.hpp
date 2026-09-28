@@ -5,6 +5,7 @@
 #include "utils/PipeClient.hpp"
 #include "filesystem/IsolationTable.hpp"
 #include "filesystem/Resolve.hpp"
+#include "network/DnsTable.hpp"
 #include "Config.hpp"
 #include <nlohmann/json.hpp>
 
@@ -66,6 +67,25 @@ struct Sandbox
      * `Full` for a file) and the host filesystem stays visible.
      */
     std::wstring wFilesystemIsolationDOSPath;
+
+    /**
+     * @brief Network isolation file path (DOS style).
+     *
+     * The file carries the DNS redirections of the network workspace. An empty
+     * path or a missing file means that no name was redirected, so every name
+     * is resolved by the host.
+     */
+    std::wstring wNetworkIsolationDOSPath;
+
+    /**
+     * @brief DNS redirections of the network isolation.
+     *
+     * The table is filled by the network isolation module from the isolation
+     * file of the injected configuration and answers the name resolution of
+     * the sandboxed application: a name it knows is answered with the address
+     * of its entry instead of being asked at the host.
+     */
+    network::DnsTable dns_table;
 
     /**
      * @brief Path to 32-bit sandbox dll path. Encoding in UTF-8.

@@ -35,7 +35,7 @@ constexpr const wchar_t* kTestDumpDirEnv = L"APPBOX_TEST_DUMP_DIR";
 struct TestTimeoutConfig
 {
     int          test_timeout_seconds = kDefaultTestTimeoutSeconds; /* Timeout of one test case, 0 disables it. */
-    std::wstring test_dump_dir;                                     /* Directory of the coredumps, empty for the default. */
+    std::wstring test_dump_dir; /* Directory of the coredumps, empty for the default. */
 };
 
 /**

@@ -43,11 +43,8 @@ const wxColour kMutedTextColour(0x5A, 0x5A, 0x5A);
 
 } // namespace
 
-PlaceholderPanel::PlaceholderPanel(wxWindow* parent, const wxString& module_name,
-                                   const wxString& description)
-    : wxPanel(parent, wxID_ANY),
-      module_name_(module_name),
-      description_(description)
+PlaceholderPanel::PlaceholderPanel(wxWindow* parent, const wxString& module_name, const wxString& description)
+    : wxPanel(parent, wxID_ANY), module_name_(module_name), description_(description)
 {
     SetBackgroundStyle(wxBG_STYLE_PAINT);
     Bind(wxEVT_PAINT, &PlaceholderPanel::OnPaint, this);
@@ -84,9 +81,8 @@ void PlaceholderPanel::OnPaint(wxPaintEvent&)
     dc.SetPen(wxPen(kFrameBorderColour));
     dc.DrawRectangle(kMargin, kFrameTop, frame_width, frame_height);
 
-    const auto icon = wxArtProvider::GetBitmap(wxART_INFORMATION, wxART_OTHER,
-                                               wxSize(kIconSize, kIconSize));
-    const int content_top = kFrameTop + (frame_height - (kIconSize + 52)) / 2;
+    const auto icon = wxArtProvider::GetBitmap(wxART_INFORMATION, wxART_OTHER, wxSize(kIconSize, kIconSize));
+    const int  content_top = kFrameTop + (frame_height - (kIconSize + 52)) / 2;
 
     dc.DrawBitmap(icon, kMargin + (frame_width - kIconSize) / 2, content_top, true);
 
@@ -99,6 +95,5 @@ void PlaceholderPanel::OnPaint(wxPaintEvent&)
     dc.SetFont(wxFont(wxFontInfo(9)));
     dc.SetTextForeground(kMutedTextColour);
     const wxString hint = "This isolation domain is reserved for a future release.";
-    dc.DrawText(hint, kMargin + (frame_width - dc.GetTextExtent(hint).GetWidth()) / 2,
-                content_top + kIconSize + 36);
+    dc.DrawText(hint, kMargin + (frame_width - dc.GetTextExtent(hint).GetWidth()) / 2, content_top + kIconSize + 36);
 }

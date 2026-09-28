@@ -45,8 +45,7 @@ bool Contains(const std::wstring& text, const std::wstring& fragment)
  */
 TEST(TracerReport, TheHeaderDescribesTheRun)
 {
-    const std::wstring text =
-        appbox::tracer::FormatReport(CompletedHeader(), {L"ntdll!NtClose"}, false);
+    const std::wstring text = appbox::tracer::FormatReport(CompletedHeader(), { L"ntdll!NtClose" }, false);
 
     EXPECT_TRUE(Contains(text, L"AppBoxTracer report"));
     EXPECT_TRUE(Contains(text, L"program     : C:\\Windows\\System32\\cmd.exe"));
@@ -63,10 +62,8 @@ TEST(TracerReport, TheHeaderDescribesTheRun)
  */
 TEST(TracerReport, FunctionsAreGroupedSortedAndUnique)
 {
-    const std::vector<std::wstring> names = {L"ntdll!NtOpenKey",
-                                             L"kernel32!CreateFileW",
-                                             L"ntdll!NtClose",
-                                             L"kernel32!CreateFileW"};
+    const std::vector<std::wstring> names = { L"ntdll!NtOpenKey", L"kernel32!CreateFileW", L"ntdll!NtClose",
+                                              L"kernel32!CreateFileW" };
 
     const std::wstring text = appbox::tracer::FormatReport(CompletedHeader(), names, false);
 
@@ -93,10 +90,8 @@ TEST(TracerReport, FunctionsAreGroupedSortedAndUnique)
  */
 TEST(TracerReport, EveryAliasOfAnAddressIsReported)
 {
-    const std::vector<std::wstring> names = {L"ntdll!NtClose",
-                                             L"ntdll!ZwClose",
-                                             L"kernel32!HeapAlloc",
-                                             L"kernelbase!HeapAlloc"};
+    const std::vector<std::wstring> names = { L"ntdll!NtClose", L"ntdll!ZwClose", L"kernel32!HeapAlloc",
+                                              L"kernelbase!HeapAlloc" };
 
     const std::wstring text = appbox::tracer::FormatReport(CompletedHeader(), names, false);
 
@@ -112,12 +107,28 @@ TEST(TracerReport, EveryAliasOfAnAddressIsReported)
  */
 TEST(TracerReport, CategoriesCanBeAnnotated)
 {
-    const std::vector<std::wstring> names = {L"ntdll!NtDeviceIoControlFile", L"ntdll!NtOpenKey"};
+    const std::vector<std::wstring> names = { L"ntdll!NtDeviceIoControlFile", L"ntdll!NtOpenKey" };
 
     const std::wstring text = appbox::tracer::FormatReport(CompletedHeader(), names, true);
 
     EXPECT_TRUE(Contains(text, L"  ntdll!NtDeviceIoControlFile  [file, network]\n"));
     EXPECT_TRUE(Contains(text, L"  ntdll!NtOpenKey  [registry]\n"));
+}
+
+/**
+ * @brief A Win32 wrapper carries no annotation, because it is not part of the
+ *        default scope; a name which is in the scope is annotated with the
+ *        domain it belongs to.
+ */
+TEST(TracerReport, WrappersAreNotAnnotated)
+{
+    const std::vector<std::wstring> names = { L"kernel32!CreateFileW", L"ntdll!NtCreateFile", L"ws2_32!GetAddrInfoW" };
+
+    const std::wstring text = appbox::tracer::FormatReport(CompletedHeader(), names, true);
+
+    EXPECT_TRUE(Contains(text, L"  kernel32!CreateFileW\n"));
+    EXPECT_TRUE(Contains(text, L"  ntdll!NtCreateFile  [file]\n"));
+    EXPECT_TRUE(Contains(text, L"  ws2_32!GetAddrInfoW  [network]\n"));
 }
 
 /**
@@ -139,7 +150,7 @@ TEST(TracerReport, AnAbortedRunIsMarked)
     appbox::tracer::TraceReportHeader header = CompletedHeader();
     header.status = L"aborted: the time limit of 600 seconds was reached";
 
-    const std::wstring text = appbox::tracer::FormatReport(header, {L"ntdll!NtClose"}, false);
+    const std::wstring text = appbox::tracer::FormatReport(header, { L"ntdll!NtClose" }, false);
 
     EXPECT_TRUE(Contains(text, L"result      : aborted: the time limit of 600 seconds was reached"));
 }
@@ -150,12 +161,10 @@ TEST(TracerReport, AnAbortedRunIsMarked)
  */
 TEST(TracerReport, ModuleNamesComeFromTheImagePath)
 {
-    EXPECT_EQ(appbox::tracer::ModuleNameFromImagePath(L"C:\\Windows\\System32\\KERNEL32.DLL"),
-              L"kernel32");
+    EXPECT_EQ(appbox::tracer::ModuleNameFromImagePath(L"C:\\Windows\\System32\\KERNEL32.DLL"), L"kernel32");
     EXPECT_EQ(appbox::tracer::ModuleNameFromImagePath(L"ntdll.dll"), L"ntdll");
     EXPECT_EQ(appbox::tracer::ModuleNameFromImagePath(L"cmd.exe"), L"cmd");
-    EXPECT_EQ(appbox::tracer::ModuleNameFromImagePath(L"C:\\dir\\name.without.extension"),
-              L"name.without");
+    EXPECT_EQ(appbox::tracer::ModuleNameFromImagePath(L"C:\\dir\\name.without.extension"), L"name.without");
     EXPECT_EQ(appbox::tracer::ModuleNameFromImagePath(L"KernelBase"), L"kernelbase");
     EXPECT_TRUE(appbox::tracer::ModuleNameFromImagePath(L"").empty());
 }

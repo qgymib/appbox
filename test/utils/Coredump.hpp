@@ -22,9 +22,9 @@ constexpr const wchar_t* kCoredumpTagOption = L"appbox-coredump-tag";
  */
 struct CoredumpRequest
 {
-    unsigned long        pid = 0;      /* Process the dump starts at. */
-    std::filesystem::path dump_dir;    /* Directory the dumps are written to. */
-    std::wstring         tag;          /* Name of the test, part of the file names. */
+    unsigned long         pid = 0;  /* Process the dump starts at. */
+    std::filesystem::path dump_dir; /* Directory the dumps are written to. */
+    std::wstring          tag;      /* Name of the test, part of the file names. */
 };
 
 /**

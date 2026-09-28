@@ -71,9 +71,9 @@ private:
      */
     void OnOk(wxCommandEvent& event);
 
-    StartupTreeModel*  tree_model_ = nullptr;
-    wxDataViewCtrl*    tree_ = nullptr;
-    wxButton*          ok_button_ = nullptr;
+    StartupTreeModel*   tree_model_ = nullptr;
+    wxDataViewCtrl*     tree_ = nullptr;
+    wxButton*           ok_button_ = nullptr;
     appbox::MainProgram selection_;
 };
 

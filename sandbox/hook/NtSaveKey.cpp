@@ -8,7 +8,7 @@ T_NtSaveKey sys_NtSaveKey = nullptr;
 static nlohmann::json NtSaveKeyLogParam(HANDLE KeyHandle, HANDLE FileHandle)
 {
     nlohmann::json json;
-    json["KeyHandle"]  = appbox::PointerToString(KeyHandle);
+    json["KeyHandle"] = appbox::PointerToString(KeyHandle);
     json["FileHandle"] = appbox::PointerToString(FileHandle);
     return json;
 }
@@ -31,7 +31,7 @@ static NTSTATUS Hook_NtSaveKey(HANDLE KeyHandle, HANDLE FileHandle)
 {
     logger.Log(KeyHandle, FileHandle);
 
-    std::wstring view_path;
+    std::wstring                       view_path;
     const appbox::registry::HandleView view = appbox::registry::Hive::MapHandleView(KeyHandle, view_path);
     if (view == appbox::registry::HandleView::NotIsolated)
     {
@@ -44,9 +44,9 @@ static NTSTATUS Hook_NtSaveKey(HANDLE KeyHandle, HANDLE FileHandle)
         return sys_NtSaveKey(KeyHandle, FileHandle);
     }
 
-    return appbox::registry::Hive::SaveIsolatedKey(
-        view == appbox::registry::HandleView::HiveHandle ? KeyHandle : nullptr, view_path, relative, FileHandle,
-        REG_STANDARD_FORMAT, false);
+    return appbox::registry::Hive::SaveIsolatedKey(view == appbox::registry::HandleView::HiveHandle ? KeyHandle
+                                                                                                    : nullptr,
+                                                   view_path, relative, FileHandle, REG_STANDARD_FORMAT, false);
 }
 
 static void LoadNtSaveKey()

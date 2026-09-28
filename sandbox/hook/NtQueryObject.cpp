@@ -48,8 +48,8 @@ static const ULONG kObjectNameBufferSize = 0x2000;
 static NTSTATUS QueryObjectNameIsolated(HANDLE Handle, PVOID ObjectInformation, ULONG ObjectInformationLength,
                                         PULONG ReturnLength)
 {
-    BYTE  local[kObjectNameBufferSize];
-    ULONG needed = 0;
+    BYTE     local[kObjectNameBufferSize];
+    ULONG    needed = 0;
     NTSTATUS st = sys_NtQueryObject(Handle, ObjectNameInformation, local, kObjectNameBufferSize, &needed);
     if (!NT_SUCCESS(st) || needed < sizeof(OBJECT_NAME_INFORMATION))
     {
@@ -95,9 +95,9 @@ static NTSTATUS QueryObjectNameIsolated(HANDLE Handle, PVOID ObjectInformation, 
     }
 
     /* Rebuild the record with the translated name behind the string header. */
-    const ULONG name_offset   = sizeof(UNICODE_STRING);
-    const ULONG new_name_len  = (ULONG)(view_name.size() * sizeof(WCHAR));
-    const ULONG new_needed    = name_offset + new_name_len;
+    const ULONG name_offset = sizeof(UNICODE_STRING);
+    const ULONG new_name_len = (ULONG)(view_name.size() * sizeof(WCHAR));
+    const ULONG new_needed = name_offset + new_name_len;
 
     if (ReturnLength != nullptr)
     {
@@ -109,9 +109,9 @@ static NTSTATUS QueryObjectNameIsolated(HANDLE Handle, PVOID ObjectInformation, 
     }
 
     auto* out = reinterpret_cast<OBJECT_NAME_INFORMATION*>(ObjectInformation);
-    out->Name.Length         = (USHORT)new_name_len;
-    out->Name.MaximumLength  = (USHORT)new_name_len;
-    out->Name.Buffer         = reinterpret_cast<PWSTR>(reinterpret_cast<BYTE*>(ObjectInformation) + name_offset);
+    out->Name.Length = (USHORT)new_name_len;
+    out->Name.MaximumLength = (USHORT)new_name_len;
+    out->Name.Buffer = reinterpret_cast<PWSTR>(reinterpret_cast<BYTE*>(ObjectInformation) + name_offset);
     memcpy(out->Name.Buffer, view_name.c_str(), new_name_len);
     return STATUS_SUCCESS;
 }
@@ -135,8 +135,7 @@ static NTSTATUS Hook_NtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS Objec
         return QueryObjectNameIsolated(Handle, ObjectInformation, ObjectInformationLength, ReturnLength);
     }
 
-    return sys_NtQueryObject(Handle, ObjectInformationClass, ObjectInformation, ObjectInformationLength,
-                             ReturnLength);
+    return sys_NtQueryObject(Handle, ObjectInformationClass, ObjectInformation, ObjectInformationLength, ReturnLength);
 }
 
 static void LoadNtQueryObject()

@@ -13,15 +13,15 @@ namespace
 /** Command line name of one traced category. */
 struct CategoryNameEntry
 {
-    Category category;   ///< Category value.
-    const wchar_t* name; ///< Name used on the command line and in the report.
+    Category       category; ///< Category value.
+    const wchar_t* name;     ///< Name used on the command line and in the report.
 };
 
 /** Categories in the order they are documented and printed. */
 constexpr CategoryNameEntry kCategoryNames[] = {
-    {Category::File, L"file"},
-    {Category::Registry, L"registry"},
-    {Category::Network, L"network"},
+    { Category::File,     L"file"     },
+    { Category::Registry, L"registry" },
+    { Category::Network,  L"network"  },
 };
 
 /**
@@ -117,7 +117,7 @@ bool ParseCategories(const std::wstring& text, std::vector<Category>& categories
         }
 
         const std::wstring name = ToLower(trimmed);
-        bool found = false;
+        bool               found = false;
         for (const auto& entry : kCategoryNames)
         {
             if (name == entry.name)
@@ -151,7 +151,8 @@ bool ParseCategories(const std::wstring& text, std::vector<Category>& categories
 
 std::wstring UsageText()
 {
-    return L"AppBoxTracer - report the functions of ntdll, kernel32 and kernelbase a program uses.\n"
+    return L"AppBoxTracer - report the lowest level entry points of the filesystem, the\n"
+           L"registry and the network which a program uses.\n"
            L"\n"
            L"Usage:\n"
            L"  AppBoxTracer [options] <program> [program arguments...]\n"
@@ -163,8 +164,9 @@ std::wstring UsageText()
            L"                          standard output.\n"
            L"  --categories <list>     Comma separated categories to trace: file, registry,\n"
            L"                          network. Default: all three.\n"
-           L"  --all-exports           Trace every executable export of the three modules\n"
-           L"                          instead of the categories. Much slower.\n"
+           L"  --all-exports           Trace every executable export of the traced modules,\n"
+           L"                          which includes the Win32 wrappers, instead of the\n"
+           L"                          categories. Much slower.\n"
            L"  --list-scope            Print the functions which would be armed and exit.\n"
            L"  --with-categories       Annotate every reported function with its categories.\n"
            L"  --timeout <seconds>     Hard limit of the whole run. Default: 600.\n"
@@ -187,14 +189,14 @@ ParseResult ParseOptions(const std::vector<std::wstring>& arguments, Options& op
     std::string output;
     std::string keep_raw;
     std::string categories;
-    bool all_exports = false;
-    bool list_scope = false;
-    bool with_categories = false;
-    unsigned timeout_seconds = kDefaultTimeoutSeconds;
-    unsigned stall_timeout_seconds = kDefaultStallTimeoutSeconds;
+    bool        all_exports = false;
+    bool        list_scope = false;
+    bool        with_categories = false;
+    unsigned    timeout_seconds = kDefaultTimeoutSeconds;
+    unsigned    stall_timeout_seconds = kDefaultStallTimeoutSeconds;
 
-    CLI::App app{"Report the file, registry and network functions of ntdll, kernel32 and "
-                 "kernelbase which a program and its child processes use."};
+    CLI::App app{ "Report the lowest level filesystem, registry and network entry points which a "
+                  "program and its child processes use." };
     app.prefix_command();
     app.add_option("--cdb", cdb, "Path of cdb.exe; searched when omitted");
     app.add_option("--output", output, "UTF-8 report file; the standard output when omitted");
@@ -224,36 +226,35 @@ ParseResult ParseOptions(const std::vector<std::wstring>& arguments, Options& op
     }
     catch (const CLI::CallForHelp&)
     {
-        return {ParseStatus::Help, UsageText()};
+        return { ParseStatus::Help, UsageText() };
     }
     catch (const CLI::ParseError& error)
     {
-        return {ParseStatus::Error,
-                L"invalid command line: " + appbox::UTF8ToWide(error.what()) + L"\n\n" + UsageText()};
+        return { ParseStatus::Error,
+                 L"invalid command line: " + appbox::UTF8ToWide(error.what()) + L"\n\n" + UsageText() };
     }
 
     if (all_exports && !categories.empty())
     {
-        return {ParseStatus::Error,
-                std::wstring(L"--all-exports and --categories can not be combined\n\n") + UsageText()};
+        return { ParseStatus::Error,
+                 std::wstring(L"--all-exports and --categories can not be combined\n\n") + UsageText() };
     }
 
     if (timeout_seconds == 0 || stall_timeout_seconds == 0)
     {
-        return {ParseStatus::Error,
-                std::wstring(L"--timeout and --stall-timeout must be at least 1 second\n\n") + UsageText()};
+        return { ParseStatus::Error,
+                 std::wstring(L"--timeout and --stall-timeout must be at least 1 second\n\n") + UsageText() };
     }
 
     const auto remaining = app.remaining();
     if (remaining.empty())
     {
-        return {ParseStatus::Error, std::wstring(L"no program given\n\n") + UsageText()};
+        return { ParseStatus::Error, std::wstring(L"no program given\n\n") + UsageText() };
     }
 
     options.cdb_path = cdb.empty() ? std::filesystem::path() : std::filesystem::path(CLI::widen(cdb));
     options.output_path = output.empty() ? std::filesystem::path() : std::filesystem::path(CLI::widen(output));
-    options.keep_raw_path =
-        keep_raw.empty() ? std::filesystem::path() : std::filesystem::path(CLI::widen(keep_raw));
+    options.keep_raw_path = keep_raw.empty() ? std::filesystem::path() : std::filesystem::path(CLI::widen(keep_raw));
     options.all_exports = all_exports;
     options.list_scope = list_scope;
     options.with_categories = with_categories;
@@ -269,22 +270,22 @@ ParseResult ParseOptions(const std::vector<std::wstring>& arguments, Options& op
     {
         /* Every export is the scope, so no category is selected. */
         options.categories.clear();
-        return {ParseStatus::Ok, {}};
+        return { ParseStatus::Ok, {} };
     }
 
     if (categories.empty())
     {
         options.categories = AllCategories();
-        return {ParseStatus::Ok, {}};
+        return { ParseStatus::Ok, {} };
     }
 
     std::wstring error;
     if (!ParseCategories(CLI::widen(categories), options.categories, error))
     {
-        return {ParseStatus::Error, error + L"\n\n" + UsageText()};
+        return { ParseStatus::Error, error + L"\n\n" + UsageText() };
     }
 
-    return {ParseStatus::Ok, {}};
+    return { ParseStatus::Ok, {} };
 }
 
 } // namespace appbox::tracer

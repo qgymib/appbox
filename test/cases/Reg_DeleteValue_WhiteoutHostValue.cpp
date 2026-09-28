@@ -33,7 +33,8 @@ TEST_F(Reg, DeleteValue_WhiteoutHostValue)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\DeleteValue_WhiteoutHostValue_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey =
+        L"Software\\AppBoxTest\\DeleteValue_WhiteoutHostValue_" + appbox::UTF8ToWide(appbox::RandomString(8));
 
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
@@ -41,7 +42,7 @@ TEST_F(Reg, DeleteValue_WhiteoutHostValue)
     ASSERT_TRUE(real_key.SetString(L"KeptValue", L"kept"));
 
     ProtocolRegDeleteValue::Req req;
-    req.Key   = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey);
     req.Value = "HostValue";
 
     const auto rsp = ProbeRegDeleteValue.Call(req, GetCWD(), config).get<ProtocolRegDeleteValue::Rsp>();

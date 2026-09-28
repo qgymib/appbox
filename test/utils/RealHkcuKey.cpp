@@ -39,8 +39,8 @@ bool appbox::test::RealHkcuKey::SetDword(const std::wstring& name, DWORD value)
         return false;
     }
 
-    return RegSetValueExW(key_, name.c_str(), 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value))
-           == ERROR_SUCCESS;
+    return RegSetValueExW(key_, name.c_str(), 0, REG_DWORD, reinterpret_cast<const BYTE*>(&value), sizeof(value)) ==
+           ERROR_SUCCESS;
 }
 
 HKEY appbox::test::RealHkcuKey::get() const

@@ -14,7 +14,7 @@ namespace
  */
 std::vector<std::wstring> CommandLine(std::initializer_list<std::wstring> values)
 {
-    std::vector<std::wstring> arguments{L"AppBoxTracer.exe"};
+    std::vector<std::wstring> arguments{ L"AppBoxTracer.exe" };
     arguments.insert(arguments.end(), values);
     return arguments;
 }
@@ -40,7 +40,7 @@ bool Contains(const std::wstring& text, const std::wstring& fragment)
 TEST(TracerOptions, HelpIsReportedWithoutAProgram)
 {
     appbox::tracer::Options options;
-    const auto result = appbox::tracer::ParseOptions(CommandLine({L"--help"}), options);
+    const auto              result = appbox::tracer::ParseOptions(CommandLine({ L"--help" }), options);
 
     EXPECT_EQ(result.status, appbox::tracer::ParseStatus::Help);
     EXPECT_TRUE(Contains(result.message, L"Usage:"));
@@ -52,7 +52,7 @@ TEST(TracerOptions, HelpIsReportedWithoutAProgram)
 TEST(TracerOptions, MissingProgramIsAnError)
 {
     appbox::tracer::Options options;
-    const auto result = appbox::tracer::ParseOptions(CommandLine({}), options);
+    const auto              result = appbox::tracer::ParseOptions(CommandLine({}), options);
 
     EXPECT_EQ(result.status, appbox::tracer::ParseStatus::Error);
     EXPECT_TRUE(Contains(result.message, L"no program given"));
@@ -65,8 +65,7 @@ TEST(TracerOptions, MissingProgramIsAnError)
 TEST(TracerOptions, ProgramAndArgumentsAreCollected)
 {
     appbox::tracer::Options options;
-    const auto result =
-        appbox::tracer::ParseOptions(CommandLine({L"cmd.exe", L"/c", L"echo", L"hi"}), options);
+    const auto result = appbox::tracer::ParseOptions(CommandLine({ L"cmd.exe", L"/c", L"echo", L"hi" }), options);
 
     EXPECT_EQ(result.status, appbox::tracer::ParseStatus::Ok);
     EXPECT_EQ(options.target_path.wstring(), L"cmd.exe");
@@ -83,7 +82,7 @@ TEST(TracerOptions, ProgramAndArgumentsAreCollected)
 TEST(TracerOptions, OptionsAfterTheProgramBelongToTheProgram)
 {
     appbox::tracer::Options options;
-    const auto result = appbox::tracer::ParseOptions(CommandLine({L"cmd.exe", L"--list-scope"}), options);
+    const auto result = appbox::tracer::ParseOptions(CommandLine({ L"cmd.exe", L"--list-scope" }), options);
 
     EXPECT_EQ(result.status, appbox::tracer::ParseStatus::Ok);
     EXPECT_FALSE(options.list_scope);
@@ -97,11 +96,11 @@ TEST(TracerOptions, OptionsAfterTheProgramBelongToTheProgram)
 TEST(TracerOptions, OptionsBeforeTheProgramAreParsed)
 {
     appbox::tracer::Options options;
-    const auto result = appbox::tracer::ParseOptions(
-        CommandLine({L"--cdb", L"C:\\dbg\\cdb.exe", L"--output", L"report.txt", L"--keep-raw",
-                     L"raw.txt", L"--with-categories", L"--list-scope", L"--timeout", L"42",
-                     L"--stall-timeout", L"7", L"cmd.exe", L"/c"}),
-        options);
+    const auto              result =
+        appbox::tracer::ParseOptions(CommandLine({ L"--cdb", L"C:\\dbg\\cdb.exe", L"--output", L"report.txt",
+                                                   L"--keep-raw", L"raw.txt", L"--with-categories", L"--list-scope",
+                                                   L"--timeout", L"42", L"--stall-timeout", L"7", L"cmd.exe", L"/c" }),
+                                     options);
 
     EXPECT_EQ(result.status, appbox::tracer::ParseStatus::Ok);
     EXPECT_EQ(options.cdb_path.wstring(), L"C:\\dbg\\cdb.exe");
@@ -123,7 +122,7 @@ TEST(TracerOptions, OptionsBeforeTheProgramAreParsed)
 TEST(TracerOptions, DefaultScopeIsEveryCategory)
 {
     appbox::tracer::Options options;
-    const auto result = appbox::tracer::ParseOptions(CommandLine({L"cmd.exe"}), options);
+    const auto              result = appbox::tracer::ParseOptions(CommandLine({ L"cmd.exe" }), options);
 
     EXPECT_EQ(result.status, appbox::tracer::ParseStatus::Ok);
     EXPECT_FALSE(options.all_exports);
@@ -137,8 +136,8 @@ TEST(TracerOptions, DefaultScopeIsEveryCategory)
 TEST(TracerOptions, CategoriesAreParsedAndDeduplicated)
 {
     appbox::tracer::Options options;
-    const auto result = appbox::tracer::ParseOptions(
-        CommandLine({L"--categories", L"network, file ,network", L"cmd.exe"}), options);
+    const auto              result =
+        appbox::tracer::ParseOptions(CommandLine({ L"--categories", L"network, file ,network", L"cmd.exe" }), options);
 
     EXPECT_EQ(result.status, appbox::tracer::ParseStatus::Ok);
     ASSERT_EQ(options.categories.size(), 2U);
@@ -152,8 +151,7 @@ TEST(TracerOptions, CategoriesAreParsedAndDeduplicated)
 TEST(TracerOptions, UnknownCategoryIsAnError)
 {
     appbox::tracer::Options options;
-    const auto result =
-        appbox::tracer::ParseOptions(CommandLine({L"--categories", L"files", L"cmd.exe"}), options);
+    const auto result = appbox::tracer::ParseOptions(CommandLine({ L"--categories", L"files", L"cmd.exe" }), options);
 
     EXPECT_EQ(result.status, appbox::tracer::ParseStatus::Error);
     EXPECT_TRUE(Contains(result.message, L"unknown category 'files'"));
@@ -165,8 +163,7 @@ TEST(TracerOptions, UnknownCategoryIsAnError)
 TEST(TracerOptions, EmptyCategoryListIsAnError)
 {
     appbox::tracer::Options options;
-    const auto result =
-        appbox::tracer::ParseOptions(CommandLine({L"--categories", L" , ", L"cmd.exe"}), options);
+    const auto result = appbox::tracer::ParseOptions(CommandLine({ L"--categories", L" , ", L"cmd.exe" }), options);
 
     EXPECT_EQ(result.status, appbox::tracer::ParseStatus::Error);
     EXPECT_TRUE(Contains(result.message, L"no category given"));
@@ -179,8 +176,8 @@ TEST(TracerOptions, EmptyCategoryListIsAnError)
 TEST(TracerOptions, AllExportsAndCategoriesConflict)
 {
     appbox::tracer::Options options;
-    const auto result = appbox::tracer::ParseOptions(
-        CommandLine({L"--all-exports", L"--categories", L"file", L"cmd.exe"}), options);
+    const auto              result =
+        appbox::tracer::ParseOptions(CommandLine({ L"--all-exports", L"--categories", L"file", L"cmd.exe" }), options);
 
     EXPECT_EQ(result.status, appbox::tracer::ParseStatus::Error);
     EXPECT_TRUE(Contains(result.message, L"can not be combined"));
@@ -193,7 +190,7 @@ TEST(TracerOptions, AllExportsAndCategoriesConflict)
 TEST(TracerOptions, AllExportsClearsTheCategories)
 {
     appbox::tracer::Options options;
-    const auto result = appbox::tracer::ParseOptions(CommandLine({L"--all-exports", L"cmd.exe"}), options);
+    const auto result = appbox::tracer::ParseOptions(CommandLine({ L"--all-exports", L"cmd.exe" }), options);
 
     EXPECT_EQ(result.status, appbox::tracer::ParseStatus::Ok);
     EXPECT_TRUE(options.all_exports);
@@ -207,10 +204,9 @@ TEST(TracerOptions, AllExportsClearsTheCategories)
 TEST(TracerOptions, ZeroTimeoutIsAnError)
 {
     appbox::tracer::Options options;
-    EXPECT_EQ(appbox::tracer::ParseOptions(CommandLine({L"--timeout", L"0", L"cmd.exe"}), options).status,
+    EXPECT_EQ(appbox::tracer::ParseOptions(CommandLine({ L"--timeout", L"0", L"cmd.exe" }), options).status,
               appbox::tracer::ParseStatus::Error);
-    EXPECT_EQ(appbox::tracer::ParseOptions(
-                  CommandLine({L"--stall-timeout", L"0", L"cmd.exe"}), options).status,
+    EXPECT_EQ(appbox::tracer::ParseOptions(CommandLine({ L"--stall-timeout", L"0", L"cmd.exe" }), options).status,
               appbox::tracer::ParseStatus::Error);
 }
 
@@ -221,8 +217,7 @@ TEST(TracerOptions, ZeroTimeoutIsAnError)
 TEST(TracerOptions, InvalidTimeoutIsAnError)
 {
     appbox::tracer::Options options;
-    const auto result =
-        appbox::tracer::ParseOptions(CommandLine({L"--timeout", L"soon", L"cmd.exe"}), options);
+    const auto result = appbox::tracer::ParseOptions(CommandLine({ L"--timeout", L"soon", L"cmd.exe" }), options);
 
     EXPECT_EQ(result.status, appbox::tracer::ParseStatus::Error);
     EXPECT_TRUE(Contains(result.message, L"invalid command line"));
@@ -252,7 +247,7 @@ TEST(TracerOptions, CategoryNamesMatchTheCommandLine)
 TEST(TracerOptions, CategoriesCanBeParsedDirectly)
 {
     std::vector<appbox::tracer::Category> categories;
-    std::wstring error;
+    std::wstring                          error;
 
     EXPECT_TRUE(appbox::tracer::ParseCategories(L"registry", categories, error));
     ASSERT_EQ(categories.size(), 1U);

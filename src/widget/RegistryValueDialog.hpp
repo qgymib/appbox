@@ -94,8 +94,7 @@ private:
      * @param[out] error Error description when the text does not fit the type.
      * @return true when the text was parsed.
      */
-    bool CollectData(appbox::RegistryValueType type, std::vector<std::uint8_t>& data,
-                     std::string& error) const;
+    bool CollectData(appbox::RegistryValueType type, std::vector<std::uint8_t>& data, std::string& error) const;
 
     /**
      * @brief Follow a type change of the type field.

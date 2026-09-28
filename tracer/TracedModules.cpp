@@ -21,8 +21,8 @@ constexpr std::uint16_t kMachineI386 = 0x014C;
 std::filesystem::path QuerySystemDirectory(bool wow64)
 {
     std::vector<wchar_t> buffer(MAX_PATH, L'\0');
-    const UINT length = wow64 ? ::GetSystemWow64DirectoryW(buffer.data(), static_cast<UINT>(buffer.size()))
-                              : ::GetSystemDirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
+    const UINT           length = wow64 ? ::GetSystemWow64DirectoryW(buffer.data(), static_cast<UINT>(buffer.size()))
+                                        : ::GetSystemDirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
     if (length == 0 || length >= buffer.size())
     {
         return {};
@@ -35,7 +35,7 @@ std::filesystem::path QuerySystemDirectory(bool wow64)
 
 std::vector<std::wstring> TracedModuleNames()
 {
-    return {L"ntdll", L"kernel32", L"kernelbase"};
+    return { L"ntdll", L"kernel32", L"kernelbase", L"ws2_32", L"dnsapi" };
 }
 
 std::wstring ModuleNameFromImagePath(const std::wstring& image_path)
@@ -53,9 +53,7 @@ std::wstring ModuleNameFromImagePath(const std::wstring& image_path)
     }
 
     std::transform(name.begin(), name.end(), name.begin(), [](wchar_t character) {
-        return character >= L'A' && character <= L'Z'
-                   ? static_cast<wchar_t>(character - L'A' + L'a')
-                   : character;
+        return character >= L'A' && character <= L'Z' ? static_cast<wchar_t>(character - L'A' + L'a') : character;
     });
 
     return name;

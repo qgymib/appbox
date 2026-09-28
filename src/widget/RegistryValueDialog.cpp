@@ -17,8 +17,8 @@ namespace
  */
 bool UsesMultiLineEditor(appbox::RegistryValueType type)
 {
-    return type == appbox::RegistryValueType::MultiString || type == appbox::RegistryValueType::Binary
-           || type == appbox::RegistryValueType::None;
+    return type == appbox::RegistryValueType::MultiString || type == appbox::RegistryValueType::Binary ||
+           type == appbox::RegistryValueType::None;
 }
 
 /**
@@ -50,13 +50,10 @@ wxString HintFor(appbox::RegistryValueType type)
 
 } // namespace
 
-RegistryValueDialog::RegistryValueDialog(wxWindow* parent, const wxString& title,
-                                         const wxString& parent_path, const wxString& initial_name,
-                                         appbox::RegistryValueType initial_type,
-                                         const std::vector<std::uint8_t>& initial_data,
-                                         Validator validator)
-    : wxDialog(parent, wxID_ANY, title, wxDefaultPosition, wxDefaultSize),
-      validator_(std::move(validator)),
+RegistryValueDialog::RegistryValueDialog(wxWindow* parent, const wxString& title, const wxString& parent_path,
+                                         const wxString& initial_name, appbox::RegistryValueType initial_type,
+                                         const std::vector<std::uint8_t>& initial_data, Validator validator)
+    : wxDialog(parent, wxID_ANY, title, wxDefaultPosition, wxDefaultSize), validator_(std::move(validator)),
       data_(initial_data)
 {
     const auto shown_path = parent_path.empty() ? wxString(appbox::kRegistryContainerLabel) : parent_path;
@@ -92,8 +89,7 @@ RegistryValueDialog::RegistryValueDialog(wxWindow* parent, const wxString& title
 
     auto* value_label = new wxStaticText(this, wxID_ANY, "Value:");
     single_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(320, -1));
-    multi_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(320, 110),
-                            wxTE_MULTILINE);
+    multi_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(320, 110), wxTE_MULTILINE);
 
     auto* editors = new wxBoxSizer(wxVERTICAL);
     editors->Add(single_, 0, wxEXPAND);
@@ -142,7 +138,7 @@ std::wstring RegistryValueDialog::Name() const
 appbox::RegistryValueType RegistryValueDialog::Type() const
 {
     const auto& types = appbox::RegistryValueTypes();
-    const int selection = type_->GetSelection();
+    const int   selection = type_->GetSelection();
     if (selection < 0 || static_cast<std::size_t>(selection) >= types.size())
     {
         return types.front();
@@ -155,8 +151,7 @@ const std::vector<std::uint8_t>& RegistryValueDialog::Data() const
     return data_;
 }
 
-void RegistryValueDialog::ShowEditorFor(appbox::RegistryValueType type,
-                                        const std::vector<std::uint8_t>& data)
+void RegistryValueDialog::ShowEditorFor(appbox::RegistryValueType type, const std::vector<std::uint8_t>& data)
 {
     const auto text = wxString(appbox::FormatRegistryValueText(type, data));
     const bool multi_line = UsesMultiLineEditor(type);
@@ -197,7 +192,7 @@ void RegistryValueDialog::OnTypeChanged(wxCommandEvent& event)
      * instead of being carried over as garbage.
      */
     std::vector<std::uint8_t> data;
-    std::string error;
+    std::string               error;
     if (!CollectData(current_type_, data, error))
     {
         data.clear();
@@ -210,7 +205,7 @@ void RegistryValueDialog::OnTypeChanged(wxCommandEvent& event)
 void RegistryValueDialog::OnOk(wxCommandEvent&)
 {
     std::vector<std::uint8_t> data;
-    std::string error;
+    std::string               error;
     if (!CollectData(current_type_, data, error))
     {
         wxMessageBox(wxString::FromUTF8(error), GetTitle(), wxOK | wxICON_WARNING, this);

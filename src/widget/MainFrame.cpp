@@ -2,6 +2,7 @@
 #include "AboutDialog.hpp"
 #include "FilesystemPanel.hpp"
 #include "MainProgramDialog.hpp"
+#include "NetworkPanel.hpp"
 #include "PlaceholderPanel.hpp"
 #include "RegistryPanel.hpp"
 #include "RibbonBar.hpp"
@@ -102,8 +103,7 @@ appbox::MessageExtent MeasureProgressText(const wxString& text)
 
 } // namespace
 
-MainFrame::MainFrame()
-    : wxFrame(nullptr, wxID_ANY, "AppBox", wxDefaultPosition, wxSize(1180, 720))
+MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox", wxDefaultPosition, wxSize(1180, 720))
 {
     SetMinSize(wxSize(720, 480));
 
@@ -192,12 +192,10 @@ void MainFrame::CreateLayout()
     registry_panel_ = new RegistryPanel(workspace_, registry_model_);
     workspace_->AddPage(registry_panel_, "Registry");
 
-    workspace_->AddPage(new PlaceholderPanel(workspace_, "Network",
-                                             "Network isolation of the packaged application."),
-                        "Network");
-    workspace_->AddPage(new PlaceholderPanel(workspace_, "Settings",
-                                             "Launch configuration of the packaged application."),
-                        "Settings");
+    network_panel_ = new NetworkPanel(workspace_, network_);
+    workspace_->AddPage(network_panel_, "Network");
+    workspace_->AddPage(
+        new PlaceholderPanel(workspace_, "Settings", "Launch configuration of the packaged application."), "Settings");
     workspace_->SetSelection(static_cast<size_t>(0));
 
     auto* body = new wxBoxSizer(wxHORIZONTAL);
@@ -308,8 +306,8 @@ void MainFrame::OnAbout(wxCommandEvent&)
 
 void MainFrame::OnImportConfiguration(wxCommandEvent&)
 {
-    wxFileDialog dialog(this, "Import Configuration", wxEmptyString, wxEmptyString,
-                        kProjectFileFilter, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    wxFileDialog dialog(this, "Import Configuration", wxEmptyString, wxEmptyString, kProjectFileFilter,
+                        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
     if (dialog.ShowModal() != wxID_OK)
     {
         return;
@@ -321,12 +319,11 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
      */
     if (!model_.IsEmpty())
     {
-        const auto answer =
-            wxMessageBox("Importing a configuration replaces the imported folders, the imported "
-                         "files, the isolation modes and the main program selection of the "
-                         "current session.\n\n"
-                         "Continue?",
-                         "Import Configuration", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING, this);
+        const auto answer = wxMessageBox("Importing a configuration replaces the imported folders, the imported "
+                                         "files, the isolation modes and the main program selection of the "
+                                         "current session.\n\n"
+                                         "Continue?",
+                                         "Import Configuration", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING, this);
         if (answer != wxYES)
         {
             return;
@@ -342,11 +339,13 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     appbox::PackModel                loaded;
     appbox::RegistryModel            loaded_registry;
     appbox::FilesystemIsolationModel loaded_isolation;
+    appbox::NetworkModel             loaded_network;
     std::wstring                     output_path;
     std::string                      error;
 
     if (!appbox::LoadProject(dialog.GetPath().ToStdWstring(), document, error) ||
-        !appbox::ApplyProjectDocument(document, loaded, loaded_registry, loaded_isolation, output_path, error))
+        !appbox::ApplyProjectDocument(document, loaded, loaded_registry, loaded_isolation, loaded_network, output_path,
+                                      error))
     {
         spdlog::error("importing the configuration failed: {}", error);
         wxMessageBox("The configuration could not be imported:\n\n" + wxString::FromUTF8(error), "Import Configuration",
@@ -357,8 +356,10 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     model_ = std::move(loaded);
     registry_model_ = std::move(loaded_registry);
     filesystem_isolation_ = std::move(loaded_isolation);
+    network_ = std::move(loaded_network);
     filesystem_panel_->RefreshModel();
     registry_panel_->RefreshModel();
+    network_panel_->RefreshModel();
 
     /*
      * A path recorded by the project file becomes the authoritative archive
@@ -389,21 +390,21 @@ void MainFrame::OnExportConfiguration(wxCommandEvent&)
     wxFileName suggested(OutputPath());
     suggested.SetExt("json");
 
-    wxFileDialog dialog(this, "Export Configuration", suggested.GetPath(), suggested.GetFullName(),
-                        kProjectFileFilter, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+    wxFileDialog dialog(this, "Export Configuration", suggested.GetPath(), suggested.GetFullName(), kProjectFileFilter,
+                        wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if (dialog.ShowModal() != wxID_OK)
     {
         return;
     }
 
     std::string error;
-    const auto  document = appbox::MakeProjectDocument(model_, registry_model_, filesystem_isolation_,
-                                                      OutputPath().ToStdWstring());
+    const auto  document = appbox::MakeProjectDocument(model_, registry_model_, filesystem_isolation_, network_,
+                                                       OutputPath().ToStdWstring());
     if (!appbox::SaveProject(document, dialog.GetPath().ToStdWstring(), error))
     {
         spdlog::error("exporting the configuration failed: {}", error);
-        wxMessageBox("The configuration could not be exported:\n\n" + wxString::FromUTF8(error),
-                     "Export Configuration", wxOK | wxICON_ERROR, this);
+        wxMessageBox("The configuration could not be exported:\n\n" + wxString::FromUTF8(error), "Export Configuration",
+                     wxOK | wxICON_ERROR, this);
         return;
     }
 
@@ -413,8 +414,7 @@ void MainFrame::OnExportConfiguration(wxCommandEvent&)
 void MainFrame::OnImportRegistry(wxCommandEvent&)
 {
     wxFileDialog dialog(this, "Import Registry", wxEmptyString, wxEmptyString,
-                        "Registry files (*.reg)|*.reg|All files (*.*)|*.*",
-                        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+                        "Registry files (*.reg)|*.reg|All files (*.*)|*.*", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
     if (dialog.ShowModal() != wxID_OK)
     {
         return;
@@ -426,21 +426,21 @@ void MainFrame::OnImportRegistry(wxCommandEvent&)
      * of the session untouched.
      */
     std::vector<appbox::RegFileEntry> entries;
-    std::string error;
+    std::string                       error;
 
     if (!appbox::LoadRegFile(dialog.GetPath().ToStdWstring(), entries, error))
     {
         spdlog::error("importing the registry failed: {}", error);
-        wxMessageBox("The registry file could not be imported:\n\n" + wxString::FromUTF8(error),
-                     "Import Registry", wxOK | wxICON_ERROR, this);
+        wxMessageBox("The registry file could not be imported:\n\n" + wxString::FromUTF8(error), "Import Registry",
+                     wxOK | wxICON_ERROR, this);
         return;
     }
 
     if (!appbox::MergeRegFile(registry_model_, entries, error))
     {
         spdlog::error("merging the registry failed: {}", error);
-        wxMessageBox("The registry file could not be applied:\n\n" + wxString::FromUTF8(error),
-                     "Import Registry", wxOK | wxICON_ERROR, this);
+        wxMessageBox("The registry file could not be applied:\n\n" + wxString::FromUTF8(error), "Import Registry",
+                     wxOK | wxICON_ERROR, this);
         return;
     }
 
@@ -458,8 +458,7 @@ void MainFrame::OnSelectMainProgram(wxCommandEvent&)
 
     const auto& selection = dialog.Selection();
     std::string error;
-    if (!model_.SetMainProgram(selection.preset_id, selection.import_name, selection.relative_path,
-                               error))
+    if (!model_.SetMainProgram(selection.preset_id, selection.import_name, selection.relative_path, error))
     {
         wxMessageBox(error, "Select Main Program", wxOK | wxICON_ERROR, this);
         return;
@@ -480,8 +479,8 @@ void MainFrame::OnBrowseOutput(wxCommandEvent&)
 {
     wxFileName current(OutputPath());
 
-    wxFileDialog dialog(this, "Output Archive", wxEmptyString, current.GetFullName(),
-                        "Zip archive (*.zip)|*.zip", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+    wxFileDialog dialog(this, "Output Archive", wxEmptyString, current.GetFullName(), "Zip archive (*.zip)|*.zip",
+                        wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if (dialog.ShowModal() != wxID_OK)
     {
         return;
@@ -511,25 +510,22 @@ void MainFrame::StartPack(bool run_after)
 
     if (!model_.HasMainProgram())
     {
-        wxMessageBox("Select the main program before building.", "Build",
-                     wxOK | wxICON_INFORMATION, this);
+        wxMessageBox("Select the main program before building.", "Build", wxOK | wxICON_INFORMATION, this);
         return;
     }
 
     const auto zip_path = OutputPath();
     if (zip_path.empty())
     {
-        wxMessageBox("Choose the output archive path first.", "Build",
-                     wxOK | wxICON_INFORMATION, this);
+        wxMessageBox("Choose the output archive path first.", "Build", wxOK | wxICON_INFORMATION, this);
         return;
     }
 
     std::string error;
-    const auto loader = appbox::LoadEmbeddedLoader(error);
+    const auto  loader = appbox::LoadEmbeddedLoader(error);
     if (!error.empty() || loader.empty())
     {
-        wxMessageBox("The embedded loader is unavailable: " + error, "Build", wxOK | wxICON_ERROR,
-                     this);
+        wxMessageBox("The embedded loader is unavailable: " + error, "Build", wxOK | wxICON_ERROR, this);
         return;
     }
 
@@ -548,8 +544,7 @@ void MainFrame::StartPack(bool run_after)
         }
     }
     const auto planned = run_after ? total * 2 : total;
-    const auto range =
-        static_cast<int>(std::min<std::size_t>(planned, std::numeric_limits<int>::max()));
+    const auto range = static_cast<int>(std::min<std::size_t>(planned, std::numeric_limits<int>::max()));
 
     /*
      * The dialog reports the packing progress and turns into the result
@@ -562,13 +557,12 @@ void MainFrame::StartPack(bool run_after)
      * open to see the elapsed time. The time is part of the message instead.
      */
     pack_start_ = std::chrono::steady_clock::now();
-    last_progress_ = appbox::BuildProgress{appbox::BuildStage::Preparing, 0, total, {}};
+    last_progress_ = appbox::BuildProgress{ appbox::BuildStage::Preparing, 0, total, {} };
 
-    const auto initial_text = wxString::FromUTF8(
-        appbox::BuildProgressMessage(last_progress_, std::chrono::milliseconds::zero()));
+    const auto initial_text =
+        wxString::FromUTF8(appbox::BuildProgressMessage(last_progress_, std::chrono::milliseconds::zero()));
 
-    progress_dialog_ = new wxProgressDialog(run_after ? "Building and Running" : "Building",
-                                            initial_text, range, this,
+    progress_dialog_ = new wxProgressDialog(run_after ? "Building and Running" : "Building", initial_text, range, this,
                                             wxPD_APP_MODAL | wxPD_CAN_ABORT);
 
     /*
@@ -603,43 +597,44 @@ void MainFrame::StartPack(bool run_after)
     const auto snapshot = model_;
     const auto registry_snapshot = registry_model_;
     const auto isolation_snapshot = filesystem_isolation_;
+    const auto network_snapshot = network_;
     const auto loader_bytes = std::string(loader);
     const auto zip_wide = zip_path.ToStdWstring();
 
-    pack_thread_ = std::thread([this, snapshot, registry_snapshot, isolation_snapshot, loader_bytes, zip_wide,
-                                run_after]() {
-        const auto report_progress = [this](const appbox::BuildProgress& report) {
-            auto* event = new wxThreadEvent(APPBOX_PACK_PROGRESS);
-            event->SetPayload(report);
-            this->GetEventHandler()->QueueEvent(event);
-            return !this->pack_cancelled_.load();
-        };
+    pack_thread_ = std::thread(
+        [this, snapshot, registry_snapshot, isolation_snapshot, network_snapshot, loader_bytes, zip_wide, run_after]() {
+            const auto report_progress = [this](const appbox::BuildProgress& report) {
+                auto* event = new wxThreadEvent(APPBOX_PACK_PROGRESS);
+                event->SetPayload(report);
+                this->GetEventHandler()->QueueEvent(event);
+                return !this->pack_cancelled_.load();
+            };
 
-        PackOutcome outcome;
-        outcome.error = appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, loader_bytes.data(),
-                                     loader_bytes.size(), zip_wide, report_progress);
+            PackOutcome outcome;
+            outcome.error = appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
+                                         loader_bytes.data(), loader_bytes.size(), zip_wide, report_progress);
 
-        if (outcome.error.empty())
-        {
-            /* The loader is named after the main program of the snapshot. */
-            outcome.loader_entry = appbox::LoaderEntryName(snapshot);
-            outcome.archive_path = zip_wide;
-        }
-
-        if (outcome.error.empty() && run_after)
-        {
-            const auto folder = std::filesystem::temp_directory_path() / UniqueExtractFolder();
-            outcome.error = appbox::ExtractArchive(zip_wide, folder.wstring(), report_progress);
             if (outcome.error.empty())
             {
-                outcome.extract_dir = folder.wstring();
+                /* The loader is named after the main program of the snapshot. */
+                outcome.loader_entry = appbox::LoaderEntryName(snapshot);
+                outcome.archive_path = zip_wide;
             }
-        }
 
-        auto* event = new wxThreadEvent(APPBOX_PACK_FINISHED);
-        event->SetPayload(outcome);
-        this->GetEventHandler()->QueueEvent(event);
-    });
+            if (outcome.error.empty() && run_after)
+            {
+                const auto folder = std::filesystem::temp_directory_path() / UniqueExtractFolder();
+                outcome.error = appbox::ExtractArchive(zip_wide, folder.wstring(), report_progress);
+                if (outcome.error.empty())
+                {
+                    outcome.extract_dir = folder.wstring();
+                }
+            }
+
+            auto* event = new wxThreadEvent(APPBOX_PACK_FINISHED);
+            event->SetPayload(outcome);
+            this->GetEventHandler()->QueueEvent(event);
+        });
 }
 
 void MainFrame::UpdateProgressDialog(int value, const wxString& text)
@@ -679,8 +674,8 @@ void MainFrame::RefreshProgressDialog()
     const auto handled = last_progress_.stage == appbox::BuildStage::Extracting
                              ? pack_phase_total_ + last_progress_.done
                              : last_progress_.done;
-    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - pack_start_);
+    const auto elapsed =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - pack_start_);
 
     const auto text = wxString::FromUTF8(appbox::BuildProgressMessage(last_progress_, elapsed));
     UpdateProgressDialog(appbox::BuildProgressValue(handled, pack_range_), text);
@@ -726,9 +721,9 @@ void MainFrame::OnPackFinished(wxThreadEvent& event)
     const auto run_after = run_after_pack_;
     run_after_pack_ = false;
 
-    auto result = appbox::BuildOutcome::ArchiveWritten;
+    auto        result = appbox::BuildOutcome::ArchiveWritten;
     std::string result_error;
-    wxString final_status;
+    wxString    final_status;
 
     if (outcome.error == appbox::kBuildCancelledError)
     {
@@ -795,9 +790,8 @@ void MainFrame::OnPackFinished(wxThreadEvent& event)
      * it re-fits the dialog before it is shown: without this the buttons at
      * the bottom would be outside of the visible area.
      */
-    UpdateProgressDialog(
-        pack_range_,
-        wxString::FromUTF8(appbox::BuildResultMessage(result, outcome.archive_path, result_error)));
+    UpdateProgressDialog(pack_range_,
+                         wxString::FromUTF8(appbox::BuildResultMessage(result, outcome.archive_path, result_error)));
 
     progress_dialog_->Destroy();
     progress_dialog_ = nullptr;

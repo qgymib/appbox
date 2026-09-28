@@ -28,11 +28,10 @@ bool IsSafeExportName(const std::wstring& name)
 {
     for (const wchar_t character : name)
     {
-        const bool is_letter = (character >= L'a' && character <= L'z') ||
-                               (character >= L'A' && character <= L'Z');
+        const bool is_letter = (character >= L'a' && character <= L'z') || (character >= L'A' && character <= L'Z');
         const bool is_digit = (character >= L'0' && character <= L'9');
-        const bool is_known = character == L'_' || character == L'@' || character == L'$' ||
-                              character == L'?' || character == L'.';
+        const bool is_known =
+            character == L'_' || character == L'@' || character == L'$' || character == L'?' || character == L'.';
         if (!is_letter && !is_digit && !is_known)
         {
             return false;
@@ -45,13 +44,14 @@ bool IsSafeExportName(const std::wstring& name)
 /**
  * @brief Report whether an exported name is part of the requested categories.
  *
+ * @param[in] module Module which exports the name (lowercase base name).
  * @param[in] name Export name to test.
  * @param[in] categories Categories to include.
  * @return Whether the name belongs to at least one of them.
  */
-bool IsInScope(const std::wstring& name, const std::vector<Category>& categories)
+bool IsInScope(const std::wstring& module, const std::wstring& name, const std::vector<Category>& categories)
 {
-    const std::vector<Category> found = ClassifyExport(name);
+    const std::vector<Category> found = ClassifyExport(module, name);
     for (const auto& category : categories)
     {
         if (std::find(found.begin(), found.end(), category) != found.end())
@@ -154,8 +154,7 @@ private:
 
         try
         {
-            const auto inserted =
-                extra_images_.emplace(module, PeImage::FromFile(directory_ / (module + L".dll")));
+            const auto inserted = extra_images_.emplace(module, PeImage::FromFile(directory_ / (module + L".dll")));
             return &inserted.first->second;
         }
         catch (const std::runtime_error&)
@@ -176,8 +175,8 @@ private:
      * @param[in] depth Current depth of the chain.
      * @return Whether the implementation could be determined.
      */
-    bool ResolveRecursive(const std::wstring& module, const std::wstring& name,
-                          std::wstring& target_module, std::uint32_t& target_rva, int depth)
+    bool ResolveRecursive(const std::wstring& module, const std::wstring& name, std::wstring& target_module,
+                          std::uint32_t& target_rva, int depth)
     {
         if (depth > kMaxForwarderDepth)
         {
@@ -227,10 +226,10 @@ private:
         return ResolveRecursive(forwarded_module, forwarded_name, target_module, target_rva, depth + 1);
     }
 
-    const ModuleImages& modules_;                       ///< Traced modules.
-    std::filesystem::path directory_;                   ///< Directory of the modules.
-    std::map<std::wstring, PeImage> extra_images_;      ///< Images parsed on demand.
-    std::set<std::wstring> missing_images_;             ///< Modules which could not be parsed.
+    const ModuleImages&             modules_;        ///< Traced modules.
+    std::filesystem::path           directory_;      ///< Directory of the modules.
+    std::map<std::wstring, PeImage> extra_images_;   ///< Images parsed on demand.
+    std::set<std::wstring>          missing_images_; ///< Modules which could not be parsed.
 };
 
 /**
@@ -260,11 +259,10 @@ std::string ToHex(std::uint64_t value)
 
 } // namespace
 
-std::vector<ArmGroup> BuildArmPlan(const ModuleImages& modules,
-                                   const std::vector<Category>& categories, bool all_exports,
-                                   const std::filesystem::path& module_directory)
+std::vector<ArmGroup> BuildArmPlan(const ModuleImages& modules, const std::vector<Category>& categories,
+                                   bool all_exports, const std::filesystem::path& module_directory)
 {
-    ImplementationResolver resolver(modules, module_directory);
+    ImplementationResolver                                                   resolver(modules, module_directory);
     std::map<std::pair<std::wstring, std::uint32_t>, std::set<std::wstring>> groups;
 
     for (const auto& traced : modules)
@@ -277,12 +275,12 @@ std::vector<ArmGroup> BuildArmPlan(const ModuleImages& modules,
                 continue;
             }
 
-            if (!all_exports && !IsInScope(entry.name, categories))
+            if (!all_exports && !IsInScope(module, entry.name, categories))
             {
                 continue;
             }
 
-            std::wstring target_module;
+            std::wstring  target_module;
             std::uint32_t target_rva = 0;
             if (entry.forwarder.empty())
             {
@@ -300,7 +298,7 @@ std::vector<ArmGroup> BuildArmPlan(const ModuleImages& modules,
                 continue;
             }
 
-            groups[{target_module, target_rva}].insert(module + L"!" + entry.name);
+            groups[{ target_module, target_rva }].insert(module + L"!" + entry.name);
         }
     }
 
@@ -344,6 +342,54 @@ std::vector<std::string> BuildArmLines(const std::vector<ArmGroup>& plan, const 
 
         line += "; g\"";
         lines.push_back(std::move(line));
+    }
+
+    return lines;
+}
+
+std::vector<std::wstring> SelectPendingModules(const std::vector<ArmGroup>& plan, const ModuleBases& bases)
+{
+    std::set<std::wstring> pending;
+    for (const auto& group : plan)
+    {
+        if (bases.find(group.module) == bases.end())
+        {
+            pending.insert(group.module);
+        }
+    }
+
+    return { pending.begin(), pending.end() };
+}
+
+std::vector<ArmGroup> SelectArmable(const std::vector<ArmGroup>& plan, const ModuleBases& bases,
+                                    const std::set<std::wstring>& armed_modules)
+{
+    std::vector<ArmGroup> armable;
+    for (const auto& group : plan)
+    {
+        if (bases.find(group.module) == bases.end())
+        {
+            continue;
+        }
+
+        if (armed_modules.find(group.module) != armed_modules.end())
+        {
+            continue;
+        }
+
+        armable.push_back(group);
+    }
+
+    return armable;
+}
+
+std::vector<std::string> BuildLoadFilterLines(const std::vector<std::wstring>& modules)
+{
+    std::vector<std::string> lines;
+    lines.reserve(modules.size());
+    for (const auto& module : modules)
+    {
+        lines.push_back("sxe ld:" + appbox::WideToUTF8(module));
     }
 
     return lines;

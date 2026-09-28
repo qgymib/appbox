@@ -40,7 +40,7 @@ TEST_F(Reg, ReadValue_RealFallback)
 
     auto config = tree.Build();
 
-    const auto       subkey = L"Software\\AppBoxTest\\ReadValue_RealFallback_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\ReadValue_RealFallback_" + appbox::UTF8ToWide(appbox::RandomString(8));
     const std::string expected = "RealFallbackValue";
 
     /* Create the key and the value in the real registry. */
@@ -48,12 +48,11 @@ TEST_F(Reg, ReadValue_RealFallback)
         HKEY  key = nullptr;
         DWORD disposition = 0;
         ASSERT_EQ(RegCreateKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key,
-                                 &disposition),
+                                  &disposition),
                   ERROR_SUCCESS);
 
         auto wdata = appbox::UTF8ToWide(expected);
-        ASSERT_EQ(RegSetValueExW(key, L"TestValue", 0, REG_SZ,
-                                 reinterpret_cast<const BYTE*>(wdata.c_str()),
+        ASSERT_EQ(RegSetValueExW(key, L"TestValue", 0, REG_SZ, reinterpret_cast<const BYTE*>(wdata.c_str()),
                                  static_cast<DWORD>((wdata.size() + 1) * sizeof(wchar_t))),
                   ERROR_SUCCESS);
         RegCloseKey(key);
@@ -62,7 +61,7 @@ TEST_F(Reg, ReadValue_RealFallback)
     RealKeyGuard guard{ subkey };
 
     ProtocolRegReadValue::Req req;
-    req.Key   = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey);
     req.Value = "TestValue";
 
     auto rsp = ProbeRegReadValue.Call(req, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();

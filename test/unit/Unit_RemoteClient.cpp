@@ -156,9 +156,8 @@ TEST(UnitRemoteClient, CallRegisteredMethod)
     const std::string pipe_path = MakePipePath();
 
     auto server = appbox::RemoteServer::Create(pipe_path);
-    server->RegisterMethod("appbox_unit_echo", [server](uint64_t id, const nlohmann::json& param) {
-        server->SendResponse(id, param);
-    });
+    server->RegisterMethod("appbox_unit_echo",
+                           [server](uint64_t id, const nlohmann::json& param) { server->SendResponse(id, param); });
     server->Start();
 
     auto client = appbox::RemoteClient::Create(pipe_path);

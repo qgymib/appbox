@@ -1,6 +1,7 @@
 #include "PackService.hpp"
 #include "ApplicationIcon.hpp"
 #include "FilesystemIsolationFile.hpp"
+#include "NetworkIsolationFile.hpp"
 #include "PresetDirectory.hpp"
 #include "RegistryHive.hpp"
 #include "RegistryIsolationFile.hpp"
@@ -45,8 +46,7 @@ std::string ToZipEntrySuffix(const std::wstring& relative)
  * @param[in] entry Directory entry name.
  * @return Error description, empty on success.
  */
-std::string EnsureDirectory(appbox::ZipWriter& writer, std::set<std::string>& added,
-                            const std::string& entry)
+std::string EnsureDirectory(appbox::ZipWriter& writer, std::set<std::string>& added, const std::string& entry)
 {
     if (added.count(entry) != 0)
     {
@@ -100,16 +100,15 @@ std::wstring DisplayPath(const std::wstring& root, const std::wstring& relative)
  * @return Error description, empty on success.
  */
 std::string AddImportedFolder(appbox::ZipWriter& writer, const std::wstring& source, const std::string& prefix,
-                              const std::wstring& display_root, std::set<std::string>& added,
-                              std::size_t& done, std::size_t total,
-                              const appbox::BuildProgressCallback& progress)
+                              const std::wstring& display_root, std::set<std::string>& added, std::size_t& done,
+                              std::size_t total, const appbox::BuildProgressCallback& progress)
 {
     const auto root = std::filesystem::path(source).lexically_normal();
     const auto root_string = root.wstring();
 
     std::error_code ec;
-    auto it = std::filesystem::recursive_directory_iterator(root, ec);
-    const auto end = std::filesystem::recursive_directory_iterator();
+    auto            it = std::filesystem::recursive_directory_iterator(root, ec);
+    const auto      end = std::filesystem::recursive_directory_iterator();
     if (ec)
     {
         return "failed to enumerate '" + appbox::WideToUTF8(root_string) + "'";
@@ -147,9 +146,8 @@ std::string AddImportedFolder(appbox::ZipWriter& writer, const std::wstring& sou
              * keeps the dialog busy for a while, so naming it while it is
              * being packed is what makes the report useful.
              */
-            if (progress
-                && !progress(appbox::BuildProgress{appbox::BuildStage::Packing, done, total,
-                                                   DisplayPath(display_root, relative)}))
+            if (progress && !progress(appbox::BuildProgress{ appbox::BuildStage::Packing, done, total,
+                                                             DisplayPath(display_root, relative) }))
             {
                 return appbox::kBuildCancelledError;
             }
@@ -215,8 +213,8 @@ std::wstring LoaderEntryName(const PackModel& model)
 }
 
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
-                 const void* loader_bytes, std::size_t loader_size, const std::wstring& zip_path,
-                 const BuildProgressCallback& progress)
+                 const NetworkModel& network, const void* loader_bytes, std::size_t loader_size,
+                 const std::wstring& zip_path, const BuildProgressCallback& progress)
 {
     if (!model.HasMainProgram())
     {
@@ -246,14 +244,14 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
      * The loader payload and its configuration are added before the first
      * imported file, which is the preparing stage of the run.
      */
-    if (progress && !progress(BuildProgress{BuildStage::Preparing, 0, total, {}}))
+    if (progress && !progress(BuildProgress{ BuildStage::Preparing, 0, total, {} }))
     {
         return kBuildCancelledError;
     }
 
     try
     {
-        ZipWriter writer(zip_path);
+        ZipWriter   writer(zip_path);
         std::string error;
 
         /*
@@ -278,8 +276,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         if (model.MainProgramPath(main_program_path))
         {
             std::string icon_warning;
-            patched_loader =
-                ApplyApplicationIcon(loader_bytes, loader_size, main_program_path, icon_warning);
+            patched_loader = ApplyApplicationIcon(loader_bytes, loader_size, main_program_path, icon_warning);
             if (!icon_warning.empty())
             {
                 spdlog::warn("the loader keeps its own icon: {}", icon_warning);
@@ -287,7 +284,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         }
 
         const void* const payload = patched_loader.empty() ? loader_bytes : patched_loader.data();
-        const auto payload_size = patched_loader.empty() ? loader_size : patched_loader.size();
+        const auto        payload_size = patched_loader.empty() ? loader_size : patched_loader.size();
         if (!writer.AddFileBuffer(loader_entry, payload, payload_size, error))
         {
             return error;
@@ -376,6 +373,23 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
             return error;
         }
 
+        /*
+         * The DNS redirections of the network workspace travel in the overlay
+         * root as well: the loader hands the file to the sandbox, which answers
+         * a name resolution of the packaged application from it instead of
+         * asking the host.
+         */
+        std::string network_isolation;
+        if (!BuildNetworkIsolationFile(network, network_isolation, error))
+        {
+            return error;
+        }
+        if (!writer.AddFileBuffer(config.overlay_fs + "/network-isolation.json", network_isolation.data(),
+                                  network_isolation.size(), error))
+        {
+            return error;
+        }
+
         /* Imported folders below the lower layer tree of the archive. */
         error = EnsureDirectory(writer, added, "filesystem");
         if (!error.empty())
@@ -408,8 +422,8 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
                     return error;
                 }
 
-                error = AddImportedFolder(writer, imported.source_path, prefix, imported.import_name, added,
-                                          done, total, progress);
+                error = AddImportedFolder(writer, imported.source_path, prefix, imported.import_name, added, done,
+                                          total, progress);
                 if (!error.empty())
                 {
                     return error;
@@ -420,9 +434,9 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         /* Imported files are written on top of the imported folders. */
         for (const auto& file : model.AllImportedFiles())
         {
-            const auto owner = std::find_if(
-                PresetDirectories().begin(), PresetDirectories().end(),
-                [&file](const PresetDirectory& entry) { return entry.id == file.preset_id; });
+            const auto owner =
+                std::find_if(PresetDirectories().begin(), PresetDirectories().end(),
+                             [&file](const PresetDirectory& entry) { return entry.id == file.preset_id; });
             if (owner == PresetDirectories().end())
             {
                 continue;
@@ -450,9 +464,8 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
             }
 
             done++;
-            if (progress
-                && !progress(BuildProgress{BuildStage::Packing, done, total,
-                                           DisplayPath(file.target_dir, file.file_name)}))
+            if (progress && !progress(BuildProgress{ BuildStage::Packing, done, total,
+                                                     DisplayPath(file.target_dir, file.file_name) }))
             {
                 return kBuildCancelledError;
             }
@@ -476,7 +489,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
     if (progress)
     {
         /* The run is complete: report the final count without a current file. */
-        progress(BuildProgress{BuildStage::Packing, total, total, {}});
+        progress(BuildProgress{ BuildStage::Packing, total, total, {} });
     }
     return {};
 }

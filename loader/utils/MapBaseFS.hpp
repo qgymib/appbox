@@ -15,6 +15,6 @@ namespace appbox
  */
 DWORD MapBaseFS(const std::string& fs, std::vector<SandboxLowerFS>& mapped_fs);
 
-}
+} // namespace appbox
 
 #endif

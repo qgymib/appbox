@@ -215,7 +215,28 @@ The unit tests of the registry isolation:
   malformed document and the atomicity of applying a document to the models,
   including a mode which a file cannot hold and a path which is listed twice.
 * `test/unit/Unit_PackService.cpp` — the archive carries the hive, the isolation
-  file of the registry and the isolation file of the filesystem workspace.
+  file of the registry, the isolation file of the filesystem workspace and the
+  isolation file of the network workspace.
+* `test/unit/Unit_NetworkModel.cpp` — the model of the network workspace: the
+  insertion order of the DNS redirections, the uniqueness of a hostname
+  (ignoring the case and a trailing dot), the rejection of an empty field, of a
+  field which carries a whitespace character, of a redirect which is not an
+  IPv4 or an IPv6 address literal and of an index outside the model, the in
+  place replacement of an entry, and the fact that a refused call leaves the
+  model untouched.
+* `test/unit/Unit_NetworkIsolation.cpp` — the vocabulary of the network
+  isolation: the IPv4 and IPv6 address literals the redirect of an entry may
+  hold (boundaries, a leading zero, a compressed and an embedded IPv6 address,
+  a scope identifier) and the normalization of a hostname (the case and the
+  trailing dot).
+* `test/unit/Unit_NetworkIsolationFile.cpp` — the isolation file the packer
+  writes for the network workspace: the schema of an empty model, the order and
+  the content of the entries and the hostname as UTF-8 bytes.
+* `test/unit/Unit_DnsTable.cpp` — the table of the sandbox: the document of the
+  packer, the lookup (the case, the trailing dot, the requested address family,
+  a name which is not listed), the entry of a hostname which is listed twice,
+  the rejection of a document of another version and of a malformed one, and the
+  atomicity of a parse which fails.
 * `test/unit/Unit_HiveReader.cpp` — the mounting, the enumeration and the
   formatting of the loader registry browser, including the root of the hive
   which hides the whiteout store of the sandbox.
@@ -380,6 +401,20 @@ and use a folder below `#APPDATA#` of the host as the entry of the host layer
   the isolation hides is not part of the file, a key which only the hive holds
   is exported with its content, and the host registry is unchanged.
 
+### Network isolation cases
+
+The network cases (`test/cases/Net_*.cpp`) write the isolation file of the case
+into the overlay (`test/utils/NetworkIsolationBuilder.*`) and resolve a hostname
+inside the sandbox with the probe `ResolveName`, which calls the name resolution
+of winsock (`GetAddrInfoW`) and the one of the DNS client (`DnsQuery_UTF8`).
+
+| Case | Redirections | Question | Expected |
+| --- | --- | --- | --- |
+| `Net_Dns_RedirectIsReturned` | `appbox-spike.invalid` → `127.0.0.1` | the name, with both APIs | both calls answer with `127.0.0.1` without asking the host |
+| `Net_Dns_MissIsResolvedByTheHost` | `appbox-spike.invalid` → `10.9.9.9` | `localhost` | the host answers, so a name the file does not list keeps the resolution of the host |
+| `Net_Dns_HostnameIsNormalized` | `Update.Example.COM.` → `127.0.0.1` | the name in three spellings | every question is answered, because the case and the trailing dot do not matter |
+| `Net_Dns_FamilyOfTheRedirectIsHonoured` | `v4.…` → `127.0.0.1`, `v6.…` → `::1` | both names, both families | a question is answered by the entry of its family; the other family keeps the resolution of the host, which fails for a name only the file knows |
+
 ### Other cases
 
 * `test/cases/ArugmentsPassthrough.cpp` and `test/cases/RPC.cpp` — the cases
@@ -415,6 +450,9 @@ and use a folder below `#APPDATA#` of the host as the entry of the host layer
   leaves nothing behind.
 * `test/utils/FsIsolationBuilder.*` — writes the isolation file of a test
   sandbox (`<overlay>/filesystem-isolation.json`) from the modes of the case.
+* `test/utils/NetworkIsolationBuilder.*` — writes the isolation file of a test
+  sandbox (`<overlay>/network-isolation.json`) from the DNS redirections of the
+  case.
 * `test/utils/ReadFileFull.*` / `test/utils/WriteFileFull.*` — file I/O
   helpers.
 * `test/utils/Semaphore.*` — synchronization between the test process and the
@@ -434,16 +472,24 @@ and use a folder below `#APPDATA#` of the host as the entry of the host layer
   reads and kernel object name queries inside the sandbox.
 * `test/probe/RegOpenWriteValue.cpp` — a write access open of an existing key
   inside the sandbox, followed by a value write and a read back.
+* `test/probe/ResolveName.*` — resolves a hostname inside the sandbox with
+  `GetAddrInfoW` or with `DnsQuery_UTF8` and reports the return code and the
+  addresses of the answer, which is what the network cases check.
 * `test/probe/__init__.hpp` — the probe registry: a probe registers itself by
   name on start and `ProbeInit` registers the command which the loader starts.
 
 ## Tracer tests
 
-* `test/unit/Unit_Tracer*.cpp` — the parser, the PE reader, the scope rules, the
-  breakpoint plan, the report and the command line, all without a debugger.
-* `test/unit/Unit_TracerIntegration.cpp` — a real run of `cmd.exe` below the real
-  debugger, including a child process; it skips itself when `cdb.exe` is not
-  installed.
+* `test/unit/Unit_Tracer*.cpp` — the parser, the PE reader, the scope table
+  (which is verified against the export tables of `ntdll`, `ws2_32` and
+  `dnsapi`), the breakpoint plan, the arm helpers, the report and the command
+  line, all without a debugger.
+* `test/unit/Unit_TracerIntegration.cpp` — real runs below the real debugger: a
+  run of `cmd.exe`, a run with a child process, and a run of the name resolution
+  probe of this executable (`test/utils/NameResolutionProbe.*`), which loads the
+  DNS client on demand and therefore proves that the breakpoints of a module
+  which the loader maps after the initial break are armed. The suite skips itself
+  when `cdb.exe` is not installed.
 
 ## Related documentation
 
@@ -451,6 +497,8 @@ and use a folder below `#APPDATA#` of the host as the entry of the host layer
 * [FilesystemIsolation.md](../docs/FilesystemIsolation.md) — filesystem
   isolation architecture.
 * [RegistryIsolation.md](../docs/RegistryIsolation.md) — registry isolation
+  architecture.
+* [NetworkIsolation.md](../docs/NetworkIsolation.md) — network isolation
   architecture.
 * [Tracer.md](../docs/Tracer.md) — API tracer: usage, mechanism and measured
   cost.

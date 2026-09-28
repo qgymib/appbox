@@ -23,7 +23,7 @@ std::wstring EnvironmentValue(const wchar_t* name)
     }
 
     std::wstring value(required, L'\0');
-    const DWORD written = ::GetEnvironmentVariableW(name, value.data(), required);
+    const DWORD  written = ::GetEnvironmentVariableW(name, value.data(), required);
     if (written == 0 || written >= required)
     {
         return {};
@@ -67,8 +67,8 @@ void AppendKitsCandidates(std::vector<std::filesystem::path>& candidates, const 
     AppendCandidate(candidates, kits_root / L"10" / L"Debuggers" / L"x64");
     AppendCandidate(candidates, kits_root / L"10" / L"Debuggers" / L"x86");
 
-    std::error_code error;
-    std::filesystem::directory_iterator iterator(kits_root, error);
+    std::error_code                           error;
+    std::filesystem::directory_iterator       iterator(kits_root, error);
     const std::filesystem::directory_iterator end;
     while (!error && iterator != end)
     {

@@ -65,7 +65,7 @@ TEST(UnitBuildReport, ElapsedTimeTreatsNegativeValuesAsZero)
  */
 TEST(UnitBuildReport, ProgressMessageNamesThePreparingStage)
 {
-    const appbox::BuildProgress progress{appbox::BuildStage::Preparing, 0, 340, {}};
+    const appbox::BuildProgress progress{ appbox::BuildStage::Preparing, 0, 340, {} };
     EXPECT_EQ(appbox::BuildProgressMessage(progress, std::chrono::milliseconds(3000)),
               "Preparing the archive... - Elapsed 00:03");
 }
@@ -76,7 +76,7 @@ TEST(UnitBuildReport, ProgressMessageNamesThePreparingStage)
  */
 TEST(UnitBuildReport, ProgressMessageNamesThePackedFile)
 {
-    const appbox::BuildProgress progress{appbox::BuildStage::Packing, 12, 340, L"MyApp\\bin\\tool.exe"};
+    const appbox::BuildProgress progress{ appbox::BuildStage::Packing, 12, 340, L"MyApp\\bin\\tool.exe" };
     EXPECT_EQ(appbox::BuildProgressMessage(progress, std::chrono::milliseconds(12000)),
               "Packing files: 12 / 340 - Elapsed 00:12\nMyApp\\bin\\tool.exe");
 }
@@ -86,7 +86,7 @@ TEST(UnitBuildReport, ProgressMessageNamesThePackedFile)
  */
 TEST(UnitBuildReport, ProgressMessageNamesTheExtractedFile)
 {
-    const appbox::BuildProgress progress{appbox::BuildStage::Extracting, 3, 340, L"MyApp\\data\\note.txt"};
+    const appbox::BuildProgress progress{ appbox::BuildStage::Extracting, 3, 340, L"MyApp\\data\\note.txt" };
     EXPECT_EQ(appbox::BuildProgressMessage(progress, std::chrono::milliseconds(60000)),
               "Extracting files: 3 / 340 - Elapsed 01:00\nMyApp\\data\\note.txt");
 }
@@ -97,11 +97,11 @@ TEST(UnitBuildReport, ProgressMessageNamesTheExtractedFile)
  */
 TEST(UnitBuildReport, ProgressMessageOmitsMissingParts)
 {
-    const appbox::BuildProgress without_file{appbox::BuildStage::Packing, 340, 340, {}};
+    const appbox::BuildProgress without_file{ appbox::BuildStage::Packing, 340, 340, {} };
     EXPECT_EQ(appbox::BuildProgressMessage(without_file, std::chrono::milliseconds(1000)),
               "Packing files: 340 / 340 - Elapsed 00:01");
 
-    const appbox::BuildProgress without_total{appbox::BuildStage::Packing, 0, 0, {}};
+    const appbox::BuildProgress without_total{ appbox::BuildStage::Packing, 0, 0, {} };
     EXPECT_EQ(appbox::BuildProgressMessage(without_total, std::chrono::milliseconds(1000)),
               "Packing files... - Elapsed 00:01");
 }
@@ -142,7 +142,8 @@ TEST(UnitBuildReport, MessageExtentUsesTheLongestLine)
 TEST(UnitBuildReport, MessageExtentCountsWideCharacters)
 {
     /* Two wide characters (six bytes in UTF-8) followed by a plain extension. */
-    const std::string wide = "\xE6\x96\x87\xE4\xBB\xB6" ".txt";
+    const std::string wide = "\xE6\x96\x87\xE4\xBB\xB6"
+                             ".txt";
 
     const auto text = appbox::MeasureMessageExtent(wide);
     EXPECT_EQ(text.lines, static_cast<std::size_t>(1));
@@ -204,6 +205,5 @@ TEST(UnitBuildReport, ResultMessageCarriesTheFailureReason)
               "The build run failed: disk is full");
 
     /* The error of a cancelled run must not leak into a failure message. */
-    EXPECT_EQ(appbox::BuildResultMessage(appbox::BuildOutcome::Failed, L"", ""),
-              "The build run failed.");
+    EXPECT_EQ(appbox::BuildResultMessage(appbox::BuildOutcome::Failed, L"", ""), "The build run failed.");
 }

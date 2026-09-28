@@ -67,7 +67,7 @@ wxString FormatSize(std::uintmax_t size)
     static const char* units[] = { "B", "KB", "MB", "GB", "TB" };
 
     auto value = static_cast<double>(size);
-    int unit = 0;
+    int  unit = 0;
     while (value >= 1024.0 && unit < 4)
     {
         value /= 1024.0;
@@ -89,7 +89,7 @@ wxString FormatSize(std::uintmax_t size)
 wxString HostEntrySize(const std::wstring& path)
 {
     std::error_code ec;
-    const auto size = std::filesystem::file_size(path, ec);
+    const auto      size = std::filesystem::file_size(path, ec);
     if (ec)
     {
         return "-";
@@ -141,12 +141,10 @@ bool SameHostPath(const std::wstring& a, const std::wstring& b)
 
 FilesystemPanel::FilesystemPanel(wxWindow* parent, appbox::PackModel& model,
                                  appbox::FilesystemIsolationModel& isolation)
-    : wxPanel(parent, wxID_ANY),
-      model_(model),
-      isolation_(isolation)
+    : wxPanel(parent, wxID_ANY), model_(model), isolation_(isolation)
 {
-    auto* splitter = new wxSplitterWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                                         wxSP_LIVE_UPDATE | wxSP_3DSASH);
+    auto* splitter =
+        new wxSplitterWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSP_LIVE_UPDATE | wxSP_3DSASH);
     splitter->SetMinimumPaneSize(180);
 
     auto folder_icon = wxArtProvider::GetBitmap(wxART_FOLDER, wxART_OTHER, wxSize(16, 16));
@@ -199,8 +197,7 @@ FilesystemPanel::FilesystemPanel(wxWindow* parent, appbox::PackModel& model,
 
 void FilesystemPanel::CreateList(wxWindow* parent)
 {
-    list_ = new wxDataViewListCtrl(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                                   wxDV_ROW_LINES | wxDV_SINGLE);
+    list_ = new wxDataViewListCtrl(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxDV_ROW_LINES | wxDV_SINGLE);
     /*
      * The Filename column shows an icon before the name of the row: a folder
      * for a folder and a plain file for a file, so the kind of a row is
@@ -224,8 +221,7 @@ void FilesystemPanel::CreateList(wxWindow* parent)
     }
     list_->AppendColumn(new wxDataViewColumn(
         "Isolation",
-        new FilesystemIsolationRenderer(
-            modes, [this](const wxDataViewItem& item) { return IsolationChoices(item); }),
+        new FilesystemIsolationRenderer(modes, [this](const wxDataViewItem& item) { return IsolationChoices(item); }),
         kIsolationColumn, 110));
 
     list_->AppendToggleColumn("Read Only", wxDATAVIEW_CELL_INERT, 74);
@@ -337,14 +333,13 @@ void FilesystemPanel::PopulateNode(const wxTreeItemId& item)
         return;
     }
 
-    const auto folder = node->relative_dir.empty()
-                            ? std::filesystem::path(imported.source_path)
-                            : std::filesystem::path(imported.source_path) / node->relative_dir;
+    const auto folder = node->relative_dir.empty() ? std::filesystem::path(imported.source_path)
+                                                   : std::filesystem::path(imported.source_path) / node->relative_dir;
 
     std::vector<std::wstring> subfolders;
-    std::error_code ec;
-    for (auto it = std::filesystem::directory_iterator(folder, ec);
-         it != std::filesystem::directory_iterator(); it.increment(ec))
+    std::error_code           ec;
+    for (auto it = std::filesystem::directory_iterator(folder, ec); it != std::filesystem::directory_iterator();
+         it.increment(ec))
     {
         if (ec)
         {
@@ -362,8 +357,7 @@ void FilesystemPanel::PopulateNode(const wxTreeItemId& item)
         auto* child = new TreeNode();
         child->preset_id = node->preset_id;
         child->import_name = node->import_name;
-        child->relative_dir =
-            node->relative_dir.empty() ? name : node->relative_dir + L"\\" + name;
+        child->relative_dir = node->relative_dir.empty() ? name : node->relative_dir + L"\\" + name;
 
         const auto child_item = tree_->AppendItem(item, name, 0, -1, child);
         tree_->SetItemHasChildren(child_item);
@@ -375,7 +369,7 @@ void FilesystemPanel::RefreshList()
     rows_.clear();
 
     const auto selection = tree_->GetSelection();
-    auto* node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
+    auto*      node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
     if (node != nullptr)
     {
         if (node->preset_id.empty())
@@ -444,7 +438,7 @@ void FilesystemPanel::ListFolderContent(const TreeNode& node)
     }
 
     std::wstring target_dir = node.import_name;
-    auto folder = std::filesystem::path(imported.source_path);
+    auto         folder = std::filesystem::path(imported.source_path);
     if (!node.relative_dir.empty())
     {
         target_dir += L"\\" + node.relative_dir;
@@ -452,13 +446,13 @@ void FilesystemPanel::ListFolderContent(const TreeNode& node)
     }
 
     std::wstring main_path;
-    const bool has_main = model_.MainProgramPath(main_path);
+    const bool   has_main = model_.MainProgramPath(main_path);
 
     /* Folders first, then files, both ordered by name. */
     std::vector<std::pair<std::wstring, bool>> entries;
-    std::error_code ec;
-    for (auto it = std::filesystem::directory_iterator(folder, ec);
-         it != std::filesystem::directory_iterator(); it.increment(ec))
+    std::error_code                            ec;
+    for (auto it = std::filesystem::directory_iterator(folder, ec); it != std::filesystem::directory_iterator();
+         it.increment(ec))
     {
         if (ec)
         {
@@ -627,11 +621,10 @@ void FilesystemPanel::SelectNode(const std::string& preset_id, const std::wstrin
     }
 }
 
-bool FilesystemPanel::SelectedTarget(std::string& preset_id, std::wstring& target_dir,
-                                     std::wstring& import_name) const
+bool FilesystemPanel::SelectedTarget(std::string& preset_id, std::wstring& target_dir, std::wstring& import_name) const
 {
     const auto selection = tree_->GetSelection();
-    auto* node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
+    auto*      node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
     if (node == nullptr || node->import_name.empty())
     {
         return false;
@@ -639,8 +632,7 @@ bool FilesystemPanel::SelectedTarget(std::string& preset_id, std::wstring& targe
 
     preset_id = node->preset_id;
     import_name = node->import_name;
-    target_dir = node->relative_dir.empty() ? node->import_name
-                                            : node->import_name + L"\\" + node->relative_dir;
+    target_dir = node->relative_dir.empty() ? node->import_name : node->import_name + L"\\" + node->relative_dir;
     return true;
 }
 
@@ -671,8 +663,7 @@ int FilesystemPanel::SelectedRowIndex() const
 
 appbox::FilesystemEntryKind FilesystemPanel::RowKind(const RowInfo& row)
 {
-    return row.is_directory ? appbox::FilesystemEntryKind::Directory
-                            : appbox::FilesystemEntryKind::File;
+    return row.is_directory ? appbox::FilesystemEntryKind::Directory : appbox::FilesystemEntryKind::File;
 }
 
 std::wstring FilesystemPanel::RowViewPath(const RowInfo& row) const
@@ -731,7 +722,7 @@ void FilesystemPanel::ApplyIsolation(const RowInfo& row, appbox::FilesystemIsola
 void FilesystemPanel::UpdateToolBarState()
 {
     const auto selection = tree_->GetSelection();
-    auto* node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
+    auto*      node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
 
     const bool has_node = node != nullptr;
     const bool inside_import = has_node && !node->import_name.empty();
@@ -754,7 +745,7 @@ void FilesystemPanel::UpdateToolBarState()
          * belong to it, so only an imported folder and an individually
          * imported file can be removed.
          */
-        bool removable = false;
+        bool      removable = false;
         const int index = SelectedRowIndex();
         if (index >= 0)
         {
@@ -817,8 +808,7 @@ void FilesystemPanel::OnIsolationChanged(wxDataViewEvent& event)
         return;
     }
 
-    const auto chosen =
-        list_->GetTextValue(static_cast<unsigned int>(row_in_control), kIsolationColumn).ToStdWstring();
+    const auto chosen = list_->GetTextValue(static_cast<unsigned int>(row_in_control), kIsolationColumn).ToStdWstring();
 
     appbox::FilesystemIsolation isolation = appbox::FilesystemIsolation::Full;
     if (!appbox::ParseFilesystemIsolationName(chosen, isolation))
@@ -850,7 +840,7 @@ void FilesystemPanel::OnTreeItemExpanding(wxTreeEvent& event)
 void FilesystemPanel::OnTreeItemContextMenu(wxTreeEvent& event)
 {
     const auto item = event.GetItem();
-    auto* node = item.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(item)) : nullptr;
+    auto*      node = item.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(item)) : nullptr;
     if (node == nullptr || node->preset_id.empty())
     {
         /* The container holds the preset directories, which are fixed. */
@@ -873,7 +863,7 @@ void FilesystemPanel::OnTreeItemContextMenu(wxTreeEvent& event)
 
 void FilesystemPanel::OnAddFiles(wxCommandEvent&)
 {
-    std::string preset_id;
+    std::string  preset_id;
     std::wstring target_dir;
     std::wstring import_name;
     if (!SelectedTarget(preset_id, target_dir, import_name))
@@ -881,9 +871,8 @@ void FilesystemPanel::OnAddFiles(wxCommandEvent&)
         return;
     }
 
-    wxFileDialog dialog(this, "Select the files to import into '" + wxString(import_name) + "'",
-                        wxEmptyString, wxEmptyString, "All files (*.*)|*.*",
-                        wxFD_OPEN | wxFD_MULTIPLE | wxFD_FILE_MUST_EXIST);
+    wxFileDialog dialog(this, "Select the files to import into '" + wxString(import_name) + "'", wxEmptyString,
+                        wxEmptyString, "All files (*.*)|*.*", wxFD_OPEN | wxFD_MULTIPLE | wxFD_FILE_MUST_EXIST);
     if (dialog.ShowModal() != wxID_OK)
     {
         return;
@@ -912,7 +901,7 @@ void FilesystemPanel::OnAddFiles(wxCommandEvent&)
 void FilesystemPanel::OnAddFolder(wxCommandEvent&)
 {
     const auto selection = tree_->GetSelection();
-    auto* node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
+    auto*      node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
     if (node == nullptr || node->preset_id.empty())
     {
         /* The container holds the preset directories only, so nothing is imported into it. */
@@ -921,8 +910,7 @@ void FilesystemPanel::OnAddFolder(wxCommandEvent&)
 
     const auto preset_id = node->preset_id;
 
-    wxDirDialog dialog(this, "Select the folder to import", wxEmptyString,
-                       wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
+    wxDirDialog dialog(this, "Select the folder to import", wxEmptyString, wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
     if (dialog.ShowModal() != wxID_OK)
     {
         return;
@@ -958,16 +946,15 @@ void FilesystemPanel::OnRemove(wxCommandEvent&)
 
     if (row.kind == RowInfo::Kind::HostEntry)
     {
-        wxMessageBox("'" + wxString(row.file_name)
-                         + "' belongs to the imported folder and is removed together with it.",
+        wxMessageBox("'" + wxString(row.file_name) +
+                         "' belongs to the imported folder and is removed together with it.",
                      "Remove", wxOK | wxICON_INFORMATION, this);
         return;
     }
 
     const bool is_folder = row.kind == RowInfo::Kind::ImportedFolder;
     const auto question =
-        is_folder ? wxString::Format("Remove the imported folder '%s' and everything below it?",
-                                     row.file_name)
+        is_folder ? wxString::Format("Remove the imported folder '%s' and everything below it?", row.file_name)
                   : wxString::Format("Remove the imported file '%s'?", row.file_name);
 
     wxMessageDialog dialog(this, question, "Remove", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
@@ -998,16 +985,15 @@ void FilesystemPanel::OnRemove(wxCommandEvent&)
 void FilesystemPanel::OnRemoveImportFromTree(wxCommandEvent&)
 {
     const auto selection = tree_->GetSelection();
-    auto* node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
+    auto*      node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
     if (node == nullptr || node->import_name.empty())
     {
         return;
     }
 
-    const auto question = wxString::Format("Remove the imported folder '%s' and everything below it?",
-                                           node->import_name);
-    wxMessageDialog dialog(this, question, "Remove Import", wxYES_NO | wxNO_DEFAULT
-                                                                   | wxICON_QUESTION);
+    const auto question =
+        wxString::Format("Remove the imported folder '%s' and everything below it?", node->import_name);
+    wxMessageDialog dialog(this, question, "Remove Import", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
     if (dialog.ShowModal() != wxID_YES)
     {
         return;

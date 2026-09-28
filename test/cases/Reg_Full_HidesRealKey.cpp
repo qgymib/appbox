@@ -47,7 +47,7 @@ TEST_F(Reg, Full_HidesRealKey)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegReadValue::Req req;
-    req.Key   = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey);
     req.Value = "TestValue";
 
     const auto rsp = ProbeRegReadValue.Call(req, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
@@ -58,9 +58,9 @@ TEST_F(Reg, Full_HidesRealKey)
     /* A write access open hides the host entry as well: `Full` never copies
      * the host key up into the hive. */
     ProtocolRegOpenWriteValue::Req write_req;
-    write_req.Key   = appbox::WideToUTF8(subkey);
+    write_req.Key = appbox::WideToUTF8(subkey);
     write_req.Value = "TestValue";
-    write_req.Data  = "sandbox";
+    write_req.Data = "sandbox";
 
     const auto write_rsp =
         ProbeRegOpenWriteValue.Call(write_req, GetCWD(), config).get<ProtocolRegOpenWriteValue::Rsp>();

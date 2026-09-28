@@ -34,7 +34,7 @@ static NTSTATUS Hook_NtDeleteKey(HANDLE KeyHandle)
 {
     logger.Log(KeyHandle);
 
-    std::wstring view_path;
+    std::wstring                       view_path;
     const appbox::registry::HandleView view = appbox::registry::Hive::MapHandleView(KeyHandle, view_path);
     if (view == appbox::registry::HandleView::NotIsolated)
     {

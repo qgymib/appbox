@@ -4,7 +4,7 @@
 #include "WString.hpp"
 #include "FsIsolationBuilder.hpp"
 
-bool appbox::test::WriteFsIsolationFile(const appbox::LoaderConfig& config,
+bool appbox::test::WriteFsIsolationFile(const appbox::LoaderConfig&          config,
                                         const std::vector<FsIsolationEntry>& entries)
 {
     nlohmann::json document;
@@ -21,7 +21,7 @@ bool appbox::test::WriteFsIsolationFile(const appbox::LoaderConfig& config,
         document[appbox::filesystem_isolation::kEntriesKey].push_back(std::move(item));
     }
 
-    const auto path = std::filesystem::path(appbox::UTF8ToWide(config.overlay_fs)) / L"filesystem-isolation.json";
+    const auto    path = std::filesystem::path(appbox::UTF8ToWide(config.overlay_fs)) / L"filesystem-isolation.json";
     std::ofstream stream(path, std::ios::binary | std::ios::trunc);
     if (!stream.is_open())
     {

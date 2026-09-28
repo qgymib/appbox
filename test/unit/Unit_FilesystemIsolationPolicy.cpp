@@ -66,11 +66,11 @@ TEST(UnitFilesystemIsolationPolicy, DecisionTable)
 {
     struct Row
     {
-        FilesystemIsolation   mode;
-        FilesystemEntryKind   kind;
-        bool                  hides_host;
-        bool                  hides_lower;
-        bool                  hides_entry;
+        FilesystemIsolation mode;
+        FilesystemEntryKind kind;
+        bool                hides_host;
+        bool                hides_lower;
+        bool                hides_entry;
     };
 
     const Row rows[] = {

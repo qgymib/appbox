@@ -316,13 +316,41 @@ bool ApplyFilesystemRecords(const std::vector<appbox::ProjectFilesystemRecord>& 
     return true;
 }
 
+/**
+ * @brief Restore the DNS redirections of the network workspace of a document.
+ * @param[in] records Entries of the document.
+ * @param[in,out] model Model which receives the redirections.
+ * @param[out] error Error description on failure.
+ * @return true when the redirections were restored.
+ */
+bool ApplyNetworkRecords(const std::vector<appbox::ProjectDnsRecord>& records, appbox::NetworkModel& model,
+                         std::string& error)
+{
+    std::size_t index = 0;
+    for (const auto& record : records)
+    {
+        const auto scope = "network[" + std::to_string(index) + "]";
+        ++index;
+
+        std::string detail;
+        if (!model.AddDnsEntry(record.hostname, record.redirect, detail))
+        {
+            error = Scoped(scope, detail);
+            return false;
+        }
+    }
+
+    return true;
+}
+
 } // namespace
 
 namespace appbox
 {
 
 ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel& registry,
-                                    const FilesystemIsolationModel& isolation, const std::wstring& output_path)
+                                    const FilesystemIsolationModel& isolation, const NetworkModel& network,
+                                    const std::wstring& output_path)
 {
     ProjectDocument document;
     document.output_path = output_path;
@@ -372,15 +400,25 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
         document.filesystem.push_back(std::move(record));
     }
 
+    for (const auto& entry : network.DnsEntries())
+    {
+        ProjectDnsRecord record;
+        record.hostname = entry.hostname;
+        record.redirect = entry.redirect;
+        document.network.push_back(std::move(record));
+    }
+
     return document;
 }
 
 bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, RegistryModel& registry,
-                          FilesystemIsolationModel& isolation, std::wstring& output_path, std::string& error)
+                          FilesystemIsolationModel& isolation, NetworkModel& network, std::wstring& output_path,
+                          std::string& error)
 {
     PackModel                candidate;
     RegistryModel            candidate_registry;
     FilesystemIsolationModel candidate_isolation;
+    NetworkModel             candidate_network;
 
     std::size_t index = 0;
     for (const auto& folder : document.folders)
@@ -432,10 +470,16 @@ bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, Reg
         return false;
     }
 
+    if (!ApplyNetworkRecords(document.network, candidate_network, error))
+    {
+        return false;
+    }
+
     /* Every entry was accepted: the document can replace the caller. */
     model = std::move(candidate);
     registry = std::move(candidate_registry);
     isolation = std::move(candidate_isolation);
+    network = std::move(candidate_network);
     output_path = document.output_path;
     return true;
 }

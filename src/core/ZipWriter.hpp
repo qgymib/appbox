@@ -96,8 +96,8 @@ private:
      */
     std::string FormatError(const char* context) const;
 
-    zip*                             archive_ = nullptr;
-    std::vector<std::vector<char>>  buffers_;
+    zip*                           archive_ = nullptr;
+    std::vector<std::vector<char>> buffers_;
 };
 
 } // namespace appbox

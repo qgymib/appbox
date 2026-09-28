@@ -14,9 +14,14 @@ namespace appbox::tracer
 /**
  * @brief Names of the modules whose functions are traced.
  *
- * The three modules carry the NT entry points (ntdll), the Win32 API
- * (kernel32) and the implementation of the Win32 API (kernelbase), so together
- * they cover the calls which the isolation domains of appbox have to intercept.
+ * The default scope only uses a part of them: the NT entry points live in
+ * ntdll, and the name resolution of the network domain has no NT landing point
+ * at all, so it lives in ws2_32 and dnsapi. The Win32 API (kernel32) and its
+ * implementation (kernelbase) are read as well, because the exhaustive scope
+ * (`--all-exports`) covers them.
+ *
+ * ws2_32 and dnsapi are loaded on demand, so their breakpoints can only be
+ * armed once the loader mapped them.
  *
  * @return The lowercase base names without extension.
  */

@@ -47,15 +47,15 @@ TEST_F(Reg, ShadowKey_ReadRealValue)
 
     auto config = tree.Build();
 
-    const auto       subkey = L"Software\\AppBoxTest\\ShadowKey_ReadRealValue_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\ShadowKey_ReadRealValue_" + appbox::UTF8ToWide(appbox::RandomString(8));
     const std::string expected = "RealValue";
 
     /* Create the key and the value in the real registry. */
     {
         HKEY key = nullptr;
-        ASSERT_EQ(RegCreateKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key,
-                                  nullptr),
-                  ERROR_SUCCESS);
+        ASSERT_EQ(
+            RegCreateKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr),
+            ERROR_SUCCESS);
 
         auto wdata = appbox::UTF8ToWide(expected);
         ASSERT_EQ(RegSetValueExW(key, L"TestValue", 0, REG_SZ, reinterpret_cast<const BYTE*>(wdata.c_str()),

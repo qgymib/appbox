@@ -68,9 +68,8 @@ std::string Quote(const std::wstring& text)
  */
 std::string RefusedMode(const appbox::FilesystemIsolation isolation)
 {
-    return std::string("the isolation mode '")
-           + appbox::filesystem_isolation::IsolationToken(isolation)
-           + "' cannot be used for a file";
+    return std::string("the isolation mode '") + appbox::filesystem_isolation::IsolationToken(isolation) +
+           "' cannot be used for a file";
 }
 
 } // namespace
@@ -87,7 +86,7 @@ const std::vector<std::wstring>& FilesystemIsolationNames()
 std::wstring FilesystemIsolationName(FilesystemIsolation isolation)
 {
     const auto& names = FilesystemIsolationNames();
-    const auto index = static_cast<std::size_t>(isolation);
+    const auto  index = static_cast<std::size_t>(isolation);
     if (index >= names.size())
     {
         return names.front();
@@ -119,8 +118,7 @@ bool ParseFilesystemIsolationName(const std::wstring& name, FilesystemIsolation&
 
 FilesystemIsolation DefaultFilesystemIsolation(FilesystemEntryKind kind)
 {
-    return kind == FilesystemEntryKind::Directory ? FilesystemIsolation::WriteCopy
-                                                  : FilesystemIsolation::Full;
+    return kind == FilesystemEntryKind::Directory ? FilesystemIsolation::WriteCopy : FilesystemIsolation::Full;
 }
 
 FilesystemIsolation FilesystemIsolationForKind(FilesystemIsolation isolation, FilesystemEntryKind kind)
@@ -140,7 +138,7 @@ FilesystemIsolation FilesystemIsolationForKind(FilesystemIsolation isolation, Fi
 std::vector<std::wstring> SplitViewPath(const std::wstring& path)
 {
     std::vector<std::wstring> parts;
-    std::wstring current;
+    std::wstring              current;
 
     for (const wchar_t character : path)
     {
@@ -323,8 +321,7 @@ bool FilesystemIsolationModel::RemoveSubtree(const std::wstring& view_path)
     const auto size = entries_.size();
     entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
                                   [&path](const FilesystemIsolationEntry& entry) {
-                                      return ViewPathEquals(entry.path, path)
-                                             || IsViewPathBelow(entry.path, path);
+                                      return ViewPathEquals(entry.path, path) || IsViewPathBelow(entry.path, path);
                                   }),
                    entries_.end());
     return entries_.size() != size;
@@ -337,7 +334,7 @@ bool FilesystemIsolationModel::HasExplicitIsolation(const std::wstring& view_pat
 }
 
 FilesystemIsolation FilesystemIsolationModel::EffectiveIsolation(const std::wstring& view_path,
-                                                                FilesystemEntryKind kind) const
+                                                                 FilesystemEntryKind kind) const
 {
     auto current = NormalizeViewPath(view_path);
     while (!current.empty())

@@ -12,11 +12,11 @@ static nlohmann::json NtQueryKeyLogParam(HANDLE KeyHandle, KEY_INFORMATION_CLASS
                                          PVOID KeyInformation, ULONG Length, PULONG ResultLength)
 {
     nlohmann::json json;
-    json["KeyHandle"]            = appbox::PointerToString(KeyHandle);
-    json["KeyInformationClass"]  = KeyInformationClass;
-    json["KeyInformation"]       = appbox::PointerToString(KeyInformation);
-    json["Length"]               = Length;
-    json["ResultLength"]         = appbox::PointerToString(ResultLength);
+    json["KeyHandle"] = appbox::PointerToString(KeyHandle);
+    json["KeyInformationClass"] = KeyInformationClass;
+    json["KeyInformation"] = appbox::PointerToString(KeyInformation);
+    json["Length"] = Length;
+    json["ResultLength"] = appbox::PointerToString(ResultLength);
     return json;
 }
 
@@ -107,14 +107,14 @@ static NTSTATUS QueryKeyNameTranslated(HANDLE KeyHandle, KEY_INFORMATION_CLASS K
                                        PVOID KeyInformation, ULONG Length, PULONG ResultLength)
 {
     ULONG name_len_offset = 0;
-    ULONG name_offset     = 0;
+    ULONG name_offset = 0;
     if (!NameLayoutOf(KeyInformationClass, name_len_offset, name_offset))
     {
         return sys_NtQueryKey(KeyHandle, KeyInformationClass, KeyInformation, Length, ResultLength);
     }
 
-    BYTE  local[kKeyNameBufferSize];
-    ULONG needed = 0;
+    BYTE     local[kKeyNameBufferSize];
+    ULONG    needed = 0;
     NTSTATUS st = sys_NtQueryKey(KeyHandle, KeyInformationClass, local, kKeyNameBufferSize, &needed);
     if (!NT_SUCCESS(st))
     {
@@ -155,21 +155,21 @@ static NTSTATUS QueryKeyNameTranslated(HANDLE KeyHandle, KEY_INFORMATION_CLASS K
      * Rebuild the record with the translated name. KeyNodeInformation carries
      * the optional class string behind the name, which moves along.
      */
-    ULONG class_len    = 0;
+    ULONG class_len = 0;
     ULONG class_offset = 0;
     if (KeyInformationClass == KeyNodeInformation)
     {
         class_offset = LoadUlong(local, 12); /* ClassOffset field. */
-        class_len    = LoadUlong(local, 16); /* ClassLength field. */
+        class_len = LoadUlong(local, 16);    /* ClassLength field. */
         if (class_len == 0 || class_offset + class_len > needed)
         {
             class_offset = 0;
-            class_len    = 0;
+            class_len = 0;
         }
     }
 
     const ULONG new_name_len = (ULONG)(view_name.size() * sizeof(WCHAR));
-    const ULONG new_needed   = name_offset + new_name_len + class_len;
+    const ULONG new_needed = name_offset + new_name_len + class_len;
 
     if (ResultLength != nullptr)
     {
@@ -271,18 +271,18 @@ static NTSTATUS FixMergedCounts(HANDLE KeyHandle, const std::wstring& view_path,
         real_needed >= sizeof(KEY_FULL_INFORMATION) - sizeof(WCHAR))
     {
         auto* info = reinterpret_cast<KEY_FULL_INFORMATION*>(real_buf);
-        real_max_name_len        = info->MaxNameLen;
-        real_max_class_len       = info->MaxClassLen;
-        real_max_value_name_len  = info->MaxValueNameLen;
-        real_max_value_data_len  = info->MaxValueDataLen;
-        have_real_max            = true;
+        real_max_name_len = info->MaxNameLen;
+        real_max_class_len = info->MaxClassLen;
+        real_max_value_name_len = info->MaxValueNameLen;
+        real_max_value_data_len = info->MaxValueDataLen;
+        have_real_max = true;
     }
 
     if (full)
     {
         auto* info = reinterpret_cast<KEY_FULL_INFORMATION*>(KeyInformation);
-        info->SubKeys  = (ULONG)appbox::registry::CountMerged(hive_sub_keys, real_sub_keys);
-        info->Values   = (ULONG)appbox::registry::CountMerged(hive_values, real_values);
+        info->SubKeys = (ULONG)appbox::registry::CountMerged(hive_sub_keys, real_sub_keys);
+        info->Values = (ULONG)appbox::registry::CountMerged(hive_values, real_values);
         if (have_real_max)
         {
             if (real_max_name_len > info->MaxNameLen)
@@ -307,7 +307,7 @@ static NTSTATUS FixMergedCounts(HANDLE KeyHandle, const std::wstring& view_path,
     {
         auto* info = reinterpret_cast<KEY_CACHED_INFORMATION*>(KeyInformation);
         info->SubKeys = (ULONG)appbox::registry::CountMerged(hive_sub_keys, real_sub_keys);
-        info->Values  = (ULONG)appbox::registry::CountMerged(hive_values, real_values);
+        info->Values = (ULONG)appbox::registry::CountMerged(hive_values, real_values);
         if (have_real_max)
         {
             if (real_max_name_len > info->MaxNameLen)
@@ -355,8 +355,7 @@ static NTSTATUS Hook_NtQueryKey(HANDLE KeyHandle, KEY_INFORMATION_CLASS KeyInfor
         return QueryKeyNameTranslated(KeyHandle, KeyInformationClass, KeyInformation, Length, ResultLength);
 
     case KeyFullInformation:
-    case KeyCachedInformation:
-    {
+    case KeyCachedInformation: {
         NTSTATUS st = sys_NtQueryKey(KeyHandle, KeyInformationClass, KeyInformation, Length, ResultLength);
         if (!NT_SUCCESS(st))
         {

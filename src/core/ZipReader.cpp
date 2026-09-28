@@ -69,9 +69,7 @@ std::wstring SanitizeEntryName(const char* name)
         converted.push_back(ch == L'/' ? L'\\' : ch);
     }
 
-    if (converted.empty()
-        || converted.front() == L'\\'
-        || (converted.size() >= 2 && converted[1] == L':'))
+    if (converted.empty() || converted.front() == L'\\' || (converted.size() >= 2 && converted[1] == L':'))
     {
         return {};
     }
@@ -164,7 +162,7 @@ std::string WriteEntry(zip_t* archive, zip_uint64_t index, const std::filesystem
     }
 
     std::vector<char> buffer(kReadBufferSize);
-    std::string error;
+    std::string       error;
     for (;;)
     {
         const auto read = zip_fread(file, buffer.data(), buffer.size());
@@ -201,9 +199,9 @@ std::string ExtractArchive(const std::wstring& zip_path, const std::wstring& des
 {
     const auto path = WideToUTF8(zip_path);
 
-    int error_code = 0;
-    const std::unique_ptr<zip_t, ArchiveCloser> archive(
-        zip_open(path.c_str(), ZIP_RDONLY, &error_code), ArchiveCloser{});
+    int                                         error_code = 0;
+    const std::unique_ptr<zip_t, ArchiveCloser> archive(zip_open(path.c_str(), ZIP_RDONLY, &error_code),
+                                                        ArchiveCloser{});
     if (archive == nullptr)
     {
         zip_error_t detail;
@@ -234,14 +232,14 @@ std::string ExtractArchive(const std::wstring& zip_path, const std::wstring& des
     for (auto index = static_cast<zip_uint64_t>(0); index < static_cast<zip_uint64_t>(count); ++index)
     {
         zip_stat_t stat = {};
-        if (zip_stat_index(archive.get(), index, 0, &stat) == 0 && stat.name != nullptr
-            && (stat.valid & ZIP_STAT_NAME) != 0 && !IsDirectoryEntry(stat.name))
+        if (zip_stat_index(archive.get(), index, 0, &stat) == 0 && stat.name != nullptr &&
+            (stat.valid & ZIP_STAT_NAME) != 0 && !IsDirectoryEntry(stat.name))
         {
             total++;
         }
     }
 
-    if (progress && !progress(BuildProgress{BuildStage::Extracting, 0, total, {}}))
+    if (progress && !progress(BuildProgress{ BuildStage::Extracting, 0, total, {} }))
     {
         return kBuildCancelledError;
     }
@@ -296,8 +294,7 @@ std::string ExtractArchive(const std::wstring& zip_path, const std::wstring& des
          * file while it is being extracted instead of after the fact.
          */
         done++;
-        if (progress
-            && !progress(BuildProgress{BuildStage::Extracting, done, total, DisplayEntryName(relative)}))
+        if (progress && !progress(BuildProgress{ BuildStage::Extracting, done, total, DisplayEntryName(relative) }))
         {
             return kBuildCancelledError;
         }

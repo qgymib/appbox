@@ -21,11 +21,11 @@ struct ProtocolRegEnumKey
 
     struct Rsp
     {
-        DWORD open_code = static_cast<DWORD>(-1);  /* RegOpenKeyExW() error code. */
-        DWORD count_code = static_cast<DWORD>(-1); /* RegQueryInfoKeyW() error code. */
-        DWORD subkey_count = 0;                    /* Sub key count reported by RegQueryInfoKeyW(). */
-        DWORD enum_code = static_cast<DWORD>(-1);  /* Last RegEnumKeyExW() error code. */
-        std::vector<std::string> names;            /* Sub key names in enumeration order. UTF-8. */
+        DWORD                    open_code = static_cast<DWORD>(-1);  /* RegOpenKeyExW() error code. */
+        DWORD                    count_code = static_cast<DWORD>(-1); /* RegQueryInfoKeyW() error code. */
+        DWORD                    subkey_count = 0;                   /* Sub key count reported by RegQueryInfoKeyW(). */
+        DWORD                    enum_code = static_cast<DWORD>(-1); /* Last RegEnumKeyExW() error code. */
+        std::vector<std::string> names;                              /* Sub key names in enumeration order. UTF-8. */
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, open_code, count_code, subkey_count, enum_code, names)
     };
 };

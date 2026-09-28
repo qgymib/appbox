@@ -41,6 +41,11 @@ constexpr const char* kIsolationKey = "isolation";
 constexpr const char* kFilesystemKey = "filesystem";
 constexpr const char* kKindKey = "kind";
 
+/* Member names of the network part of the schema. */
+constexpr const char* kNetworkKey = "network";
+constexpr const char* kHostnameKey = "hostname";
+constexpr const char* kRedirectKey = "redirect";
+
 /**
  * @brief Reject a JSON value which is not an object.
  * @param[in] json The value to check.
@@ -407,6 +412,24 @@ void from_json(const nlohmann::ordered_json& json, ProjectFilesystemRecord& reco
     record = std::move(candidate);
 }
 
+void to_json(nlohmann::ordered_json& json, const ProjectDnsRecord& record)
+{
+    json = nlohmann::ordered_json::object();
+    json[kHostnameKey] = WideToUTF8(record.hostname);
+    json[kRedirectKey] = WideToUTF8(record.redirect);
+}
+
+void from_json(const nlohmann::ordered_json& json, ProjectDnsRecord& record)
+{
+    RequireObject(json);
+
+    ProjectDnsRecord candidate;
+    candidate.hostname = ReadRequiredText(json, kHostnameKey);
+    candidate.redirect = ReadRequiredText(json, kRedirectKey);
+
+    record = std::move(candidate);
+}
+
 void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
 {
     json = nlohmann::ordered_json::object();
@@ -423,6 +446,7 @@ void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
 
     json[kRegistryKey] = document.registry;
     json[kFilesystemKey] = document.filesystem;
+    json[kNetworkKey] = document.network;
 }
 
 void from_json(const nlohmann::ordered_json& json, ProjectDocument& document)
@@ -457,6 +481,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectDocument& document)
     ReadOptionalRecord(json, kMainProgramKey, candidate.main_program);
     ReadRecordArray(json, kRegistryKey, candidate.registry);
     ReadRecordArray(json, kFilesystemKey, candidate.filesystem);
+    ReadRecordArray(json, kNetworkKey, candidate.network);
 
     document = std::move(candidate);
 }

@@ -43,7 +43,7 @@ TEST_F(Fs, LaunchProcess_FromLower)
     {
         ProtocolLaunchProcess::Req req;
         req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#APPDATA#", false) + L"\\cmd.exe");
-        req.Arguments = {"/c", "exit 42"};
+        req.Arguments = { "/c", "exit 42" };
 
         auto rsp = ProbeLaunchProcess.Call(req, GetCWD(), config).get<ProtocolLaunchProcess::Rsp>();
         ASSERT_EQ(rsp.code, static_cast<DWORD>(0)) << "CreateProcessW failed with " << rsp.code;

@@ -4,8 +4,7 @@
 #include "utils/WinAPI.h"
 #include "__init__.hpp"
 
-extern "C"
-{
+extern "C" {
 /**
  * @brief NtEnumerateKey() direct call.
  * @see The prototype T_NtEnumerateKey is defined in utils/WinAPI.h.

@@ -69,8 +69,7 @@ struct GroupIconEntry
 
 #pragma pack(pop)
 
-static_assert(sizeof(GroupIconEntry) == kGroupIconEntrySize,
-              "a group icon entry has to match the resource layout");
+static_assert(sizeof(GroupIconEntry) == kGroupIconEntrySize, "a group icon entry has to match the resource layout");
 
 /**
  * @brief RAII helper creating a unique folder below the temporary directory.
@@ -81,9 +80,9 @@ public:
     TempDir()
     {
         const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
-        path_ = std::filesystem::temp_directory_path()
-                / (L"appbox-application-icon-" + std::to_wstring(GetCurrentProcessId()) + L"-"
-                   + std::to_wstring(ticks) + L"-" + std::to_wstring(++counter_));
+        path_ = std::filesystem::temp_directory_path() /
+                (L"appbox-application-icon-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(ticks) +
+                 L"-" + std::to_wstring(++counter_));
         std::filesystem::create_directories(path_);
     }
 
@@ -106,7 +105,7 @@ public:
     }
 
 private:
-    static unsigned counter_;
+    static unsigned       counter_;
     std::filesystem::path path_;
 };
 
@@ -136,7 +135,7 @@ BOOL CALLBACK CaptureEntry(HMODULE module, LPCWSTR type, LPWSTR name, LONG_PTR p
     static_cast<void>(module);
     static_cast<void>(type);
 
-    auto* entries = reinterpret_cast<std::vector<ResourceEntry>*>(param);
+    auto*         entries = reinterpret_cast<std::vector<ResourceEntry>*>(param);
     ResourceEntry entry;
     if (IS_INTRESOURCE(name))
     {
@@ -159,8 +158,7 @@ BOOL CALLBACK CaptureEntry(HMODULE module, LPCWSTR type, LPWSTR name, LONG_PTR p
 std::wstring SelfPath()
 {
     std::vector<wchar_t> buffer(32768, L'\0');
-    const auto length = GetModuleFileNameW(nullptr, buffer.data(),
-                                           static_cast<DWORD>(buffer.size()));
+    const auto           length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
     return std::wstring(buffer.data(), length);
 }
 
@@ -250,8 +248,8 @@ std::vector<char> MakeIconImage(std::uint32_t size, std::uint32_t colour)
     std::vector<char> image(sizeof(header));
     std::memcpy(image.data(), &header, sizeof(header));
 
-    const char channels[4] = {static_cast<char>(colour), static_cast<char>(colour >> 8),
-                              static_cast<char>(colour >> 16), static_cast<char>(0xFF)};
+    const char channels[4] = { static_cast<char>(colour), static_cast<char>(colour >> 8),
+                               static_cast<char>(colour >> 16), static_cast<char>(0xFF) };
     for (std::uint32_t pixel = 0; pixel < size * size; ++pixel)
     {
         image.insert(image.end(), channels, channels + 4);
@@ -273,7 +271,7 @@ std::vector<char> MakeIconGroup(WORD first_id, const std::vector<std::vector<cha
 {
     std::vector<char> group(kGroupIconHeaderSize + images.size() * kGroupIconEntrySize, '\0');
 
-    const WORD header[3] = {0, 1, static_cast<WORD>(images.size())};
+    const WORD header[3] = { 0, 1, static_cast<WORD>(images.size()) };
     std::memcpy(group.data(), header, sizeof(header));
 
     for (std::size_t index = 0; index < images.size(); ++index)
@@ -281,7 +279,7 @@ std::vector<char> MakeIconGroup(WORD first_id, const std::vector<std::vector<cha
         BITMAPINFOHEADER info = {};
         std::memcpy(&info, images[index].data(), sizeof(info));
 
-        const auto height = static_cast<std::uint32_t>(info.biHeight / 2);
+        const auto     height = static_cast<std::uint32_t>(info.biHeight / 2);
         GroupIconEntry entry = {};
         entry.width = static_cast<BYTE>(info.biWidth == 256 ? 0 : info.biWidth);
         entry.height = static_cast<BYTE>(height == 256 ? 0 : height);
@@ -289,8 +287,7 @@ std::vector<char> MakeIconGroup(WORD first_id, const std::vector<std::vector<cha
         entry.bit_count = info.biBitCount;
         entry.bytes_in_res = static_cast<DWORD>(images[index].size());
         entry.id = static_cast<WORD>(first_id + index);
-        std::memcpy(group.data() + kGroupIconHeaderSize + index * kGroupIconEntrySize, &entry,
-                    sizeof(entry));
+        std::memcpy(group.data() + kGroupIconHeaderSize + index * kGroupIconEntrySize, &entry, sizeof(entry));
     }
 
     return group;
@@ -320,8 +317,7 @@ bool AddIconGroupOnce(const std::wstring& path, LPCWSTR group, WORD first_id,
     {
         const auto id = static_cast<WORD>(first_id + index);
         if (!UpdateResourceW(update, RT_ICON, MAKEINTRESOURCEW(id), LANG_NEUTRAL,
-                             const_cast<char*>(images[index].data()),
-                             static_cast<DWORD>(images[index].size())))
+                             const_cast<char*>(images[index].data()), static_cast<DWORD>(images[index].size())))
         {
             error = "UpdateResourceW(RT_ICON) failed with " + std::to_string(GetLastError());
             EndUpdateResourceW(update, TRUE);
@@ -330,8 +326,7 @@ bool AddIconGroupOnce(const std::wstring& path, LPCWSTR group, WORD first_id,
     }
 
     const auto group_bytes = MakeIconGroup(first_id, images);
-    if (!UpdateResourceW(update, RT_GROUP_ICON, group, LANG_NEUTRAL,
-                         const_cast<char*>(group_bytes.data()),
+    if (!UpdateResourceW(update, RT_GROUP_ICON, group, LANG_NEUTRAL, const_cast<char*>(group_bytes.data()),
                          static_cast<DWORD>(group_bytes.size())))
     {
         error = "UpdateResourceW(RT_GROUP_ICON) failed with " + std::to_string(GetLastError());
@@ -365,8 +360,8 @@ bool AddIconGroupOnce(const std::wstring& path, LPCWSTR group, WORD first_id,
  * @param[out] error Error description on failure.
  * @return true on success.
  */
-bool AddIconGroup(const std::wstring& path, LPCWSTR group, WORD first_id,
-                  const std::vector<std::vector<char>>& images, std::string& error)
+bool AddIconGroup(const std::wstring& path, LPCWSTR group, WORD first_id, const std::vector<std::vector<char>>& images,
+                  std::string& error)
 {
     /** Number of attempts of the resource update. */
     constexpr int kAttempts = 5;
@@ -399,8 +394,8 @@ bool AddIconGroup(const std::wstring& path, LPCWSTR group, WORD first_id,
 std::vector<ResourceEntry> ResourceEntries(const std::wstring& path, LPCWSTR type)
 {
     std::vector<ResourceEntry> entries;
-    const HMODULE module = LoadLibraryExW(path.c_str(), nullptr,
-                                          LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE);
+    const HMODULE              module =
+        LoadLibraryExW(path.c_str(), nullptr, LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE);
     if (module == nullptr)
     {
         return entries;
@@ -434,8 +429,8 @@ LPCWSTR ResourceName(const ResourceEntry& entry)
  */
 bool SameResourceName(const std::wstring& left, const std::wstring& right)
 {
-    const auto result = CompareStringOrdinal(left.c_str(), static_cast<int>(left.size()),
-                                             right.c_str(), static_cast<int>(right.size()), TRUE);
+    const auto result = CompareStringOrdinal(left.c_str(), static_cast<int>(left.size()), right.c_str(),
+                                             static_cast<int>(right.size()), TRUE);
     return result == CSTR_EQUAL;
 }
 
@@ -448,19 +443,19 @@ bool SameResourceName(const std::wstring& left, const std::wstring& right)
  */
 std::vector<char> ReadResource(const std::wstring& path, LPCWSTR type, LPCWSTR name)
 {
-    const HMODULE module = LoadLibraryExW(path.c_str(), nullptr,
-                                          LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE);
+    const HMODULE module =
+        LoadLibraryExW(path.c_str(), nullptr, LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE);
     if (module == nullptr)
     {
         return {};
     }
 
     std::vector<char> bytes;
-    const HRSRC resource = FindResourceW(module, name, type);
+    const HRSRC       resource = FindResourceW(module, name, type);
     if (resource != nullptr)
     {
-        const DWORD size = SizeofResource(module, resource);
-        const HGLOBAL handle = LoadResource(module, resource);
+        const DWORD       size = SizeofResource(module, resource);
+        const HGLOBAL     handle = LoadResource(module, resource);
         const void* const data = handle != nullptr ? LockResource(handle) : nullptr;
         if (data != nullptr)
         {
@@ -491,8 +486,7 @@ std::vector<GroupIconEntry> ParseIconGroup(const std::vector<char>& group)
     for (WORD index = 0; index < count; ++index)
     {
         GroupIconEntry entry = {};
-        std::memcpy(&entry, group.data() + kGroupIconHeaderSize + index * kGroupIconEntrySize,
-                    sizeof(entry));
+        std::memcpy(&entry, group.data() + kGroupIconHeaderSize + index * kGroupIconEntrySize, sizeof(entry));
         entries.push_back(entry);
     }
 
@@ -513,9 +507,9 @@ std::vector<GroupIconEntry> ParseIconGroup(const std::vector<char>& group)
  */
 std::vector<unsigned char> RenderFileIcon(const std::wstring& path, bool large, int size)
 {
-    HICON icon = nullptr;
-    const auto count = large ? ExtractIconExW(path.c_str(), 0, &icon, nullptr, 1)
-                             : ExtractIconExW(path.c_str(), 0, nullptr, &icon, 1);
+    HICON      icon = nullptr;
+    const auto count =
+        large ? ExtractIconExW(path.c_str(), 0, &icon, nullptr, 1) : ExtractIconExW(path.c_str(), 0, nullptr, &icon, 1);
     if (count == 0 || icon == nullptr)
     {
         return {};
@@ -532,14 +526,13 @@ std::vector<unsigned char> RenderFileIcon(const std::wstring& path, bool large, 
     info.bmiHeader.biBitCount = 32;
     info.bmiHeader.biCompression = BI_RGB;
 
-    void*          bits = nullptr;
-    const HBITMAP  bitmap = CreateDIBSection(memory, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
-    const HGDIOBJ  previous = SelectObject(memory, bitmap);
+    void*         bits = nullptr;
+    const HBITMAP bitmap = CreateDIBSection(memory, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+    const HGDIOBJ previous = SelectObject(memory, bitmap);
     DrawIconEx(memory, 0, 0, icon, size, size, 0, nullptr, DI_NORMAL);
     GdiFlush();
 
-    std::vector<unsigned char> pixels(static_cast<std::size_t>(size) * static_cast<std::size_t>(size)
-                                      * 4);
+    std::vector<unsigned char> pixels(static_cast<std::size_t>(size) * static_cast<std::size_t>(size) * 4);
     std::memcpy(pixels.data(), bits, pixels.size());
 
     SelectObject(memory, previous);
@@ -563,7 +556,7 @@ TEST(ApplicationIcon, KeepsThePayloadWithoutAPeImage)
 
 TEST(ApplicationIcon, KeepsThePayloadWhenTheApplicationHasNoIcon)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto loader = temp.Get() / L"loader.exe";
     ASSERT_TRUE(CopyFileTo(SelfPath(), loader.wstring()));
 
@@ -574,8 +567,7 @@ TEST(ApplicationIcon, KeepsThePayloadWhenTheApplicationHasNoIcon)
     ASSERT_FALSE(payload.empty());
 
     std::string warning;
-    const auto  patched =
-        appbox::ApplyApplicationIcon(payload.data(), payload.size(), SelfPath(), warning);
+    const auto  patched = appbox::ApplyApplicationIcon(payload.data(), payload.size(), SelfPath(), warning);
 
     EXPECT_TRUE(patched.empty());
     EXPECT_FALSE(warning.empty());
@@ -583,7 +575,7 @@ TEST(ApplicationIcon, KeepsThePayloadWhenTheApplicationHasNoIcon)
 
 TEST(ApplicationIcon, KeepsThePayloadWhenTheApplicationCannotBeRead)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto loader = temp.Get() / L"loader.exe";
     ASSERT_TRUE(CopyFileTo(SelfPath(), loader.wstring()));
 
@@ -591,8 +583,8 @@ TEST(ApplicationIcon, KeepsThePayloadWhenTheApplicationCannotBeRead)
     ASSERT_FALSE(payload.empty());
 
     std::string warning;
-    const auto  patched = appbox::ApplyApplicationIcon(payload.data(), payload.size(),
-                                                       (temp.Get() / L"missing.exe").wstring(), warning);
+    const auto  patched =
+        appbox::ApplyApplicationIcon(payload.data(), payload.size(), (temp.Get() / L"missing.exe").wstring(), warning);
 
     EXPECT_TRUE(patched.empty());
     EXPECT_FALSE(warning.empty());
@@ -610,20 +602,19 @@ TEST(ApplicationIcon, AppendsTheIconGroupOfTheApplication)
     std::string error;
     const auto  application_large = MakeIconImage(32, 0x0000FF); /* Red. */
     const auto  application_small = MakeIconImage(16, 0x0000FF);
-    ASSERT_TRUE(AddIconGroup(application.wstring(), MAKEINTRESOURCEW(1), 1,
-                             {application_large, application_small}, error))
+    ASSERT_TRUE(
+        AddIconGroup(application.wstring(), MAKEINTRESOURCEW(1), 1, { application_large, application_small }, error))
         << error;
 
     /* The loader stands in with the icon group which resource.rc embeds. */
     const auto loader_icon = MakeIconImage(32, 0x00FF00); /* Green. */
-    ASSERT_TRUE(AddIconGroup(loader.wstring(), kLoaderIconGroup, 1, {loader_icon}, error)) << error;
+    ASSERT_TRUE(AddIconGroup(loader.wstring(), kLoaderIconGroup, 1, { loader_icon }, error)) << error;
 
     const auto payload = ReadAllBytes(loader.wstring());
     ASSERT_FALSE(payload.empty());
 
     std::string warning;
-    const auto  patched =
-        appbox::ApplyApplicationIcon(payload.data(), payload.size(), application.wstring(), warning);
+    const auto  patched = appbox::ApplyApplicationIcon(payload.data(), payload.size(), application.wstring(), warning);
     ASSERT_TRUE(warning.empty()) << warning;
     ASSERT_FALSE(patched.empty());
 
@@ -659,12 +650,9 @@ TEST(ApplicationIcon, AppendsTheIconGroupOfTheApplication)
     EXPECT_EQ(entries[1].bytes_in_res, static_cast<DWORD>(application_small.size()));
 
     /* The file icon of the patched program is the icon of the application. */
-    EXPECT_NE(RenderFileIcon(loader.wstring(), true, 32),
-              RenderFileIcon(patched_path.wstring(), true, 32));
-    EXPECT_EQ(RenderFileIcon(application.wstring(), true, 32),
-              RenderFileIcon(patched_path.wstring(), true, 32));
-    EXPECT_EQ(RenderFileIcon(application.wstring(), false, 16),
-              RenderFileIcon(patched_path.wstring(), false, 16));
+    EXPECT_NE(RenderFileIcon(loader.wstring(), true, 32), RenderFileIcon(patched_path.wstring(), true, 32));
+    EXPECT_EQ(RenderFileIcon(application.wstring(), true, 32), RenderFileIcon(patched_path.wstring(), true, 32));
+    EXPECT_EQ(RenderFileIcon(application.wstring(), false, 16), RenderFileIcon(patched_path.wstring(), false, 16));
 }
 
 TEST(ApplicationIcon, PackWritesTheIconOfTheMainProgram)
@@ -678,8 +666,7 @@ TEST(ApplicationIcon, PackWritesTheIconOfTheMainProgram)
 
     std::string error;
     const auto  application_icon = MakeIconImage(32, 0x0000FF); /* Red. */
-    ASSERT_TRUE(AddIconGroup(program.wstring(), MAKEINTRESOURCEW(1), 1, {application_icon}, error))
-        << error;
+    ASSERT_TRUE(AddIconGroup(program.wstring(), MAKEINTRESOURCEW(1), 1, { application_icon }, error)) << error;
 
     appbox::PackModel model;
     ASSERT_TRUE(model.ImportFolder("program_files", application.wstring(), error)) << error;
@@ -689,9 +676,11 @@ TEST(ApplicationIcon, PackWritesTheIconOfTheMainProgram)
     const auto payload = ReadAllBytes(SelfPath());
     ASSERT_FALSE(payload.empty());
 
-    const auto zip_path = temp.Get() / L"out.zip";
+    const auto                  zip_path = temp.Get() / L"out.zip";
     const appbox::RegistryModel registry;
-    ASSERT_EQ(appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), payload.data(), payload.size(), zip_path.wstring(), nullptr), "");
+    ASSERT_EQ(appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(), payload.data(),
+                           payload.size(), zip_path.wstring(), nullptr),
+              "");
 
     const auto extracted = temp.Get() / L"extracted";
     ASSERT_EQ(appbox::ExtractArchive(zip_path.wstring(), extracted.wstring()), "");
@@ -711,23 +700,22 @@ TEST(ApplicationIcon, AppliesTheIconToTheRealLoaderPayload)
         GTEST_SKIP() << "the loader path was not passed with --loader=<path>";
     }
 
-    TempDir temp;
+    TempDir    temp;
     const auto application = temp.Get() / L"app.exe";
     ASSERT_TRUE(CopyFileTo(SelfPath(), application.wstring()));
 
     std::string error;
     const auto  application_large = MakeIconImage(48, 0x0000FF); /* Red. */
     const auto  application_small = MakeIconImage(16, 0x0000FF);
-    ASSERT_TRUE(AddIconGroup(application.wstring(), MAKEINTRESOURCEW(1), 1,
-                             {application_large, application_small}, error))
+    ASSERT_TRUE(
+        AddIconGroup(application.wstring(), MAKEINTRESOURCEW(1), 1, { application_large, application_small }, error))
         << error;
 
     const auto payload = ReadAllBytes(loader);
     ASSERT_FALSE(payload.empty());
 
     std::string warning;
-    const auto  patched =
-        appbox::ApplyApplicationIcon(payload.data(), payload.size(), application.wstring(), warning);
+    const auto  patched = appbox::ApplyApplicationIcon(payload.data(), payload.size(), application.wstring(), warning);
     ASSERT_TRUE(warning.empty()) << warning;
     ASSERT_FALSE(patched.empty());
 
@@ -761,6 +749,5 @@ TEST(ApplicationIcon, AppliesTheIconToTheRealLoaderPayload)
 
     /* The file icon of the patched loader is the icon of the application. */
     EXPECT_NE(RenderFileIcon(loader, true, 48), RenderFileIcon(patched_path.wstring(), true, 48));
-    EXPECT_EQ(RenderFileIcon(application.wstring(), true, 48),
-              RenderFileIcon(patched_path.wstring(), true, 48));
+    EXPECT_EQ(RenderFileIcon(application.wstring(), true, 48), RenderFileIcon(patched_path.wstring(), true, 48));
 }

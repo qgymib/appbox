@@ -43,9 +43,10 @@ TEST_F(Fs, Whiteout_FolderHidesItsSubtree)
     /* clang-format on */
 
     auto config = tree.Build();
-    ASSERT_TRUE(WriteFsIsolationFile(config, {
-        { L"#APPDATA#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
-          appbox::FilesystemIsolation::Whiteout }
+    ASSERT_TRUE(WriteFsIsolationFile(
+        config, {
+                    { L"#APPDATA#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
+                     appbox::FilesystemIsolation::Whiteout }
     }));
 
     const auto folder = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName;

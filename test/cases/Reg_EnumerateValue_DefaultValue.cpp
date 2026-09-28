@@ -81,10 +81,10 @@ static void WriteSandboxValue(const std::wstring& subkey, const std::string& val
                               const std::filesystem::path& cwd, const appbox::LoaderConfig& config)
 {
     ProtocolRegWriteValue::Req req;
-    req.Key   = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey);
     req.Value = value;
-    req.Data  = data;
-    auto rsp  = ProbeRegWriteValue.Call(req, cwd, config).get<ProtocolRegWriteValue::Rsp>();
+    req.Data = data;
+    auto rsp = ProbeRegWriteValue.Call(req, cwd, config).get<ProtocolRegWriteValue::Rsp>();
     ASSERT_EQ(rsp.create_code, 0u);
     ASSERT_EQ(rsp.set_code, 0u);
     ASSERT_EQ(rsp.readback, data);
@@ -134,12 +134,12 @@ TEST_F(Reg, EnumValue_DefaultValueInHive)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\EnumValue_DefaultValueInHive_"
-                        + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey =
+        L"Software\\AppBoxTest\\EnumValue_DefaultValueInHive_" + appbox::UTF8ToWide(appbox::RandomString(8));
 
     const std::string default_data = "DefaultData";
-    const std::string first_data   = "FirstData";
-    const std::string second_data  = "SecondData";
+    const std::string first_data = "FirstData";
+    const std::string second_data = "SecondData";
 
     RealKeyGuard guard{ subkey };
 
@@ -197,11 +197,11 @@ TEST_F(Reg, EnumValue_DefaultValueOfRealKey)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\EnumValue_DefaultValueOfRealKey_"
-                        + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey =
+        L"Software\\AppBoxTest\\EnumValue_DefaultValueOfRealKey_" + appbox::UTF8ToWide(appbox::RandomString(8));
 
     const std::string host_default = "HostDefault";
-    const std::string host_data    = "HostData";
+    const std::string host_data = "HostData";
     const std::string sandbox_data = "SandboxData";
 
     /* The real key holds a default value and a named value. */
@@ -262,10 +262,10 @@ TEST_F(Reg, EnumValue_DefaultValueShadowed)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\EnumValue_DefaultValueShadowed_"
-                        + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey =
+        L"Software\\AppBoxTest\\EnumValue_DefaultValueShadowed_" + appbox::UTF8ToWide(appbox::RandomString(8));
 
-    const std::string host_default    = "HostDefault";
+    const std::string host_default = "HostDefault";
     const std::string sandbox_default = "SandboxDefault";
 
     WriteRealValue(subkey, L"", host_default);

@@ -12,9 +12,9 @@ namespace appbox::tracer
 /** One export of a PE image. */
 struct ExportEntry
 {
-    std::wstring name;      ///< Exported name.
-    std::uint32_t rva = 0;  ///< Implementation offset; 0 for a forwarded export.
-    std::wstring forwarder; ///< Forward target `MODULE.Function`; empty for a normal export.
+    std::wstring  name;      ///< Exported name.
+    std::uint32_t rva = 0;   ///< Implementation offset; 0 for a forwarded export.
+    std::wstring  forwarder; ///< Forward target `MODULE.Function`; empty for a normal export.
 };
 
 /**
@@ -46,13 +46,22 @@ public:
     static PeImage FromBuffer(std::vector<std::uint8_t> buffer);
 
     /** @return The exports of the image, forwarded ones included. */
-    const std::vector<ExportEntry>& Exports() const noexcept { return exports_; }
+    const std::vector<ExportEntry>& Exports() const noexcept
+    {
+        return exports_;
+    }
 
     /** @return The machine type of the COFF header (IMAGE_FILE_MACHINE_*). */
-    std::uint16_t Machine() const noexcept { return machine_; }
+    std::uint16_t Machine() const noexcept
+    {
+        return machine_;
+    }
 
     /** @return Whether the image is a 32 bit image (PE32 instead of PE32+). */
-    bool Is32Bit() const noexcept { return is_32_bit_; }
+    bool Is32Bit() const noexcept
+    {
+        return is_32_bit_;
+    }
 
     /**
      * @brief Report whether an RVA lies in an executable section.
@@ -69,11 +78,11 @@ private:
     /** One entry of the section table. */
     struct Section
     {
-        std::uint32_t virtual_address = 0;    ///< RVA of the section.
-        std::uint32_t virtual_size = 0;       ///< Size of the section in memory.
-        std::uint32_t raw_offset = 0;         ///< File offset of the section content.
-        std::uint32_t raw_size = 0;           ///< Size of the section content in the file.
-        std::uint32_t characteristics = 0;    ///< Section flags (IMAGE_SCN_*).
+        std::uint32_t virtual_address = 0; ///< RVA of the section.
+        std::uint32_t virtual_size = 0;    ///< Size of the section in memory.
+        std::uint32_t raw_offset = 0;      ///< File offset of the section content.
+        std::uint32_t raw_size = 0;        ///< Size of the section content in the file.
+        std::uint32_t characteristics = 0; ///< Section flags (IMAGE_SCN_*).
     };
 
     /** Parse the buffer which was handed to FromBuffer. */
@@ -92,11 +101,11 @@ private:
      */
     std::size_t OffsetOfRva(std::uint32_t rva) const;
 
-    std::vector<std::uint8_t> data_;      ///< Image content.
-    std::uint16_t machine_ = 0;           ///< COFF machine type.
-    bool is_32_bit_ = false;              ///< Whether the optional header is PE32.
-    std::vector<Section> sections_;       ///< Section table.
-    std::vector<ExportEntry> exports_;    ///< Export directory content.
+    std::vector<std::uint8_t> data_;              ///< Image content.
+    std::uint16_t             machine_ = 0;       ///< COFF machine type.
+    bool                      is_32_bit_ = false; ///< Whether the optional header is PE32.
+    std::vector<Section>      sections_;          ///< Section table.
+    std::vector<ExportEntry>  exports_;           ///< Export directory content.
 };
 
 /**

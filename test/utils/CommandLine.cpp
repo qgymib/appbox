@@ -12,7 +12,7 @@ std::wstring appbox::test::GetOwnCommandLine()
 }
 
 bool appbox::test::FindCommandLineOption(const std::wstring& command_line, const std::wstring& name,
-                                        std::wstring& value)
+                                         std::wstring& value)
 {
     value.clear();
     if (name.empty())

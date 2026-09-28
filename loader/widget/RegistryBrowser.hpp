@@ -109,13 +109,13 @@ private:
      */
     void OnListItemActivated(wxListEvent& event);
 
-    appbox::HiveReader           reader_;         /* Hive mount of the browser. */
-    std::vector<appbox::RegistryValue> values_;   /* Values of the selected key. */
-    wxTextCtrl*                  path_bar_ = nullptr; /* Bar with the selected key path. */
-    wxTreeCtrl*                  tree_ = nullptr; /* Key tree. */
-    wxListCtrl*                  list_ = nullptr; /* Value list. */
-    int                          icon_closed_ = -1; /* Image list index of a collapsed key. */
-    int                          icon_open_ = -1; /* Image list index of an expanded key. */
+    appbox::HiveReader                 reader_;             /* Hive mount of the browser. */
+    std::vector<appbox::RegistryValue> values_;             /* Values of the selected key. */
+    wxTextCtrl*                        path_bar_ = nullptr; /* Bar with the selected key path. */
+    wxTreeCtrl*                        tree_ = nullptr;     /* Key tree. */
+    wxListCtrl*                        list_ = nullptr;     /* Value list. */
+    int                                icon_closed_ = -1;   /* Image list index of a collapsed key. */
+    int                                icon_open_ = -1;     /* Image list index of an expanded key. */
 };
 
 #endif // APPBOX_LOADER_WIDGET_REGISTRY_BROWSER_HPP

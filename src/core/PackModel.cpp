@@ -238,21 +238,20 @@ void PackModel::RemoveImport(const std::string& preset_id, const std::wstring& i
             imports_.erase(it);
 
             /* Imported files of the removed folder have no lower layer anymore. */
-            imported_files_.erase(
-                std::remove_if(imported_files_.begin(), imported_files_.end(),
-                               [&removed](const ImportedFile& file) {
-                                   if (file.preset_id != removed.preset_id)
-                                   {
-                                       return false;
-                                   }
-                                   const auto segments = Split(file.target_dir, L"\\");
-                                   return !segments.empty()
-                                          && EqualsIgnoreCase(segments.front(), removed.import_name);
-                               }),
-                imported_files_.end());
+            imported_files_.erase(std::remove_if(imported_files_.begin(), imported_files_.end(),
+                                                 [&removed](const ImportedFile& file) {
+                                                     if (file.preset_id != removed.preset_id)
+                                                     {
+                                                         return false;
+                                                     }
+                                                     const auto segments = Split(file.target_dir, L"\\");
+                                                     return !segments.empty() &&
+                                                            EqualsIgnoreCase(segments.front(), removed.import_name);
+                                                 }),
+                                  imported_files_.end());
 
-            if (has_main_program_ && main_program_.preset_id == removed.preset_id
-                && EqualsIgnoreCase(main_program_.import_name, removed.import_name))
+            if (has_main_program_ && main_program_.preset_id == removed.preset_id &&
+                EqualsIgnoreCase(main_program_.import_name, removed.import_name))
             {
                 has_main_program_ = false;
                 main_program_ = MainProgram{};
@@ -283,7 +282,7 @@ bool PackModel::ImportFiles(const std::string& preset_id, const std::wstring& ta
      * The first segment has to be an imported folder: the file extends an
      * existing lower layer instead of creating a new one.
      */
-    const auto segments = Split(directory, L"\\");
+    const auto     segments = Split(directory, L"\\");
     ImportedFolder imported;
     if (!GetImport(preset_id, segments.front(), imported))
     {
@@ -293,7 +292,7 @@ bool PackModel::ImportFiles(const std::string& preset_id, const std::wstring& ta
 
     /* Store the canonical spelling of the imported folder. */
     std::wstring canonical_dir = imported.import_name;
-    const auto remainder = JoinSegments(segments, 1);
+    const auto   remainder = JoinSegments(segments, 1);
     if (!remainder.empty())
     {
         canonical_dir.push_back(L'\\');
@@ -328,15 +327,14 @@ bool PackModel::ImportFiles(const std::string& preset_id, const std::wstring& ta
 
         const auto duplicated = [&](const std::vector<ImportedFile>& files) {
             return std::any_of(files.begin(), files.end(), [&](const ImportedFile& file) {
-                return file.preset_id == preset_id && EqualsIgnoreCase(file.target_dir, canonical_dir)
-                       && EqualsIgnoreCase(file.file_name, name);
+                return file.preset_id == preset_id && EqualsIgnoreCase(file.target_dir, canonical_dir) &&
+                       EqualsIgnoreCase(file.file_name, name);
             });
         };
 
         if (duplicated(pending) || duplicated(imported_files_))
         {
-            error = "'" + WideToUTF8(name) + "' was already imported into "
-                    + WideToUTF8(canonical_dir);
+            error = "'" + WideToUTF8(name) + "' was already imported into " + WideToUTF8(canonical_dir);
             return false;
         }
 
@@ -344,8 +342,7 @@ bool PackModel::ImportFiles(const std::string& preset_id, const std::wstring& ta
          * A name which already exists in the imported folder would produce a
          * duplicate entry inside the archive.
          */
-        const auto host_path =
-            std::filesystem::path(imported.source_path) / remainder / std::filesystem::path(name);
+        const auto host_path = std::filesystem::path(imported.source_path) / remainder / std::filesystem::path(name);
         if (std::filesystem::exists(host_path, ec))
         {
             error = "'" + WideToUTF8(name) + "' already exists in the imported folder";
@@ -371,8 +368,8 @@ bool PackModel::RemoveImportedFile(const std::string& preset_id, const std::wstr
 
     for (auto it = imported_files_.begin(); it != imported_files_.end(); ++it)
     {
-        if (it->preset_id == preset_id && EqualsIgnoreCase(it->target_dir, directory)
-            && EqualsIgnoreCase(it->file_name, file_name))
+        if (it->preset_id == preset_id && EqualsIgnoreCase(it->target_dir, directory) &&
+            EqualsIgnoreCase(it->file_name, file_name))
         {
             imported_files_.erase(it);
             return true;
@@ -381,8 +378,7 @@ bool PackModel::RemoveImportedFile(const std::string& preset_id, const std::wstr
     return false;
 }
 
-std::vector<ImportedFile> PackModel::FilesOf(const std::string& preset_id,
-                                             const std::wstring& target_dir) const
+std::vector<ImportedFile> PackModel::FilesOf(const std::string& preset_id, const std::wstring& target_dir) const
 {
     const auto directory = NormalizeRelativeDir(target_dir);
 
@@ -403,7 +399,7 @@ const std::vector<ImportedFile>& PackModel::AllImportedFiles() const
 }
 
 bool PackModel::SetMainProgram(const std::string& preset_id, const std::wstring& import_name,
-                                const std::wstring& relative_path, std::string& error)
+                               const std::wstring& relative_path, std::string& error)
 {
     PresetDirectory preset;
     if (!FindPresetDirectory(preset_id, preset))
@@ -447,7 +443,7 @@ bool PackModel::SetMainProgram(const std::string& preset_id, const std::wstring&
         }
     }
 
-    const auto full = std::filesystem::path(imported.source_path) / relative;
+    const auto      full = std::filesystem::path(imported.source_path) / relative;
     std::error_code ec;
     if (!std::filesystem::is_regular_file(full, ec))
     {
@@ -493,8 +489,7 @@ bool PackModel::RestoreImportedFolder(const std::string& preset_id, const std::w
     {
         if (imported.preset_id == preset_id && EqualsIgnoreCase(imported.import_name, import_name))
         {
-            error = "'" + WideToUTF8(import_name) + "' already exists below "
-                    + WideToUTF8(preset.display_name);
+            error = "'" + WideToUTF8(import_name) + "' already exists below " + WideToUTF8(preset.display_name);
             return false;
         }
     }
@@ -508,8 +503,7 @@ bool PackModel::RestoreImportedFolder(const std::string& preset_id, const std::w
 }
 
 bool PackModel::RestoreImportedFile(const std::string& preset_id, const std::wstring& target_dir,
-                                    const std::wstring& file_name, const std::wstring& source_path,
-                                    std::string& error)
+                                    const std::wstring& file_name, const std::wstring& source_path, std::string& error)
 {
     PresetDirectory preset;
     if (!FindPresetDirectory(preset_id, preset))
@@ -535,7 +529,7 @@ bool PackModel::RestoreImportedFile(const std::string& preset_id, const std::wst
      * The first segment has to be an imported folder: the file extends an
      * existing lower layer instead of creating a new one.
      */
-    const auto segments = Split(directory, L"\\");
+    const auto     segments = Split(directory, L"\\");
     ImportedFolder imported;
     if (!GetImport(preset_id, segments.front(), imported))
     {
@@ -545,7 +539,7 @@ bool PackModel::RestoreImportedFile(const std::string& preset_id, const std::wst
 
     /* Store the canonical spelling of the imported folder. */
     std::wstring canonical_dir = imported.import_name;
-    const auto remainder = JoinSegments(segments, 1);
+    const auto   remainder = JoinSegments(segments, 1);
     if (!remainder.empty())
     {
         canonical_dir.push_back(L'\\');
@@ -560,11 +554,10 @@ bool PackModel::RestoreImportedFile(const std::string& preset_id, const std::wst
 
     for (const auto& file : imported_files_)
     {
-        if (file.preset_id == preset_id && EqualsIgnoreCase(file.target_dir, canonical_dir)
-            && EqualsIgnoreCase(file.file_name, file_name))
+        if (file.preset_id == preset_id && EqualsIgnoreCase(file.target_dir, canonical_dir) &&
+            EqualsIgnoreCase(file.file_name, file_name))
         {
-            error = "'" + WideToUTF8(file_name) + "' was already imported into "
-                    + WideToUTF8(canonical_dir);
+            error = "'" + WideToUTF8(file_name) + "' was already imported into " + WideToUTF8(canonical_dir);
             return false;
         }
     }

@@ -72,10 +72,10 @@ TEST_F(Reg, SaveKey_MergedSnapshot)
     /* The key which both layers hold: the export holds the merged view. */
     {
         ProtocolRegSaveKey::Req req;
-        req.Key    = appbox::WideToUTF8(subkey);
-        req.Path   = appbox::WideToUTF8(save_path.wstring());
-        req.Expect = {"SandboxValue", "sandbox", "HostValue", "host"};
-        req.Reject = {"Hidden", "hidden"};
+        req.Key = appbox::WideToUTF8(subkey);
+        req.Path = appbox::WideToUTF8(save_path.wstring());
+        req.Expect = { "SandboxValue", "sandbox", "HostValue", "host" };
+        req.Reject = { "Hidden", "hidden" };
 
         const auto rsp = ProbeRegSaveKey.Call(req, GetCWD(), config).get<ProtocolRegSaveKey::Rsp>();
         ASSERT_EQ(rsp.privilege_code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -91,10 +91,10 @@ TEST_F(Reg, SaveKey_MergedSnapshot)
     /* A key which only the hive holds is exported with its hive content. */
     {
         ProtocolRegSaveKey::Req req;
-        req.Key    = appbox::WideToUTF8(hive_only);
-        req.Path   = appbox::WideToUTF8(save_path.wstring());
-        req.Expect = {"OnlyValue", "only"};
-        req.Reject = {"SandboxValue"};
+        req.Key = appbox::WideToUTF8(hive_only);
+        req.Path = appbox::WideToUTF8(save_path.wstring());
+        req.Expect = { "OnlyValue", "only" };
+        req.Reject = { "SandboxValue" };
 
         const auto rsp = ProbeRegSaveKey.Call(req, GetCWD(), config).get<ProtocolRegSaveKey::Rsp>();
         ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));

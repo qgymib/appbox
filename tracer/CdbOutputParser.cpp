@@ -20,8 +20,7 @@ constexpr const char* kModuleLoadPrefix = "ModLoad:";
  */
 bool IsSeparator(char character)
 {
-    return character == ' ' || character == '\t' || character == '\r' || character == '\n' ||
-           character == '\0';
+    return character == ' ' || character == '\t' || character == '\r' || character == '\n' || character == '\0';
 }
 
 /**
@@ -78,10 +77,10 @@ int HexValue(char character)
 bool ParseAddressToken(const std::string& text, std::size_t& position, std::uint64_t& value)
 {
     const std::size_t start = position;
-    std::size_t cursor = position;
-    std::size_t digits = 0;
-    std::size_t separators = 0;
-    std::uint64_t result = 0;
+    std::size_t       cursor = position;
+    std::size_t       digits = 0;
+    std::size_t       separators = 0;
+    std::uint64_t     result = 0;
 
     while (cursor < text.size() && !IsSeparator(text[cursor]))
     {
@@ -128,8 +127,7 @@ bool ParseAddressToken(const std::string& text, std::size_t& position, std::uint
  * @param[out] session Process index of the prompt.
  * @return Whether a prompt was found.
  */
-bool FindPrompt(const std::string& buffer, std::size_t& position, std::size_t& length,
-                std::uint32_t& session)
+bool FindPrompt(const std::string& buffer, std::size_t& position, std::size_t& length, std::uint32_t& session)
 {
     for (std::size_t index = 0; index < buffer.size(); ++index)
     {
@@ -143,7 +141,7 @@ bool FindPrompt(const std::string& buffer, std::size_t& position, std::size_t& l
             continue;
         }
 
-        std::size_t cursor = index;
+        std::size_t   cursor = index;
         std::uint64_t process = 0;
         while (cursor < buffer.size() && IsDigit(buffer[cursor]))
         {
@@ -173,8 +171,7 @@ bool FindPrompt(const std::string& buffer, std::size_t& position, std::size_t& l
         if (cursor < buffer.size() && buffer[cursor] == ':')
         {
             const std::size_t architecture_start = ++cursor;
-            while (cursor < buffer.size() &&
-                   (std::isalnum(static_cast<unsigned char>(buffer[cursor])) != 0))
+            while (cursor < buffer.size() && (std::isalnum(static_cast<unsigned char>(buffer[cursor])) != 0))
             {
                 ++cursor;
             }
@@ -264,8 +261,7 @@ void DecodeChunk(const std::string& text, std::vector<CdbEvent>& events)
         }
 
         std::uint64_t base = 0;
-        if (ParseAddressToken(trimmed, cursor, base) && cursor < trimmed.size() &&
-            IsSeparator(trimmed[cursor]))
+        if (ParseAddressToken(trimmed, cursor, base) && cursor < trimmed.size() && IsSeparator(trimmed[cursor]))
         {
             ++cursor;
             while (cursor < trimmed.size() && IsSeparator(trimmed[cursor]))
@@ -344,10 +340,10 @@ void CdbOutputParser::Feed(std::string_view chunk, std::vector<CdbEvent>& events
 
     for (;;)
     {
-        std::size_t prompt_position = 0;
-        std::size_t prompt_length = 0;
-        std::uint32_t session = 0;
-        const bool has_prompt = FindPrompt(pending_, prompt_position, prompt_length, session);
+        std::size_t       prompt_position = 0;
+        std::size_t       prompt_length = 0;
+        std::uint32_t     session = 0;
+        const bool        has_prompt = FindPrompt(pending_, prompt_position, prompt_length, session);
         const std::size_t newline = pending_.find('\n');
 
         if (has_prompt && (newline == std::string::npos || prompt_position < newline))

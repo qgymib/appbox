@@ -142,7 +142,7 @@ bool ReadEntry(const nlohmann::json& entry, bool with_name, std::string& path, s
  */
 bool ReadEntryList(const nlohmann::json& document, const char* member, bool with_name,
                    std::vector<std::pair<appbox::registry::IsolationValueKey, appbox::RegistryIsolation>>& entries,
-                   std::string& error)
+                   std::string&                                                                            error)
 {
     const auto list = document.find(member);
     if (list == document.end())
@@ -158,8 +158,8 @@ bool ReadEntryList(const nlohmann::json& document, const char* member, bool with
 
     for (const auto& entry : *list)
     {
-        std::string path;
-        std::string name;
+        std::string               path;
+        std::string               name;
         appbox::RegistryIsolation mode = appbox::RegistryIsolation::WriteCopy;
         if (!ReadEntry(entry, with_name, path, name, mode, error))
         {
@@ -287,7 +287,7 @@ appbox::RegistryIsolation appbox::registry::IsolationTable::KeyMode(const std::w
 }
 
 appbox::RegistryIsolation appbox::registry::IsolationTable::ValueMode(const std::wstring& key_path,
-                                                                     const std::wstring& value_name) const
+                                                                      const std::wstring& value_name) const
 {
     const auto it = values_.find(IsolationValueKey{ key_path, value_name });
     if (it != values_.end())

@@ -64,8 +64,8 @@ wxString GitDescription(const appbox::AboutInfo& info)
 } // namespace
 
 AboutDialog::AboutDialog(wxWindow* parent)
-    : wxDialog(parent, wxID_ANY, wxString("About ") + kApplicationName, wxDefaultPosition,
-               wxDefaultSize, wxDEFAULT_DIALOG_STYLE)
+    : wxDialog(parent, wxID_ANY, wxString("About ") + kApplicationName, wxDefaultPosition, wxDefaultSize,
+               wxDEFAULT_DIALOG_STYLE)
 {
     const appbox::AboutInfo& info = appbox::GetAboutInfo();
 
@@ -107,7 +107,7 @@ void AboutDialog::CreateHeader(wxSizer& sizer)
 
     auto* texts = new wxBoxSizer(wxVERTICAL);
 
-    auto* name = new wxStaticText(this, wxID_ANY, kApplicationName);
+    auto*  name = new wxStaticText(this, wxID_ANY, kApplicationName);
     wxFont name_font = name->GetFont();
     name_font.MakeBold().MakeLarger();
     name->SetFont(name_font);
@@ -134,12 +134,11 @@ void AboutDialog::CreateBuildDetails(wxSizer& sizer, const appbox::AboutInfo& in
 
 void AboutDialog::CreateDependencyList(wxSizer& sizer, const appbox::AboutInfo& info)
 {
-    sizer.Add(new wxStaticText(this, wxID_ANY, "Third-party libraries"), 0,
-              wxLEFT | wxRIGHT | wxTOP, kBorder);
+    sizer.Add(new wxStaticText(this, wxID_ANY, "Third-party libraries"), 0, wxLEFT | wxRIGHT | wxTOP, kBorder);
 
-    auto* list = new wxDataViewListCtrl(this, wxID_ANY, wxDefaultPosition,
-                                        wxSize(kDependencyListWidth, kDependencyListHeight),
-                                        wxDV_ROW_LINES | wxDV_SINGLE);
+    auto* list =
+        new wxDataViewListCtrl(this, wxID_ANY, wxDefaultPosition, wxSize(kDependencyListWidth, kDependencyListHeight),
+                               wxDV_ROW_LINES | wxDV_SINGLE);
     list->SetMinSize(wxSize(kDependencyListWidth, kDependencyListHeight));
 
     /*

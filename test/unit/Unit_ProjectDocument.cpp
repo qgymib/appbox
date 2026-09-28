@@ -108,6 +108,11 @@ appbox::ProjectDocument BuildSampleDocument()
     entry.isolation = appbox::FilesystemIsolation::Whiteout;
     document.filesystem.push_back(entry);
 
+    appbox::ProjectDnsRecord dns;
+    dns.hostname = L"update.example.com";
+    dns.redirect = L"127.0.0.1";
+    document.network.push_back(dns);
+
     return document;
 }
 
@@ -162,6 +167,23 @@ TEST(ProjectDocument, RoundTripKeepsEveryMember)
     EXPECT_EQ(back.filesystem[0].path, L"#ProgramFiles#\\MyApp\\app.exe");
     EXPECT_EQ(back.filesystem[0].kind, appbox::FilesystemEntryKind::File);
     EXPECT_EQ(back.filesystem[0].isolation, appbox::FilesystemIsolation::Whiteout);
+
+    ASSERT_EQ(back.network.size(), 1u);
+    EXPECT_EQ(back.network[0].hostname, L"update.example.com");
+    EXPECT_EQ(back.network[0].redirect, L"127.0.0.1");
+}
+
+TEST(ProjectDocument, RejectsAnIncompleteDnsRecord)
+{
+    const auto missing = ParseError(R"({"version":1,"network":[{"hostname":"example.com"}]})");
+    EXPECT_NE(missing.find("network[0]"), std::string::npos) << missing;
+    EXPECT_NE(missing.find("redirect"), std::string::npos) << missing;
+
+    const auto mistyped = ParseError(R"({"version":1,"network":[{"hostname":7,"redirect":"127.0.0.1"}]})");
+    EXPECT_NE(mistyped.find("network[0]"), std::string::npos) << mistyped;
+
+    const auto not_an_array = ParseError(R"({"version":1,"network":{}})");
+    EXPECT_NE(not_an_array.find("network"), std::string::npos) << not_an_array;
 }
 
 TEST(ProjectDocument, WritesTheSchemaInAFixedOrder)
@@ -178,8 +200,8 @@ TEST(ProjectDocument, WritesTheSchemaInAFixedOrder)
      * The version comes first and the members follow the order of the schema,
      * so the text of a given document is stable and easy to diff.
      */
-    const std::vector<std::string> expected{ "version",      "output_path", "folders",   "files",
-                                             "main_program", "registry",    "filesystem" };
+    const std::vector<std::string> expected{ "version",      "output_path", "folders",    "files",
+                                             "main_program", "registry",    "filesystem", "network" };
     EXPECT_EQ(members, expected);
     EXPECT_EQ(json.at("version").get<int>(), appbox::kProjectFileVersion);
 

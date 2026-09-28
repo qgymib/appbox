@@ -32,7 +32,7 @@ constexpr std::size_t kReadBufferSize = 64U * 1024U;
 constexpr std::size_t kWriteChunkSize = 8U * 1024U;
 
 /** Interval between two checks of the watchdogs. */
-constexpr std::chrono::milliseconds kPollInterval{100};
+constexpr std::chrono::milliseconds kPollInterval{ 100 };
 
 /** Time the debugger gets to exit after its output ended. */
 constexpr DWORD kExitWaitMilliseconds = 10000U;
@@ -41,7 +41,7 @@ constexpr DWORD kExitWaitMilliseconds = 10000U;
 constexpr DWORD kKillWaitMilliseconds = 5000U;
 
 /** Set when the user interrupts the run. */
-std::atomic<bool> g_interrupted{false};
+std::atomic<bool> g_interrupted{ false };
 
 /**
  * @brief Console control handler which asks the running session to stop.
@@ -71,9 +71,14 @@ public:
      *
      * @param[in] handle Handle to own; may be null.
      */
-    explicit HandleGuard(HANDLE handle) noexcept : handle_(handle) {}
+    explicit HandleGuard(HANDLE handle) noexcept : handle_(handle)
+    {
+    }
 
-    ~HandleGuard() { Close(); }
+    ~HandleGuard()
+    {
+        Close();
+    }
 
     HandleGuard(const HandleGuard&) = delete;
     HandleGuard& operator=(const HandleGuard&) = delete;
@@ -83,7 +88,10 @@ public:
      *
      * @param[in,out] other Owner which gives up its handle.
      */
-    HandleGuard(HandleGuard&& other) noexcept : handle_(other.handle_) { other.handle_ = nullptr; }
+    HandleGuard(HandleGuard&& other) noexcept : handle_(other.handle_)
+    {
+        other.handle_ = nullptr;
+    }
 
     /**
      * @brief Take over the handle of another owner.
@@ -104,10 +112,16 @@ public:
     }
 
     /** @return The owned handle. */
-    HANDLE Get() const noexcept { return handle_; }
+    HANDLE Get() const noexcept
+    {
+        return handle_;
+    }
 
     /** @return Address of the owned handle, for an out parameter. */
-    HANDLE* Put() noexcept { return &handle_; }
+    HANDLE* Put() noexcept
+    {
+        return &handle_;
+    }
 
     /** Close the owned handle. */
     void Close() noexcept
@@ -205,10 +219,10 @@ public:
     }
 
 private:
-    mutable std::mutex mutex_;           ///< Guards the queue.
-    std::condition_variable condition_;  ///< Signals new events.
-    std::deque<CdbEvent> events_;        ///< Events which were not consumed yet.
-    bool closed_ = false;                ///< Whether the producer finished.
+    mutable std::mutex      mutex_;          ///< Guards the queue.
+    std::condition_variable condition_;      ///< Signals new events.
+    std::deque<CdbEvent>    events_;         ///< Events which were not consumed yet.
+    bool                    closed_ = false; ///< Whether the producer finished.
 };
 
 /**
@@ -226,9 +240,14 @@ public:
      *
      * @param[in] handle Write end of the standard input of the debugger.
      */
-    explicit CommandWriter(HANDLE handle) : handle_(handle), thread_(&CommandWriter::Run, this) {}
+    explicit CommandWriter(HANDLE handle) : handle_(handle), thread_(&CommandWriter::Run, this)
+    {
+    }
 
-    ~CommandWriter() { Stop(); }
+    ~CommandWriter()
+    {
+        Stop();
+    }
 
     CommandWriter(const CommandWriter&) = delete;
     CommandWriter& operator=(const CommandWriter&) = delete;
@@ -316,9 +335,8 @@ private:
              * would break the call. */
             const std::size_t remaining = payload.size() - offset;
             const std::size_t length = remaining < kWriteChunkSize ? remaining : kWriteChunkSize;
-            DWORD written = 0;
-            if (::WriteFile(handle_, payload.data() + offset, static_cast<DWORD>(length), &written,
-                            nullptr) == 0 ||
+            DWORD             written = 0;
+            if (::WriteFile(handle_, payload.data() + offset, static_cast<DWORD>(length), &written, nullptr) == 0 ||
                 written == 0)
             {
                 /* The debugger is gone or the pipe was cancelled. */
@@ -329,12 +347,12 @@ private:
         }
     }
 
-    HANDLE handle_ = nullptr;             ///< Standard input of the debugger.
-    std::mutex mutex_;                    ///< Guards the queue.
-    std::condition_variable condition_;   ///< Signals a queued batch.
-    std::deque<std::string> queue_;       ///< Batches which were not written yet.
-    std::atomic<bool> stopped_{false};    ///< Whether the writer has to stop.
-    std::thread thread_;                  ///< Writer thread.
+    HANDLE                  handle_ = nullptr; ///< Standard input of the debugger.
+    std::mutex              mutex_;            ///< Guards the queue.
+    std::condition_variable condition_;        ///< Signals a queued batch.
+    std::deque<std::string> queue_;            ///< Batches which were not written yet.
+    std::atomic<bool>       stopped_{ false }; ///< Whether the writer has to stop.
+    std::thread             thread_;           ///< Writer thread.
 };
 
 /**
@@ -352,8 +370,7 @@ private:
  * @param[in] inherit_write Whether the debugger inherits the write end.
  * @return Whether the pipe was created.
  */
-bool CreatePipeWithInheritance(HandleGuard& read_end, HandleGuard& write_end, bool inherit_read,
-                               bool inherit_write)
+bool CreatePipeWithInheritance(HandleGuard& read_end, HandleGuard& write_end, bool inherit_read, bool inherit_write)
 {
     SECURITY_ATTRIBUTES attributes{};
     attributes.nLength = sizeof(attributes);
@@ -384,33 +401,62 @@ bool CreatePipeWithInheritance(HandleGuard& read_end, HandleGuard& write_end, bo
 /** @return Milliseconds since an arbitrary point, for the watchdogs. */
 long long NowMilliseconds()
 {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-               std::chrono::steady_clock::now().time_since_epoch())
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
         .count();
 }
 
-/**
- * @brief Build the payload which arms one session.
- *
- * @param[in] plan Breakpoint plan.
- * @param[in] bases Module base addresses of the session.
- * @param[out] breakpoints Number of breakpoints in the payload.
- * @return The command text, including the continue command.
- */
-std::string BuildSessionPayload(const std::vector<ArmGroup>& plan, const ModuleBases& bases,
-                                std::size_t& breakpoints)
+/** Commands which arm a part of the plan in one session. */
+struct ArmPayload
 {
-    const std::vector<std::string> lines = BuildArmLines(plan, bases);
-    breakpoints = lines.size();
+    std::string            text;            ///< Commands to feed, including the continue command.
+    std::size_t            commands = 0;    ///< Number of commands the text feeds.
+    std::size_t            breakpoints = 0; ///< Number of breakpoints the text arms.
+    std::set<std::wstring> modules;         ///< Modules the breakpoints are armed in.
+};
 
-    std::string payload;
-    for (const auto& line : lines)
+/**
+ * @brief Build the payload which arms a part of the plan in one session.
+ *
+ * Every command of the payload answers with exactly one prompt, which is what
+ * the accounting of the session counts: the module load filters, the breakpoints
+ * of the groups and the continue command at the end.
+ *
+ * @param[in] groups Groups to arm; the module of a group needs a known base.
+ * @param[in] bases Module base addresses of the session.
+ * @param[in] load_filters Module load filters to install; empty when they are
+ *                         installed in the debugger already.
+ * @return The payload together with the number of commands it feeds.
+ */
+ArmPayload BuildArmPayload(const std::vector<ArmGroup>& groups, const ModuleBases& bases,
+                           const std::vector<std::wstring>& load_filters)
+{
+    ArmPayload payload;
+    const auto append = [&payload](const std::string& line) {
+        payload.text += line;
+        payload.text += '\n';
+        ++payload.commands;
+    };
+
+    for (const auto& line : BuildLoadFilterLines(load_filters))
     {
-        payload += line;
-        payload += '\n';
+        append(line);
     }
 
-    payload += "g\n";
+    for (const auto& line : BuildArmLines(groups, bases))
+    {
+        append(line);
+        ++payload.breakpoints;
+    }
+
+    for (const auto& group : groups)
+    {
+        if (bases.find(group.module) != bases.end())
+        {
+            payload.modules.insert(group.module);
+        }
+    }
+
+    append("g");
     return payload;
 }
 
@@ -418,15 +464,15 @@ std::string BuildSessionPayload(const std::vector<ArmGroup>& plan, const ModuleB
 
 TraceResult RunTraceSession(const TraceRequest& request)
 {
-    TraceResult result;
+    TraceResult         result;
     ConsoleHandlerGuard console_handler;
 
     HandleGuard input_read;
     HandleGuard input_write;
     HandleGuard output_read;
     HandleGuard output_write;
-    const bool input_pipe = CreatePipeWithInheritance(input_read, input_write, true, false);
-    const bool output_pipe = CreatePipeWithInheritance(output_read, output_write, false, true);
+    const bool  input_pipe = CreatePipeWithInheritance(input_read, input_write, true, false);
+    const bool  output_pipe = CreatePipeWithInheritance(output_read, output_write, false, true);
     if (!input_pipe || !output_pipe)
     {
         result.status = RunStatus::Failed;
@@ -434,11 +480,9 @@ TraceResult RunTraceSession(const TraceRequest& request)
         return result;
     }
 
-    std::vector<std::wstring> debugger_arguments{L"-G", L"-o", request.program.wstring()};
-    debugger_arguments.insert(debugger_arguments.end(), request.program_args.begin(),
-                              request.program_args.end());
-    std::wstring command_line =
-        appbox::BuildCommandLine(request.debugger.wstring(), debugger_arguments);
+    std::vector<std::wstring> debugger_arguments{ L"-G", L"-o", request.program.wstring() };
+    debugger_arguments.insert(debugger_arguments.end(), request.program_args.begin(), request.program_args.end());
+    std::wstring       command_line = appbox::BuildCommandLine(request.debugger.wstring(), debugger_arguments);
     const std::wstring application = request.debugger.wstring();
 
     STARTUPINFOW startup{};
@@ -449,8 +493,8 @@ TraceResult RunTraceSession(const TraceRequest& request)
     startup.hStdError = output_write.Get();
 
     PROCESS_INFORMATION process{};
-    if (::CreateProcessW(application.c_str(), command_line.data(), nullptr, nullptr, TRUE,
-                         CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process) == 0)
+    if (::CreateProcessW(application.c_str(), command_line.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr,
+                         nullptr, &startup, &process) == 0)
     {
         result.status = RunStatus::Failed;
         result.message = L"the debugger could not be started (error " +
@@ -465,20 +509,20 @@ TraceResult RunTraceSession(const TraceRequest& request)
     input_read.Close();
     output_write.Close();
 
-    std::mutex raw_mutex;
-    std::string raw_output;
-    bool raw_truncated = false;
-    std::atomic<long long> last_output{NowMilliseconds()};
-    EventQueue queue;
+    std::mutex             raw_mutex;
+    std::string            raw_output;
+    bool                   raw_truncated = false;
+    std::atomic<long long> last_output{ NowMilliseconds() };
+    EventQueue             queue;
 
     std::thread reader([&] {
         std::vector<char> buffer(kReadBufferSize);
-        CdbOutputParser parser;
+        CdbOutputParser   parser;
         for (;;)
         {
             DWORD length = 0;
-            if (::ReadFile(output_read.Get(), buffer.data(), static_cast<DWORD>(buffer.size()),
-                           &length, nullptr) == 0 ||
+            if (::ReadFile(output_read.Get(), buffer.data(), static_cast<DWORD>(buffer.size()), &length, nullptr) ==
+                    0 ||
                 length == 0)
             {
                 break;
@@ -512,16 +556,19 @@ TraceResult RunTraceSession(const TraceRequest& request)
     });
 
     CommandWriter writer(input_write.Get());
-    const auto started = std::chrono::steady_clock::now();
+    const auto    started = std::chrono::steady_clock::now();
 
-    std::size_t commands_fed = 0;
-    std::size_t prompts_seen = 0;
-    std::set<std::uint32_t> armed_sessions;
-    ModuleBases bases;
-    std::set<std::wstring> names;
-    std::vector<std::size_t> calls_per_process;
-    std::uint32_t current_session = 0;
-    std::size_t reported = 0;
+    std::size_t                                     commands_fed = 0;
+    std::size_t                                     prompts_seen = 0;
+    std::set<std::uint32_t>                         armed_sessions;
+    std::map<std::uint32_t, ModuleBases>            session_bases;
+    std::map<std::uint32_t, std::set<std::wstring>> session_armed_modules;
+    std::map<std::uint32_t, std::size_t>            session_breakpoints;
+    ModuleBases                                     pending_bases;
+    std::set<std::wstring>                          names;
+    std::vector<std::size_t>                        calls_per_process;
+    std::uint32_t                                   current_session = 0;
+    std::size_t                                     reported = 0;
 
     for (;;)
     {
@@ -532,13 +579,15 @@ TraceResult RunTraceSession(const TraceRequest& request)
         {
             switch (event.kind)
             {
-            case CdbEvent::Kind::ModuleLoad:
-            {
-                /* The newest module load lines belong to the newest process. */
+            case CdbEvent::Kind::ModuleLoad: {
+                /* The base addresses are collected first and belong to the
+                 * process of the next prompt, which is what attributes them to
+                 * a session: a module which a child process loads must not end
+                 * up in the address space of its parent. */
                 const std::wstring module = ModuleNameFromImagePath(event.image_path);
                 if (!module.empty())
                 {
-                    bases[module] = event.image_base;
+                    pending_bases[module] = event.image_base;
                 }
 
                 break;
@@ -557,17 +606,30 @@ TraceResult RunTraceSession(const TraceRequest& request)
 
                 ++calls_per_process[current_session];
                 break;
-            case CdbEvent::Kind::Prompt:
-            {
+            case CdbEvent::Kind::Prompt: {
                 current_session = event.session;
                 ++prompts_seen;
+
+                /* The module load lines which precede a prompt belong to the
+                 * process of that prompt. */
+                ModuleBases& bases = session_bases[event.session];
+                for (const auto& pending : pending_bases)
+                {
+                    bases[pending.first] = pending.second;
+                }
+
+                pending_bases.clear();
+
                 if (prompts_seen <= commands_fed)
                 {
                     /* The prompt belongs to a command which was fed before. */
                     break;
                 }
 
-                if (armed_sessions.find(event.session) != armed_sessions.end())
+                const bool                  first_arm = armed_sessions.find(event.session) == armed_sessions.end();
+                std::set<std::wstring>&     armed_modules = session_armed_modules[event.session];
+                const std::vector<ArmGroup> armable = SelectArmable(request.plan, bases, armed_modules);
+                if (!first_arm && armable.empty())
                 {
                     ++result.unexpected_stops;
                     ++commands_fed;
@@ -576,25 +638,32 @@ TraceResult RunTraceSession(const TraceRequest& request)
                     break;
                 }
 
-                std::size_t breakpoints = 0;
-                const std::string payload = BuildSessionPayload(request.plan, bases, breakpoints);
-                commands_fed += breakpoints + 1U;
-                writer.Post(payload);
+                /* A module which is not loaded yet can only carry a breakpoint
+                 * once the loader mapped it, so the session is woken up when it
+                 * appears; the filter is set once per debugger. */
+                const std::vector<std::wstring> load_filters =
+                    first_arm ? SelectPendingModules(request.plan, bases) : std::vector<std::wstring>{};
+                const ArmPayload payload = BuildArmPayload(armable, bases, load_filters);
+                commands_fed += payload.commands;
+                writer.Post(payload.text);
                 armed_sessions.insert(event.session);
-                if (result.breakpoints == 0U)
-                {
-                    result.breakpoints = breakpoints;
-                }
+                armed_modules.insert(payload.modules.begin(), payload.modules.end());
+                session_breakpoints[event.session] += payload.breakpoints;
 
-                if (breakpoints == 0U)
+                if (!first_arm)
+                {
+                    WriteStderr(L"AppBoxTracer: a module was loaded, " + std::to_wstring(payload.breakpoints) +
+                                L" more breakpoints armed in the process\n");
+                }
+                else if (payload.breakpoints == 0U)
                 {
                     WriteStderr(L"AppBoxTracer: no breakpoint could be armed: the module base "
                                 L"addresses of the process are unknown\n");
                 }
                 else
                 {
-                    WriteStderr(L"AppBoxTracer: process " + std::to_wstring(armed_sessions.size()) +
-                                L" armed with " + std::to_wstring(breakpoints) + L" breakpoints\n");
+                    WriteStderr(L"AppBoxTracer: process " + std::to_wstring(armed_sessions.size()) + L" armed with " +
+                                std::to_wstring(payload.breakpoints) + L" breakpoints\n");
                 }
 
                 break;
@@ -619,8 +688,7 @@ TraceResult RunTraceSession(const TraceRequest& request)
         if (now - started > std::chrono::seconds(request.timeout_seconds))
         {
             result.status = RunStatus::TimedOut;
-            result.message = L"the time limit of " + std::to_wstring(request.timeout_seconds) +
-                             L" seconds was reached";
+            result.message = L"the time limit of " + std::to_wstring(request.timeout_seconds) + L" seconds was reached";
             break;
         }
 
@@ -657,8 +725,7 @@ TraceResult RunTraceSession(const TraceRequest& request)
     }
 
     ::WaitForSingleObject(process_handle.Get(),
-                          result.status == RunStatus::Completed ? kExitWaitMilliseconds
-                                                                : kKillWaitMilliseconds);
+                          result.status == RunStatus::Completed ? kExitWaitMilliseconds : kKillWaitMilliseconds);
 
     DWORD exit_code = 0;
     if (::GetExitCodeProcess(process_handle.Get(), &exit_code) != 0)
@@ -684,6 +751,13 @@ TraceResult RunTraceSession(const TraceRequest& request)
     result.calls_per_process = calls_per_process;
     result.processes = armed_sessions.size();
 
+    /* The first process is the one the report counts the breakpoints of; the
+     * modules which were loaded later are part of its plan as well. */
+    if (!session_breakpoints.empty())
+    {
+        result.breakpoints = session_breakpoints.begin()->second;
+    }
+
     if (!request.keep_raw_path.empty())
     {
         std::string raw;
@@ -695,8 +769,7 @@ TraceResult RunTraceSession(const TraceRequest& request)
         std::wstring text = DecodeConsoleBytes(raw);
         if (raw_truncated)
         {
-            text += L"\n[AppBoxTracer] the raw output was truncated at " +
-                    std::to_wstring(kMaxRawBytes) + L" bytes\n";
+            text += L"\n[AppBoxTracer] the raw output was truncated at " + std::to_wstring(kMaxRawBytes) + L" bytes\n";
         }
 
         const std::wstring error = WriteUtf8File(request.keep_raw_path, text);

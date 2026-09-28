@@ -52,11 +52,12 @@ TEST_F(Fs, Full_SubFolderWriteCopyShowsTheHost)
     /* clang-format on */
 
     auto config = tree.Build();
-    ASSERT_TRUE(WriteFsIsolationFile(config, {
-        { L"#APPDATA#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
-          appbox::FilesystemIsolation::Full },
-        { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\data", appbox::FilesystemEntryKind::Directory,
-          appbox::FilesystemIsolation::WriteCopy }
+    ASSERT_TRUE(WriteFsIsolationFile(
+        config, {
+                    { L"#APPDATA#\\" + std::wstring(kFolderName),             appbox::FilesystemEntryKind::Directory,
+                     appbox::FilesystemIsolation::Full      },
+                    { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\data", appbox::FilesystemEntryKind::Directory,
+                     appbox::FilesystemIsolation::WriteCopy }
     }));
 
     const auto folder = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName;

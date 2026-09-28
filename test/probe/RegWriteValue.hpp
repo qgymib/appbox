@@ -21,14 +21,13 @@ struct ProtocolRegWriteValue
 
     struct Rsp
     {
-        DWORD create_code = static_cast<DWORD>(-1); /* RegCreateKeyExW() error code. */
-        DWORD disposition = 0;                       /* REG_CREATED_NEW_KEY / REG_OPENED_EXISTING_KEY. */
-        DWORD set_code = static_cast<DWORD>(-1);     /* RegSetValueExW() error code. */
-        DWORD query_code = static_cast<DWORD>(-1);   /* RegQueryValueExW() error code. */
-        DWORD type = 0;                              /* Value type. */
-        std::string readback;                        /* Value data which was read back. Encoding in UTF-8. */
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, create_code, disposition, set_code, query_code, type,
-                                                    readback)
+        DWORD       create_code = static_cast<DWORD>(-1); /* RegCreateKeyExW() error code. */
+        DWORD       disposition = 0;                      /* REG_CREATED_NEW_KEY / REG_OPENED_EXISTING_KEY. */
+        DWORD       set_code = static_cast<DWORD>(-1);    /* RegSetValueExW() error code. */
+        DWORD       query_code = static_cast<DWORD>(-1);  /* RegQueryValueExW() error code. */
+        DWORD       type = 0;                             /* Value type. */
+        std::string readback;                             /* Value data which was read back. Encoding in UTF-8. */
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, create_code, disposition, set_code, query_code, type, readback)
     };
 };
 

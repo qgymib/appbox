@@ -57,11 +57,10 @@ const std::vector<appbox::registry::RootKeyPrefix>& appbox::registry::RootKeyPre
      * root they live below.
      */
     static const std::vector<RootKeyPrefix> prefixes = {
-        { L"HKEY_CURRENT_CONFIG",
-          L"\\REGISTRY\\MACHINE\\SYSTEM\\CURRENTCONTROLSET\\HARDWARE PROFILES\\CURRENT" },
-        { L"HKEY_CLASSES_ROOT", L"\\REGISTRY\\MACHINE\\SOFTWARE\\CLASSES" },
-        { L"HKEY_LOCAL_MACHINE", L"\\REGISTRY\\MACHINE" },
-        { L"HKEY_USERS", L"\\REGISTRY\\USER" },
+        { L"HKEY_CURRENT_CONFIG", L"\\REGISTRY\\MACHINE\\SYSTEM\\CURRENTCONTROLSET\\HARDWARE PROFILES\\CURRENT" },
+        { L"HKEY_CLASSES_ROOT",   L"\\REGISTRY\\MACHINE\\SOFTWARE\\CLASSES"                                     },
+        { L"HKEY_LOCAL_MACHINE",  L"\\REGISTRY\\MACHINE"                                                        },
+        { L"HKEY_USERS",          L"\\REGISTRY\\USER"                                                           },
     };
     return prefixes;
 }
@@ -71,8 +70,7 @@ const std::vector<std::wstring>& appbox::registry::HiveRootKeyNames()
     /* The display order of the registry view, with the current user root of
      * the prefix table filled in. */
     static const std::vector<std::wstring> names = {
-        L"HKEY_CLASSES_ROOT", L"HKEY_CURRENT_USER",   L"HKEY_LOCAL_MACHINE",
-        L"HKEY_USERS",        L"HKEY_CURRENT_CONFIG",
+        L"HKEY_CLASSES_ROOT", L"HKEY_CURRENT_USER", L"HKEY_LOCAL_MACHINE", L"HKEY_USERS", L"HKEY_CURRENT_CONFIG",
     };
     return names;
 }

@@ -16,8 +16,7 @@ namespace
 std::filesystem::path ExistingFile()
 {
     std::vector<wchar_t> buffer(MAX_PATH, L'\0');
-    const DWORD length =
-        ::GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    const DWORD          length = ::GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
     return std::filesystem::path(std::wstring(buffer.data(), length));
 }
 
@@ -64,8 +63,7 @@ TEST(TracerTargetProgram, AMissingProgramIsNotFound)
  */
 TEST(TracerTargetProgram, AMissingRelativePathIsNotFound)
 {
-    EXPECT_TRUE(
-        appbox::tracer::ResolveTargetProgram(L".\\appbox-no-such-program.exe").empty());
+    EXPECT_TRUE(appbox::tracer::ResolveTargetProgram(L".\\appbox-no-such-program.exe").empty());
 }
 
 /**

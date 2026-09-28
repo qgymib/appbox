@@ -187,8 +187,7 @@ std::string BuildProgressMessage(const BuildProgress& progress, std::chrono::mil
  * @param[in] error Error description, only used by BuildOutcome::Failed.
  * @return UTF-8 message text.
  */
-std::string BuildResultMessage(BuildOutcome outcome, const std::wstring& archive_path,
-                               const std::string& error);
+std::string BuildResultMessage(BuildOutcome outcome, const std::wstring& archive_path, const std::string& error);
 
 /**
  * @brief Map a packing progress report onto the value of the progress dialog.

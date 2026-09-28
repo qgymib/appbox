@@ -22,8 +22,8 @@ static char LayerOf(const std::vector<std::wstring>& hive, const std::vector<std
  */
 TEST(UnitRegistryEnumMerge, OrderHiveFirst)
 {
-    std::vector<std::wstring> hive = {L"A", L"B"};
-    std::vector<std::wstring> real = {L"C", L"D"};
+    std::vector<std::wstring> hive = { L"A", L"B" };
+    std::vector<std::wstring> real = { L"C", L"D" };
 
     size_t idx = static_cast<size_t>(-1);
     ASSERT_EQ(LayerOf(hive, real, 0, idx), 'H');
@@ -43,8 +43,8 @@ TEST(UnitRegistryEnumMerge, OrderHiveFirst)
  */
 TEST(UnitRegistryEnumMerge, DedupHiveWins)
 {
-    std::vector<std::wstring> hive = {L"Shadow"};
-    std::vector<std::wstring> real = {L"Keep", L"Shadow", L"AlsoKeep"};
+    std::vector<std::wstring> hive = { L"Shadow" };
+    std::vector<std::wstring> real = { L"Keep", L"Shadow", L"AlsoKeep" };
 
     size_t idx = static_cast<size_t>(-1);
     ASSERT_EQ(LayerOf(hive, real, 0, idx), 'H');
@@ -63,8 +63,8 @@ TEST(UnitRegistryEnumMerge, DedupHiveWins)
  */
 TEST(UnitRegistryEnumMerge, CaseInsensitive)
 {
-    std::vector<std::wstring> hive = {L"key"};
-    std::vector<std::wstring> real = {L"KEY", L"Other"};
+    std::vector<std::wstring> hive = { L"key" };
+    std::vector<std::wstring> real = { L"KEY", L"Other" };
 
     size_t idx = static_cast<size_t>(-1);
     /* The real "KEY" is shadowed, only "Other" survives at merged index 1. */
@@ -79,7 +79,7 @@ TEST(UnitRegistryEnumMerge, CaseInsensitive)
 TEST(UnitRegistryEnumMerge, EmptyLayer)
 {
     std::vector<std::wstring> empty;
-    std::vector<std::wstring> real = {L"A", L"B"};
+    std::vector<std::wstring> real = { L"A", L"B" };
 
     size_t idx = static_cast<size_t>(-1);
     ASSERT_EQ(LayerOf(empty, real, 0, idx), 'R');
@@ -94,8 +94,8 @@ TEST(UnitRegistryEnumMerge, EmptyLayer)
  */
 TEST(UnitRegistryEnumMerge, AllShadowed)
 {
-    std::vector<std::wstring> hive = {L"a", L"b"};
-    std::vector<std::wstring> real = {L"B", L"A"};
+    std::vector<std::wstring> hive = { L"a", L"b" };
+    std::vector<std::wstring> real = { L"B", L"A" };
 
     size_t idx = static_cast<size_t>(-1);
     ASSERT_EQ(LayerOf(hive, real, 0, idx), 'H');
@@ -110,11 +110,11 @@ TEST(UnitRegistryEnumMerge, CountMerged)
 {
     std::vector<std::wstring> empty;
     ASSERT_EQ(appbox::registry::CountMerged(empty, empty), 0u);
-    ASSERT_EQ(appbox::registry::CountMerged(empty, {L"A", L"B"}), 2u);
-    ASSERT_EQ(appbox::registry::CountMerged({L"A", L"B"}, empty), 2u);
+    ASSERT_EQ(appbox::registry::CountMerged(empty, { L"A", L"B" }), 2u);
+    ASSERT_EQ(appbox::registry::CountMerged({ L"A", L"B" }, empty), 2u);
     /* "b" in the hive shadows "B" of the real layer (case insensitive). */
-    ASSERT_EQ(appbox::registry::CountMerged({L"a", L"b"}, {L"B", L"C"}), 3u);
-    ASSERT_EQ(appbox::registry::CountMerged({L"x"}, {L"x", L"x", L"y"}), 2u);
+    ASSERT_EQ(appbox::registry::CountMerged({ L"a", L"b" }, { L"B", L"C" }), 3u);
+    ASSERT_EQ(appbox::registry::CountMerged({ L"x" }, { L"x", L"x", L"y" }), 2u);
 }
 
 /**
@@ -123,8 +123,8 @@ TEST(UnitRegistryEnumMerge, CountMerged)
  */
 TEST(UnitRegistryEnumMerge, LayerBoundary)
 {
-    std::vector<std::wstring> hive = {L"Only"};
-    std::vector<std::wstring> real = {L"OnlyToo"};
+    std::vector<std::wstring> hive = { L"Only" };
+    std::vector<std::wstring> real = { L"OnlyToo" };
 
     size_t idx = static_cast<size_t>(-1);
     ASSERT_EQ(LayerOf(hive, real, 0, idx), 'H');
@@ -139,8 +139,8 @@ TEST(UnitRegistryEnumMerge, LayerBoundary)
  */
 TEST(UnitRegistryEnumMerge, DefaultValueIsAnOrdinaryName)
 {
-    std::vector<std::wstring> hive = {L""};
-    std::vector<std::wstring> real = {L"", L"Other"};
+    std::vector<std::wstring> hive = { L"" };
+    std::vector<std::wstring> real = { L"", L"Other" };
 
     size_t idx = static_cast<size_t>(-1);
     ASSERT_EQ(LayerOf(hive, real, 0, idx), 'H');
@@ -158,8 +158,8 @@ TEST(UnitRegistryEnumMerge, DefaultValueIsAnOrdinaryName)
 TEST(UnitRegistryEnumMerge, DefaultValueKeepsItsPosition)
 {
     /* The default value is enumerated first, so "A" is at kernel index 1. */
-    std::vector<std::wstring> hive = {L"", L"A"};
-    std::vector<std::wstring> real = {L"", L"B"};
+    std::vector<std::wstring> hive = { L"", L"A" };
+    std::vector<std::wstring> real = { L"", L"B" };
 
     size_t idx = static_cast<size_t>(-1);
     ASSERT_EQ(LayerOf(hive, real, 0, idx), 'H');
@@ -178,7 +178,7 @@ TEST(UnitRegistryEnumMerge, DefaultValueKeepsItsPosition)
  */
 TEST(UnitRegistryEnumMerge, CountMergedCountsTheDefaultValue)
 {
-    ASSERT_EQ(appbox::registry::CountMerged({L""}, {L""}), 1u);
-    ASSERT_EQ(appbox::registry::CountMerged({L""}, {L"A"}), 2u);
-    ASSERT_EQ(appbox::registry::CountMerged({L"", L"A"}, {L"", L"B"}), 3u);
+    ASSERT_EQ(appbox::registry::CountMerged({ L"" }, { L"" }), 1u);
+    ASSERT_EQ(appbox::registry::CountMerged({ L"" }, { L"A" }), 2u);
+    ASSERT_EQ(appbox::registry::CountMerged({ L"", L"A" }, { L"", L"B" }), 3u);
 }

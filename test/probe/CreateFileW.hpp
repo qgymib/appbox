@@ -33,6 +33,6 @@ struct ProtocolCreateFileW
  */
 extern Probe ProbeCreateFileW;
 
-} // namespace appbox::test::probe
+} // namespace appbox::test
 
 #endif

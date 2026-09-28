@@ -10,8 +10,8 @@ std::string_view LoadEmbeddedLoader(std::string& error)
 {
     try
     {
-        auto          filesystem = cmrc::appbox_resource::get_filesystem();
-        auto          file = filesystem.open("AppBoxLoader.exe");
+        auto             filesystem = cmrc::appbox_resource::get_filesystem();
+        auto             file = filesystem.open("AppBoxLoader.exe");
         std::string_view payload(file.begin(), file.size());
         if (payload.empty())
         {

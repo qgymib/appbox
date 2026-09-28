@@ -19,8 +19,8 @@ struct ProtocolQueryAttributes
 
     struct Rsp
     {
-        DWORD code = 0;        /* Error code, zero on success. */
-        DWORD attributes = 0;  /* File attributes, INVALID_FILE_ATTRIBUTES on failure. */
+        DWORD code = 0;       /* Error code, zero on success. */
+        DWORD attributes = 0; /* File attributes, INVALID_FILE_ATTRIBUTES on failure. */
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, code, attributes)
     };
 };

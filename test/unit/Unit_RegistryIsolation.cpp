@@ -133,8 +133,7 @@ TEST(UnitRegistryIsolationTable, KeyModeInheritsFromAncestor)
 
     ASSERT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor"), appbox::RegistryIsolation::Full);
     ASSERT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor\\Deep\\Key"), appbox::RegistryIsolation::Full);
-    ASSERT_EQ(table.ValueMode(L"HKEY_CURRENT_USER\\Software\\Vendor\\Deep", L"Value"),
-              appbox::RegistryIsolation::Full);
+    ASSERT_EQ(table.ValueMode(L"HKEY_CURRENT_USER\\Software\\Vendor\\Deep", L"Value"), appbox::RegistryIsolation::Full);
 
     /* The siblings above the listed key are untouched. */
     ASSERT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Other"), appbox::RegistryIsolation::WriteCopy);
@@ -179,8 +178,7 @@ TEST(UnitRegistryIsolationTable, DefaultValueEntry)
     ASSERT_TRUE(table.Parse(text, error)) << error;
 
     ASSERT_EQ(table.ValueMode(L"HKEY_CURRENT_USER\\Software\\Vendor", L""), appbox::RegistryIsolation::Full);
-    ASSERT_EQ(table.ValueMode(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server"),
-              appbox::RegistryIsolation::WriteCopy);
+    ASSERT_EQ(table.ValueMode(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server"), appbox::RegistryIsolation::WriteCopy);
 }
 
 /**
@@ -199,8 +197,7 @@ TEST(UnitRegistryIsolationTable, LookupIgnoreCase)
     ASSERT_TRUE(table.Parse(text, error)) << error;
 
     ASSERT_EQ(table.KeyMode(L"hkey_current_user\\SOFTWARE\\vendor"), appbox::RegistryIsolation::Full);
-    ASSERT_EQ(table.ValueMode(L"HKEY_CURRENT_USER\\SOFTWARE\\VENDOR", L"SERVER"),
-              appbox::RegistryIsolation::Hide);
+    ASSERT_EQ(table.ValueMode(L"HKEY_CURRENT_USER\\SOFTWARE\\VENDOR", L"SERVER"), appbox::RegistryIsolation::Hide);
 }
 
 /**

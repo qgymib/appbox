@@ -107,11 +107,10 @@ static void LoadConfig()
     auto dir = appbox::GetExecutableDir();
     auto path = appbox::DefaultConfigPathForExecutable(appbox::GetExecutablePath());
 
-    std::ifstream f{std::filesystem::path(path)};
+    std::ifstream f{ std::filesystem::path(path) };
     if (!f.is_open())
     {
-        throw std::runtime_error("the loader configuration file was not found: " +
-                                 appbox::WideToUTF8(path));
+        throw std::runtime_error("the loader configuration file was not found: " + appbox::WideToUTF8(path));
     }
 
     nlohmann::json j_cfg = nlohmann::json::parse(f);

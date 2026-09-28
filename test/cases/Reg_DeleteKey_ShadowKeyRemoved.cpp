@@ -49,7 +49,8 @@ TEST_F(Reg, DeleteKey_ShadowKeyRemoved)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\DeleteKey_ShadowKeyRemoved_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey =
+        L"Software\\AppBoxTest\\DeleteKey_ShadowKeyRemoved_" + appbox::UTF8ToWide(appbox::RandomString(8));
 
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
@@ -62,7 +63,7 @@ TEST_F(Reg, DeleteKey_ShadowKeyRemoved)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegDeleteKey::Req req;
-    req.Key  = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey);
     req.Mode = "reg";
 
     const auto rsp = ProbeRegDeleteKey.Call(req, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();

@@ -62,6 +62,16 @@ struct Sys
     HMODULE h_ntdll;
     HMODULE h_kernel32;
     HMODULE h_kernelbase;
+
+    /**
+     * @brief Handles of the modules which carry the name resolution.
+     *
+     * They are resolved when the hooks of the network isolation are attached;
+     * the modules are loaded on demand, so the sandbox loads them itself before
+     * it resolves the entry points of those hooks.
+     */
+    HMODULE h_ws2_32;
+    HMODULE h_dnsapi;
     /**
      * @}
      */

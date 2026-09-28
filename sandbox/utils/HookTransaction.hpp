@@ -1,7 +1,7 @@
-#ifndef APPBOX_SANDBOX_HOOK_TRANSACTION_HPP
-#define APPBOX_SANDBOX_HOOK_TRANSACTION_HPP
+#ifndef APPBOX_SANDBOX_UTILS_HOOK_TRANSACTION_HPP
+#define APPBOX_SANDBOX_UTILS_HOOK_TRANSACTION_HPP
 
-#include "__init__.hpp"
+#include "hook/__init__.hpp"
 #include <cstddef>
 
 namespace appbox
@@ -21,9 +21,9 @@ enum class HookAction
  */
 struct HookTransactionResult
 {
-    bool        bSuccess = false;    /* Whether the transaction was committed. */
+    bool        bSuccess = false;      /* Whether the transaction was committed. */
     const char* pFailedHook = nullptr; /* Name of the failing hook, null when none. */
-    LONG        status = 0;          /* Status of the failing Detour operation. */
+    LONG        status = 0;            /* Status of the failing Detour operation. */
 };
 
 /**
@@ -34,11 +34,11 @@ struct HookTransactionResult
  */
 struct DetourOps
 {
-    LONG (*fn_begin)();                  /* Begin a transaction. */
-    LONG (*fn_update_thread)(HANDLE);    /* Add a thread to the transaction. */
-    LONG (*fn_attach)(void**, void*);    /* Attach one detour. */
-    LONG (*fn_detach)(void**, void*);    /* Detach one detour. */
-    LONG (*fn_commit)();                 /* Commit the transaction. */
+    LONG (*fn_begin)();               /* Begin a transaction. */
+    LONG (*fn_update_thread)(HANDLE); /* Add a thread to the transaction. */
+    LONG (*fn_attach)(void**, void*); /* Attach one detour. */
+    LONG (*fn_detach)(void**, void*); /* Detach one detour. */
+    LONG (*fn_commit)();              /* Commit the transaction. */
 };
 
 /**
@@ -67,4 +67,4 @@ HookTransactionResult ApplyHookTransaction(const HookRecord* const* hooks, size_
 
 } // namespace appbox
 
-#endif // APPBOX_SANDBOX_HOOK_TRANSACTION_HPP
+#endif // APPBOX_SANDBOX_UTILS_HOOK_TRANSACTION_HPP

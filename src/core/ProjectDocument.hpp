@@ -207,13 +207,36 @@ struct ProjectFilesystemRecord
 };
 
 /**
+ * @brief One DNS redirection of the network part of a project document.
+ *
+ * The record names a hostname or an IP address the packaged application asks
+ * for and the address the name resolves to inside the sandbox, which is the
+ * pair of the `Hostname or IP Address` and `Redirect` columns of the network
+ * workspace.
+ */
+struct ProjectDnsRecord
+{
+    /**
+     * @brief Hostname or IP address which is redirected.
+     */
+    std::wstring hostname;
+
+    /**
+     * @brief Address the name resolves to inside the sandbox.
+     *
+     * The address is an IPv4 or an IPv6 address literal.
+     */
+    std::wstring redirect;
+};
+
+/**
  * @brief The content of a project file.
  *
  * The structure is the document of the `File -> Export Configuration...` and
  * `File -> Import Configuration...` commands: the imported folders and files,
- * the main program, the virtual registry and the isolation modes of the
- * virtual filesystem. It holds no host state and no wxWidgets dependency, so
- * the conversion is unit testable.
+ * the main program, the virtual registry, the isolation modes of the virtual
+ * filesystem and the DNS redirections of the network workspace. It holds no
+ * host state and no wxWidgets dependency, so the conversion is unit testable.
  *
  * `to_json()` and `from_json()` convert the structure to and from the JSON
  * text of a project file; the file itself is written and read by
@@ -240,7 +263,9 @@ struct ProjectFilesystemRecord
  *                                 "isolation": "write_copy" } ],
  *                   "children": [] } ],
  *   "filesystem": [ { "path": "#ProgramFiles#\\MyApp", "kind": "directory",
- *                     "isolation": "whiteout" } ]
+ *                     "isolation": "whiteout" } ],
+ *   "network": [ { "hostname": "update.example.com",
+ *                  "redirect": "127.0.0.1" } ]
  * }
  * ```
  *
@@ -279,6 +304,11 @@ struct ProjectDocument
      * @brief The isolation modes of the virtual filesystem.
      */
     std::vector<ProjectFilesystemRecord> filesystem;
+
+    /**
+     * @brief The DNS redirections of the network workspace.
+     */
+    std::vector<ProjectDnsRecord> network;
 };
 
 /**
@@ -370,6 +400,21 @@ void to_json(nlohmann::ordered_json& json, const ProjectFilesystemRecord& record
  * @throw ProjectDocumentError The object does not fit the schema.
  */
 void from_json(const nlohmann::ordered_json& json, ProjectFilesystemRecord& record);
+
+/**
+ * @brief Store one DNS redirection of a document.
+ * @param[out] json Object which receives the record.
+ * @param[in] record The record to store.
+ */
+void to_json(nlohmann::ordered_json& json, const ProjectDnsRecord& record);
+
+/**
+ * @brief Read one DNS redirection of a document.
+ * @param[in] json Object holding the record.
+ * @param[out] record The record to fill.
+ * @throw ProjectDocumentError The object does not fit the schema.
+ */
+void from_json(const nlohmann::ordered_json& json, ProjectDnsRecord& record);
 
 /**
  * @brief Store the content of a project file as a JSON document.

@@ -17,45 +17,47 @@ inline constexpr unsigned kDefaultStallTimeoutSeconds = 30;
 /**
  * @brief Categories of traced functions.
  *
- * The categories mirror the isolation domains of appbox (filesystem, registry
- * and network isolation), so the report answers the question which of the
- * functions an isolation layer has to intercept are used by a program.
+ * The categories are the isolation domains of appbox (filesystem, registry and
+ * network), and the scope of a category is the set of lowest level entry points
+ * of that domain. The scope does not depend on the hooks the sandbox
+ * implements: the sandbox may cover a part of the set, and the tracer still
+ * reports the whole domain, because it is a debugging tool.
  */
 enum class Category
 {
-    File,      ///< Filesystem related exports.
-    Registry,  ///< Registry related exports.
-    Network,   ///< Network related exports (named pipes, mailslots, device control).
+    File,     ///< Filesystem related exports.
+    Registry, ///< Registry related exports.
+    Network,  ///< Network related exports (named pipes, mailslots, device control).
 };
 
 /** Parsed command line of the tracer. */
 struct Options
 {
-    std::filesystem::path cdb_path;       ///< `--cdb`; empty means search for the debugger.
-    std::filesystem::path output_path;    ///< `--output`; empty means the standard output.
-    std::filesystem::path keep_raw_path;  ///< `--keep-raw`; empty means the raw output is dropped.
-    std::vector<Category> categories;     ///< `--categories`; empty means every export (see all_exports).
-    bool all_exports = false;             ///< `--all-exports`: trace every executable export.
-    bool list_scope = false;              ///< `--list-scope`: print the armed functions and exit.
-    bool with_categories = false;         ///< `--with-categories`: annotate the report with categories.
-    unsigned timeout_seconds = kDefaultTimeoutSeconds;             ///< `--timeout`.
-    unsigned stall_timeout_seconds = kDefaultStallTimeoutSeconds;  ///< `--stall-timeout`.
-    std::filesystem::path target_path;    ///< Program to run; required.
-    std::vector<std::wstring> target_args; ///< Arguments passed to the program.
+    std::filesystem::path     cdb_path;                ///< `--cdb`; empty means search for the debugger.
+    std::filesystem::path     output_path;             ///< `--output`; empty means the standard output.
+    std::filesystem::path     keep_raw_path;           ///< `--keep-raw`; empty means the raw output is dropped.
+    std::vector<Category>     categories;              ///< `--categories`; empty means every export (see all_exports).
+    bool                      all_exports = false;     ///< `--all-exports`: trace every executable export.
+    bool                      list_scope = false;      ///< `--list-scope`: print the armed functions and exit.
+    bool                      with_categories = false; ///< `--with-categories`: annotate the report with categories.
+    unsigned                  timeout_seconds = kDefaultTimeoutSeconds;            ///< `--timeout`.
+    unsigned                  stall_timeout_seconds = kDefaultStallTimeoutSeconds; ///< `--stall-timeout`.
+    std::filesystem::path     target_path;                                         ///< Program to run; required.
+    std::vector<std::wstring> target_args;                                         ///< Arguments passed to the program.
 };
 
 /** Status of a parsed command line. */
 enum class ParseStatus
 {
-    Ok,     ///< The options are complete and consistent.
-    Help,   ///< `--help` was given; print the usage text.
-    Error,  ///< The command line is invalid; print the error text.
+    Ok,    ///< The options are complete and consistent.
+    Help,  ///< `--help` was given; print the usage text.
+    Error, ///< The command line is invalid; print the error text.
 };
 
 /** Result of ParseOptions. */
 struct ParseResult
 {
-    ParseStatus status = ParseStatus::Ok;  ///< Outcome of the parse.
+    ParseStatus  status = ParseStatus::Ok; ///< Outcome of the parse.
     std::wstring message;                  ///< Usage text for Help, error text for Error.
 };
 

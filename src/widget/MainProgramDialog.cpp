@@ -11,25 +11,22 @@ MainProgramDialog::MainProgramDialog(wxWindow* parent, const appbox::PackModel& 
 {
     tree_model_ = new StartupTreeModel(model);
 
-    tree_ = new wxDataViewCtrl(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                               wxDV_ROW_LINES | wxDV_SINGLE);
+    tree_ = new wxDataViewCtrl(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxDV_ROW_LINES | wxDV_SINGLE);
     tree_->AssociateModel(tree_model_);
 
     /* AssociateModel() adds a reference which the control releases again. */
     tree_model_->DecRef();
 
     wxDataViewColumn* const name_column =
-        tree_->AppendIconTextColumn("Name", StartupTreeModel::NameColumn, wxDATAVIEW_CELL_INERT, 300,
-                                    wxALIGN_LEFT);
-    tree_->AppendTextColumn("Type", StartupTreeModel::TypeColumn, wxDATAVIEW_CELL_INERT, 100,
-                            wxALIGN_LEFT);
+        tree_->AppendIconTextColumn("Name", StartupTreeModel::NameColumn, wxDATAVIEW_CELL_INERT, 300, wxALIGN_LEFT);
+    tree_->AppendTextColumn("Type", StartupTreeModel::TypeColumn, wxDATAVIEW_CELL_INERT, 100, wxALIGN_LEFT);
 
     /*
      * The startup column uses a custom renderer: only the executable rows
      * report a value for it, so only they show a checkbox.
      */
-    tree_->AppendColumn(new wxDataViewColumn("Startup", new StartupCheckRenderer,
-                                             StartupTreeModel::StartupColumn, 90, wxALIGN_CENTER));
+    tree_->AppendColumn(
+        new wxDataViewColumn("Startup", new StartupCheckRenderer, StartupTreeModel::StartupColumn, 90, wxALIGN_CENTER));
     tree_->SetExpanderColumn(name_column);
 
     ok_button_ = new wxButton(this, wxID_OK);

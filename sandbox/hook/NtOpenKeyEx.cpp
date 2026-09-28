@@ -9,10 +9,10 @@ static nlohmann::json NtOpenKeyExLogParam(PHANDLE KeyHandle, ACCESS_MASK Desired
                                           POBJECT_ATTRIBUTES ObjectAttributes, ULONG OpenOptions)
 {
     nlohmann::json json;
-    json["KeyHandle"]     = appbox::PointerToString(KeyHandle);
+    json["KeyHandle"] = appbox::PointerToString(KeyHandle);
     json["DesiredAccess"] = appbox::DesiredAccessToJson(DesiredAccess);
     json["ObjectAttributes"] = appbox::ToJson(ObjectAttributes);
-    json["OpenOptions"]       = OpenOptions;
+    json["OpenOptions"] = OpenOptions;
     return json;
 }
 
@@ -33,13 +33,12 @@ static NTSTATUS Hook_NtOpenKeyEx(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess, P
 
     std::wstring view_path;
     std::wstring relative;
-    if (appbox::registry::Hive::MapKeyPath(ObjectAttributes, view_path, relative) == appbox::registry::HiveMap::Isolated)
+    if (appbox::registry::Hive::MapKeyPath(ObjectAttributes, view_path, relative) ==
+        appbox::registry::HiveMap::Isolated)
     {
-        return appbox::registry::Hive::OpenIsolatedKeyEx(view_path, relative, DesiredAccess,
-                                                         ObjectAttributes->Attributes,
-                                                         ObjectAttributes->SecurityDescriptor,
-                                                         ObjectAttributes->SecurityQualityOfService, OpenOptions,
-                                                         KeyHandle);
+        return appbox::registry::Hive::OpenIsolatedKeyEx(
+            view_path, relative, DesiredAccess, ObjectAttributes->Attributes, ObjectAttributes->SecurityDescriptor,
+            ObjectAttributes->SecurityQualityOfService, OpenOptions, KeyHandle);
     }
 
     return sys_NtOpenKeyEx(KeyHandle, DesiredAccess, ObjectAttributes, OpenOptions);

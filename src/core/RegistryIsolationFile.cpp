@@ -19,8 +19,7 @@ void CollectEntries(const appbox::RegistryKeyNode& key, const std::wstring& path
 {
     nlohmann::json key_entry;
     key_entry[appbox::registry_isolation::kPathKey] = appbox::WideToUTF8(path);
-    key_entry[appbox::registry_isolation::kIsolationKey] =
-        appbox::registry_isolation::IsolationToken(key.isolation);
+    key_entry[appbox::registry_isolation::kIsolationKey] = appbox::registry_isolation::IsolationToken(key.isolation);
     keys.push_back(std::move(key_entry));
 
     for (const auto& value : key.values)

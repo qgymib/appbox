@@ -30,8 +30,8 @@ RegistryIsolationDialog::RegistryIsolationDialog(wxWindow* parent, const wxStrin
      * The names of the modes are ordered like the enumeration of the modes, so
      * the selection of the field is the mode itself.
      */
-    isolation_ = new wxRadioBox(this, wxID_ANY, "Isolation", wxDefaultPosition, wxDefaultSize, modes, 1,
-                                wxRA_SPECIFY_COLS);
+    isolation_ =
+        new wxRadioBox(this, wxID_ANY, "Isolation", wxDefaultPosition, wxDefaultSize, modes, 1, wxRA_SPECIFY_COLS);
     isolation_->SetSelection(static_cast<int>(initial));
     sizer->Add(isolation_, 0, wxLEFT | wxRIGHT, kBorder);
 

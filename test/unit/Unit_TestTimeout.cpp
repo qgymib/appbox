@@ -40,12 +40,12 @@ TEST(TestTimeout, CommandLineOptionIsFound)
 
     /* A value with a space is quoted by the builder of the command line. */
     EXPECT_TRUE(appbox::test::FindCommandLineOption(L"AppBoxUnitTests.exe --test-dump-dir=\"C:\\my dir\\dumps\"",
-                                                   L"test-dump-dir", value));
+                                                    L"test-dump-dir", value));
     EXPECT_EQ(value, L"C:\\my dir\\dumps");
 
     /* An option has to start a token. */
-    EXPECT_FALSE(appbox::test::FindCommandLineOption(L"AppBoxUnitTests.exe --x--test-timeout=9", L"test-timeout",
-                                                     value));
+    EXPECT_FALSE(
+        appbox::test::FindCommandLineOption(L"AppBoxUnitTests.exe --x--test-timeout=9", L"test-timeout", value));
 }
 
 /**

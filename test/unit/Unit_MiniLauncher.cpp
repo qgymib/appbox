@@ -13,8 +13,7 @@ TEST(UnitMiniLauncher, CreateFailureReturnsErrorCode)
     const DWORD ret = appbox::MiniLauncer(L"Z:\\appbox_unit\\does_not_exist.exe", {});
 
     EXPECT_NE(ret, 0u);
-    EXPECT_TRUE(ret == ERROR_FILE_NOT_FOUND || ret == ERROR_PATH_NOT_FOUND)
-        << "unexpected error code: " << ret;
+    EXPECT_TRUE(ret == ERROR_FILE_NOT_FOUND || ret == ERROR_PATH_NOT_FOUND) << "unexpected error code: " << ret;
 }
 
 /**

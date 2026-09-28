@@ -22,7 +22,7 @@ namespace
 std::wstring CleanRelativePath(const std::wstring& path)
 {
     size_t begin = 0;
-    size_t end   = path.size();
+    size_t end = path.size();
 
     while (begin < end && path[begin] == L'\\')
     {
@@ -94,7 +94,7 @@ public:
      */
     void set(HKEY key, bool owned)
     {
-        key_   = key;
+        key_ = key;
         owned_ = owned;
     }
 
@@ -127,7 +127,7 @@ bool OpenKeyBelow(HKEY root, const std::wstring& relative_path, ScopedKey& key)
     }
 
     HKEY handle = nullptr;
-    LONG ret    = RegOpenKeyExW(root, path.c_str(), 0, KEY_READ, &handle);
+    LONG ret = RegOpenKeyExW(root, path.c_str(), 0, KEY_READ, &handle);
     if (ret != ERROR_SUCCESS)
     {
         SPDLOG_ERROR("failed to open the hive key {}: {} ({})", appbox::WideToUTF8(path), ret, GetLastError());
@@ -156,7 +156,7 @@ bool HiveReader::Open(const std::wstring& hive_file)
 {
     Close();
 
-    file_    = hive_file;
+    file_ = hive_file;
     missing_ = false;
 
     /*
@@ -224,10 +224,10 @@ bool HiveReader::EnumSubKeys(const std::wstring& relative_path, std::vector<std:
         return false;
     }
 
-    DWORD      sub_keys        = 0;
-    DWORD      max_subkey_len  = 0;
-    const LONG info            = RegQueryInfoKeyW(key.get(), nullptr, nullptr, nullptr, &sub_keys, &max_subkey_len,
-                                                  nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+    DWORD      sub_keys = 0;
+    DWORD      max_subkey_len = 0;
+    const LONG info = RegQueryInfoKeyW(key.get(), nullptr, nullptr, nullptr, &sub_keys, &max_subkey_len, nullptr,
+                                       nullptr, nullptr, nullptr, nullptr, nullptr);
     if (info != ERROR_SUCCESS)
     {
         SPDLOG_ERROR("RegQueryInfoKeyW failed: {} ({})", info, GetLastError());
@@ -243,7 +243,7 @@ bool HiveReader::EnumSubKeys(const std::wstring& relative_path, std::vector<std:
     for (DWORD i = 0; i < sub_keys; ++i)
     {
         DWORD name_len = static_cast<DWORD>(name.size());
-        name[0]        = L'\0';
+        name[0] = L'\0';
         const LONG ret = RegEnumKeyExW(key.get(), i, name.data(), &name_len, nullptr, nullptr, nullptr, nullptr);
         if (ret == ERROR_NO_MORE_ITEMS)
         {
@@ -293,11 +293,11 @@ bool HiveReader::EnumValues(const std::wstring& relative_path, std::vector<Regis
         return false;
     }
 
-    DWORD values_count       = 0;
-    DWORD max_value_name_len = 0;
-    DWORD max_value_len      = 0;
-    const LONG info          = RegQueryInfoKeyW(key.get(), nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-                                                &values_count, &max_value_name_len, &max_value_len, nullptr, nullptr);
+    DWORD      values_count = 0;
+    DWORD      max_value_name_len = 0;
+    DWORD      max_value_len = 0;
+    const LONG info = RegQueryInfoKeyW(key.get(), nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &values_count,
+                                       &max_value_name_len, &max_value_len, nullptr, nullptr);
     if (info != ERROR_SUCCESS)
     {
         SPDLOG_ERROR("RegQueryInfoKeyW failed: {} ({})", info, GetLastError());
@@ -316,14 +316,15 @@ bool HiveReader::EnumValues(const std::wstring& relative_path, std::vector<Regis
     for (DWORD i = 0; i < values_count; ++i)
     {
         RegistryValue value;
-        DWORD         type     = 0;
+        DWORD         type = 0;
         for (;;)
         {
             DWORD name_len = static_cast<DWORD>(name.size());
             DWORD data_len = static_cast<DWORD>(data.size());
-            name[0]        = L'\0';
+            name[0] = L'\0';
 
-            const LONG ret = RegEnumValueW(key.get(), i, name.data(), &name_len, nullptr, &type, data.data(), &data_len);
+            const LONG ret =
+                RegEnumValueW(key.get(), i, name.data(), &name_len, nullptr, &type, data.data(), &data_len);
             if (ret == ERROR_SUCCESS)
             {
                 value.name.assign(name.data(), name_len);
@@ -414,8 +415,7 @@ std::wstring FormatValueTypeName(DWORD type)
         return L"REG_RESOURCE_REQUIREMENTS_LIST";
     case REG_QWORD:
         return L"REG_QWORD";
-    default:
-    {
+    default: {
         std::wostringstream oss;
         oss << L"REG_0x" << std::hex << type;
         return oss.str();
@@ -442,8 +442,7 @@ std::wstring FormatValueData(const RegistryValue& value, size_t max_chars)
     switch (value.type)
     {
     case REG_SZ:
-    case REG_EXPAND_SZ:
-    {
+    case REG_EXPAND_SZ: {
         /* The registry editor shows the raw, unexpanded content. */
         text = ValueDataAsString(value);
         if (text.empty())
@@ -452,12 +451,11 @@ std::wstring FormatValueData(const RegistryValue& value, size_t max_chars)
         }
         break;
     }
-    case REG_MULTI_SZ:
-    {
+    case REG_MULTI_SZ: {
         /* regedit joins the entries of a multi string with a space. */
-        std::wstring       rest = ValueDataAsString(value);
+        std::wstring        rest = ValueDataAsString(value);
         std::wostringstream oss;
-        bool               first = true;
+        bool                first = true;
         for (;;)
         {
             const size_t pos = rest.find(L'\0');
@@ -480,8 +478,7 @@ std::wstring FormatValueData(const RegistryValue& value, size_t max_chars)
         text = oss.str();
         break;
     }
-    case REG_DWORD:
-    {
+    case REG_DWORD: {
         if (value.data.size() < sizeof(DWORD))
         {
             break;
@@ -493,8 +490,7 @@ std::wstring FormatValueData(const RegistryValue& value, size_t max_chars)
         text = oss.str();
         break;
     }
-    case REG_QWORD:
-    {
+    case REG_QWORD: {
         if (value.data.size() < sizeof(ULONGLONG))
         {
             break;
@@ -502,12 +498,12 @@ std::wstring FormatValueData(const RegistryValue& value, size_t max_chars)
         ULONGLONG number = 0;
         memcpy(&number, value.data.data(), sizeof(number));
         std::wostringstream oss;
-        oss << L"0x" << std::hex << std::setw(16) << std::setfill(L'0') << number << L" (" << std::dec << number << L")";
+        oss << L"0x" << std::hex << std::setw(16) << std::setfill(L'0') << number << L" (" << std::dec << number
+            << L")";
         text = oss.str();
         break;
     }
-    default:
-    {
+    default: {
         /* Binary and every other type become a byte hex dump. */
         std::wostringstream oss;
         for (size_t i = 0; i < value.data.size(); ++i)
@@ -530,7 +526,7 @@ std::wstring FormatValueData(const RegistryValue& value, size_t max_chars)
     if (max_chars > 0 && text.size() > max_chars)
     {
         const size_t keep = max_chars > 3 ? max_chars - 3 : max_chars;
-        text              = text.substr(0, keep) + L"...";
+        text = text.substr(0, keep) + L"...";
     }
     return text;
 }

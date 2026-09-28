@@ -38,7 +38,7 @@ TEST(ExpandKnownFolder, TokenPrefixIsExpanded)
 
 TEST(ExpandKnownFolder, TokenWithoutRemainderHasNoTrailingSeparator)
 {
-    const auto expanded = appbox::ExpandKnownFolder(L"#ProgramFiles#");
+    const auto   expanded = appbox::ExpandKnownFolder(L"#ProgramFiles#");
     std::wstring folder;
     ASSERT_TRUE(appbox::SearchFolderID(L"#ProgramFiles#", folder));
     EXPECT_EQ(expanded, folder);
@@ -55,8 +55,7 @@ TEST(ExpandKnownFolder, UnknownTokenIsReturnedUnchanged)
  */
 TEST(ExpandKnownFolder, PercentDelimitedTokenIsNotALayerKey)
 {
-    EXPECT_EQ(appbox::ExpandKnownFolder(L"%ProgramFiles%\\MyApp\\app.exe"),
-              L"%ProgramFiles%\\MyApp\\app.exe");
+    EXPECT_EQ(appbox::ExpandKnownFolder(L"%ProgramFiles%\\MyApp\\app.exe"), L"%ProgramFiles%\\MyApp\\app.exe");
 
     std::wstring folder;
     EXPECT_FALSE(appbox::SearchFolderID(L"%ProgramFiles%", folder));

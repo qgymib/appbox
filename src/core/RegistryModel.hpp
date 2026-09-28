@@ -191,8 +191,8 @@ struct RegistryRow
      */
     enum class Kind
     {
-        Key,   ///< A sub key of the displayed key.
-        Value  ///< A value of the displayed key.
+        Key,  ///< A sub key of the displayed key.
+        Value ///< A value of the displayed key.
     };
 
     /**
@@ -417,8 +417,8 @@ std::wstring FormatRegistryValueText(RegistryValueType type, const std::vector<s
  * @param[out] error Error description when the text does not fit the type.
  * @return true when the text was parsed.
  */
-bool ParseRegistryValueText(RegistryValueType type, const std::wstring& text,
-                            std::vector<std::uint8_t>& data, std::string& error);
+bool ParseRegistryValueText(RegistryValueType type, const std::wstring& text, std::vector<std::uint8_t>& data,
+                            std::string& error);
 
 /**
  * @brief Editable model of the virtual registry of the packer.
@@ -566,9 +566,8 @@ public:
      * @param[out] error Error description on failure.
      * @return true on success.
      */
-    bool UpdateValue(const std::wstring& parent, const std::wstring& old_name,
-                     const std::wstring& new_name, RegistryValueType type,
-                     const std::vector<std::uint8_t>& data, std::string& error);
+    bool UpdateValue(const std::wstring& parent, const std::wstring& old_name, const std::wstring& new_name,
+                     RegistryValueType type, const std::vector<std::uint8_t>& data, std::string& error);
 
     /**
      * @brief Remove a value from a key.
@@ -598,8 +597,7 @@ public:
      * @param[in] isolation New isolation mode.
      * @return true when the value exists and was updated.
      */
-    bool SetValueIsolation(const std::wstring& parent, const std::wstring& name,
-                           RegistryIsolation isolation);
+    bool SetValueIsolation(const std::wstring& parent, const std::wstring& name, RegistryIsolation isolation);
 
     /**
      * @brief Overwrite the isolation mode of a key and of everything below it.

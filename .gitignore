@@ -1,5 +1,18 @@
-# Build files
-/build*
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[codz]
+*$py.class
+
+# Distribution / packaging
+.Python
+/build
+
+# Translations
+*.mo
+*.pot
+
+# Ruff stuff:
+.ruff_cache/
 
 # JetBrains
 /.idea

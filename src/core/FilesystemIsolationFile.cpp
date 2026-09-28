@@ -4,8 +4,7 @@
 #include <exception>
 #include <utility>
 
-bool appbox::BuildFilesystemIsolationFile(const FilesystemIsolationModel& model, std::string& text,
-                                          std::string& error)
+bool appbox::BuildFilesystemIsolationFile(const FilesystemIsolationModel& model, std::string& text, std::string& error)
 {
     error.clear();
     text.clear();

@@ -9,10 +9,12 @@
 #include <thread>
 #include "core/BuildReport.hpp"
 #include "core/FilesystemIsolationModel.hpp"
+#include "core/NetworkModel.hpp"
 #include "core/PackModel.hpp"
 #include "core/RegistryModel.hpp"
 
 class FilesystemPanel;
+class NetworkPanel;
 class RegistryPanel;
 class RibbonBar;
 class SideNav;
@@ -282,19 +284,29 @@ private:
      */
     appbox::FilesystemIsolationModel filesystem_isolation_;
 
+    /**
+     * @brief DNS redirections of the network workspace.
+     *
+     * The model is filled by the network workspace itself, it travels with the
+     * project file and it is written into the archive, where the sandbox
+     * answers the name resolution of the packaged application from it.
+     */
+    appbox::NetworkModel network_;
+
     RibbonBar*       ribbon_ = nullptr;
     SideNav*         side_nav_ = nullptr;
     wxSimplebook*    workspace_ = nullptr;
     FilesystemPanel* filesystem_panel_ = nullptr;
     RegistryPanel*   registry_panel_ = nullptr;
+    NetworkPanel*    network_panel_ = nullptr;
 
     bool output_path_edited_ = false;
 
-    std::thread         pack_thread_;
-    wxProgressDialog*   progress_dialog_ = nullptr;
-    wxTimer*            progress_timer_ = nullptr;
-    std::atomic<bool>   pack_cancelled_{false};
-    bool                run_after_pack_ = false;
+    std::thread       pack_thread_;
+    wxProgressDialog* progress_dialog_ = nullptr;
+    wxTimer*          progress_timer_ = nullptr;
+    std::atomic<bool> pack_cancelled_{ false };
+    bool              run_after_pack_ = false;
 
     /**
      * @brief Time the running pack thread started, used for the elapsed time

@@ -13,9 +13,9 @@ namespace
 std::vector<appbox::filesystem::IsolationLayer> Layers()
 {
     return {
-        { L"#ProgramFiles#", L"\\??\\C:\\Program Files" },
-        { L"#APPDATA#", L"\\??\\C:\\Users\\foo\\AppData\\Roaming" },
-        { L"C", L"\\??\\C:" },
+        { L"#ProgramFiles#", L"\\??\\C:\\Program Files"                },
+        { L"#APPDATA#",      L"\\??\\C:\\Users\\foo\\AppData\\Roaming" },
+        { L"C",              L"\\??\\C:"                               },
     };
 }
 
@@ -39,8 +39,8 @@ constexpr wchar_t kSettingsFile[] = L"\\??\\C:\\Program Files\\MyApp\\data\\sett
 TEST(UnitFilesystemIsolationTable, ParseTranslatesVirtualPaths)
 {
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>            unmapped;
-    std::string                          error;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
 
     const std::string text = R"({
         "version": 1,
@@ -55,8 +55,8 @@ TEST(UnitFilesystemIsolationTable, ParseTranslatesVirtualPaths)
     EXPECT_FALSE(table.Empty());
     EXPECT_EQ(table.Count(), 2u);
 
-    appbox::FilesystemIsolation   mode = appbox::FilesystemIsolation::WriteCopy;
-    appbox::FilesystemEntryKind   kind = appbox::FilesystemEntryKind::File;
+    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::WriteCopy;
+    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
 
     ASSERT_TRUE(table.Lookup(kMyApp, mode, kind));
     EXPECT_EQ(mode, appbox::FilesystemIsolation::Full);
@@ -73,8 +73,8 @@ TEST(UnitFilesystemIsolationTable, ParseTranslatesVirtualPaths)
 TEST(UnitFilesystemIsolationTable, LookupWalksUpToTheClosestEntry)
 {
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>            unmapped;
-    std::string                          error;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
 
     const std::string text = R"({
         "version": 1,
@@ -114,8 +114,8 @@ TEST(UnitFilesystemIsolationTable, LookupWalksUpToTheClosestEntry)
 TEST(UnitFilesystemIsolationTable, LookupIgnoresTheCaseAndTrailingSeparators)
 {
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>            unmapped;
-    std::string                          error;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
 
     const std::string text = R"({
         "version": 1,
@@ -143,8 +143,8 @@ TEST(UnitFilesystemIsolationTable, LookupIgnoresTheCaseAndTrailingSeparators)
 TEST(UnitFilesystemIsolationTable, ADriveLayerCoversTheDriveRoot)
 {
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>            unmapped;
-    std::string                          error;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
 
     const std::string text = R"({
         "version": 1,
@@ -172,8 +172,8 @@ TEST(UnitFilesystemIsolationTable, ADriveLayerCoversTheDriveRoot)
 TEST(UnitFilesystemIsolationTable, EntriesWithoutALayerAreSkipped)
 {
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>            unmapped;
-    std::string                          error;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
 
     const std::string text = R"({
         "version": 1,
@@ -203,8 +203,8 @@ TEST(UnitFilesystemIsolationTable, EntriesWithoutALayerAreSkipped)
 TEST(UnitFilesystemIsolationTable, TheLastEntryOfAPathWins)
 {
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>            unmapped;
-    std::string                          error;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
 
     const std::string text = R"({
         "version": 1,
@@ -229,8 +229,8 @@ TEST(UnitFilesystemIsolationTable, TheLastEntryOfAPathWins)
 TEST(UnitFilesystemIsolationTable, ADocumentWithoutEntriesIsEmpty)
 {
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>            unmapped;
-    std::string                          error;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
 
     ASSERT_TRUE(table.Parse(R"({ "version": 1 })", Layers(), unmapped, error)) << error;
     EXPECT_TRUE(table.Empty());
@@ -243,8 +243,8 @@ TEST(UnitFilesystemIsolationTable, ADocumentWithoutEntriesIsEmpty)
 TEST(UnitFilesystemIsolationTable, MalformedDocumentsAreRejected)
 {
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>            unmapped;
-    std::string                          error;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
 
     const std::vector<std::string> documents = {
         "not json at all",
@@ -275,8 +275,8 @@ TEST(UnitFilesystemIsolationTable, MalformedDocumentsAreRejected)
 TEST(UnitFilesystemIsolationTable, AFailedParseKeepsTheLoadedModes)
 {
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>            unmapped;
-    std::string                          error;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
 
     const std::string text = R"({
         "version": 1,
@@ -320,8 +320,7 @@ TEST(UnitFilesystemIsolationTable, NormalizeViewPath)
     EXPECT_EQ(IsolationTable::NormalizeViewPath(L"\\??\\C:\\"), L"\\??\\C:");
     EXPECT_EQ(IsolationTable::NormalizeViewPath(L"\\??\\C:\\Program Files\\.\\MyApp"),
               L"\\??\\C:\\Program Files\\MyApp");
-    EXPECT_EQ(IsolationTable::NormalizeViewPath(L"\\??\\C:\\Program Files/MyApp"),
-              L"\\??\\C:\\Program Files\\MyApp");
+    EXPECT_EQ(IsolationTable::NormalizeViewPath(L"\\??\\C:\\Program Files/MyApp"), L"\\??\\C:\\Program Files\\MyApp");
 
     /* A parent reference would leave the virtual filesystem. */
     EXPECT_TRUE(IsolationTable::NormalizeViewPath(L"\\??\\C:\\..\\Windows").empty());
@@ -334,8 +333,8 @@ TEST(UnitFilesystemIsolationTable, NormalizeViewPath)
 TEST(UnitFilesystemIsolationTable, EntriesAreOrderedIgnoringTheCase)
 {
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>            unmapped;
-    std::string                          error;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
 
     const std::string text = R"({
         "version": 1,

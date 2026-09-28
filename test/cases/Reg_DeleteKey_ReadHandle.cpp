@@ -40,7 +40,7 @@ TEST_F(Reg, DeleteKey_ReadHandle)
     ASSERT_TRUE(real_key.SetString(L"HostValue", L"host"));
 
     ProtocolRegDeleteKey::Req req;
-    req.Key  = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey);
     req.Mode = "read_handle";
 
     const auto rsp = ProbeRegDeleteKey.Call(req, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();

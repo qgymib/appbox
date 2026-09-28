@@ -16,23 +16,27 @@ namespace
  *
  * @param[in] name `module!function` name of the function.
  * @return `  [file, network]` and alike, or an empty string when the name has
- *         no category (which happens for the exhaustive scope).
+ *         no category (which happens for the exhaustive scope and for every
+ *         Win32 wrapper, which is not part of the default scope).
  */
 std::wstring CategoryAnnotation(const std::wstring& name)
 {
-    /* The classifier works on the exported name, not on the module prefix. */
+    /* The classifier works on the module and the exported name; a name without
+     * a module prefix can not be classified. */
     const auto separator = name.find(L'!');
-    const std::wstring plain_name =
-        separator == std::wstring::npos ? name : name.substr(separator + 1U);
+    if (separator == std::wstring::npos)
+    {
+        return {};
+    }
 
-    const std::vector<Category> categories = ClassifyExport(plain_name);
+    const std::vector<Category> categories = ClassifyExport(name.substr(0, separator), name.substr(separator + 1U));
     if (categories.empty())
     {
         return {};
     }
 
     std::wstring text = L"  [";
-    bool first = true;
+    bool         first = true;
     for (const auto& category : categories)
     {
         if (!first)
@@ -50,8 +54,7 @@ std::wstring CategoryAnnotation(const std::wstring& name)
 
 } // namespace
 
-std::wstring FormatScope(const std::vector<ArmGroup>& plan, const std::wstring& scope,
-                         bool with_categories)
+std::wstring FormatScope(const std::vector<ArmGroup>& plan, const std::wstring& scope, bool with_categories)
 {
     /* The names are grouped by the module which holds the implementation, which
      * is the module a breakpoint is placed in. */
@@ -69,13 +72,11 @@ std::wstring FormatScope(const std::vector<ArmGroup>& plan, const std::wstring& 
 
     for (const auto& entry : by_module)
     {
-        const std::size_t breakpoints = static_cast<std::size_t>(
-            std::count_if(plan.begin(), plan.end(), [&entry](const ArmGroup& group) {
-                return group.module == entry.first;
-            }));
+        const std::size_t breakpoints = static_cast<std::size_t>(std::count_if(
+            plan.begin(), plan.end(), [&entry](const ArmGroup& group) { return group.module == entry.first; }));
 
-        text += L"\n" + entry.first + L".dll: " + std::to_wstring(breakpoints) +
-                L" breakpoints, " + std::to_wstring(entry.second.size()) + L" names\n";
+        text += L"\n" + entry.first + L".dll: " + std::to_wstring(breakpoints) + L" breakpoints, " +
+                std::to_wstring(entry.second.size()) + L" names\n";
         for (const auto& name : entry.second)
         {
             text += L"  " + name;
@@ -91,8 +92,7 @@ std::wstring FormatScope(const std::vector<ArmGroup>& plan, const std::wstring& 
     return text;
 }
 
-std::wstring FormatReport(const TraceReportHeader& header, const std::vector<std::wstring>& names,
-                          bool with_categories)
+std::wstring FormatReport(const TraceReportHeader& header, const std::vector<std::wstring>& names, bool with_categories)
 {
     std::wstring text = L"AppBoxTracer report\n";
     text += L"  program     : " + header.program + L"\n";
@@ -107,9 +107,8 @@ std::wstring FormatReport(const TraceReportHeader& header, const std::vector<std
     std::map<std::wstring, std::set<std::wstring>> by_module;
     for (const auto& name : names)
     {
-        const auto separator = name.find(L'!');
-        const std::wstring module =
-            separator == std::wstring::npos ? std::wstring() : name.substr(0, separator);
+        const auto         separator = name.find(L'!');
+        const std::wstring module = separator == std::wstring::npos ? std::wstring() : name.substr(0, separator);
         by_module[module].insert(name);
     }
 

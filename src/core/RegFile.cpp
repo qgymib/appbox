@@ -99,7 +99,7 @@ bool StartsWithIgnoreCase(const std::wstring& text, const std::wstring& prefix)
 std::vector<std::wstring> SplitLines(const std::wstring& text)
 {
     std::vector<std::wstring> lines;
-    std::wstring current;
+    std::wstring              current;
 
     for (const wchar_t character : text)
     {
@@ -204,7 +204,7 @@ std::wstring DecodeMultiByte(const std::string& bytes, UINT code_page)
     }
 
     const auto size = static_cast<int>(bytes.size());
-    const int needed = MultiByteToWideChar(code_page, 0, bytes.data(), size, nullptr, 0);
+    const int  needed = MultiByteToWideChar(code_page, 0, bytes.data(), size, nullptr, 0);
     if (needed <= 0)
     {
         return {};
@@ -248,8 +248,8 @@ bool DecodeRegFile(const std::string& bytes, std::wstring& text, std::string& er
         decoded.reserve((bytes.size() - 2) / 2);
         for (std::size_t index = 2; index + 1 < bytes.size(); index += 2)
         {
-            const auto code = static_cast<std::uint16_t>(
-                static_cast<std::uint16_t>(at(index)) | (static_cast<std::uint16_t>(at(index + 1)) << 8));
+            const auto code = static_cast<std::uint16_t>(static_cast<std::uint16_t>(at(index)) |
+                                                         (static_cast<std::uint16_t>(at(index + 1)) << 8));
             decoded.push_back(static_cast<wchar_t>(code));
         }
         text = std::move(decoded);
@@ -263,7 +263,7 @@ bool DecodeRegFile(const std::string& bytes, std::wstring& text, std::string& er
     }
 
     /* A UTF-8 mark and a well formed UTF-8 content are both accepted. */
-    const bool has_utf8_mark = bytes.size() >= 3 && at(0) == 0xEF && at(1) == 0xBB && at(2) == 0xBF;
+    const bool        has_utf8_mark = bytes.size() >= 3 && at(0) == 0xEF && at(1) == 0xBB && at(2) == 0xBF;
     const std::string content = has_utf8_mark ? bytes.substr(3) : bytes;
 
     if (has_utf8_mark || IsValidUtf8(content))
@@ -384,8 +384,10 @@ bool ResolveRootKeyName(const std::wstring& name, std::wstring& out)
         const wchar_t* root;  ///< Full name of the root key.
     };
     static const Alias aliases[] = {
-        { L"HKCR", L"HKEY_CLASSES_ROOT" }, { L"HKCU", L"HKEY_CURRENT_USER" },
-        { L"HKLM", L"HKEY_LOCAL_MACHINE" }, { L"HKU", L"HKEY_USERS" },
+        { L"HKCR", L"HKEY_CLASSES_ROOT"   },
+        { L"HKCU", L"HKEY_CURRENT_USER"   },
+        { L"HKLM", L"HKEY_LOCAL_MACHINE"  },
+        { L"HKU",  L"HKEY_USERS"          },
         { L"HKCC", L"HKEY_CURRENT_CONFIG" }
     };
 
@@ -420,8 +422,8 @@ bool ResolveRegKeyPath(const std::wstring& text, std::wstring& out, std::string&
     std::wstring root;
     if (!ResolveRootKeyName(parts.front(), root))
     {
-        error = LineError(line, "the key path starts with an unknown root key: '" + appbox::WideToUTF8(parts.front())
-                                    + "'");
+        error = LineError(line,
+                          "the key path starts with an unknown root key: '" + appbox::WideToUTF8(parts.front()) + "'");
         return false;
     }
 
@@ -505,8 +507,7 @@ bool ParseHexNumber(const std::wstring& text, std::uint64_t& out)
  * @param[in] line One based line number of the value.
  * @return true on success.
  */
-bool ResolveHexType(const std::wstring& spec, appbox::RegistryValueType& out, std::string& error,
-                    std::size_t line)
+bool ResolveHexType(const std::wstring& spec, appbox::RegistryValueType& out, std::string& error, std::size_t line)
 {
     if (spec.empty())
     {
@@ -523,8 +524,8 @@ bool ResolveHexType(const std::wstring& spec, appbox::RegistryValueType& out, st
 
     if (!appbox::ResolveRegistryValueType(static_cast<std::uint32_t>(code), out))
     {
-        error = LineError(line, "the value line holds an unsupported type index: hex(" + appbox::WideToUTF8(spec)
-                                    + ")");
+        error =
+            LineError(line, "the value line holds an unsupported type index: hex(" + appbox::WideToUTF8(spec) + ")");
         return false;
     }
     return true;
@@ -551,7 +552,7 @@ bool ParseValueData(const std::wstring& text, appbox::RegFileEntry& entry, std::
     /* A quoted text is a string value. */
     if (!text.empty() && text.front() == L'"')
     {
-        std::size_t position = 0;
+        std::size_t  position = 0;
         std::wstring parsed;
         if (!ParseQuotedText(text, position, parsed, error, line))
         {
@@ -647,7 +648,7 @@ bool ParseValueData(const std::wstring& text, appbox::RegFileEntry& entry, std::
 bool ParseValueLine(const std::wstring& line, const std::wstring& key_path, std::size_t line_number,
                     appbox::RegFileEntry& entry, std::string& error)
 {
-    std::size_t position = 0;
+    std::size_t  position = 0;
     std::wstring name;
 
     if (line.front() == L'@')
@@ -687,16 +688,16 @@ namespace appbox
 bool ParseRegText(const std::wstring& text, std::vector<RegFileEntry>& entries, std::string& error)
 {
     std::vector<RegFileEntry> parsed;
-    const auto lines = SplitLines(text);
+    const auto                lines = SplitLines(text);
 
-    bool header_seen = false;
+    bool         header_seen = false;
     std::wstring current_key;
-    std::size_t index = 0;
+    std::size_t  index = 0;
 
     while (index < lines.size())
     {
         const std::size_t line_number = index + 1;
-        std::wstring line = Trim(lines[index]);
+        std::wstring      line = Trim(lines[index]);
         ++index;
 
         if (line.empty() || line.front() == L';')
@@ -856,8 +857,8 @@ bool MergeRegFile(RegistryModel& model, const std::vector<RegFileEntry>& entries
             }
             break;
         case RegFileOperation::SetValue:
-            if (!model.EnsureKey(entry.key_path, entry_error)
-                || !model.SetValue(entry.key_path, entry.value_name, entry.type, entry.data, entry_error))
+            if (!model.EnsureKey(entry.key_path, entry_error) ||
+                !model.SetValue(entry.key_path, entry.value_name, entry.type, entry.data, entry_error))
             {
                 error = LineError(entry.line, entry_error);
                 return false;

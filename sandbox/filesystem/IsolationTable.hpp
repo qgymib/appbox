@@ -115,8 +115,8 @@ public:
      * @param[out] error Error description on failure.
      * @return true when the document was parsed.
      */
-    bool Parse(const std::string& text, const std::vector<IsolationLayer>& layers,
-               std::vector<std::wstring>& unmapped, std::string& error);
+    bool Parse(const std::string& text, const std::vector<IsolationLayer>& layers, std::vector<std::wstring>& unmapped,
+               std::string& error);
 
     /**
      * @brief Whether the table holds no entry.

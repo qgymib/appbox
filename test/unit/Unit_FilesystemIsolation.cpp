@@ -25,8 +25,8 @@ constexpr wchar_t kAppFile[] = L"#ProgramFiles#\\MyApp\\app.exe";
  * @param[in] kind Kind of the entry.
  * @param[in] isolation Mode to set.
  */
-void SetMode(appbox::FilesystemIsolationModel& model, const std::wstring& path,
-             appbox::FilesystemEntryKind kind, appbox::FilesystemIsolation isolation)
+void SetMode(appbox::FilesystemIsolationModel& model, const std::wstring& path, appbox::FilesystemEntryKind kind,
+             appbox::FilesystemIsolation isolation)
 {
     std::string error;
     ASSERT_TRUE(model.SetIsolation(path, kind, isolation, error)) << error;
@@ -80,9 +80,8 @@ TEST(UnitFilesystemIsolation, ParseNameIgnoresTheCase)
 
 TEST(UnitFilesystemIsolation, TokensRoundTrip)
 {
-    for (const auto isolation :
-         { appbox::FilesystemIsolation::Full, appbox::FilesystemIsolation::WriteCopy,
-           appbox::FilesystemIsolation::Whiteout })
+    for (const auto isolation : { appbox::FilesystemIsolation::Full, appbox::FilesystemIsolation::WriteCopy,
+                                  appbox::FilesystemIsolation::Whiteout })
     {
         const std::string token = appbox::filesystem_isolation::IsolationToken(isolation);
 
@@ -102,8 +101,7 @@ TEST(UnitFilesystemIsolation, TokensRoundTrip)
 TEST(UnitFilesystemIsolation, EntryKindTokensRoundTrip)
 {
     EXPECT_STREQ(appbox::filesystem_isolation::EntryKindToken(appbox::FilesystemEntryKind::File), "file");
-    EXPECT_STREQ(appbox::filesystem_isolation::EntryKindToken(appbox::FilesystemEntryKind::Directory),
-                 "directory");
+    EXPECT_STREQ(appbox::filesystem_isolation::EntryKindToken(appbox::FilesystemEntryKind::Directory), "directory");
 
     appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
     EXPECT_TRUE(appbox::filesystem_isolation::ParseEntryKindToken("Directory", kind));
@@ -121,13 +119,11 @@ TEST(UnitFilesystemIsolation, OnlyAFolderAcceptsWriteCopy)
     using appbox::FilesystemIsolation;
 
     EXPECT_TRUE(appbox::filesystem_isolation::IsAllowed(FilesystemIsolation::Full, FilesystemEntryKind::File));
-    EXPECT_FALSE(
-        appbox::filesystem_isolation::IsAllowed(FilesystemIsolation::WriteCopy, FilesystemEntryKind::File));
-    EXPECT_TRUE(
-        appbox::filesystem_isolation::IsAllowed(FilesystemIsolation::Whiteout, FilesystemEntryKind::File));
+    EXPECT_FALSE(appbox::filesystem_isolation::IsAllowed(FilesystemIsolation::WriteCopy, FilesystemEntryKind::File));
+    EXPECT_TRUE(appbox::filesystem_isolation::IsAllowed(FilesystemIsolation::Whiteout, FilesystemEntryKind::File));
 
-    for (const auto isolation : { FilesystemIsolation::Full, FilesystemIsolation::WriteCopy,
-                                  FilesystemIsolation::Whiteout })
+    for (const auto isolation :
+         { FilesystemIsolation::Full, FilesystemIsolation::WriteCopy, FilesystemIsolation::Whiteout })
     {
         EXPECT_TRUE(appbox::filesystem_isolation::IsAllowed(isolation, FilesystemEntryKind::Directory));
     }
@@ -137,8 +133,7 @@ TEST(UnitFilesystemIsolation, DefaultsDependOnTheKind)
 {
     EXPECT_EQ(appbox::DefaultFilesystemIsolation(appbox::FilesystemEntryKind::Directory),
               appbox::FilesystemIsolation::WriteCopy);
-    EXPECT_EQ(appbox::DefaultFilesystemIsolation(appbox::FilesystemEntryKind::File),
-              appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(appbox::DefaultFilesystemIsolation(appbox::FilesystemEntryKind::File), appbox::FilesystemIsolation::Full);
 }
 
 TEST(UnitFilesystemIsolation, WriteCopyIsExpressedAsFullForAFile)
@@ -150,9 +145,8 @@ TEST(UnitFilesystemIsolation, WriteCopyIsExpressedAsFullForAFile)
               FilesystemIsolation::Full);
     EXPECT_EQ(appbox::FilesystemIsolationForKind(FilesystemIsolation::Whiteout, FilesystemEntryKind::File),
               FilesystemIsolation::Whiteout);
-    EXPECT_EQ(
-        appbox::FilesystemIsolationForKind(FilesystemIsolation::WriteCopy, FilesystemEntryKind::Directory),
-        FilesystemIsolation::WriteCopy);
+    EXPECT_EQ(appbox::FilesystemIsolationForKind(FilesystemIsolation::WriteCopy, FilesystemEntryKind::Directory),
+              FilesystemIsolation::WriteCopy);
 }
 
 TEST(UnitFilesystemIsolation, PathHelpersNormalizeAndSplit)
@@ -202,8 +196,7 @@ TEST(UnitFilesystemIsolation, FreshModelFollowsTheDefaults)
     EXPECT_FALSE(model.HasExplicitIsolation(kAppFolder));
     EXPECT_EQ(model.EffectiveIsolation(kAppFolder, appbox::FilesystemEntryKind::Directory),
               appbox::FilesystemIsolation::WriteCopy);
-    EXPECT_EQ(model.EffectiveIsolation(kAppFile, appbox::FilesystemEntryKind::File),
-              appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(model.EffectiveIsolation(kAppFile, appbox::FilesystemEntryKind::File), appbox::FilesystemIsolation::Full);
 }
 
 TEST(UnitFilesystemIsolation, SetIsolationStoresOneEntry)
@@ -227,10 +220,8 @@ TEST(UnitFilesystemIsolation, SetIsolationStoresOneEntry)
 TEST(UnitFilesystemIsolation, SetIsolationUpdatesAnExistingEntry)
 {
     appbox::FilesystemIsolationModel model;
-    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory,
-            appbox::FilesystemIsolation::Whiteout);
-    SetMode(model, L"#PROGRAMFILES#\\MYAPP", appbox::FilesystemEntryKind::Directory,
-            appbox::FilesystemIsolation::Full);
+    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Whiteout);
+    SetMode(model, L"#PROGRAMFILES#\\MYAPP", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
 
     ASSERT_EQ(model.Entries().size(), 1u);
     EXPECT_EQ(model.Entries()[0].isolation, appbox::FilesystemIsolation::Full);
@@ -241,10 +232,10 @@ TEST(UnitFilesystemIsolation, SetIsolationUpdatesAnExistingEntry)
 TEST(UnitFilesystemIsolation, SetIsolationRefusesInvalidInput)
 {
     appbox::FilesystemIsolationModel model;
-    std::string error;
+    std::string                      error;
 
-    EXPECT_FALSE(model.SetIsolation(L"", appbox::FilesystemEntryKind::Directory,
-                                    appbox::FilesystemIsolation::Full, error));
+    EXPECT_FALSE(
+        model.SetIsolation(L"", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full, error));
     EXPECT_FALSE(error.empty());
 
     error.clear();
@@ -253,8 +244,8 @@ TEST(UnitFilesystemIsolation, SetIsolationRefusesInvalidInput)
     EXPECT_FALSE(error.empty());
 
     error.clear();
-    EXPECT_FALSE(model.SetIsolation(kAppFile, appbox::FilesystemEntryKind::File,
-                                    appbox::FilesystemIsolation::WriteCopy, error));
+    EXPECT_FALSE(
+        model.SetIsolation(kAppFile, appbox::FilesystemEntryKind::File, appbox::FilesystemIsolation::WriteCopy, error));
     EXPECT_FALSE(error.empty());
     EXPECT_NE(error.find("write_copy"), std::string::npos);
 
@@ -265,8 +256,7 @@ TEST(UnitFilesystemIsolation, SetIsolationRefusesInvalidInput)
 TEST(UnitFilesystemIsolation, AChildOverridesTheFolderAbove)
 {
     appbox::FilesystemIsolationModel model;
-    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory,
-            appbox::FilesystemIsolation::Whiteout);
+    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Whiteout);
 
     /* Without a mode of its own the child follows the folder above it. */
     EXPECT_EQ(model.EffectiveIsolation(kDataFolder, appbox::FilesystemEntryKind::Directory),
@@ -279,21 +269,18 @@ TEST(UnitFilesystemIsolation, AChildOverridesTheFolderAbove)
     /* The folder above keeps its own mode, the entries below the child follow the child. */
     EXPECT_EQ(model.EffectiveIsolation(kAppFolder, appbox::FilesystemEntryKind::Directory),
               appbox::FilesystemIsolation::Whiteout);
-    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\data\\logs",
-                                       appbox::FilesystemEntryKind::Directory),
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\data\\logs", appbox::FilesystemEntryKind::Directory),
               appbox::FilesystemIsolation::Full);
 }
 
 TEST(UnitFilesystemIsolation, AWhiteoutFolderHidesTheEntriesBelowIt)
 {
     appbox::FilesystemIsolationModel model;
-    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory,
-            appbox::FilesystemIsolation::Whiteout);
+    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Whiteout);
 
     EXPECT_EQ(model.EffectiveIsolation(kAppFile, appbox::FilesystemEntryKind::File),
               appbox::FilesystemIsolation::Whiteout);
-    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\data\\settings.ini",
-                                       appbox::FilesystemEntryKind::File),
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\data\\settings.ini", appbox::FilesystemEntryKind::File),
               appbox::FilesystemIsolation::Whiteout);
 }
 
@@ -302,13 +289,10 @@ TEST(UnitFilesystemIsolation, AMergedFolderShowsFullForAFile)
     appbox::FilesystemIsolationModel model;
 
     /* The default of a folder is `Write Copy`, which a file cannot express. */
-    EXPECT_EQ(model.EffectiveIsolation(kAppFile, appbox::FilesystemEntryKind::File),
-              appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(model.EffectiveIsolation(kAppFile, appbox::FilesystemEntryKind::File), appbox::FilesystemIsolation::Full);
 
-    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory,
-            appbox::FilesystemIsolation::Full);
-    EXPECT_EQ(model.EffectiveIsolation(kAppFile, appbox::FilesystemEntryKind::File),
-              appbox::FilesystemIsolation::Full);
+    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(model.EffectiveIsolation(kAppFile, appbox::FilesystemEntryKind::File), appbox::FilesystemIsolation::Full);
 
     /* A file keeps its own mode even when a folder above it is hidden. */
     SetMode(model, kAppFile, appbox::FilesystemEntryKind::File, appbox::FilesystemIsolation::Whiteout);
@@ -320,8 +304,7 @@ TEST(UnitFilesystemIsolation, RemoveSubtreeDropsTheEntryAndItsDescendants)
 {
     appbox::FilesystemIsolationModel model;
     SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
-    SetMode(model, kDataFolder, appbox::FilesystemEntryKind::Directory,
-            appbox::FilesystemIsolation::Whiteout);
+    SetMode(model, kDataFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Whiteout);
     SetMode(model, L"#ProgramFiles#\\MyApp\\data\\logs", appbox::FilesystemEntryKind::Directory,
             appbox::FilesystemIsolation::Full);
     SetMode(model, L"#ProgramFiles#\\MyApp\\data2", appbox::FilesystemEntryKind::Directory,
@@ -345,8 +328,7 @@ TEST(UnitFilesystemIsolation, EntriesAreOrderedByPath)
     appbox::FilesystemIsolationModel model;
     SetMode(model, L"#Windows#", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
     SetMode(model, L"#appdata#", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
-    SetMode(model, L"#Windows#\\System32", appbox::FilesystemEntryKind::Directory,
-            appbox::FilesystemIsolation::Full);
+    SetMode(model, L"#Windows#\\System32", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
 
     const auto& entries = model.Entries();
     ASSERT_EQ(entries.size(), 3u);
@@ -358,7 +340,7 @@ TEST(UnitFilesystemIsolation, EntriesAreOrderedByPath)
 TEST(UnitFilesystemIsolation, AddEntryRefusesDuplicatesAndInvalidModes)
 {
     appbox::FilesystemIsolationModel model;
-    std::string error;
+    std::string                      error;
 
     appbox::FilesystemIsolationEntry entry;
     entry.path = L"#ProgramFiles#\\MyApp\\.\\data";
@@ -390,8 +372,7 @@ TEST(UnitFilesystemIsolation, AddEntryRefusesDuplicatesAndInvalidModes)
 TEST(UnitFilesystemIsolation, ResetDropsEveryMode)
 {
     appbox::FilesystemIsolationModel model;
-    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory,
-            appbox::FilesystemIsolation::Whiteout);
+    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Whiteout);
 
     model.Reset();
 
@@ -412,8 +393,7 @@ TEST(UnitFilesystemIsolation, BuildIsolationFileListsTheExplicitEntries)
     ASSERT_TRUE(appbox::BuildFilesystemIsolationFile(model, text, error)) << error;
 
     const auto document = nlohmann::json::parse(text);
-    EXPECT_EQ(document[appbox::filesystem_isolation::kVersionKey].get<int>(),
-              appbox::filesystem_isolation::kVersion);
+    EXPECT_EQ(document[appbox::filesystem_isolation::kVersionKey].get<int>(), appbox::filesystem_isolation::kVersion);
 
     const auto& entries = document[appbox::filesystem_isolation::kEntriesKey];
     ASSERT_EQ(entries.size(), 2u);
@@ -422,8 +402,7 @@ TEST(UnitFilesystemIsolation, BuildIsolationFileListsTheExplicitEntries)
     EXPECT_EQ(entries[0][appbox::filesystem_isolation::kKindKey].get<std::string>(), "directory");
     EXPECT_EQ(entries[0][appbox::filesystem_isolation::kIsolationKey].get<std::string>(), "full");
 
-    EXPECT_EQ(entries[1][appbox::filesystem_isolation::kPathKey].get<std::string>(),
-              "#ProgramFiles#\\MyApp\\app.exe");
+    EXPECT_EQ(entries[1][appbox::filesystem_isolation::kPathKey].get<std::string>(), "#ProgramFiles#\\MyApp\\app.exe");
     EXPECT_EQ(entries[1][appbox::filesystem_isolation::kKindKey].get<std::string>(), "file");
     EXPECT_EQ(entries[1][appbox::filesystem_isolation::kIsolationKey].get<std::string>(), "whiteout");
 }
@@ -437,8 +416,7 @@ TEST(UnitFilesystemIsolation, BuildIsolationFileOfAModelWithoutModes)
     ASSERT_TRUE(appbox::BuildFilesystemIsolationFile(model, text, error)) << error;
 
     const auto document = nlohmann::json::parse(text);
-    EXPECT_EQ(document[appbox::filesystem_isolation::kVersionKey].get<int>(),
-              appbox::filesystem_isolation::kVersion);
+    EXPECT_EQ(document[appbox::filesystem_isolation::kVersionKey].get<int>(), appbox::filesystem_isolation::kVersion);
     ASSERT_TRUE(document[appbox::filesystem_isolation::kEntriesKey].is_array());
     EXPECT_TRUE(document[appbox::filesystem_isolation::kEntriesKey].empty());
 }
@@ -465,7 +443,7 @@ TEST(UnitFilesystemIsolation, TheIsolationFileOfThePackerIsReadByTheSandbox)
     };
 
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>            unmapped;
+    std::vector<std::wstring>          unmapped;
     ASSERT_TRUE(table.Parse(text, layers, unmapped, error)) << error;
     EXPECT_TRUE(unmapped.empty());
     EXPECT_EQ(table.Count(), 2u);

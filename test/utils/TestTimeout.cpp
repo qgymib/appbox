@@ -71,14 +71,14 @@ bool ParseTimeoutSeconds(const std::wstring& text, int& seconds)
  */
 struct WatchdogState
 {
-    std::mutex                             mutex;     /* Guards every field below. */
-    std::condition_variable                cv;        /* Wakes the watchdog. */
-    std::thread                            thread;    /* The watchdog itself. */
-    bool                                   armed = false; /* A test case is running. */
-    bool                                   stop = false;  /* The run is over. */
-    std::chrono::steady_clock::time_point  deadline;  /* Deadline of the running case. */
-    std::string                            test_name; /* `Suite.Case` of the running case. */
-    appbox::test::TestTimeoutConfig        config;    /* Copy of the configuration of the run. */
+    std::mutex                            mutex;         /* Guards every field below. */
+    std::condition_variable               cv;            /* Wakes the watchdog. */
+    std::thread                           thread;        /* The watchdog itself. */
+    bool                                  armed = false; /* A test case is running. */
+    bool                                  stop = false;  /* The run is over. */
+    std::chrono::steady_clock::time_point deadline;      /* Deadline of the running case. */
+    std::string                           test_name;     /* `Suite.Case` of the running case. */
+    appbox::test::TestTimeoutConfig       config;        /* Copy of the configuration of the run. */
 };
 
 /** The watchdog state of the process, `nullptr` while the watchdog is not installed. */
@@ -103,8 +103,7 @@ void ArmWatchdog(const std::string& test_name)
     }
 
     g_state->test_name = test_name;
-    g_state->deadline =
-        std::chrono::steady_clock::now() + std::chrono::seconds(g_state->config.test_timeout_seconds);
+    g_state->deadline = std::chrono::steady_clock::now() + std::chrono::seconds(g_state->config.test_timeout_seconds);
     g_state->armed = true;
     g_state->cv.notify_all();
 }
@@ -159,8 +158,8 @@ void RunCoredumpWriter(const appbox::test::CoredumpRequest& request)
         return;
     }
 
-    const DWORD wait = ::WaitForSingleObject(
-        process_info.hProcess, static_cast<DWORD>(appbox::test::kCoredumpWriterTimeoutSeconds) * 1000);
+    const DWORD wait = ::WaitForSingleObject(process_info.hProcess,
+                                             static_cast<DWORD>(appbox::test::kCoredumpWriterTimeoutSeconds) * 1000);
     if (wait != WAIT_OBJECT_0)
     {
         ReportToStderr(fmt::format("the coredump writer did not finish within {} seconds",
@@ -186,8 +185,7 @@ void RunCoredumpWriter(const appbox::test::CoredumpRequest& request)
  */
 [[noreturn]] void HandleTestTimeout(const std::string& test_name, const appbox::test::TestTimeoutConfig& config)
 {
-    ReportToStderr(
-        fmt::format("test case {} timed out after {} seconds", test_name, config.test_timeout_seconds));
+    ReportToStderr(fmt::format("test case {} timed out after {} seconds", test_name, config.test_timeout_seconds));
 
     appbox::test::CoredumpRequest request;
     request.pid = ::GetCurrentProcessId();
@@ -200,8 +198,8 @@ void RunCoredumpWriter(const appbox::test::CoredumpRequest& request)
      * end-to-end case) must not outlive it. */
     appbox::test::TerminateProcessTree(::GetCurrentProcessId(), 0);
 
-    ReportToStderr(fmt::format("the coredumps of {} are in {}", test_name,
-                               appbox::WideToUTF8(request.dump_dir.wstring())));
+    ReportToStderr(
+        fmt::format("the coredumps of {} are in {}", test_name, appbox::WideToUTF8(request.dump_dir.wstring())));
     std::fflush(nullptr);
 
     /*
@@ -230,16 +228,15 @@ void WatchdogMain()
 
         /* The wait ends early when the run is over, when the test case ends or
          * when the test case moves its deadline back. */
-        const bool woken = g_state->cv.wait_until(lock, deadline, [deadline] {
-            return g_state->stop || !g_state->armed || g_state->deadline != deadline;
-        });
+        const bool woken = g_state->cv.wait_until(
+            lock, deadline, [deadline] { return g_state->stop || !g_state->armed || g_state->deadline != deadline; });
         if (woken)
         {
             continue;
         }
 
-        const std::string                      test_name = g_state->test_name;
-        const appbox::test::TestTimeoutConfig  config = g_state->config;
+        const std::string                     test_name = g_state->test_name;
+        const appbox::test::TestTimeoutConfig config = g_state->config;
         lock.unlock();
 
         HandleTestTimeout(test_name, config);

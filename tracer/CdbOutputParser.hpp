@@ -20,11 +20,11 @@ struct CdbEvent
         Hit,        ///< An armed address was entered; `names` are the names of that address.
     };
 
-    Kind kind = Kind::Prompt;         ///< Kind of the event.
-    std::uint32_t session = 0;        ///< Process index of a prompt.
-    std::wstring image_path;          ///< Image path of a module load.
-    std::uint64_t image_base = 0;     ///< Base address of a module load.
-    std::vector<std::wstring> names;  ///< Function names of a hit.
+    Kind                      kind = Kind::Prompt; ///< Kind of the event.
+    std::uint32_t             session = 0;         ///< Process index of a prompt.
+    std::wstring              image_path;          ///< Image path of a module load.
+    std::uint64_t             image_base = 0;      ///< Base address of a module load.
+    std::vector<std::wstring> names;               ///< Function names of a hit.
 };
 
 /**
@@ -54,7 +54,10 @@ public:
     void Feed(std::string_view chunk, std::vector<CdbEvent>& events);
 
     /** @return Whether a partial line is buffered. */
-    bool HasPendingOutput() const noexcept { return !pending_.empty(); }
+    bool HasPendingOutput() const noexcept
+    {
+        return !pending_.empty();
+    }
 
 private:
     std::string pending_; ///< Bytes of the output which are not decoded yet.

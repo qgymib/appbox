@@ -20,12 +20,12 @@ struct ProtocolRegQueryKeyName
 
     struct Rsp
     {
-        DWORD create_code = static_cast<DWORD>(-1); /* RegCreateKeyExW() error code. */
-        DWORD disposition = 0;                      /* REG_CREATED_NEW_KEY / REG_OPENED_EXISTING_KEY. */
-        DWORD query_key_code = static_cast<DWORD>(-1);   /* NTSTATUS of NtQueryKey(). */
-        DWORD query_object_code = static_cast<DWORD>(-1); /* NTSTATUS of NtQueryObject(). */
-        std::string key_name;    /* KeyNameInformation of NtQueryKey(). UTF-8. */
-        std::string object_name; /* ObjectNameInformation of NtQueryObject(). UTF-8. */
+        DWORD       create_code = static_cast<DWORD>(-1);       /* RegCreateKeyExW() error code. */
+        DWORD       disposition = 0;                            /* REG_CREATED_NEW_KEY / REG_OPENED_EXISTING_KEY. */
+        DWORD       query_key_code = static_cast<DWORD>(-1);    /* NTSTATUS of NtQueryKey(). */
+        DWORD       query_object_code = static_cast<DWORD>(-1); /* NTSTATUS of NtQueryObject(). */
+        std::string key_name;                                   /* KeyNameInformation of NtQueryKey(). UTF-8. */
+        std::string object_name;                                /* ObjectNameInformation of NtQueryObject(). UTF-8. */
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, create_code, disposition, query_key_code, query_object_code,
                                                     key_name, object_name)
     };

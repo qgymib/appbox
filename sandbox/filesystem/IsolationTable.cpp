@@ -108,7 +108,7 @@ bool SplitPath(const std::wstring& path, std::vector<std::wstring>& components)
  * @param[in] layers The layers of the view.
  * @return The view path, empty when the path cannot be translated.
  */
-std::wstring MapVirtualPathToView(const std::wstring& virtual_path,
+std::wstring MapVirtualPathToView(const std::wstring&                                    virtual_path,
                                   const std::vector<appbox::filesystem::IsolationLayer>& layers)
 {
     std::vector<std::wstring> components;
@@ -198,8 +198,8 @@ bool appbox::filesystem::IsolationTable::Parse(const std::string& text, const st
         {
             if (!list->is_array())
             {
-                error = std::string("the '") + filesystem_isolation::kEntriesKey
-                        + "' member of the filesystem isolation file is not a list";
+                error = std::string("the '") + filesystem_isolation::kEntriesKey +
+                        "' member of the filesystem isolation file is not a list";
                 return false;
             }
 
@@ -243,8 +243,8 @@ bool appbox::filesystem::IsolationTable::Parse(const std::string& text, const st
 
                 if (!filesystem_isolation::IsAllowed(mode, kind))
                 {
-                    error = "the isolation mode '" + isolation_token + "' cannot be used for a "
-                            + filesystem_isolation::EntryKindToken(kind) + " in the filesystem isolation file";
+                    error = "the isolation mode '" + isolation_token + "' cannot be used for a " +
+                            filesystem_isolation::EntryKindToken(kind) + " in the filesystem isolation file";
                     return false;
                 }
 

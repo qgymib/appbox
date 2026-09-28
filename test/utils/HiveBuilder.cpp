@@ -15,8 +15,7 @@ namespace
  * hive which is built by a test has the layout the sandbox expects.
  */
 const wchar_t* const kRootKeyNames[] = {
-    L"HKEY_CLASSES_ROOT", L"HKEY_CURRENT_USER",   L"HKEY_LOCAL_MACHINE",
-    L"HKEY_USERS",        L"HKEY_CURRENT_CONFIG",
+    L"HKEY_CLASSES_ROOT", L"HKEY_CURRENT_USER", L"HKEY_LOCAL_MACHINE", L"HKEY_USERS", L"HKEY_CURRENT_CONFIG",
 };
 
 /**
@@ -128,8 +127,8 @@ bool appbox::test::HiveBuilder::Write(std::string& error)
 
         HKEY  key = nullptr;
         DWORD disposition = 0;
-        if (RegCreateKeyExW(root, entry.key_path.c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS,
-                            nullptr, &key, &disposition) != ERROR_SUCCESS)
+        if (RegCreateKeyExW(root, entry.key_path.c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, nullptr,
+                            &key, &disposition) != ERROR_SUCCESS)
         {
             error = "failed to create a key of the test hive";
             written = false;
@@ -172,8 +171,7 @@ bool appbox::test::HiveBuilder::Write(std::string& error)
     {
         nlohmann::json item;
         item[appbox::registry_isolation::kPathKey] = appbox::WideToUTF8(entry.key_path);
-        item[appbox::registry_isolation::kIsolationKey] =
-            appbox::registry_isolation::IsolationToken(entry.isolation);
+        item[appbox::registry_isolation::kIsolationKey] = appbox::registry_isolation::IsolationToken(entry.isolation);
 
         if (!entry.is_value)
         {
@@ -185,7 +183,7 @@ bool appbox::test::HiveBuilder::Write(std::string& error)
         document[appbox::registry_isolation::kValuesKey].push_back(std::move(item));
     }
 
-    const auto text = document.dump(2);
+    const auto    text = document.dump(2);
     std::ofstream out(registry_dir / L"isolation.json", std::ios::binary | std::ios::trunc);
     if (!out.is_open())
     {

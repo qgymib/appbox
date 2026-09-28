@@ -48,9 +48,10 @@ TEST_F(Fs, Whiteout_CreateInSandbox)
     /* clang-format on */
 
     auto config = tree.Build();
-    ASSERT_TRUE(WriteFsIsolationFile(config, {
-        { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\data.txt", appbox::FilesystemEntryKind::File,
-          appbox::FilesystemIsolation::Whiteout }
+    ASSERT_TRUE(WriteFsIsolationFile(
+        config, {
+                    { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\data.txt", appbox::FilesystemEntryKind::File,
+                     appbox::FilesystemIsolation::Whiteout }
     }));
 
     const auto file = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName + L"\\data.txt";

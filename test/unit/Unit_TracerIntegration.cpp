@@ -4,6 +4,8 @@
 #include "tracer/CdbSession.hpp"
 #include "tracer/TargetProgram.hpp"
 #include "tracer/TracedModules.hpp"
+#include "utils/Coredump.hpp"
+#include "utils/NameResolutionProbe.hpp"
 #include "utils/TestTimeout.hpp"
 #include <algorithm>
 #include <filesystem>
@@ -54,9 +56,9 @@ bool HasAnyName(const std::vector<std::wstring>& names, const std::vector<std::w
 /** Everything a run of the integration tests needs. */
 struct IntegrationSetup
 {
-    std::filesystem::path debugger;             ///< Debugger to use; empty when it was not found.
-    std::filesystem::path target;               ///< cmd.exe; empty when it was not found.
-    std::vector<appbox::tracer::ArmGroup> plan; ///< Breakpoints of the category scope.
+    std::filesystem::path                 debugger; ///< Debugger to use; empty when it was not found.
+    std::filesystem::path                 target;   ///< cmd.exe; empty when it was not found.
+    std::vector<appbox::tracer::ArmGroup> plan;     ///< Breakpoints of the category scope.
 };
 
 /**
@@ -77,21 +79,21 @@ IntegrationSetup Prepare()
     }
 
     const std::filesystem::path directory = appbox::tracer::SystemDirectoryForMachine(0);
-    const auto modules = appbox::tracer::LoadTracedModules(directory);
-    setup.plan =
-        appbox::tracer::BuildArmPlan(modules, appbox::tracer::AllCategories(), false, directory);
+    const auto                  modules = appbox::tracer::LoadTracedModules(directory);
+    setup.plan = appbox::tracer::BuildArmPlan(modules, appbox::tracer::AllCategories(), false, directory);
     return setup;
 }
 
 /**
- * @brief Run cmd.exe with the given arguments below the debugger.
+ * @brief Run a program with the given arguments below the debugger.
  *
  * @param[in] setup Prepared run.
- * @param[in] arguments Arguments of cmd.exe.
+ * @param[in] program Program to run.
+ * @param[in] arguments Arguments of the program.
  * @return The result of the run.
  */
-appbox::tracer::TraceResult RunCmd(const IntegrationSetup& setup,
-                                   const std::vector<std::wstring>& arguments)
+appbox::tracer::TraceResult RunProgram(const IntegrationSetup& setup, const std::filesystem::path& program,
+                                       const std::vector<std::wstring>& arguments)
 {
     /*
      * The run below the debugger has a budget of its own which is longer than
@@ -102,7 +104,7 @@ appbox::tracer::TraceResult RunCmd(const IntegrationSetup& setup,
 
     appbox::tracer::TraceRequest request;
     request.debugger = setup.debugger;
-    request.program = setup.target;
+    request.program = program;
     request.program_args = arguments;
     request.plan = setup.plan;
     request.timeout_seconds = kRunTimeoutSeconds;
@@ -110,11 +112,23 @@ appbox::tracer::TraceResult RunCmd(const IntegrationSetup& setup,
     return appbox::tracer::RunTraceSession(request);
 }
 
+/**
+ * @brief Run cmd.exe with the given arguments below the debugger.
+ *
+ * @param[in] setup Prepared run.
+ * @param[in] arguments Arguments of cmd.exe.
+ * @return The result of the run.
+ */
+appbox::tracer::TraceResult RunCmd(const IntegrationSetup& setup, const std::vector<std::wstring>& arguments)
+{
+    return RunProgram(setup, setup.target, arguments);
+}
+
 } // namespace
 
 /**
- * @brief A run of cmd.exe below the real debugger reports the functions of the
- *        isolation domains which cmd.exe used.
+ * @brief A run of cmd.exe below the real debugger reports the lowest level
+ *        entry points of the isolation domains which cmd.exe used.
  */
 TEST(TracerIntegration, ASingleProcessRunIsTraced)
 {
@@ -131,18 +145,21 @@ TEST(TracerIntegration, ASingleProcessRunIsTraced)
 
     ASSERT_FALSE(setup.plan.empty());
 
-    const auto result = RunCmd(setup, {L"/c", L"echo", L"hi"});
+    const auto result = RunCmd(setup, { L"/c", L"echo", L"hi" });
 
     EXPECT_EQ(result.status, appbox::tracer::RunStatus::Completed) << result.message;
     EXPECT_EQ(result.processes, 1U);
-    EXPECT_GE(result.breakpoints, 100U);
+    EXPECT_GE(result.breakpoints, 90U);
     EXPECT_FALSE(result.names.empty());
 
     /* The scope is armed per process, and the file APIs of the startup are
-     * reported. */
+     * reported through their NT entry points. */
     ASSERT_FALSE(result.calls_per_process.empty());
     EXPECT_GT(result.calls_per_process[0], 0U);
-    EXPECT_TRUE(HasAnyName(result.names, {L"kernel32!CreateFileW", L"kernelbase!CreateFileW"}));
+    EXPECT_TRUE(HasAnyName(result.names, { L"ntdll!NtCreateFile", L"ntdll!NtOpenFile" }));
+
+    /* The Win32 wrappers are not part of the default scope. */
+    EXPECT_FALSE(HasAnyName(result.names, { L"kernel32!CreateFileW", L"kernelbase!CreateFileW" }));
 }
 
 /**
@@ -168,10 +185,10 @@ TEST(TracerIntegration, AChildProcessIsTracedAsWell)
 
     ASSERT_FALSE(setup.plan.empty());
 
-    const auto result = RunCmd(setup, {L"/c", L"cmd.exe", L"/c", L"echo", L"child"});
+    const auto result = RunCmd(setup, { L"/c", L"cmd.exe", L"/c", L"echo", L"child" });
 
     EXPECT_EQ(result.status, appbox::tracer::RunStatus::Completed) << result.message;
-    EXPECT_GE(result.breakpoints, 100U);
+    EXPECT_GE(result.breakpoints, 90U);
     ASSERT_GE(result.processes, 2U) << "the child process was not traced";
 
     /* Both processes produced calls of their own: the child session was armed
@@ -180,16 +197,44 @@ TEST(TracerIntegration, AChildProcessIsTracedAsWell)
     EXPECT_GT(result.calls_per_process[0], 0U);
     EXPECT_GT(result.calls_per_process[1], 0U);
 
-    /* Known functions of the three isolation domains are reported. */
-    EXPECT_TRUE(HasAnyName(result.names, {L"kernel32!CreateFileW", L"kernelbase!CreateFileW"}));
-    EXPECT_TRUE(HasAnyName(result.names,
-                           {L"ntdll!NtOpenKey",
-                            L"ntdll!NtCreateKey",
-                            L"ntdll!NtQueryValueKey",
-                            L"kernelbase!RegOpenKeyExW",
-                            L"kernelbase!RegQueryValueExW"}));
+    /* Known entry points of the isolation domains are reported. */
+    EXPECT_TRUE(HasAnyName(result.names, { L"ntdll!NtCreateFile", L"ntdll!NtOpenFile" }));
+    EXPECT_TRUE(HasAnyName(result.names, { L"ntdll!NtOpenKey", L"ntdll!NtCreateKey", L"ntdll!NtQueryValueKey",
+                                           L"ntdll!NtEnumerateValueKey" }));
 
     /* The aliases of one address are reported together. */
     EXPECT_TRUE(HasName(result.names, L"ntdll!NtClose"));
     EXPECT_TRUE(HasName(result.names, L"ntdll!ZwClose"));
+}
+
+/**
+ * @brief A module which is loaded on demand is armed when the loader maps it.
+ *
+ * The DNS client is not part of the import table of a process, so its
+ * breakpoints can not be armed at the first prompt of a session: the session
+ * has to stop when the module appears, which is what the module load filter of
+ * the debugger is for. The case traces the name resolution probe of this
+ * executable, which loads the socket library and the DNS client and calls their
+ * entry points on demand.
+ */
+TEST(TracerIntegration, AModuleLoadedOnDemandIsArmedWhenItAppears)
+{
+    const IntegrationSetup setup = Prepare();
+    if (setup.debugger.empty())
+    {
+        GTEST_SKIP() << "cdb.exe was not found";
+    }
+
+    ASSERT_FALSE(setup.plan.empty());
+
+    const auto result =
+        RunProgram(setup, appbox::test::GetOwnExecutablePath(), { appbox::test::kNameResolutionProbeOption });
+
+    EXPECT_EQ(result.status, appbox::tracer::RunStatus::Completed) << result.message;
+    EXPECT_EQ(result.processes, 1U);
+
+    /* The socket library is loaded before the initial break of the process, the
+     * DNS client only when the probe asks for it. */
+    EXPECT_TRUE(HasName(result.names, L"ws2_32!GetAddrInfoW"));
+    EXPECT_TRUE(HasName(result.names, L"dnsapi!DnsQuery_UTF8"));
 }

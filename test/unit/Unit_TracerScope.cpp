@@ -1,5 +1,11 @@
 #include <gtest/gtest.h>
 #include "tracer/ScopePatterns.hpp"
+#include "tracer/TracedModules.hpp"
+#include <windows.h>
+#include <algorithm>
+#include <cstdint>
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -11,167 +17,201 @@ constexpr auto kFile = appbox::tracer::Category::File;
 constexpr auto kRegistry = appbox::tracer::Category::Registry;
 constexpr auto kNetwork = appbox::tracer::Category::Network;
 
+/** Machine type of an x64 image (IMAGE_FILE_MACHINE_AMD64). */
+constexpr std::uint16_t kMachineAmd64 = 0x8664;
+
 /**
  * @brief Report whether every name of a list belongs to a category.
  *
+ * @param[in] module Module which exports the names.
  * @param[in] names Export names to test.
  * @param[in] category Category the names have to belong to.
  */
-void ExpectInCategory(const std::vector<const wchar_t*>& names, appbox::tracer::Category category)
+void ExpectInCategory(const wchar_t* module, const std::vector<const wchar_t*>& names,
+                      appbox::tracer::Category category)
 {
     for (const auto* name : names)
     {
-        EXPECT_TRUE(appbox::tracer::MatchesCategory(name, category)) << name;
+        EXPECT_TRUE(appbox::tracer::MatchesCategory(module, name, category)) << module << L"!" << name;
+    }
+}
+
+/**
+ * @brief Report whether every name of a list is out of the scope.
+ *
+ * @param[in] module Module which exports the names.
+ * @param[in] names Export names to test.
+ */
+void ExpectOutOfScope(const wchar_t* module, const std::vector<const wchar_t*>& names)
+{
+    for (const auto* name : names)
+    {
+        EXPECT_TRUE(appbox::tracer::ClassifyExport(module, name).empty()) << module << L"!" << name;
     }
 }
 
 } // namespace
 
 /**
- * @brief The functions the filesystem isolation documents as its entry points
- *        are part of the filesystem scope.
+ * @brief The filesystem entry points of ntdll are part of the filesystem scope,
+ *        including the ones which a keyword match never reached (the symbolic
+ *        link, the read and write and the section APIs).
  */
 TEST(TracerScope, FilesystemEntryPointsAreInTheScope)
 {
-    ExpectInCategory({L"NtCreateFile",
-                      L"NtOpenFile",
-                      L"NtQueryAttributesFile",
-                      L"NtQueryFullAttributesFile",
-                      L"NtQueryInformationByName",
-                      L"NtQueryDirectoryFile",
-                      L"NtQueryDirectoryFileEx",
-                      L"NtDeleteFile",
-                      L"NtQueryInformationFile",
-                      L"NtSetInformationFile",
-                      L"NtQueryVolumeInformationFile",
-                      L"NtDeviceIoControlFile",
-                      L"NtFsControlFile",
-                      L"NtClose",
-                      L"NtCreateSection",
-                      L"NtMapViewOfSection",
-                      L"NtNotifyChangeDirectoryFile"},
+    ExpectInCategory(L"ntdll",
+                     { L"NtCreateFile",
+                       L"NtOpenFile",
+                       L"NtDeleteFile",
+                       L"NtCopyFileChunk",
+                       L"NtCreatePagingFile",
+                       L"NtTranslateFilePath",
+                       L"NtQueryAttributesFile",
+                       L"NtQueryFullAttributesFile",
+                       L"NtQueryInformationByName",
+                       L"NtQueryDirectoryFile",
+                       L"NtQueryDirectoryFileEx",
+                       L"NtNotifyChangeDirectoryFile",
+                       L"NtNotifyChangeDirectoryFileEx",
+                       L"NtReadFile",
+                       L"NtReadFileScatter",
+                       L"NtWriteFile",
+                       L"NtWriteFileGather",
+                       L"NtQueryInformationFile",
+                       L"NtSetInformationFile",
+                       L"NtQueryEaFile",
+                       L"NtSetEaFile",
+                       L"NtQueryVolumeInformationFile",
+                       L"NtSetVolumeInformationFile",
+                       L"NtQueryQuotaInformationFile",
+                       L"NtSetQuotaInformationFile",
+                       L"NtLockFile",
+                       L"NtUnlockFile",
+                       L"NtFlushBuffersFile",
+                       L"NtFlushBuffersFileEx",
+                       L"NtCancelIoFile",
+                       L"NtCancelIoFileEx",
+                       L"NtCancelSynchronousIoFile",
+                       L"NtDeviceIoControlFile",
+                       L"NtFsControlFile",
+                       L"NtCreateSection",
+                       L"NtCreateSectionEx",
+                       L"NtOpenSection",
+                       L"NtQuerySection",
+                       L"NtExtendSection",
+                       L"NtMapViewOfSection",
+                       L"NtMapViewOfSectionEx",
+                       L"NtUnmapViewOfSection",
+                       L"NtUnmapViewOfSectionEx",
+                       L"NtAreMappedFilesTheSame",
+                       L"NtCreateSymbolicLinkObject",
+                       L"NtOpenSymbolicLinkObject",
+                       L"NtQuerySymbolicLinkObject",
+                       L"NtSetInformationSymbolicLink",
+                       L"NtClose" },
                      kFile);
 }
 
 /**
- * @brief The Win32 wrappers of the filesystem entry points are part of the
- *        scope as well: an application usually calls them, not the NT API.
- */
-TEST(TracerScope, FilesystemWrappersAreInTheScope)
-{
-    ExpectInCategory({L"CreateFileW",
-                      L"CreateFile2",
-                      L"ReadFile",
-                      L"ReadFileEx",
-                      L"WriteFile",
-                      L"DeleteFileW",
-                      L"CopyFile2",
-                      L"MoveFileExW",
-                      L"ReplaceFileW",
-                      L"CreateDirectoryW",
-                      L"RemoveDirectoryW",
-                      L"FindFirstFileExW",
-                      L"FindNextFileW",
-                      L"FindClose",
-                      L"GetFileAttributesExW",
-                      L"SetFileAttributesW",
-                      L"GetFileSizeEx",
-                      L"SetFilePointerEx",
-                      L"SetEndOfFile",
-                      L"FlushFileBuffers",
-                      L"LockFileEx",
-                      L"GetFullPathNameW",
-                      L"GetTempPath2W",
-                      L"GetTempFileNameW",
-                      L"GetCurrentDirectoryW",
-                      L"SetCurrentDirectoryW",
-                      L"GetDiskFreeSpaceExW",
-                      L"GetLogicalDriveStringsW",
-                      L"GetDriveTypeW",
-                      L"GetVolumeInformationByHandleW",
-                      L"QueryDosDeviceW",
-                      L"DefineDosDeviceW",
-                      L"CreateSymbolicLinkW",
-                      L"CreateHardLinkW",
-                      L"GetFinalPathNameByHandleW",
-                      L"ReadDirectoryChangesW",
-                      L"CreateFileMappingW",
-                      L"MapViewOfFile",
-                      L"UnmapViewOfFile",
-                      L"OpenFileMappingW",
-                      L"GetOverlappedResult",
-                      L"DeviceIoControl",
-                      L"RtlDosPathNameToNtPathName_U",
-                      L"RtlGetFullPathName_U"},
-                     kFile);
-}
-
-/**
- * @brief The registry entry points of the registry isolation are in the scope,
- *        including the value level APIs it deliberately does not hook.
+ * @brief The registry entry points of ntdll are part of the registry scope,
+ *        including the hive APIs, the transactions and the name translation the
+ *        registry isolation needs.
  */
 TEST(TracerScope, RegistryEntryPointsAreInTheScope)
 {
-    ExpectInCategory({L"NtOpenKey",
-                      L"NtOpenKeyEx",
-                      L"NtCreateKey",
-                      L"NtCreateKeyTransacted",
-                      L"NtDeleteKey",
-                      L"NtQueryKey",
-                      L"NtEnumerateKey",
-                      L"NtEnumerateValueKey",
-                      L"NtQueryValueKey",
-                      L"NtSetValueKey",
-                      L"NtDeleteValueKey",
-                      L"NtQueryMultipleValueKey",
-                      L"NtSaveKey",
-                      L"NtLoadKey",
-                      L"NtUnloadKey",
-                      L"NtRestoreKey",
-                      L"NtReplaceKey",
-                      L"NtNotifyChangeKey",
-                      L"NtFlushKey",
-                      L"NtRenameKey",
-                      L"NtCompactKeys",
-                      L"NtQueryObject",
-                      L"RegOpenKeyExW",
-                      L"RegCreateKeyExW",
-                      L"RegQueryValueExW",
-                      L"RegSetValueExW",
-                      L"RegDeleteKeyW",
-                      L"RegDeleteValueW",
-                      L"RegEnumKeyExW",
-                      L"RegEnumValueW",
-                      L"RegCloseKey",
-                      L"RegGetValueW"},
+    ExpectInCategory(L"ntdll",
+                     { L"NtOpenKey",
+                       L"NtOpenKeyEx",
+                       L"NtOpenKeyTransacted",
+                       L"NtOpenKeyTransactedEx",
+                       L"NtCreateKey",
+                       L"NtCreateKeyTransacted",
+                       L"NtDeleteKey",
+                       L"NtRenameKey",
+                       L"NtQueryKey",
+                       L"NtSetInformationKey",
+                       L"NtEnumerateKey",
+                       L"NtEnumerateValueKey",
+                       L"NtQueryValueKey",
+                       L"NtQueryMultipleValueKey",
+                       L"NtSetValueKey",
+                       L"NtDeleteValueKey",
+                       L"NtQueryOpenSubKeys",
+                       L"NtQueryOpenSubKeysEx",
+                       L"NtNotifyChangeKey",
+                       L"NtNotifyChangeMultipleKeys",
+                       L"NtFlushKey",
+                       L"NtLoadKey",
+                       L"NtLoadKey2",
+                       L"NtLoadKey3",
+                       L"NtLoadKeyEx",
+                       L"NtUnloadKey",
+                       L"NtUnloadKey2",
+                       L"NtUnloadKeyEx",
+                       L"NtSaveKey",
+                       L"NtSaveKeyEx",
+                       L"NtSaveMergedKeys",
+                       L"NtRestoreKey",
+                       L"NtReplaceKey",
+                       L"NtCompactKeys",
+                       L"NtCompressKey",
+                       L"NtLockRegistryKey",
+                       L"NtFreezeRegistry",
+                       L"NtThawRegistry",
+                       L"NtCreateRegistryTransaction",
+                       L"NtOpenRegistryTransaction",
+                       L"NtCommitRegistryTransaction",
+                       L"NtRollbackRegistryTransaction",
+                       L"NtQueryObject" },
                      kRegistry);
 }
 
 /**
- * @brief The network scope covers the named pipe, mailslot and device control
- *        entry points, which is how network I/O reaches the kernel through the
- *        three traced DLLs.
+ * @brief The network scope holds the named pipe and mailslot entry points of
+ *        ntdll together with the device control path the socket requests use.
  */
 TEST(TracerScope, NetworkEntryPointsAreInTheScope)
 {
-    ExpectInCategory({L"NtCreateNamedPipeFile",
-                      L"NtCreateMailslotFile",
-                      L"NtDeviceIoControlFile",
-                      L"NtFsControlFile",
-                      L"CreateNamedPipeW",
-                      L"ConnectNamedPipe",
-                      L"DisconnectNamedPipe",
-                      L"CallNamedPipeW",
-                      L"TransactNamedPipe",
-                      L"PeekNamedPipe",
-                      L"WaitNamedPipeW",
-                      L"GetNamedPipeInfo",
-                      L"SetNamedPipeHandleState",
-                      L"ImpersonateNamedPipeClient",
-                      L"CreateMailslotW",
-                      L"GetMailslotInfo",
-                      L"SetMailslotInfo"},
+    ExpectInCategory(
+        L"ntdll", { L"NtCreateNamedPipeFile", L"NtCreateMailslotFile", L"NtDeviceIoControlFile", L"NtFsControlFile" },
+        kNetwork);
+}
+
+/**
+ * @brief Name resolution has no NT landing point, so the socket library and the
+ *        DNS client are part of the network scope: their resolution entry points
+ *        are the lowest ones a lookup can have.
+ */
+TEST(TracerScope, NameResolutionIsPartOfTheNetworkScope)
+{
+    ExpectInCategory(L"ws2_32",
+                     { L"getaddrinfo", L"GetAddrInfoW", L"GetAddrInfoExW", L"GetAddrInfoExA", L"gethostbyname",
+                       L"gethostbyaddr", L"gethostname", L"GetHostNameW", L"GetNameInfoW", L"WSAAsyncGetHostByName",
+                       L"WSAAsyncGetHostByAddr", L"WSALookupServiceBeginA", L"WSALookupServiceBeginW",
+                       L"WSALookupServiceNextA", L"WSALookupServiceNextW", L"WSALookupServiceEnd" },
                      kNetwork);
+
+    ExpectInCategory(L"dnsapi",
+                     { L"DnsQuery_A", L"DnsQuery_W", L"DnsQuery_UTF8", L"DnsQueryEx", L"DnsQueryExA", L"DnsQueryExW",
+                       L"DnsQueryExUTF8", L"DnsCancelQuery", L"DnsServiceResolve", L"DnsServiceResolveCancel" },
+                     kNetwork);
+}
+
+/**
+ * @brief The default scope is a superset of the name resolution entry points the
+ *        sandbox hooks, which is what makes the tracer usable for the DNS
+ *        isolation; the sandbox hooks nothing else, and the scope does not
+ *        depend on that.
+ */
+TEST(TracerScope, TheNetworkScopeCoversTheHookedEntryPoints)
+{
+    ExpectInCategory(L"ws2_32", { L"GetAddrInfoW", L"getaddrinfo", L"GetAddrInfoExW", L"gethostbyname" }, kNetwork);
+    ExpectInCategory(L"dnsapi", { L"DnsQuery_A", L"DnsQuery_W", L"DnsQuery_UTF8" }, kNetwork);
+
+    /* Entry points the sandbox does not hook are part of the domain as well. */
+    ExpectInCategory(L"ntdll", { L"NtSetInformationFile", L"NtQueryEaFile" }, kFile);
+    ExpectInCategory(L"ntdll", { L"NtSaveKey", L"NtReplaceKey" }, kRegistry);
+    ExpectInCategory(L"ws2_32", { L"GetNameInfoW", L"gethostbyaddr" }, kNetwork);
 }
 
 /**
@@ -180,13 +220,13 @@ TEST(TracerScope, NetworkEntryPointsAreInTheScope)
  */
 TEST(TracerScope, DeviceControlIsAFileAndNetworkFunction)
 {
-    const auto categories = appbox::tracer::ClassifyExport(L"NtDeviceIoControlFile");
+    const auto categories = appbox::tracer::ClassifyExport(L"ntdll", L"NtDeviceIoControlFile");
     ASSERT_EQ(categories.size(), 2U);
-    EXPECT_TRUE(appbox::tracer::MatchesCategory(L"NtDeviceIoControlFile", kFile));
-    EXPECT_TRUE(appbox::tracer::MatchesCategory(L"NtDeviceIoControlFile", kNetwork));
+    EXPECT_TRUE(appbox::tracer::MatchesCategory(L"ntdll", L"NtDeviceIoControlFile", kFile));
+    EXPECT_TRUE(appbox::tracer::MatchesCategory(L"ntdll", L"NtDeviceIoControlFile", kNetwork));
 
-    EXPECT_TRUE(appbox::tracer::MatchesCategory(L"NtFsControlFile", kFile));
-    EXPECT_TRUE(appbox::tracer::MatchesCategory(L"NtFsControlFile", kNetwork));
+    EXPECT_TRUE(appbox::tracer::MatchesCategory(L"ntdll", L"NtFsControlFile", kFile));
+    EXPECT_TRUE(appbox::tracer::MatchesCategory(L"ntdll", L"NtFsControlFile", kNetwork));
 }
 
 /**
@@ -195,59 +235,141 @@ TEST(TracerScope, DeviceControlIsAFileAndNetworkFunction)
  */
 TEST(TracerScope, ZwAliasesHaveTheSameCategoriesAsTheirNtCounterparts)
 {
-    EXPECT_EQ(appbox::tracer::ClassifyExport(L"ZwCreateFile"),
-              appbox::tracer::ClassifyExport(L"NtCreateFile"));
-    EXPECT_EQ(appbox::tracer::ClassifyExport(L"ZwOpenKey"),
-              appbox::tracer::ClassifyExport(L"NtOpenKey"));
-    EXPECT_EQ(appbox::tracer::ClassifyExport(L"ZwDeviceIoControlFile"),
-              appbox::tracer::ClassifyExport(L"NtDeviceIoControlFile"));
+    EXPECT_EQ(appbox::tracer::ClassifyExport(L"ntdll", L"ZwCreateFile"),
+              appbox::tracer::ClassifyExport(L"ntdll", L"NtCreateFile"));
+    EXPECT_EQ(appbox::tracer::ClassifyExport(L"ntdll", L"ZwOpenKey"),
+              appbox::tracer::ClassifyExport(L"ntdll", L"NtOpenKey"));
+    EXPECT_EQ(appbox::tracer::ClassifyExport(L"ntdll", L"ZwDeviceIoControlFile"),
+              appbox::tracer::ClassifyExport(L"ntdll", L"NtDeviceIoControlFile"));
+    EXPECT_EQ(appbox::tracer::ClassifyExport(L"ntdll", L"ZwReadFile"),
+              appbox::tracer::ClassifyExport(L"ntdll", L"NtReadFile"));
+}
+
+/**
+ * @brief The Win32 wrappers and the path helpers of ntdll are not part of the
+ *        default scope: the scope is the lowest level of a domain, and the
+ *        wrappers are only reachable through `--all-exports`.
+ */
+TEST(TracerScope, Win32WrappersAndPathHelpersAreOutOfTheScope)
+{
+    ExpectOutOfScope(L"kernel32",
+                     { L"CreateFileW", L"CreateFile2", L"ReadFile", L"WriteFile", L"DeleteFileW", L"FindFirstFileExW",
+                       L"GetFileAttributesExW", L"SetEndOfFile", L"DeviceIoControl", L"CreateFileMappingW",
+                       L"MapViewOfFile", L"CreateNamedPipeW", L"ConnectNamedPipe", L"PeekNamedPipe", L"CreateMailslotW",
+                       L"GetFullPathNameW", L"GetTempPath2W", L"QueryDosDeviceW" });
+
+    ExpectOutOfScope(L"kernelbase",
+                     { L"CreateFileW", L"ReadFile", L"DeleteFileW", L"RegOpenKeyExW", L"RegQueryValueExW",
+                       L"RegCloseKey", L"DeviceIoControl", L"GetFinalPathNameByHandleW" });
+
+    ExpectOutOfScope(L"ntdll", { L"RtlDosPathNameToNtPathName_U", L"RtlGetFullPathName_U", L"RtlIsDosDeviceName_U",
+                                 L"RtlQueryRegistryValues", L"RtlCreateRegistryKey" });
+
+    /* Helpers of the name resolution are not lookups either. */
+    ExpectOutOfScope(L"ws2_32", { L"FreeAddrInfoW", L"FreeAddrInfoExW", L"SetAddrInfoExW", L"GetAddrInfoExCancel",
+                                  L"WSAAddressToStringW", L"WSCInstallNameSpace" });
+    ExpectOutOfScope(L"dnsapi", { L"DnsValidateName_W", L"DnsQueryConfig", L"DnsFree", L"DnsRecordListFree",
+                                  L"DnsExtractRecordsFromMessage_UTF8" });
+}
+
+/**
+ * @brief The module a name comes from is part of the decision: an NT entry point
+ *        is only classified for ntdll, a name resolution entry point only for
+ *        the module which implements it.
+ */
+TEST(TracerScope, TheModuleIsPartOfTheDecision)
+{
+    EXPECT_TRUE(appbox::tracer::ClassifyExport(L"kernel32", L"NtCreateFile").empty());
+    EXPECT_TRUE(appbox::tracer::ClassifyExport(L"kernelbase", L"NtOpenKey").empty());
+    EXPECT_TRUE(appbox::tracer::ClassifyExport(L"ntdll", L"GetAddrInfoW").empty());
+    EXPECT_TRUE(appbox::tracer::ClassifyExport(L"ws2_32", L"DnsQuery_W").empty());
+    EXPECT_TRUE(appbox::tracer::ClassifyExport(L"dnsapi", L"GetAddrInfoW").empty());
+    EXPECT_TRUE(appbox::tracer::ClassifyExport(L"unknown", L"NtCreateFile").empty());
 }
 
 /**
  * @brief Names which only look related must stay out of the scope. Every name
- *        of this list is a false positive a plain substring match produced when
- *        the patterns were measured against the three system DLLs.
+ *        of this list is a false positive a keyword match would produce: an
+ *        ALPC section, an object manager directory, a keyed event, a storage
+ *        partition, an I/O completion port or an I/O ring.
  */
 TEST(TracerScope, UnrelatedNamesAreNotInTheScope)
 {
-    const std::vector<const wchar_t*> names = {
-        L"EtwEventRegister",           /* `reg` inside "Register" */
-        L"EtwNotificationRegister",
-        L"EtwEventUnregister",
-        L"AlpcRegisterCompletionList",
-        L"CsrVerifyRegion",            /* `reg` inside "Region" */
-        L"DbgUiConnectToDbg",          /* `connect` inside "ConnectToDbg" */
-        L"EtwSendNotification",        /* `send` inside "Send" */
-        L"LdrGetProcedureAddress",     /* `addr` inside "Address" */
-        L"LdrAddDllDirectory",         /* `directory` inside "DllDirectory" */
-        L"LdrGetDllDirectory",
-        L"LdrGetFileNameFromLoadAsDataTable",
-        L"NtCreateDirectoryObject",    /* object manager directory */
-        L"NtOpenDirectoryObject",
-        L"NtAlpcCreatePortSection",    /* ALPC section, not a file section */
-        L"NtAlpcCreateSectionView",
-        L"NtCreateKeyedEvent",         /* synchronization object, not a registry key */
-        L"NtWaitForKeyedEvent",
-        L"NtReleaseKeyedEvent",
-        L"RegisterWaitForSingleObject",
-        L"RtlAllocateHeap",
-        L"NtAllocateVirtualMemory",
-        L"GetTickCount64",
-    };
+    ExpectOutOfScope(L"ntdll", { L"NtCreateDirectoryObject",  L"NtCreateDirectoryObjectEx",
+                                 L"NtOpenDirectoryObject",    L"NtQueryDirectoryObject",
+                                 L"NtAlpcCreatePortSection",  L"NtAlpcCreateSectionView",
+                                 L"NtAlpcDeletePortSection",  L"NtCreateKeyedEvent",
+                                 L"NtOpenKeyedEvent",         L"NtWaitForKeyedEvent",
+                                 L"NtReleaseKeyedEvent",      L"NtCreateIoCompletion",
+                                 L"NtCreateIoRing",           L"NtSubmitIoRing",
+                                 L"NtCreatePartition",        L"NtOpenPartition",
+                                 L"NtManagePartition",        L"NtCreateCpuPartition",
+                                 L"NtGetNlsSectionPtr",       L"NtMapCMFModule",
+                                 L"NtQueryLicenseValue",      L"NtGetMUIRegistryInfo",
+                                 L"NtFlushWriteBuffer",       L"NtAllocateVirtualMemory",
+                                 L"NtQuerySystemInformation", L"NtWaitForSingleObject",
+                                 L"RtlAllocateHeap" });
 
-    for (const auto* name : names)
+    ExpectOutOfScope(L"kernel32", { L"EtwEventRegister", L"RegisterWaitForSingleObject", L"GetTickCount64" });
+    ExpectOutOfScope(L"ntdll", { L"DbgUiConnectToDbg", L"LdrGetProcedureAddress" });
+}
+
+/**
+ * @brief Every name of the scope table is an executable export of the module the
+ *        table assigns it to. This is what keeps the table honest: a name which
+ *        does not exist or which is a forwarder can never be armed.
+ */
+TEST(TracerScope, EveryScopeEntryIsAnExecutableExportOfItsModule)
+{
+    const auto modules = appbox::tracer::LoadTracedModules(appbox::tracer::SystemDirectoryForMachine(kMachineAmd64));
+    ASSERT_FALSE(modules.empty());
+
+    for (const auto& entry : appbox::tracer::ScopeTable())
     {
-        EXPECT_TRUE(appbox::tracer::ClassifyExport(name).empty()) << name;
+        const auto module = modules.find(entry.module);
+        ASSERT_NE(module, modules.end()) << entry.module;
+
+        const auto& exports = module->second.image.Exports();
+        const auto  found =
+            std::find_if(exports.begin(), exports.end(), [&entry](const appbox::tracer::ExportEntry& candidate) {
+                return candidate.name == entry.name;
+            });
+        ASSERT_NE(found, exports.end()) << entry.module << L"!" << entry.name;
+        EXPECT_TRUE(found->forwarder.empty()) << entry.module << L"!" << entry.name;
+        EXPECT_TRUE(module->second.image.IsExecutable(found->rva)) << entry.module << L"!" << entry.name;
     }
 }
 
 /**
+ * @brief The table lists a name once per category, and it covers a domain with
+ *        more than a handful of names, so a table which lost entries is noticed.
+ */
+TEST(TracerScope, TheScopeTableIsWellFormed)
+{
+    std::map<std::pair<std::wstring, std::wstring>, std::set<appbox::tracer::Category>> categories;
+    std::map<appbox::tracer::Category, std::size_t>                                     counts;
+
+    for (const auto& entry : appbox::tracer::ScopeTable())
+    {
+        const bool inserted = categories[{ entry.module, entry.name }].insert(entry.category).second;
+        EXPECT_TRUE(inserted) << entry.module << L"!" << entry.name;
+        ++counts[entry.category];
+    }
+
+    EXPECT_GE(counts[kFile], 40U);
+    EXPECT_GE(counts[kRegistry], 35U);
+    EXPECT_GE(counts[kNetwork], 25U);
+}
+
+/**
  * @brief A name without any relation to the three domains has no category, and
- *        an empty name is handled without a special case.
+ *        an empty module or name is handled without a special case.
  */
 TEST(TracerScope, NamesWithoutARelationHaveNoCategory)
 {
-    EXPECT_TRUE(appbox::tracer::ClassifyExport(L"").empty());
-    EXPECT_FALSE(appbox::tracer::MatchesCategory(L"", kFile));
-    EXPECT_FALSE(appbox::tracer::MatchesCategory(L"NtQuerySystemInformation", kRegistry));
+    EXPECT_TRUE(appbox::tracer::ClassifyExport(L"", L"").empty());
+    EXPECT_TRUE(appbox::tracer::ClassifyExport(L"", L"NtCreateFile").empty());
+    EXPECT_TRUE(appbox::tracer::ClassifyExport(L"ntdll", L"").empty());
+    EXPECT_FALSE(appbox::tracer::MatchesCategory(L"ntdll", L"NtQuerySystemInformation", kRegistry));
+    EXPECT_FALSE(appbox::tracer::MatchesCategory(L"ntdll", L"ZwQuerySystemInformation", kRegistry));
 }

@@ -15,7 +15,7 @@ namespace
 std::wstring UniqueFragment()
 {
     static unsigned counter = 0;
-    const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto      ticks = std::chrono::steady_clock::now().time_since_epoch().count();
     return std::to_wstring(ticks) + L"-" + std::to_wstring(++counter);
 }
 
@@ -134,7 +134,7 @@ TEST(PackModel, ImportFolderAcceptsValidFolder)
     TempDir temp;
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
 
     const auto imports = model.ImportsOf("program_files");
@@ -149,7 +149,7 @@ TEST(PackModel, ImportFolderRejectsUnknownPreset)
     TempDir temp;
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     EXPECT_FALSE(model.ImportFolder("does_not_exist", temp.Get().wstring(), error));
     EXPECT_FALSE(error.empty());
 }
@@ -157,21 +157,21 @@ TEST(PackModel, ImportFolderRejectsUnknownPreset)
 TEST(PackModel, ImportFolderRejectsMissingFolder)
 {
     appbox::PackModel model;
-    std::string error;
-    const auto missing = std::filesystem::temp_directory_path() / L"appbox-no-such-folder";
+    std::string       error;
+    const auto        missing = std::filesystem::temp_directory_path() / L"appbox-no-such-folder";
     EXPECT_FALSE(model.ImportFolder("program_files", missing.wstring(), error));
     EXPECT_FALSE(error.empty());
 }
 
 TEST(PackModel, ImportFolderRejectsDuplicateName)
 {
-    TempDir parent1;
-    TempDir parent2;
+    TempDir    parent1;
+    TempDir    parent2;
     const auto folder1 = MakeFolder(parent1.Get(), L"MyApp");
     const auto folder2 = MakeFolder(parent2.Get(), L"MyApp");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", folder1.wstring(), error)) << error;
     EXPECT_FALSE(model.ImportFolder("program_files", folder2.wstring(), error));
     EXPECT_NE(error.find("MyApp"), std::string::npos);
@@ -180,13 +180,13 @@ TEST(PackModel, ImportFolderRejectsDuplicateName)
 
 TEST(PackModel, ImportFolderAllowsSameNameInDifferentPresets)
 {
-    TempDir parent1;
-    TempDir parent2;
+    TempDir    parent1;
+    TempDir    parent2;
     const auto folder1 = MakeFolder(parent1.Get(), L"MyApp");
     const auto folder2 = MakeFolder(parent2.Get(), L"MyApp");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", folder1.wstring(), error)) << error;
     EXPECT_TRUE(model.ImportFolder("user_profile", folder2.wstring(), error)) << error;
     EXPECT_EQ(model.ImportsOf("program_files").size(), static_cast<std::size_t>(1));
@@ -199,11 +199,9 @@ TEST(PackModel, SetMainProgramAcceptsExecutable)
     MakeFile(temp.Get(), L"app.exe", "EXE");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", temp.Get().filename().wstring(), L"app.exe",
-                                     error))
-        << error;
+    ASSERT_TRUE(model.SetMainProgram("program_files", temp.Get().filename().wstring(), L"app.exe", error)) << error;
 
     EXPECT_TRUE(model.HasMainProgram());
     EXPECT_EQ(model.MainProgramChoice().preset_id, "program_files");
@@ -217,11 +215,9 @@ TEST(PackModel, SetMainProgramNormalizesSeparators)
     MakeFile(temp.Get(), L"app.exe", "EXE");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
-    EXPECT_TRUE(model.SetMainProgram("program_files", temp.Get().filename().wstring(),
-                                     L"/app.exe", error))
-        << error;
+    EXPECT_TRUE(model.SetMainProgram("program_files", temp.Get().filename().wstring(), L"/app.exe", error)) << error;
     EXPECT_EQ(model.MainProgramChoice().relative_path, L"app.exe");
 }
 
@@ -231,10 +227,9 @@ TEST(PackModel, SetMainProgramRejectsNonExecutable)
     MakeFile(temp.Get(), L"readme.txt", "TXT");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
-    EXPECT_FALSE(model.SetMainProgram("program_files", temp.Get().filename().wstring(),
-                                      L"readme.txt", error));
+    EXPECT_FALSE(model.SetMainProgram("program_files", temp.Get().filename().wstring(), L"readme.txt", error));
     EXPECT_NE(error.find(".exe"), std::string::npos);
 }
 
@@ -243,10 +238,9 @@ TEST(PackModel, SetMainProgramRejectsMissingFile)
     TempDir temp;
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
-    EXPECT_FALSE(model.SetMainProgram("program_files", temp.Get().filename().wstring(),
-                                      L"missing.exe", error));
+    EXPECT_FALSE(model.SetMainProgram("program_files", temp.Get().filename().wstring(), L"missing.exe", error));
     EXPECT_FALSE(error.empty());
 }
 
@@ -255,17 +249,16 @@ TEST(PackModel, SetMainProgramRejectsEscapingPath)
     TempDir temp;
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
-    EXPECT_FALSE(model.SetMainProgram("program_files", temp.Get().filename().wstring(),
-                                      L"..\\outside.exe", error));
+    EXPECT_FALSE(model.SetMainProgram("program_files", temp.Get().filename().wstring(), L"..\\outside.exe", error));
     EXPECT_FALSE(error.empty());
 }
 
 TEST(PackModel, SetMainProgramRejectsUnknownImport)
 {
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     EXPECT_FALSE(model.SetMainProgram("program_files", L"Missing", L"app.exe", error));
     EXPECT_FALSE(error.empty());
     EXPECT_FALSE(model.HasMainProgram());
@@ -277,11 +270,9 @@ TEST(PackModel, RemoveImportClearsReferencedMainProgram)
     MakeFile(temp.Get(), L"app.exe", "EXE");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", temp.Get().filename().wstring(), L"app.exe",
-                                     error))
-        << error;
+    ASSERT_TRUE(model.SetMainProgram("program_files", temp.Get().filename().wstring(), L"app.exe", error)) << error;
     EXPECT_TRUE(model.HasMainProgram());
 
     model.RemoveImport("program_files", temp.Get().filename().wstring());
@@ -297,12 +288,10 @@ TEST(PackModel, RemoveImportKeepsUnrelatedMainProgram)
     MakeFile(temp2.Get(), L"two.exe", "TWO");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", temp1.Get().wstring(), error)) << error;
     ASSERT_TRUE(model.ImportFolder("user_profile", temp2.Get().wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", temp1.Get().filename().wstring(), L"one.exe",
-                                     error))
-        << error;
+    ASSERT_TRUE(model.SetMainProgram("program_files", temp1.Get().filename().wstring(), L"one.exe", error)) << error;
 
     model.RemoveImport("user_profile", temp2.Get().filename().wstring());
     EXPECT_TRUE(model.HasMainProgram());
@@ -312,30 +301,27 @@ TEST(PackModel, RemoveImportKeepsUnrelatedMainProgram)
 
 TEST(PackModel, MainProgramPathResolvesHostFile)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto exe = MakeFile(temp.Get(), L"app.exe", "EXE");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", temp.Get().filename().wstring(), L"app.exe",
-                                     error))
-        << error;
+    ASSERT_TRUE(model.SetMainProgram("program_files", temp.Get().filename().wstring(), L"app.exe", error)) << error;
 
     std::wstring path;
     EXPECT_TRUE(model.MainProgramPath(path));
-    EXPECT_EQ(std::filesystem::path(path).lexically_normal(),
-              exe.lexically_normal());
+    EXPECT_EQ(std::filesystem::path(path).lexically_normal(), exe.lexically_normal());
 }
 
 TEST(PackModel, ImportFilesAcceptsFileInsideImportedFolder)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
     const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
     ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp", { tool.wstring() }, error)) << error;
 
@@ -351,16 +337,15 @@ TEST(PackModel, ImportFilesAcceptsFileInsideImportedFolder)
 
 TEST(PackModel, ImportFilesNormalizesNestedTargetDirectory)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
     MakeFolder(app, L"data");
     const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
-    ASSERT_TRUE(model.ImportFiles("program_files", L"/MyApp/data/", { tool.wstring() }, error))
-        << error;
+    ASSERT_TRUE(model.ImportFiles("program_files", L"/MyApp/data/", { tool.wstring() }, error)) << error;
 
     const auto files = model.FilesOf("program_files", L"MyApp\\data");
     ASSERT_EQ(files.size(), static_cast<std::size_t>(1));
@@ -369,17 +354,15 @@ TEST(PackModel, ImportFilesNormalizesNestedTargetDirectory)
 
 TEST(PackModel, ImportFilesKeepsSelectionOrder)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
     const auto first = MakeFile(temp.Get(), L"first.dll", "1");
     const auto second = MakeFile(temp.Get(), L"second.dll", "2");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
-    ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp",
-                                  { second.wstring(), first.wstring() }, error))
-        << error;
+    ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp", { second.wstring(), first.wstring() }, error)) << error;
 
     const auto files = model.AllImportedFiles();
     ASSERT_EQ(files.size(), static_cast<std::size_t>(2));
@@ -389,23 +372,23 @@ TEST(PackModel, ImportFilesKeepsSelectionOrder)
 
 TEST(PackModel, ImportFilesRejectsUnknownPreset)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     EXPECT_FALSE(model.ImportFiles("does_not_exist", L"MyApp", { tool.wstring() }, error));
     EXPECT_FALSE(error.empty());
 }
 
 TEST(PackModel, ImportFilesRejectsTargetOutsideAnImportedFolder)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
     const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
 
     EXPECT_FALSE(model.ImportFiles("program_files", L"Other", { tool.wstring() }, error));
@@ -415,12 +398,12 @@ TEST(PackModel, ImportFilesRejectsTargetOutsideAnImportedFolder)
 
 TEST(PackModel, ImportFilesRejectsEscapingTargetDirectory)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
     const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
 
     EXPECT_FALSE(model.ImportFiles("program_files", L"MyApp\\..\\..", { tool.wstring() }, error));
@@ -430,12 +413,12 @@ TEST(PackModel, ImportFilesRejectsEscapingTargetDirectory)
 
 TEST(PackModel, ImportFilesRejectsMissingSource)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
     const auto missing = temp.Get() / L"missing.dll";
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
 
     EXPECT_FALSE(model.ImportFiles("program_files", L"MyApp", { missing.wstring() }, error));
@@ -444,11 +427,11 @@ TEST(PackModel, ImportFilesRejectsMissingSource)
 
 TEST(PackModel, ImportFilesRejectsEmptySelection)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
 
     EXPECT_FALSE(model.ImportFiles("program_files", L"MyApp", {}, error));
@@ -457,12 +440,12 @@ TEST(PackModel, ImportFilesRejectsEmptySelection)
 
 TEST(PackModel, ImportFilesRejectsDuplicateImport)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
     const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
     ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp", { tool.wstring() }, error)) << error;
 
@@ -473,13 +456,13 @@ TEST(PackModel, ImportFilesRejectsDuplicateImport)
 
 TEST(PackModel, ImportFilesRejectsNameAlreadyInTheImportedFolder)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
     MakeFile(app, L"tool.exe", "HOST");
     const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
 
     EXPECT_FALSE(model.ImportFiles("program_files", L"MyApp", { tool.wstring() }, error));
@@ -489,28 +472,27 @@ TEST(PackModel, ImportFilesRejectsNameAlreadyInTheImportedFolder)
 
 TEST(PackModel, ImportFilesIsAtomic)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
     const auto good = MakeFile(temp.Get(), L"good.dll", "GOOD");
     const auto missing = temp.Get() / L"missing.dll";
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
 
-    EXPECT_FALSE(model.ImportFiles("program_files", L"MyApp",
-                                   { good.wstring(), missing.wstring() }, error));
+    EXPECT_FALSE(model.ImportFiles("program_files", L"MyApp", { good.wstring(), missing.wstring() }, error));
     EXPECT_EQ(model.AllImportedFiles().size(), static_cast<std::size_t>(0));
 }
 
 TEST(PackModel, RemoveImportedFileRemovesTheEntry)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
     const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
     ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp", { tool.wstring() }, error)) << error;
 
@@ -521,17 +503,16 @@ TEST(PackModel, RemoveImportedFileRemovesTheEntry)
 
 TEST(PackModel, RemoveImportCascadesImportedFiles)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
     const auto other = MakeFolder(temp.Get(), L"OtherApp");
     const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
 
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
     ASSERT_TRUE(model.ImportFolder("program_files", other.wstring(), error)) << error;
-    ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp\\data", { tool.wstring() }, error))
-        << error;
+    ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp\\data", { tool.wstring() }, error)) << error;
     ASSERT_TRUE(model.ImportFiles("program_files", L"OtherApp", { tool.wstring() }, error)) << error;
     ASSERT_EQ(model.AllImportedFiles().size(), static_cast<std::size_t>(2));
 
@@ -544,7 +525,7 @@ TEST(PackModel, RemoveImportCascadesImportedFiles)
 
 TEST(PackModel, ClearResetsEveryPartOfTheModel)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
     MakeFile(app, L"tool.exe", "TOOL");
     const auto extra = MakeFile(temp.Get(), L"extra.dll", "EXTRA");
@@ -571,9 +552,8 @@ TEST(PackModel, RestoreImportedFolderAcceptsMissingSourceFolder)
     const auto missing = std::filesystem::temp_directory_path() / L"appbox-no-such-restored-folder";
 
     appbox::PackModel model;
-    std::string error;
-    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", missing.wstring(), error))
-        << error;
+    std::string       error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", missing.wstring(), error)) << error;
 
     const auto imports = model.ImportsOf("program_files");
     ASSERT_EQ(imports.size(), static_cast<std::size_t>(1));
@@ -585,7 +565,7 @@ TEST(PackModel, RestoreImportedFolderAcceptsMissingSourceFolder)
 TEST(PackModel, RestoreImportedFolderRejectsUnknownPreset)
 {
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     EXPECT_FALSE(model.RestoreImportedFolder("does_not_exist", L"MyApp", L"C:\\MyApp", error));
     EXPECT_FALSE(error.empty());
     EXPECT_TRUE(model.IsEmpty());
@@ -594,7 +574,7 @@ TEST(PackModel, RestoreImportedFolderRejectsUnknownPreset)
 TEST(PackModel, RestoreImportedFolderRejectsDuplicateNameIgnoringCase)
 {
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
 
     EXPECT_FALSE(model.RestoreImportedFolder("program_files", L"MYAPP", L"C:\\Other", error));
@@ -605,7 +585,7 @@ TEST(PackModel, RestoreImportedFolderRejectsDuplicateNameIgnoringCase)
 TEST(PackModel, RestoreImportedFolderRejectsUnusableName)
 {
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     EXPECT_FALSE(model.RestoreImportedFolder("program_files", L"..", L"C:\\MyApp", error));
     EXPECT_FALSE(model.RestoreImportedFolder("program_files", L"MyApp\\data", L"C:\\MyApp", error));
     EXPECT_FALSE(model.RestoreImportedFolder("program_files", L"MyApp", L"", error));
@@ -615,10 +595,9 @@ TEST(PackModel, RestoreImportedFolderRejectsUnusableName)
 TEST(PackModel, RestoreImportedFileAcceptsMissingSourceFile)
 {
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
-    ASSERT_TRUE(model.RestoreImportedFile("program_files", L"myapp\\data", L"tool.exe",
-                                          L"C:\\tmp\\tool.exe", error))
+    ASSERT_TRUE(model.RestoreImportedFile("program_files", L"myapp\\data", L"tool.exe", L"C:\\tmp\\tool.exe", error))
         << error;
 
     const auto files = model.AllImportedFiles();
@@ -633,35 +612,30 @@ TEST(PackModel, RestoreImportedFileAcceptsMissingSourceFile)
 TEST(PackModel, RestoreImportedFileRejectsTargetOutsideAnImportedFolder)
 {
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
 
-    EXPECT_FALSE(model.RestoreImportedFile("program_files", L"Other", L"tool.exe", L"C:\\tool.exe",
-                                           error));
+    EXPECT_FALSE(model.RestoreImportedFile("program_files", L"Other", L"tool.exe", L"C:\\tool.exe", error));
     EXPECT_NE(error.find("not an imported folder"), std::string::npos);
-    EXPECT_FALSE(model.RestoreImportedFile("program_files", L"MyApp\\..", L"tool.exe",
-                                           L"C:\\tool.exe", error));
+    EXPECT_FALSE(model.RestoreImportedFile("program_files", L"MyApp\\..", L"tool.exe", L"C:\\tool.exe", error));
     EXPECT_EQ(model.AllImportedFiles().size(), static_cast<std::size_t>(0));
 }
 
 TEST(PackModel, RestoreImportedFileRejectsDuplicateEntry)
 {
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
-    ASSERT_TRUE(model.RestoreImportedFile("program_files", L"MyApp", L"tool.exe", L"C:\\tool.exe",
-                                          error))
-        << error;
+    ASSERT_TRUE(model.RestoreImportedFile("program_files", L"MyApp", L"tool.exe", L"C:\\tool.exe", error)) << error;
 
-    EXPECT_FALSE(model.RestoreImportedFile("program_files", L"MyApp", L"TOOL.EXE", L"C:\\other.exe",
-                                           error));
+    EXPECT_FALSE(model.RestoreImportedFile("program_files", L"MyApp", L"TOOL.EXE", L"C:\\other.exe", error));
     EXPECT_EQ(model.AllImportedFiles().size(), static_cast<std::size_t>(1));
 }
 
 TEST(PackModel, RestoreMainProgramAcceptsMissingExecutable)
 {
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
     ASSERT_TRUE(model.RestoreMainProgram("program_files", L"myapp", L"bin/app.exe", error)) << error;
 
@@ -678,7 +652,7 @@ TEST(PackModel, RestoreMainProgramAcceptsMissingExecutable)
 TEST(PackModel, RestoreMainProgramRejectsInvalidSelection)
 {
     appbox::PackModel model;
-    std::string error;
+    std::string       error;
     ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
 
     EXPECT_FALSE(model.RestoreMainProgram("program_files", L"Missing", L"app.exe", error));

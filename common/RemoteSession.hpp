@@ -71,8 +71,7 @@ private:
  */
 struct RemoteSession::Data : std::enable_shared_from_this<Data>
 {
-    Data()
-        : in_write(false)
+    Data() : in_write(false)
     {
     }
 
@@ -175,8 +174,7 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
     bool                                          in_write;   /* During write */
 };
 
-inline RemoteSession::RemoteSession()
-    : data_(std::make_shared<Data>())
+inline RemoteSession::RemoteSession() : data_(std::make_shared<Data>())
 {
 }
 
@@ -186,7 +184,7 @@ inline RemoteSession::~RemoteSession()
 }
 
 inline RemoteSession::Ptr RemoteSession::Create(std::shared_ptr<asio::windows::stream_handle> pipe,
-                                                DataReceivedCallback cb)
+                                                DataReceivedCallback                          cb)
 {
     Ptr session(new RemoteSession);
     session->data_->pipe = std::move(pipe);

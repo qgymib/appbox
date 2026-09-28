@@ -241,7 +241,7 @@ bool appbox::filesystem::IsSupportedDirectoryInformationClass(FILE_INFORMATION_C
 
 NTSTATUS appbox::filesystem::QueryDirectoryInformation(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
                                                        PVOID FileInformation, ULONG Length, ULONG QueryFlags,
-                                                       PUNICODE_STRING FileName,
+                                                       PUNICODE_STRING        FileName,
                                                        FILE_INFORMATION_CLASS FileInformationClass, bool extended)
 {
     appbox::DirectoryInformationLayout layout;

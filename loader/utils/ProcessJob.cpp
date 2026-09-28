@@ -11,13 +11,13 @@ struct appbox::ProcessJob::Data
     Data(const appbox::SandboxConfig& cfg);
     ~Data();
 
-    HANDLE                    hIOCP;            /* IO Completion Port. */
-    HANDLE                    hJob;             /* Job object. */
-    PROCESS_INFORMATION       process_info;     /* Process information. */
-    appbox::SandboxConfig     inject_data;      /* Injection data. */
-    std::wstring              exe_path;         /* Target executable path to run. */
-    std::vector<std::wstring> exe_args;         /* Target executable command line. */
-    DWORD                     exit_code;        /* Exit code of target executable. */
+    HANDLE                    hIOCP;        /* IO Completion Port. */
+    HANDLE                    hJob;         /* Job object. */
+    PROCESS_INFORMATION       process_info; /* Process information. */
+    appbox::SandboxConfig     inject_data;  /* Injection data. */
+    std::wstring              exe_path;     /* Target executable path to run. */
+    std::vector<std::wstring> exe_args;     /* Target executable command line. */
+    DWORD                     exit_code;    /* Exit code of target executable. */
 };
 
 appbox::ProcessJob::Data::Data(const appbox::SandboxConfig& cfg)
@@ -128,8 +128,8 @@ DWORD appbox::ProcessJob::Start()
     startupInfo.cb = sizeof(startupInfo);
 
     if (!DetourCreateProcessWithDllExW(self_path.c_str(), cmdline.data(), nullptr, nullptr, false, CREATE_SUSPENDED,
-                                       nullptr, nullptr, &startupInfo, &data_->process_info,
-                                       sandbox_dll_path.c_str(), nullptr))
+                                       nullptr, nullptr, &startupInfo, &data_->process_info, sandbox_dll_path.c_str(),
+                                       nullptr))
     {
         return GetLastError();
     }

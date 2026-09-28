@@ -10,11 +10,11 @@ static nlohmann::json NtQueryMultipleValueKeyLogParam(HANDLE KeyHandle, PKEY_VAL
                                                       PULONG RequiredBufferLength)
 {
     nlohmann::json json;
-    json["KeyHandle"]            = appbox::PointerToString(KeyHandle);
-    json["ValueEntries"]         = appbox::PointerToString(ValueEntries);
-    json["EntryCount"]           = EntryCount;
-    json["ValueBuffer"]          = appbox::PointerToString(ValueBuffer);
-    json["BufferLength"]         = appbox::PointerToString(BufferLength);
+    json["KeyHandle"] = appbox::PointerToString(KeyHandle);
+    json["ValueEntries"] = appbox::PointerToString(ValueEntries);
+    json["EntryCount"] = EntryCount;
+    json["ValueBuffer"] = appbox::PointerToString(ValueBuffer);
+    json["BufferLength"] = appbox::PointerToString(BufferLength);
     json["RequiredBufferLength"] = appbox::PointerToString(RequiredBufferLength);
     return json;
 }

@@ -70,8 +70,7 @@ public:
 
         /* Wrap */
         return std::async(
-            std::launch::deferred,
-            [fut = std::move(future)]() mutable -> tl::expected<typename T::Rsp, RemoteError> {
+            std::launch::deferred, [fut = std::move(future)]() mutable -> tl::expected<typename T::Rsp, RemoteError> {
                 auto result = fut.get();
 
                 if (!result.has_value())
@@ -86,8 +85,7 @@ public:
                 catch (const nlohmann::json::exception& e)
                 {
                     return tl::unexpected(
-                        RemoteError{ -1, std::string("Failed to deserialize response: ") + e.what(),
-                                     result.value() });
+                        RemoteError{ -1, std::string("Failed to deserialize response: ") + e.what(), result.value() });
                 }
             });
     }
@@ -119,14 +117,13 @@ struct RemoteClient::Data : std::enable_shared_from_this<Data>
         {
         }
 
-        const uint64_t       id;      /* UID */
-        nlohmann::json       req;     /* Request data */
+        const uint64_t             id;      /* UID */
+        nlohmann::json             req;     /* Request data */
         std::promise<RemoteResult> promise; /* Promise */
     };
     typedef std::map<uint64_t, PipeClientRequest::Ptr> RequestMap;
 
-    Data()
-        : uid_gen(0)
+    Data() : uid_gen(0)
     {
     }
 
@@ -153,10 +150,9 @@ struct RemoteClient::Data : std::enable_shared_from_this<Data>
 
         LPWSTR messageBuffer = nullptr;
 
-        const DWORD size = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-                                              FORMAT_MESSAGE_IGNORE_INSERTS,
-                                          nullptr, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                                          (LPWSTR)&messageBuffer, 0, nullptr);
+        const DWORD size = FormatMessageW(
+            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, error,
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPWSTR)&messageBuffer, 0, nullptr);
 
         if (size == 0 || messageBuffer == nullptr)
         {
@@ -181,8 +177,8 @@ struct RemoteClient::Data : std::enable_shared_from_this<Data>
         HANDLE pipe = INVALID_HANDLE_VALUE;
         for (size_t i = 0; i < kConnectRetries; ++i)
         {
-            pipe = CreateFileA(pipe_path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
-                               OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+            pipe = CreateFileA(pipe_path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+                               FILE_FLAG_OVERLAPPED, nullptr);
             if (pipe != INVALID_HANDLE_VALUE)
             {
                 break;
@@ -309,7 +305,7 @@ struct RemoteClient::Data : std::enable_shared_from_this<Data>
 
     std::atomic_uint64_t uid_gen;    /* UID generator */
     RemoteSession::Ptr   session;    /* RPC session */
-    asio::io_context    io_context; /* IO context */
+    asio::io_context     io_context; /* IO context */
     std::string          pipe_path;  /* Named pipe path */
     std::thread          thread;     /* Work thread */
 
@@ -317,8 +313,7 @@ struct RemoteClient::Data : std::enable_shared_from_this<Data>
     std::mutex request_map_mutex; /* Request map mutex */
 };
 
-inline RemoteClient::RemoteClient()
-    : data_(std::make_shared<Data>())
+inline RemoteClient::RemoteClient() : data_(std::make_shared<Data>())
 {
 }
 
@@ -360,8 +355,7 @@ inline PipeResultFuture RemoteClient::Call(const std::string& method, const nloh
     {
         /* Fail fast instead of crashing on the null session later. */
         std::promise<RemoteResult> promise;
-        promise.set_value(tl::unexpected<RemoteError>(
-            RemoteError{ -1, "client is not started", nlohmann::json() }));
+        promise.set_value(tl::unexpected<RemoteError>(RemoteError{ -1, "client is not started", nlohmann::json() }));
         return promise.get_future();
     }
 

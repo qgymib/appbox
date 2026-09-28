@@ -6,17 +6,17 @@
 T_NtCreateKey sys_NtCreateKey = nullptr;
 
 static nlohmann::json NtCreateKeyLogParam(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess,
-                                          POBJECT_ATTRIBUTES ObjectAttributes, ULONG TitleIndex,
-                                          PUNICODE_STRING Class, ULONG CreateOptions, PULONG Disposition)
+                                          POBJECT_ATTRIBUTES ObjectAttributes, ULONG TitleIndex, PUNICODE_STRING Class,
+                                          ULONG CreateOptions, PULONG Disposition)
 {
     nlohmann::json json;
-    json["KeyHandle"]     = appbox::PointerToString(KeyHandle);
+    json["KeyHandle"] = appbox::PointerToString(KeyHandle);
     json["DesiredAccess"] = appbox::DesiredAccessToJson(DesiredAccess);
     json["ObjectAttributes"] = appbox::ToJson(ObjectAttributes);
-    json["TitleIndex"]        = TitleIndex;
-    json["Class"]              = appbox::ToJson(Class);
-    json["CreateOptions"]      = CreateOptions;
-    json["Disposition"]        = appbox::PointerToString(Disposition);
+    json["TitleIndex"] = TitleIndex;
+    json["Class"] = appbox::ToJson(Class);
+    json["CreateOptions"] = CreateOptions;
+    json["Disposition"] = appbox::PointerToString(Disposition);
     return json;
 }
 
@@ -41,13 +41,12 @@ static NTSTATUS Hook_NtCreateKey(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess, P
 
     std::wstring view_path;
     std::wstring relative;
-    if (appbox::registry::Hive::MapKeyPath(ObjectAttributes, view_path, relative) == appbox::registry::HiveMap::Isolated)
+    if (appbox::registry::Hive::MapKeyPath(ObjectAttributes, view_path, relative) ==
+        appbox::registry::HiveMap::Isolated)
     {
-        return appbox::registry::Hive::CreateIsolatedKey(view_path, relative, DesiredAccess,
-                                                        ObjectAttributes->Attributes,
-                                                        ObjectAttributes->SecurityDescriptor,
-                                                        ObjectAttributes->SecurityQualityOfService, TitleIndex, Class,
-                                                        CreateOptions, KeyHandle, Disposition);
+        return appbox::registry::Hive::CreateIsolatedKey(
+            view_path, relative, DesiredAccess, ObjectAttributes->Attributes, ObjectAttributes->SecurityDescriptor,
+            ObjectAttributes->SecurityQualityOfService, TitleIndex, Class, CreateOptions, KeyHandle, Disposition);
     }
 
     return sys_NtCreateKey(KeyHandle, DesiredAccess, ObjectAttributes, TitleIndex, Class, CreateOptions, Disposition);

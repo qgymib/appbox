@@ -732,6 +732,122 @@ typedef NTSTATUS (*T_NtSetValueKey)(
 );
 /* clang-format on */
 
+/**
+ * @brief Address families, name spaces and flags of the name resolution.
+ *
+ * The hooks of the network isolation live in `ws2_32.dll` and `dnsapi.dll`. The
+ * winsock 2 and the DNS headers cannot be included next to the winsock header
+ * of <windows.h>, so the few constants and structures those hooks need are
+ * declared here.
+ * @{
+ */
+#ifndef AF_UNSPEC
+#define AF_UNSPEC 0
+#endif
+#ifndef AF_INET
+#define AF_INET 2
+#endif
+#ifndef AF_INET6
+#define AF_INET6 23
+#endif
+#ifndef AI_NUMERICHOST
+#define AI_NUMERICHOST 0x0004
+#endif
+#ifndef NS_ALL
+#define NS_ALL 0
+#endif
+#ifndef NS_DNS
+#define NS_DNS 12
+#endif
+#ifndef DNS_QUERY_NO_WIRE_QUERY
+#define DNS_QUERY_NO_WIRE_QUERY 0x00000010
+#endif
+#ifndef DNS_TYPE_A
+#define DNS_TYPE_A 0x0001
+#endif
+#ifndef DNS_TYPE_AAAA
+#define DNS_TYPE_AAAA 0x001C
+#endif
+#ifndef DNS_TYPE_ANY
+#define DNS_TYPE_ANY 0x00FF
+#endif
+
+/**
+ * @brief Calling convention of the functions of the winsock 2 API.
+ *
+ * A translation unit which does not include the winsock header does not carry
+ * the convention either, so it is declared here as well.
+ */
+#ifndef WSAAPI
+#define WSAAPI __stdcall
+#endif
+/** @} */
+
+/*
+ * The name resolution hints are declared here only while the winsock 2 headers
+ * are not part of the translation unit: a loader translation unit includes them
+ * through asio, which defines _WINSOCK2API_ and brings the real declarations
+ * with it.
+ */
+#ifndef _WINSOCK2API_
+
+/**
+ * @brief Name resolution hints of the winsock 2 API.
+ * @see https://learn.microsoft.com/en-us/windows/win32/api/ws2def/ns-ws2def-addrinfoa
+ */
+typedef struct _ADDRINFOA
+{
+    int                ai_flags;
+    int                ai_family;
+    int                ai_socktype;
+    int                ai_protocol;
+    SIZE_T             ai_addrlen;
+    PSTR               ai_canonname;
+    struct sockaddr*   ai_addr;
+    struct _ADDRINFOA* ai_next;
+} ADDRINFOA, *PADDRINFOA;
+
+/**
+ * @brief Name resolution hints of the wide winsock 2 API.
+ * @see https://learn.microsoft.com/en-us/windows/win32/api/ws2def/ns-ws2def-addrinfow
+ */
+typedef struct _ADDRINFOW
+{
+    int                ai_flags;
+    int                ai_family;
+    int                ai_socktype;
+    int                ai_protocol;
+    SIZE_T             ai_addrlen;
+    PWSTR              ai_canonname;
+    struct sockaddr*   ai_addr;
+    struct _ADDRINFOW* ai_next;
+} ADDRINFOW, *PADDRINFOW;
+
+/**
+ * @brief Name resolution hints of GetAddrInfoExW().
+ *
+ * The leading members describe the same request as ADDRINFOW; the trailing ones
+ * name the provider of an extended query.
+ *
+ * @see https://learn.microsoft.com/en-us/windows/win32/api/ws2tcpip/ns-ws2tcpip-addrinfoexw
+ */
+typedef struct _ADDRINFOEXW
+{
+    int                  ai_flags;
+    int                  ai_family;
+    int                  ai_socktype;
+    int                  ai_protocol;
+    SIZE_T               ai_addrlen;
+    PWSTR                ai_canonname;
+    struct sockaddr*     ai_addr;
+    struct _ADDRINFOEXW* ai_next;
+    PVOID                ai_blob;
+    SIZE_T               ai_bloblen;
+    LPGUID               ai_provider;
+} ADDRINFOEXW, *PADDRINFOEXW;
+
+#endif /* _WINSOCK2API_ */
+
 #ifdef __cplusplus
 }
 #endif

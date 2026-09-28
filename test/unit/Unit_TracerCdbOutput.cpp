@@ -56,7 +56,7 @@ ntdll!RtlAllocateHeap:
  */
 std::vector<appbox::tracer::CdbEvent> Decode(const std::string& text, std::size_t chunk_size = 0)
 {
-    appbox::tracer::CdbOutputParser parser;
+    appbox::tracer::CdbOutputParser       parser;
     std::vector<appbox::tracer::CdbEvent> events;
 
     if (chunk_size == 0U)
@@ -82,8 +82,7 @@ std::vector<appbox::tracer::CdbEvent> Decode(const std::string& text, std::size_
  * @param[in] kind Kind to count.
  * @return Number of events of that kind.
  */
-std::size_t Count(const std::vector<appbox::tracer::CdbEvent>& events,
-                  appbox::tracer::CdbEvent::Kind kind)
+std::size_t Count(const std::vector<appbox::tracer::CdbEvent>& events, appbox::tracer::CdbEvent::Kind kind)
 {
     std::size_t count = 0;
     for (const auto& event : events)
@@ -177,7 +176,7 @@ TEST(TracerCdbOutput, ARunningSessionIsDecodedInStreamOrder)
 TEST(TracerCdbOutput, DecodingIsIndependentOfTheChunkBoundaries)
 {
     const std::string text = std::string(kSessionStart) + kRunning;
-    const auto reference = Decode(text);
+    const auto        reference = Decode(text);
 
     ASSERT_FALSE(reference.empty());
     for (std::size_t chunk_size = 1U; chunk_size <= 17U; ++chunk_size)
@@ -188,10 +187,8 @@ TEST(TracerCdbOutput, DecodingIsIndependentOfTheChunkBoundaries)
         {
             EXPECT_EQ(chunked[index].kind, reference[index].kind) << chunk_size << ' ' << index;
             EXPECT_EQ(chunked[index].session, reference[index].session) << chunk_size << ' ' << index;
-            EXPECT_EQ(chunked[index].image_base, reference[index].image_base)
-                << chunk_size << ' ' << index;
-            EXPECT_EQ(chunked[index].image_path, reference[index].image_path)
-                << chunk_size << ' ' << index;
+            EXPECT_EQ(chunked[index].image_base, reference[index].image_base) << chunk_size << ' ' << index;
+            EXPECT_EQ(chunked[index].image_path, reference[index].image_path) << chunk_size << ' ' << index;
             EXPECT_EQ(chunked[index].names, reference[index].names) << chunk_size << ' ' << index;
         }
     }
@@ -203,7 +200,7 @@ TEST(TracerCdbOutput, DecodingIsIndependentOfTheChunkBoundaries)
  */
 TEST(TracerCdbOutput, APromptIsReportedWithoutATrailingNewline)
 {
-    appbox::tracer::CdbOutputParser parser;
+    appbox::tracer::CdbOutputParser       parser;
     std::vector<appbox::tracer::CdbEvent> events;
 
     parser.Feed("0:000", events);

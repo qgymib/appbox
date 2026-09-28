@@ -9,7 +9,7 @@ static nlohmann::json NtOpenKeyLogParam(PHANDLE KeyHandle, ACCESS_MASK DesiredAc
                                         POBJECT_ATTRIBUTES ObjectAttributes)
 {
     nlohmann::json json;
-    json["KeyHandle"]     = appbox::PointerToString(KeyHandle);
+    json["KeyHandle"] = appbox::PointerToString(KeyHandle);
     json["DesiredAccess"] = appbox::DesiredAccessToJson(DesiredAccess);
     json["ObjectAttributes"] = appbox::ToJson(ObjectAttributes);
     return json;
@@ -35,7 +35,8 @@ static NTSTATUS Hook_NtOpenKey(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess, POB
 
     std::wstring view_path;
     std::wstring relative;
-    if (appbox::registry::Hive::MapKeyPath(ObjectAttributes, view_path, relative) == appbox::registry::HiveMap::Isolated)
+    if (appbox::registry::Hive::MapKeyPath(ObjectAttributes, view_path, relative) ==
+        appbox::registry::HiveMap::Isolated)
     {
         return appbox::registry::Hive::OpenIsolatedKey(view_path, relative, DesiredAccess, ObjectAttributes->Attributes,
                                                        ObjectAttributes->SecurityDescriptor,

@@ -39,8 +39,7 @@ public:
      * @param[in,out] model The shared pack model.
      * @param[in,out] isolation The shared isolation modes of the view.
      */
-    FilesystemPanel(wxWindow* parent, appbox::PackModel& model,
-                    appbox::FilesystemIsolationModel& isolation);
+    FilesystemPanel(wxWindow* parent, appbox::PackModel& model, appbox::FilesystemIsolationModel& isolation);
 
     /**
      * @brief Rebuild tree and list after the model changed externally.
@@ -217,8 +216,7 @@ private:
      * @param[out] import_name Name of the owning imported folder.
      * @return true when the selection is inside an imported folder.
      */
-    bool SelectedTarget(std::string& preset_id, std::wstring& target_dir,
-                        std::wstring& import_name) const;
+    bool SelectedTarget(std::string& preset_id, std::wstring& target_dir, std::wstring& import_name) const;
 
     /**
      * @brief Get the index of a row inside the row vector.
@@ -364,13 +362,13 @@ private:
      */
     bool updating_ = false;
 
-    wxTreeCtrl*    tree_ = nullptr;
+    wxTreeCtrl*         tree_ = nullptr;
     wxDataViewListCtrl* list_ = nullptr;
-    wxSearchCtrl*  search_ = nullptr;
-    wxButton*      add_files_ = nullptr;
-    wxButton*      add_folder_ = nullptr;
-    wxButton*      remove_ = nullptr;
-    wxButton*      up_dir_ = nullptr;
+    wxSearchCtrl*       search_ = nullptr;
+    wxButton*           add_files_ = nullptr;
+    wxButton*           add_folder_ = nullptr;
+    wxButton*           remove_ = nullptr;
+    wxButton*           up_dir_ = nullptr;
 
     std::vector<RowInfo> rows_;
 

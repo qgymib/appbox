@@ -55,8 +55,8 @@ bool WriteKey(HKEY parent, const appbox::RegistryKeyNode& node, std::string& err
                                 static_cast<DWORD>(value.data.size()));
         if (status != ERROR_SUCCESS)
         {
-            error = "failed to write the registry value '" + appbox::WideToUTF8(value.name) + "' (" + ErrorText(status) +
-                    ")";
+            error = "failed to write the registry value '" + appbox::WideToUTF8(value.name) + "' (" +
+                    ErrorText(status) + ")";
             RegCloseKey(key);
             return false;
         }
@@ -190,8 +190,8 @@ bool appbox::BuildRegistryHiveBytes(const RegistryModel& model, std::vector<std:
 
     try
     {
-        const auto path = std::filesystem::temp_directory_path() /
-                          (L"appbox-registry-" + UTF8ToWide(RandomString(16)) + L".hiv");
+        const auto path =
+            std::filesystem::temp_directory_path() / (L"appbox-registry-" + UTF8ToWide(RandomString(16)) + L".hiv");
 
         if (!WriteRegistryHive(model, path.wstring(), error))
         {

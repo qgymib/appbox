@@ -1,8 +1,7 @@
 #include "StartupTreeModel.hpp"
 
 StartupTreeModel::StartupTreeModel(const appbox::PackModel& model)
-    : tree_(model),
-      folder_icon_(wxArtProvider::GetBitmapBundle(wxART_FOLDER, wxART_OTHER, wxSize(16, 16))),
+    : tree_(model), folder_icon_(wxArtProvider::GetBitmapBundle(wxART_FOLDER, wxART_OTHER, wxSize(16, 16))),
       executable_icon_(wxArtProvider::GetBitmapBundle(wxART_EXECUTABLE_FILE, wxART_OTHER, wxSize(16, 16)))
 {
 }
@@ -71,8 +70,7 @@ void StartupTreeModel::GetValue(wxVariant& variant, const wxDataViewItem& item, 
          * never called for it. The variant is cleared explicitly because the
          * caller may reuse it.
          */
-        variant = appbox::StartupTree::IsCheckable(*node) ? wxVariant(tree_.IsChecked(*node))
-                                                          : wxVariant();
+        variant = appbox::StartupTree::IsCheckable(*node) ? wxVariant(tree_.IsChecked(*node)) : wxVariant();
         break;
     default:
         variant = wxVariant();

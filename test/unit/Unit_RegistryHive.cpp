@@ -25,7 +25,7 @@ namespace
 std::wstring UniqueFragment()
 {
     static unsigned counter = 0;
-    const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto      ticks = std::chrono::steady_clock::now().time_since_epoch().count();
     return std::to_wstring(ticks) + L"-" + std::to_wstring(++counter);
 }
 
@@ -142,21 +142,27 @@ void FillModel(appbox::RegistryModel& model)
     const auto parent = L"HKEY_CURRENT_USER\\Software\\AppBox\\Values";
     ASSERT_TRUE(model.SetValue(parent, L"None", appbox::RegistryValueType::None, { 0x01, 0x02 }, error)) << error;
     ASSERT_TRUE(model.SetValue(parent, L"String", appbox::RegistryValueType::String,
-                               appbox::RegistryStringData(L"AppBox"), error)) << error;
+                               appbox::RegistryStringData(L"AppBox"), error))
+        << error;
     ASSERT_TRUE(model.SetValue(parent, L"Expand", appbox::RegistryValueType::ExpandString,
-                               appbox::RegistryStringData(L"%SystemRoot%\\AppBox"), error)) << error;
-    ASSERT_TRUE(model.SetValue(parent, L"Binary", appbox::RegistryValueType::Binary, { 0xDE, 0xAD, 0xBE, 0xEF },
-                               error)) << error;
-    ASSERT_TRUE(model.SetValue(parent, L"Dword", appbox::RegistryValueType::Dword, appbox::RegistryDwordData(0x1234),
-                               error)) << error;
+                               appbox::RegistryStringData(L"%SystemRoot%\\AppBox"), error))
+        << error;
+    ASSERT_TRUE(model.SetValue(parent, L"Binary", appbox::RegistryValueType::Binary, { 0xDE, 0xAD, 0xBE, 0xEF }, error))
+        << error;
+    ASSERT_TRUE(
+        model.SetValue(parent, L"Dword", appbox::RegistryValueType::Dword, appbox::RegistryDwordData(0x1234), error))
+        << error;
     ASSERT_TRUE(model.SetValue(parent, L"Multi", appbox::RegistryValueType::MultiString,
-                               appbox::RegistryMultiStringData({ L"one", L"two" }), error)) << error;
+                               appbox::RegistryMultiStringData({ L"one", L"two" }), error))
+        << error;
     ASSERT_TRUE(model.SetValue(parent, L"Qword", appbox::RegistryValueType::Qword,
-                               appbox::RegistryQwordData(0x1122334455667788ULL), error)) << error;
+                               appbox::RegistryQwordData(0x1122334455667788ULL), error))
+        << error;
 
     /* The default value of a key is stored with an empty name. */
     ASSERT_TRUE(model.SetValue(L"HKEY_LOCAL_MACHINE\\Software\\AppBox", L"", appbox::RegistryValueType::String,
-                               appbox::RegistryStringData(L"default"), error)) << error;
+                               appbox::RegistryStringData(L"default"), error))
+        << error;
 }
 
 } // namespace
@@ -167,11 +173,11 @@ void FillModel(appbox::RegistryModel& model)
  */
 TEST(UnitRegistryHive, WriteAndMount)
 {
-    TempDir                 temp;
-    appbox::RegistryModel   model;
+    TempDir               temp;
+    appbox::RegistryModel model;
     FillModel(model);
 
-    const auto hive = temp.Get() / L"user.hiv";
+    const auto  hive = temp.Get() / L"user.hiv";
     std::string error;
     ASSERT_TRUE(appbox::WriteRegistryHive(model, hive.wstring(), error)) << error;
     ASSERT_TRUE(std::filesystem::exists(hive));
@@ -295,7 +301,7 @@ TEST(UnitRegistryHive, ReplacesAnExistingHive)
 
     /* Every handle is closed before the assertions, so a failing expectation
      * cannot keep the hive locked and block the cleanup of the folder. */
-    HKEY second_key = nullptr;
+    HKEY       second_key = nullptr;
     const LONG second_status =
         RegOpenKeyExW(mount.get(), L"HKEY_CURRENT_USER\\Software\\Second", 0, KEY_READ, &second_key);
     if (second_key != nullptr)
@@ -303,7 +309,7 @@ TEST(UnitRegistryHive, ReplacesAnExistingHive)
         RegCloseKey(second_key);
     }
 
-    HKEY first_key = nullptr;
+    HKEY       first_key = nullptr;
     const LONG first_status =
         RegOpenKeyExW(mount.get(), L"HKEY_CURRENT_USER\\Software\\First", 0, KEY_READ, &first_key);
     if (first_key != nullptr)
@@ -341,13 +347,15 @@ TEST(UnitRegistryHive, IsolationFile)
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Software\\Vendor", error)) << error;
     ASSERT_TRUE(model.EnsureKey(L"HKEY_LOCAL_MACHINE\\Software\\AppBox", error)) << error;
     ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server", appbox::RegistryValueType::String,
-                               appbox::RegistryStringData(L"host"), error)) << error;
+                               appbox::RegistryStringData(L"host"), error))
+        << error;
     ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Other", appbox::RegistryValueType::Dword,
-                               appbox::RegistryDwordData(1), error)) << error;
+                               appbox::RegistryDwordData(1), error))
+        << error;
 
     ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::Full));
-    ASSERT_TRUE(model.SetValueIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server",
-                                        appbox::RegistryIsolation::Hide));
+    ASSERT_TRUE(
+        model.SetValueIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server", appbox::RegistryIsolation::Hide));
 
     std::string text;
     ASSERT_TRUE(appbox::BuildRegistryIsolationFile(model, text, error)) << error;

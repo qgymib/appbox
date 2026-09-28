@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "unit/LoaderPath.hpp"
 #include "utils/Coredump.hpp"
+#include "utils/NameResolutionProbe.hpp"
 #include "utils/TestTimeout.hpp"
 #include "WString.hpp"
 #include <cstring>
@@ -30,8 +31,7 @@ void TakeLoaderPath(std::vector<char*>& arguments)
         const std::string text = argument != nullptr ? argument : "";
         if (text.rfind(kLoaderPrefix, 0) == 0)
         {
-            appbox::test::SetLoaderPath(
-                appbox::UTF8ToWide(text.substr(std::strlen(kLoaderPrefix))));
+            appbox::test::SetLoaderPath(appbox::UTF8ToWide(text.substr(std::strlen(kLoaderPrefix))));
             continue;
         }
 
@@ -67,6 +67,16 @@ int main(int argc, char** argv)
      * writer instead of the options of a test run.
      */
     if (appbox::test::RunCoredumpWriterIfRequested())
+    {
+        return 0;
+    }
+
+    /*
+     * The name resolution probe is the target of the integration test of the
+     * tracer; like the coredump writer it returns before GoogleTest looks at
+     * the command line.
+     */
+    if (appbox::test::RunNameResolutionProbeIfRequested())
     {
         return 0;
     }

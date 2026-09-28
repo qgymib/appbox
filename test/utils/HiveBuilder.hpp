@@ -86,10 +86,10 @@ private:
      */
     struct Entry
     {
-        std::wstring      key_path;   /* Path of the key from the hive root. */
-        std::wstring      value_name; /* Name of the value, empty for a key entry. */
-        DWORD             type = REG_NONE; /* Type of the value. */
-        std::vector<BYTE> data;       /* Data of the value. */
+        std::wstring      key_path;         /* Path of the key from the hive root. */
+        std::wstring      value_name;       /* Name of the value, empty for a key entry. */
+        DWORD             type = REG_NONE;  /* Type of the value. */
+        std::vector<BYTE> data;             /* Data of the value. */
         bool              is_value = false; /* The entry is a value, not a key. */
     };
 
@@ -104,8 +104,8 @@ private:
         bool                      is_value = false; /* The entry describes a value. */
     };
 
-    std::filesystem::path      overlay_;
-    std::vector<Entry>         entries_;
+    std::filesystem::path       overlay_;
+    std::vector<Entry>          entries_;
     std::vector<IsolationEntry> isolations_;
 };
 

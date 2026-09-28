@@ -133,8 +133,8 @@ public:
     bool HasSubKeys(const std::wstring& relative_path);
 
 private:
-    HKEY        root_ = nullptr;   /* Root key handle of the private hive mount. */
-    bool        missing_ = false;  /* The hive file does not exist. */
+    HKEY         root_ = nullptr;  /* Root key handle of the private hive mount. */
+    bool         missing_ = false; /* The hive file does not exist. */
     std::wstring file_;            /* DOS path of the hive file. */
 };
 

@@ -227,8 +227,8 @@ public:
      * @param[out] error Error description on failure.
      * @return true on success.
      */
-    bool SetIsolation(const std::wstring& view_path, FilesystemEntryKind kind,
-                      FilesystemIsolation isolation, std::string& error);
+    bool SetIsolation(const std::wstring& view_path, FilesystemEntryKind kind, FilesystemIsolation isolation,
+                      std::string& error);
 
     /**
      * @brief Add one entry exactly as it is recorded.

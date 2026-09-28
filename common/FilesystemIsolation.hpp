@@ -64,8 +64,8 @@ enum class FilesystemIsolation
  */
 enum class FilesystemEntryKind
 {
-    File,      ///< A file of the virtual filesystem.
-    Directory  ///< A folder of the virtual filesystem.
+    File,     ///< A file of the virtual filesystem.
+    Directory ///< A folder of the virtual filesystem.
 };
 
 /**

@@ -24,7 +24,7 @@ constexpr std::uint16_t kMachineI386 = 0x014C;
 std::filesystem::path SystemDirectory()
 {
     std::vector<wchar_t> buffer(MAX_PATH, L'\0');
-    const UINT length = ::GetSystemDirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
+    const UINT           length = ::GetSystemDirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
     return std::filesystem::path(std::wstring(buffer.data(), length));
 }
 
@@ -36,7 +36,7 @@ std::filesystem::path SystemDirectory()
 std::filesystem::path Wow64Directory()
 {
     std::vector<wchar_t> buffer(MAX_PATH, L'\0');
-    const UINT length = ::GetSystemWow64DirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
+    const UINT           length = ::GetSystemWow64DirectoryW(buffer.data(), static_cast<UINT>(buffer.size()));
     return std::filesystem::path(std::wstring(buffer.data(), length));
 }
 
@@ -47,8 +47,7 @@ std::filesystem::path Wow64Directory()
  * @param[in] name Export name to look for.
  * @return The export, or nullptr when the image does not export the name.
  */
-const appbox::tracer::ExportEntry* FindExport(const appbox::tracer::PeImage& image,
-                                              const std::wstring& name)
+const appbox::tracer::ExportEntry* FindExport(const appbox::tracer::PeImage& image, const std::wstring& name)
 {
     for (const auto& entry : image.Exports())
     {
@@ -76,9 +75,9 @@ TEST(TracerPeImage, SystemDllsExposeTheirWellKnownFunctions)
     };
 
     const Expectation expectations[] = {
-        {L"ntdll.dll", L"NtCreateFile"},
-        {L"kernel32.dll", L"CreateFileW"},
-        {L"kernelbase.dll", L"CreateFileW"},
+        { L"ntdll.dll",      L"NtCreateFile" },
+        { L"kernel32.dll",   L"CreateFileW"  },
+        { L"kernelbase.dll", L"CreateFileW"  },
     };
 
     for (const auto& expectation : expectations)
@@ -127,8 +126,7 @@ TEST(TracerPeImage, ThirtyTwoBitImagesAreRecognised)
  */
 TEST(TracerPeImage, ForwardedExportsCarryTheTargetInsteadOfAnAddress)
 {
-    const auto image =
-        appbox::tracer::PeImage::FromFile(SystemDirectory() / L"kernel32.dll");
+    const auto image = appbox::tracer::PeImage::FromFile(SystemDirectory() / L"kernel32.dll");
 
     std::size_t forwarded = 0;
     for (const auto& entry : image.Exports())
@@ -161,8 +159,8 @@ TEST(TracerPeImage, ForwarderStringsSplitIntoModuleAndFunction)
     EXPECT_EQ(module, L"kernelbase");
     EXPECT_EQ(function, L"GetCommandLineW");
 
-    ASSERT_TRUE(appbox::tracer::SplitForwarder(
-        L"api-ms-win-core-libraryloader-l1-1-0.AddDllDirectory", module, function));
+    ASSERT_TRUE(
+        appbox::tracer::SplitForwarder(L"api-ms-win-core-libraryloader-l1-1-0.AddDllDirectory", module, function));
     EXPECT_EQ(module, L"api-ms-win-core-libraryloader-l1-1-0");
     EXPECT_EQ(function, L"AddDllDirectory");
 
@@ -194,8 +192,7 @@ TEST(TracerPeImage, OnlyExecutableAddressesAreAccepted)
 TEST(TracerPeImage, MalformedInputIsRejected)
 {
     EXPECT_THROW(appbox::tracer::PeImage::FromBuffer({}), std::runtime_error);
-    EXPECT_THROW(appbox::tracer::PeImage::FromBuffer(std::vector<std::uint8_t>(64U, 0U)),
-                 std::runtime_error);
+    EXPECT_THROW(appbox::tracer::PeImage::FromBuffer(std::vector<std::uint8_t>(64U, 0U)), std::runtime_error);
 
     /* A PE offset which points outside the buffer. */
     std::vector<std::uint8_t> truncated(4096U, 0U);
@@ -210,6 +207,5 @@ TEST(TracerPeImage, MalformedInputIsRejected)
     signature_only[0x41U] = 'E';
     EXPECT_THROW(appbox::tracer::PeImage::FromBuffer(signature_only), std::runtime_error);
 
-    EXPECT_THROW(appbox::tracer::PeImage::FromFile(L"Z:\\appbox\\no\\such\\image.dll"),
-                 std::runtime_error);
+    EXPECT_THROW(appbox::tracer::PeImage::FromFile(L"Z:\\appbox\\no\\such\\image.dll"), std::runtime_error);
 }

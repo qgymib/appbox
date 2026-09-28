@@ -33,14 +33,15 @@ TEST_F(Reg, DeleteKey_WhiteoutHostKey)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\DeleteKey_WhiteoutHostKey_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey =
+        L"Software\\AppBoxTest\\DeleteKey_WhiteoutHostKey_" + appbox::UTF8ToWide(appbox::RandomString(8));
 
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
     ASSERT_TRUE(real_key.SetString(L"HostValue", L"host"));
 
     ProtocolRegDeleteKey::Req req;
-    req.Key  = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey);
     req.Mode = "reg";
 
     const auto rsp = ProbeRegDeleteKey.Call(req, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();

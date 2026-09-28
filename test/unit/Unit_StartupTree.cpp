@@ -17,7 +17,7 @@ namespace
 std::wstring UniqueFragment()
 {
     static unsigned counter = 0;
-    const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto      ticks = std::chrono::steady_clock::now().time_since_epoch().count();
     return std::to_wstring(ticks) + L"-" + std::to_wstring(++counter);
 }
 
@@ -217,7 +217,7 @@ TEST(StartupTree, PresetRowsKeepTheirImports)
     ImportedApp app;
     ASSERT_TRUE(app.Imported());
 
-    appbox::StartupTree tree(app.Model());
+    appbox::StartupTree        tree(app.Model());
     appbox::StartupNode* const preset = PresetRow(tree, "program_files");
     ASSERT_NE(preset, nullptr);
 
@@ -245,7 +245,7 @@ TEST(StartupTree, ListsFoldersAndExecutables)
     MakeFile(app.Folder(), L"upper.EXE", "EXE");
     MakeFile(app.Folder(), L"notes.txt", "TXT");
 
-    appbox::StartupTree tree(app.Model());
+    appbox::StartupTree        tree(app.Model());
     appbox::StartupNode* const import = ImportRow(tree);
     ASSERT_NE(import, nullptr);
 
@@ -270,7 +270,7 @@ TEST(StartupTree, EnsureChildrenIsIdempotent)
 
     MakeFile(app.Folder(), L"app.exe", "EXE");
 
-    appbox::StartupTree tree(app.Model());
+    appbox::StartupTree        tree(app.Model());
     appbox::StartupNode* const import = ImportRow(tree);
     ASSERT_NE(import, nullptr);
 
@@ -296,13 +296,13 @@ TEST(StartupTree, SortsFoldersFirstThenNames)
     MakeFile(app.Folder(), L"z.exe", "EXE");
     MakeFile(app.Folder(), L"A.exe", "EXE");
 
-    appbox::StartupTree tree(app.Model());
+    appbox::StartupTree        tree(app.Model());
     appbox::StartupNode* const import = ImportRow(tree);
     ASSERT_NE(import, nullptr);
 
     tree.EnsureChildren(*import);
 
-    const std::vector<std::wstring> expected{L"Alpha", L"beta", L"gamma", L"A.exe", L"z.exe"};
+    const std::vector<std::wstring> expected{ L"Alpha", L"beta", L"gamma", L"A.exe", L"z.exe" };
     EXPECT_EQ(ChildLabels(*import), expected);
 }
 
@@ -313,7 +313,7 @@ TEST(StartupTree, MissingFolderStaysEmpty)
 
     MakeFile(app.Folder(), L"app.exe", "EXE");
 
-    appbox::StartupTree tree(app.Model());
+    appbox::StartupTree        tree(app.Model());
     appbox::StartupNode* const import = ImportRow(tree);
     ASSERT_NE(import, nullptr);
 
@@ -324,7 +324,7 @@ TEST(StartupTree, MissingFolderStaysEmpty)
     std::error_code ec;
     std::filesystem::remove_all(app.Folder(), ec);
 
-    appbox::StartupTree second(app.Model());
+    appbox::StartupTree        second(app.Model());
     appbox::StartupNode* const missing = ImportRow(second);
     ASSERT_NE(missing, nullptr);
 
@@ -341,7 +341,7 @@ TEST(StartupTree, NestedFoldersKeepBackslashPaths)
 
     MakeFile(MakeFolder(MakeFolder(app.Folder(), L"a"), L"b"), L"app.exe", "EXE");
 
-    appbox::StartupTree tree(app.Model());
+    appbox::StartupTree        tree(app.Model());
     appbox::StartupNode* const import = ImportRow(tree);
     ASSERT_NE(import, nullptr);
 
@@ -361,7 +361,7 @@ TEST(StartupTree, FindNodeRejectsUnknownPath)
 
     MakeFile(app.Folder(), L"app.exe", "EXE");
 
-    appbox::StartupTree tree(app.Model());
+    appbox::StartupTree        tree(app.Model());
     appbox::StartupNode* const import = ImportRow(tree);
     ASSERT_NE(import, nullptr);
 
@@ -378,7 +378,7 @@ TEST(StartupTree, OnlyExecutablesAreCheckable)
     MakeFolder(app.Folder(), L"bin");
     MakeFile(app.Folder(), L"app.exe", "EXE");
 
-    appbox::StartupTree tree(app.Model());
+    appbox::StartupTree        tree(app.Model());
     appbox::StartupNode* const import = ImportRow(tree);
     ASSERT_NE(import, nullptr);
     tree.EnsureChildren(*import);
@@ -405,7 +405,7 @@ TEST(StartupTree, CheckIsExclusive)
     MakeFile(app.Folder(), L"first.exe", "EXE");
     MakeFile(app.Folder(), L"second.exe", "EXE");
 
-    appbox::StartupTree tree(app.Model());
+    appbox::StartupTree        tree(app.Model());
     appbox::StartupNode* const import = ImportRow(tree);
     ASSERT_NE(import, nullptr);
     tree.EnsureChildren(*import);
@@ -435,7 +435,7 @@ TEST(StartupTree, ClearCheckedDropsSelection)
 
     MakeFile(app.Folder(), L"app.exe", "EXE");
 
-    appbox::StartupTree tree(app.Model());
+    appbox::StartupTree        tree(app.Model());
     appbox::StartupNode* const import = ImportRow(tree);
     ASSERT_NE(import, nullptr);
     tree.EnsureChildren(*import);
@@ -484,8 +484,8 @@ TEST(StartupTree, CheckedChoiceIsAcceptedByModel)
 
     MakeFile(app.Folder(), L"app.exe", "EXE");
 
-    appbox::PackModel model = app.Model();
-    appbox::StartupTree tree(model);
+    appbox::PackModel          model = app.Model();
+    appbox::StartupTree        tree(model);
     appbox::StartupNode* const import = ImportRow(tree);
     ASSERT_NE(import, nullptr);
 
@@ -494,8 +494,8 @@ TEST(StartupTree, CheckedChoiceIsAcceptedByModel)
     ASSERT_TRUE(tree.SetChecked(*file));
 
     std::string error;
-    EXPECT_TRUE(model.SetMainProgram(tree.Checked().preset_id, tree.Checked().import_name,
-                                     tree.Checked().relative_path, error))
+    EXPECT_TRUE(
+        model.SetMainProgram(tree.Checked().preset_id, tree.Checked().import_name, tree.Checked().relative_path, error))
         << error;
     EXPECT_TRUE(model.HasMainProgram());
     EXPECT_EQ(model.MainProgramChoice().relative_path, L"app.exe");

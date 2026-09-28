@@ -33,7 +33,7 @@ void WriteToHandle(HANDLE handle, const std::wstring& text)
     }
 
     const std::string utf8 = appbox::WideToUTF8(text);
-    DWORD written = 0;
+    DWORD             written = 0;
     ::WriteFile(handle, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr);
 }
 
@@ -56,16 +56,14 @@ std::wstring DecodeConsoleBytes(const std::string& bytes)
         return {};
     }
 
-    const int size = ::MultiByteToWideChar(CP_ACP, 0, bytes.data(), static_cast<int>(bytes.size()),
-                                           nullptr, 0);
+    const int size = ::MultiByteToWideChar(CP_ACP, 0, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0);
     if (size <= 0)
     {
         return {};
     }
 
     std::wstring text(static_cast<std::size_t>(size), L'\0');
-    if (::MultiByteToWideChar(CP_ACP, 0, bytes.data(), static_cast<int>(bytes.size()), text.data(),
-                              size) != size)
+    if (::MultiByteToWideChar(CP_ACP, 0, bytes.data(), static_cast<int>(bytes.size()), text.data(), size) != size)
     {
         return {};
     }

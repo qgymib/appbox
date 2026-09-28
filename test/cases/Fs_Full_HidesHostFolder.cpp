@@ -51,9 +51,10 @@ TEST_F(Fs, Full_HidesTheHostFolder)
     /* clang-format on */
 
     auto config = tree.Build();
-    ASSERT_TRUE(WriteFsIsolationFile(config, {
-        { L"#APPDATA#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
-          appbox::FilesystemIsolation::Full }
+    ASSERT_TRUE(WriteFsIsolationFile(
+        config, {
+                    { L"#APPDATA#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
+                     appbox::FilesystemIsolation::Full }
     }));
 
     const auto folder = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName;

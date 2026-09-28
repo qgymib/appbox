@@ -32,8 +32,7 @@ TEST_F(Reg, Hide_CreateInSandbox)
 
     auto config = tree.Build();
 
-    const auto        subkey = L"Software\\AppBoxTest\\Hide_CreateInSandbox_"
-                        + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\Hide_CreateInSandbox_" + appbox::UTF8ToWide(appbox::RandomString(8));
     const std::string expected = "HiddenValue";
 
     RealHkcuKey real_key(subkey);
@@ -48,9 +47,9 @@ TEST_F(Reg, Hide_CreateInSandbox)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegWriteValue::Req req;
-    req.Key   = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey);
     req.Value = "TestValue";
-    req.Data  = expected;
+    req.Data = expected;
 
     const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
     ASSERT_EQ(rsp.create_code, 0u);

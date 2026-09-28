@@ -22,8 +22,7 @@ namespace appbox::tracer
  * @param[in] with_categories Whether every name is annotated with its categories.
  * @return The listing text, terminated by a newline.
  */
-std::wstring FormatScope(const std::vector<ArmGroup>& plan, const std::wstring& scope,
-                         bool with_categories);
+std::wstring FormatScope(const std::vector<ArmGroup>& plan, const std::wstring& scope, bool with_categories);
 
 /** Everything the header of the final report shows. */
 struct TraceReportHeader
@@ -31,8 +30,8 @@ struct TraceReportHeader
     std::wstring program;         ///< Program which was traced.
     std::wstring debugger;        ///< Debugger which was used.
     std::wstring scope;           ///< Scope of the run, e.g. `file, registry, network`.
-    std::size_t processes = 0;    ///< Processes which were traced.
-    std::size_t breakpoints = 0;  ///< Breakpoints which were armed per process.
+    std::size_t  processes = 0;   ///< Processes which were traced.
+    std::size_t  breakpoints = 0; ///< Breakpoints which were armed per process.
     std::wstring status;          ///< `completed` or `aborted: <reason>`.
 };
 

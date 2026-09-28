@@ -55,8 +55,8 @@ RegistryBrowser::RegistryBrowser(wxWindow* parent, const std::wstring& hive_file
     auto* sizer = new wxBoxSizer(wxVERTICAL);
 
     /* Minimal toolbar with the refresh action, F5 is bound as accelerator. */
-    auto* toolbar = new wxToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                                  wxTB_HORIZONTAL | wxTB_FLAT | wxTB_NODIVIDER);
+    auto* toolbar =
+        new wxToolBar(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTB_HORIZONTAL | wxTB_FLAT | wxTB_NODIVIDER);
     toolbar->SetToolBitmapSize(wxSize(16, 16));
     toolbar->AddTool(wxID_REFRESH, "Refresh", wxArtProvider::GetBitmap(wxART_REFRESH, wxART_TOOLBAR, wxSize(16, 16)),
                      "Refresh the sandbox registry (F5)");
@@ -100,7 +100,7 @@ RegistryBrowser::RegistryBrowser(wxWindow* parent, const std::wstring& hive_file
     list_->Bind(wxEVT_LIST_ITEM_ACTIVATED, &RegistryBrowser::OnListItemActivated, this);
     Bind(wxEVT_MENU, &RegistryBrowser::OnRefresh, this, wxID_REFRESH);
 
-    wxAcceleratorEntry entries[] = {wxAcceleratorEntry(wxACCEL_NORMAL, WXK_F5, wxID_REFRESH)};
+    wxAcceleratorEntry entries[] = { wxAcceleratorEntry(wxACCEL_NORMAL, WXK_F5, wxID_REFRESH) };
     SetAcceleratorTable(wxAcceleratorTable(1, entries));
 
     RebuildTree(L"");
@@ -143,7 +143,7 @@ void RegistryBrowser::RebuildTree(const std::wstring& restore_path)
             current = current.empty() ? component : current + L"\\" + component;
             PopulateChildren(item);
 
-            bool found = false;
+            bool              found = false;
             wxTreeItemIdValue cookie;
             for (auto child = tree_->GetFirstChild(item, cookie); child.IsOk();
                  child = tree_->GetNextChild(item, cookie))
@@ -151,8 +151,8 @@ void RegistryBrowser::RebuildTree(const std::wstring& restore_path)
                 auto* data = dynamic_cast<KeyItemData*>(tree_->GetItemData(child));
                 if (data != nullptr && _wcsicmp(data->relative.c_str(), current.c_str()) == 0)
                 {
-                    item   = child;
-                    found  = true;
+                    item = child;
+                    found = true;
                     break;
                 }
             }
@@ -208,14 +208,13 @@ void RegistryBrowser::PopulateChildren(const wxTreeItemId& item)
         return;
     }
 
-    std::sort(names.begin(), names.end(), [](const std::wstring& a, const std::wstring& b) {
-        return _wcsicmp(a.c_str(), b.c_str()) < 0;
-    });
+    std::sort(names.begin(), names.end(),
+              [](const std::wstring& a, const std::wstring& b) { return _wcsicmp(a.c_str(), b.c_str()) < 0; });
 
     for (const auto& name : names)
     {
         const auto relative = data->relative.empty() ? name : data->relative + L"\\" + name;
-        auto       child    = tree_->AppendItem(item, name, icon_closed_, icon_open_, new KeyItemData(relative));
+        auto       child = tree_->AppendItem(item, name, icon_closed_, icon_open_, new KeyItemData(relative));
         if (reader_.HasSubKeys(relative))
         {
             tree_->AppendItem(child, L"");
@@ -245,8 +244,8 @@ void RegistryBrowser::ShowValues(const std::wstring& relative)
     }
 
     /* The default value is always the first row, the rest sorts by name. */
-    const auto def = std::find_if(values.begin(), values.end(),
-                                  [](const appbox::RegistryValue& v) { return v.name.empty(); });
+    const auto def =
+        std::find_if(values.begin(), values.end(), [](const appbox::RegistryValue& v) { return v.name.empty(); });
     if (def == values.end())
     {
         appbox::RegistryValue none;
@@ -270,7 +269,7 @@ void RegistryBrowser::ShowValues(const std::wstring& relative)
     {
         const auto& value = values_[i];
 
-        auto text = value.name.empty() ? std::wstring(kDefaultLabel) : value.name;
+        auto       text = value.name.empty() ? std::wstring(kDefaultLabel) : value.name;
         const auto index = list_->InsertItem(list_->GetItemCount(), text);
 
         list_->SetItem(index, 1, appbox::FormatValueTypeName(value.type));
@@ -294,15 +293,15 @@ void RegistryBrowser::ShowValueDetail(long index)
     const auto& value = values_[static_cast<size_t>(index)];
 
     wxDialog dlg(this, wxID_ANY, "Value");
-    auto*     sizer = new wxBoxSizer(wxVERTICAL);
+    auto*    sizer = new wxBoxSizer(wxVERTICAL);
 
     auto AddRow = [&dlg, sizer](const wxString& label, const wxString& content, bool multiline) {
         auto* row = new wxBoxSizer(wxHORIZONTAL);
         row->Add(new wxStaticText(&dlg, wxID_ANY, label), 0, wxALIGN_TOP | wxRIGHT, 8);
 
-        auto* text = new wxTextCtrl(&dlg, wxID_ANY, content, wxDefaultPosition,
-                                    multiline ? wxSize(480, 220) : wxSize(480, -1),
-                                    wxTE_READONLY | (multiline ? wxTE_MULTILINE : 0));
+        auto* text =
+            new wxTextCtrl(&dlg, wxID_ANY, content, wxDefaultPosition, multiline ? wxSize(480, 220) : wxSize(480, -1),
+                           wxTE_READONLY | (multiline ? wxTE_MULTILINE : 0));
         if (multiline)
         {
             auto font = text->GetFont();

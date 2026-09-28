@@ -14,8 +14,8 @@ struct ProtocolListDirNt
 {
     struct Req
     {
-        std::string path;              /* Directory path. */
-        bool        extended = false;  /* Use NtQueryDirectoryFileEx. */
+        std::string path;             /* Directory path. */
+        bool        extended = false; /* Use NtQueryDirectoryFileEx. */
 
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, path, extended)
     };

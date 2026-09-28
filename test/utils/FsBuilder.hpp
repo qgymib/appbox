@@ -73,7 +73,7 @@ struct FsRoot
      * @param[in] n The number of fs to verify.
      * @return True if the file system is verified successfully.
      */
-    bool Verify(size_t index  = 1, size_t n = SIZE_MAX) const;
+    bool Verify(size_t index = 1, size_t n = SIZE_MAX) const;
 
     struct Data;
     std::shared_ptr<Data> data_;

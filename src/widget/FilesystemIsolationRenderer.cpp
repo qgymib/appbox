@@ -2,15 +2,12 @@
 #include <wx/choice.h>
 #include <utility>
 
-FilesystemIsolationRenderer::FilesystemIsolationRenderer(const wxArrayString& choices,
-                                                        ChoicesCallback row_choices)
-    : wxDataViewChoiceRenderer(choices, wxDATAVIEW_CELL_EDITABLE),
-      row_choices_(std::move(row_choices))
+FilesystemIsolationRenderer::FilesystemIsolationRenderer(const wxArrayString& choices, ChoicesCallback row_choices)
+    : wxDataViewChoiceRenderer(choices, wxDATAVIEW_CELL_EDITABLE), row_choices_(std::move(row_choices))
 {
 }
 
-wxWindow* FilesystemIsolationRenderer::CreateEditorCtrl(wxWindow* parent, wxRect labelRect,
-                                                        const wxVariant& value)
+wxWindow* FilesystemIsolationRenderer::CreateEditorCtrl(wxWindow* parent, wxRect labelRect, const wxVariant& value)
 {
     /*
      * The item which is being edited is known to the renderer base class: it
@@ -28,8 +25,7 @@ wxWindow* FilesystemIsolationRenderer::CreateEditorCtrl(wxWindow* parent, wxRect
         options = GetChoices();
     }
 
-    auto* choice = new wxChoice(parent, wxID_ANY, labelRect.GetTopLeft(),
-                                wxSize(labelRect.GetWidth(), -1), options);
+    auto* choice = new wxChoice(parent, wxID_ANY, labelRect.GetTopLeft(), wxSize(labelRect.GetWidth(), -1), options);
     choice->Move(labelRect.GetRight() - choice->GetRect().width, wxDefaultCoord);
     choice->SetStringSelection(value.GetString());
     return choice;

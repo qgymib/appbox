@@ -1,8 +1,7 @@
 #include "KeyPath.hpp"
 #include "WString.hpp"
 
-bool appbox::registry::StripKeyPrefix(const std::wstring& path, const std::wstring& prefix,
-                                      std::wstring& relative)
+bool appbox::registry::StripKeyPrefix(const std::wstring& path, const std::wstring& prefix, std::wstring& relative)
 {
     /*
      * Reuse the case insensitive prefix compare of the common module. The

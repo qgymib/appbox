@@ -26,8 +26,8 @@ static nlohmann::json ProbeLaunchProcess_Entry(const nlohmann::json& data)
     startup_info.cb = sizeof(startup_info);
     ZeroMemory(&process_info, sizeof(process_info));
 
-    if (!CreateProcessW(appbox::UTF8ToWide(req.FileName).c_str(), buffer.data(), nullptr, nullptr, FALSE, 0,
-                        nullptr, nullptr, &startup_info, &process_info))
+    if (!CreateProcessW(appbox::UTF8ToWide(req.FileName).c_str(), buffer.data(), nullptr, nullptr, FALSE, 0, nullptr,
+                        nullptr, &startup_info, &process_info))
     {
         rsp.code = GetLastError();
         return rsp;

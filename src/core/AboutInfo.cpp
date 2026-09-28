@@ -27,7 +27,7 @@ appbox::AboutInfo MakeAboutInfo()
     info.dependencies.reserve(std::size(appbox::generated::kDependencies));
     for (const auto& dependency : appbox::generated::kDependencies)
     {
-        info.dependencies.push_back({dependency.name, dependency.version});
+        info.dependencies.push_back({ dependency.name, dependency.version });
     }
 
     return info;

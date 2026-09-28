@@ -21,10 +21,10 @@ struct ProtocolRegReadValue
 
     struct Rsp
     {
-        DWORD open_code = static_cast<DWORD>(-1);   /* RegOpenKeyExW() error code. */
-        DWORD query_code = static_cast<DWORD>(-1);  /* RegQueryValueExW() error code. */
-        DWORD type = 0;                             /* Value type. */
-        std::string data;                           /* Value data. Encoding in UTF-8. */
+        DWORD       open_code = static_cast<DWORD>(-1);  /* RegOpenKeyExW() error code. */
+        DWORD       query_code = static_cast<DWORD>(-1); /* RegQueryValueExW() error code. */
+        DWORD       type = 0;                            /* Value type. */
+        std::string data;                                /* Value data. Encoding in UTF-8. */
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, open_code, query_code, type, data)
     };
 };

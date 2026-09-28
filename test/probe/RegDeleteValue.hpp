@@ -28,11 +28,11 @@ struct ProtocolRegDeleteValue
 
     struct Rsp
     {
-        DWORD open_code = static_cast<DWORD>(-1);     /* Open of the key with write access. */
-        DWORD delete_code = static_cast<DWORD>(-1);   /* RegDeleteValueW() error code. */
-        DWORD query_code = static_cast<DWORD>(-1);    /* Read of the value after the delete. */
-        DWORD enum_code = static_cast<DWORD>(-1);     /* Enumeration of the values after the delete. */
-        std::vector<std::string> names;               /* Value names the view shows, UTF-8. */
+        DWORD                    open_code = static_cast<DWORD>(-1);   /* Open of the key with write access. */
+        DWORD                    delete_code = static_cast<DWORD>(-1); /* RegDeleteValueW() error code. */
+        DWORD                    query_code = static_cast<DWORD>(-1);  /* Read of the value after the delete. */
+        DWORD                    enum_code = static_cast<DWORD>(-1);   /* Enumeration of the values after the delete. */
+        std::vector<std::string> names;                                /* Value names the view shows, UTF-8. */
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, open_code, delete_code, query_code, enum_code, names)
     };
 };

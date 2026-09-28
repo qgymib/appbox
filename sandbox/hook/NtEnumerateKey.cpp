@@ -10,12 +10,12 @@ static nlohmann::json NtEnumerateKeyLogParam(HANDLE KeyHandle, ULONG Index, KEY_
                                              PVOID KeyInformation, ULONG Length, PULONG ResultLength)
 {
     nlohmann::json json;
-    json["KeyHandle"]            = appbox::PointerToString(KeyHandle);
-    json["Index"]                = Index;
-    json["KeyInformationClass"]  = KeyInformationClass;
-    json["KeyInformation"]       = appbox::PointerToString(KeyInformation);
-    json["Length"]               = Length;
-    json["ResultLength"]         = appbox::PointerToString(ResultLength);
+    json["KeyHandle"] = appbox::PointerToString(KeyHandle);
+    json["Index"] = Index;
+    json["KeyInformationClass"] = KeyInformationClass;
+    json["KeyInformation"] = appbox::PointerToString(KeyInformation);
+    json["Length"] = Length;
+    json["ResultLength"] = appbox::PointerToString(ResultLength);
     return json;
 }
 
@@ -44,10 +44,9 @@ static NTSTATUS Hook_NtEnumerateKey(HANDLE KeyHandle, ULONG Index, KEY_INFORMATI
         return sys_NtEnumerateKey(KeyHandle, Index, KeyInformationClass, KeyInformation, Length, ResultLength);
     }
 
-    HANDLE real            = nullptr;
-    ULONG  layer_index     = 0;
-    auto   resolve         = appbox::registry::Hive::ResolveMergedIndex(KeyHandle, view_path, false, Index, real,
-                                                                        layer_index);
+    HANDLE real = nullptr;
+    ULONG  layer_index = 0;
+    auto   resolve = appbox::registry::Hive::ResolveMergedIndex(KeyHandle, view_path, false, Index, real, layer_index);
     appbox::registry::KeyGuard real_guard(real);
 
     switch (resolve)

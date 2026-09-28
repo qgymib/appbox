@@ -32,7 +32,7 @@ struct RealKeyGuard
 static std::set<std::wstring> EnumerateRealSubKeys(const std::wstring& subkey)
 {
     std::set<std::wstring> names;
-    HKEY key = nullptr;
+    HKEY                   key = nullptr;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, KEY_READ, &key) == ERROR_SUCCESS)
     {
         for (DWORD i = 0;; ++i)
@@ -79,12 +79,12 @@ TEST_F(Reg, EnumerateKey_Merged)
     /* Create the real sub keys "RealA" and "RealB" outside the sandbox. */
     {
         HKEY key = nullptr;
-        for (const auto* child : {L"RealA", L"RealB"})
+        for (const auto* child : { L"RealA", L"RealB" })
         {
             std::wstring path = subkey + L"\\" + child;
-            ASSERT_EQ(RegCreateKeyExW(HKEY_CURRENT_USER, path.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key,
-                                      nullptr),
-                      ERROR_SUCCESS);
+            ASSERT_EQ(
+                RegCreateKeyExW(HKEY_CURRENT_USER, path.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr),
+                ERROR_SUCCESS);
             RegCloseKey(key);
         }
     }

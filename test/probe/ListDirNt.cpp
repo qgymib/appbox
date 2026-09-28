@@ -72,8 +72,7 @@ static nlohmann::json ProbeListDirNt_Entry(const nlohmann::json& data)
 
     auto fn_open = reinterpret_cast<T_NtOpenFileProbe>(GetProcAddress(ntdll, "NtOpenFile"));
     auto fn_query = reinterpret_cast<T_NtQueryDirectoryFileProbe>(GetProcAddress(ntdll, "NtQueryDirectoryFile"));
-    auto fn_query_ex =
-        reinterpret_cast<T_NtQueryDirectoryFileExProbe>(GetProcAddress(ntdll, "NtQueryDirectoryFileEx"));
+    auto fn_query_ex = reinterpret_cast<T_NtQueryDirectoryFileExProbe>(GetProcAddress(ntdll, "NtQueryDirectoryFileEx"));
     if (fn_open == nullptr || fn_query == nullptr || (req.extended && fn_query_ex == nullptr))
     {
         rsp.status = -1;
@@ -130,9 +129,9 @@ static nlohmann::json ProbeListDirNt_Entry(const nlohmann::json& data)
         }
         else
         {
-            status = fn_query(handle, nullptr, nullptr, nullptr, &query_iosb, buffer.data(),
-                              static_cast<ULONG>(buffer.size()), FileFullDirectoryInformation, TRUE, &us_pattern,
-                              first);
+            status =
+                fn_query(handle, nullptr, nullptr, nullptr, &query_iosb, buffer.data(),
+                         static_cast<ULONG>(buffer.size()), FileFullDirectoryInformation, TRUE, &us_pattern, first);
         }
         first = false;
 
@@ -146,7 +145,7 @@ static nlohmann::json ProbeListDirNt_Entry(const nlohmann::json& data)
             break;
         }
 
-        const auto* info = reinterpret_cast<const FILE_FULL_DIR_INFORMATION*>(buffer.data());
+        const auto*        info = reinterpret_cast<const FILE_FULL_DIR_INFORMATION*>(buffer.data());
         const std::wstring name(info->FileName, info->FileNameLength / sizeof(WCHAR));
         if (name != L"." && name != L"..")
         {

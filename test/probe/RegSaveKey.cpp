@@ -25,7 +25,7 @@ DWORD EnableBackupPrivilege()
     }
 
     TOKEN_PRIVILEGES privileges = {};
-    privileges.PrivilegeCount   = 1;
+    privileges.PrivilegeCount = 1;
     /* The name of the privilege; the W entry point is used explicitly, because
      * the probe does not rely on the character set of the build. */
     if (!LookupPrivilegeValueW(nullptr, L"SeBackupPrivilege", &privileges.Privileges[0].Luid))
@@ -36,8 +36,8 @@ DWORD EnableBackupPrivilege()
     }
 
     privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-    const BOOL enabled = AdjustTokenPrivileges(token, FALSE, &privileges, 0, nullptr, nullptr);
-    const DWORD error  = GetLastError();
+    const BOOL  enabled = AdjustTokenPrivileges(token, FALSE, &privileges, 0, nullptr, nullptr);
+    const DWORD error = GetLastError();
     CloseHandle(token);
 
     if (!enabled)

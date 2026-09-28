@@ -64,7 +64,7 @@ TEST_F(Reg, DeleteValue_ShadowValue)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegDeleteValue::Req req;
-    req.Key   = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey);
     req.Value = "Shared";
 
     const auto rsp = ProbeRegDeleteValue.Call(req, GetCWD(), config).get<ProtocolRegDeleteValue::Rsp>();
@@ -81,7 +81,8 @@ TEST_F(Reg, DeleteValue_ShadowValue)
     wchar_t buffer[64] = {};
     DWORD   size = sizeof(buffer);
     ASSERT_EQ(RegOpenKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, KEY_QUERY_VALUE, &key), ERROR_SUCCESS);
-    ASSERT_EQ(RegQueryValueExW(key, L"Shared", nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size), ERROR_SUCCESS);
+    ASSERT_EQ(RegQueryValueExW(key, L"Shared", nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size),
+              ERROR_SUCCESS);
     RegCloseKey(key);
     EXPECT_EQ(appbox::WideToUTF8(buffer), "host");
 }

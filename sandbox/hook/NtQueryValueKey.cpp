@@ -11,12 +11,12 @@ static nlohmann::json NtQueryValueKeyLogParam(HANDLE KeyHandle, PUNICODE_STRING 
                                               PVOID KeyValueInformation, ULONG Length, PULONG ResultLength)
 {
     nlohmann::json json;
-    json["KeyHandle"]                = appbox::PointerToString(KeyHandle);
-    json["ValueName"]                = appbox::ToJson(ValueName);
+    json["KeyHandle"] = appbox::PointerToString(KeyHandle);
+    json["ValueName"] = appbox::ToJson(ValueName);
     json["KeyValueInformationClass"] = KeyValueInformationClass;
-    json["KeyValueInformation"]      = appbox::PointerToString(KeyValueInformation);
-    json["Length"]                   = Length;
-    json["ResultLength"]             = appbox::PointerToString(ResultLength);
+    json["KeyValueInformation"] = appbox::PointerToString(KeyValueInformation);
+    json["Length"] = Length;
+    json["ResultLength"] = appbox::PointerToString(ResultLength);
     return json;
 }
 
@@ -49,8 +49,8 @@ static NTSTATUS Hook_NtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName
                                    ResultLength);
     }
 
-    NTSTATUS st = sys_NtQueryValueKey(KeyHandle, ValueName, KeyValueInformationClass, KeyValueInformation, Length,
-                                      ResultLength);
+    NTSTATUS st =
+        sys_NtQueryValueKey(KeyHandle, ValueName, KeyValueInformationClass, KeyValueInformation, Length, ResultLength);
     if (st != STATUS_OBJECT_NAME_NOT_FOUND)
     {
         return st;
@@ -59,10 +59,10 @@ static NTSTATUS Hook_NtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName
     /* Read through: the value is missing in the hive, try the real registry. */
     std::wstring relative;
     std::wstring value_name;
-    if (appbox::registry::Hive::HiveRelativePath(view_path, relative)
-        && appbox::registry::ReadValueName(ValueName, value_name)
-        && (appbox::registry::Hive::HidesHostValue(relative, value_name)
-            || appbox::registry::Hive::IsValueWhitedOut(relative, value_name)))
+    if (appbox::registry::Hive::HiveRelativePath(view_path, relative) &&
+        appbox::registry::ReadValueName(ValueName, value_name) &&
+        (appbox::registry::Hive::HidesHostValue(relative, value_name) ||
+         appbox::registry::Hive::IsValueWhitedOut(relative, value_name)))
     {
         return st;
     }
@@ -80,8 +80,7 @@ static NTSTATUS Hook_NtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName
 
 static void LoadNtQueryValueKey()
 {
-    sys_NtQueryValueKey =
-        reinterpret_cast<T_NtQueryValueKey>(GetProcAddress(appbox::sys.h_ntdll, "NtQueryValueKey"));
+    sys_NtQueryValueKey = reinterpret_cast<T_NtQueryValueKey>(GetProcAddress(appbox::sys.h_ntdll, "NtQueryValueKey"));
 }
 
 appbox::HookRecord appbox::HookNtQueryValueKey = {

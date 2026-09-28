@@ -68,9 +68,8 @@ enum class OpenFallback
  */
 inline bool RequestsWrite(ACCESS_MASK access)
 {
-    constexpr ACCESS_MASK kWrite =
-        KEY_SET_VALUE | KEY_CREATE_SUB_KEY | KEY_CREATE_LINK | DELETE | WRITE_DAC | WRITE_OWNER | MAXIMUM_ALLOWED
-        | GENERIC_WRITE | GENERIC_ALL;
+    constexpr ACCESS_MASK kWrite = KEY_SET_VALUE | KEY_CREATE_SUB_KEY | KEY_CREATE_LINK | DELETE | WRITE_DAC |
+                                   WRITE_OWNER | MAXIMUM_ALLOWED | GENERIC_WRITE | GENERIC_ALL;
     return (access & kWrite) != 0;
 }
 

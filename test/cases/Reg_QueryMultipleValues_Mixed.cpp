@@ -52,7 +52,8 @@ TEST_F(Reg, QueryMultipleValues_Mixed)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\QueryMultipleValues_Mixed_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey =
+        L"Software\\AppBoxTest\\QueryMultipleValues_Mixed_" + appbox::UTF8ToWide(appbox::RandomString(8));
 
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
@@ -69,11 +70,11 @@ TEST_F(Reg, QueryMultipleValues_Mixed)
     /* A batch which mixes the hive layer and the visible host layer. */
     {
         ProtocolRegQueryMultipleValues::Req req;
-        req.Key   = appbox::WideToUTF8(subkey);
-        req.Names = {"Sandbox", "HostA"};
+        req.Key = appbox::WideToUTF8(subkey);
+        req.Names = { "Sandbox", "HostA" };
 
-        const auto rsp = ProbeRegQueryMultipleValues.Call(req, GetCWD(), config)
-                             .get<ProtocolRegQueryMultipleValues::Rsp>();
+        const auto rsp =
+            ProbeRegQueryMultipleValues.Call(req, GetCWD(), config).get<ProtocolRegQueryMultipleValues::Rsp>();
         ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.types.size(), 2u);
@@ -88,11 +89,11 @@ TEST_F(Reg, QueryMultipleValues_Mixed)
     /* A batch which only names hive values. */
     {
         ProtocolRegQueryMultipleValues::Req req;
-        req.Key   = appbox::WideToUTF8(subkey);
-        req.Names = {"Sandbox"};
+        req.Key = appbox::WideToUTF8(subkey);
+        req.Names = { "Sandbox" };
 
-        const auto rsp = ProbeRegQueryMultipleValues.Call(req, GetCWD(), config)
-                             .get<ProtocolRegQueryMultipleValues::Rsp>();
+        const auto rsp =
+            ProbeRegQueryMultipleValues.Call(req, GetCWD(), config).get<ProtocolRegQueryMultipleValues::Rsp>();
         ASSERT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.values.size(), 1u);
         EXPECT_EQ(rsp.values[0], "sandbox");
@@ -101,11 +102,11 @@ TEST_F(Reg, QueryMultipleValues_Mixed)
     /* A batch which names a hidden host value fails as a whole. */
     {
         ProtocolRegQueryMultipleValues::Req req;
-        req.Key   = appbox::WideToUTF8(subkey);
-        req.Names = {"HostA", "HostB"};
+        req.Key = appbox::WideToUTF8(subkey);
+        req.Names = { "HostA", "HostB" };
 
-        const auto rsp = ProbeRegQueryMultipleValues.Call(req, GetCWD(), config)
-                             .get<ProtocolRegQueryMultipleValues::Rsp>();
+        const auto rsp =
+            ProbeRegQueryMultipleValues.Call(req, GetCWD(), config).get<ProtocolRegQueryMultipleValues::Rsp>();
         EXPECT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
 
@@ -114,7 +115,8 @@ TEST_F(Reg, QueryMultipleValues_Mixed)
     wchar_t buffer[64] = {};
     DWORD   size = sizeof(buffer);
     ASSERT_EQ(RegOpenKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, KEY_QUERY_VALUE, &key), ERROR_SUCCESS);
-    ASSERT_EQ(RegQueryValueExW(key, L"HostA", nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size), ERROR_SUCCESS);
+    ASSERT_EQ(RegQueryValueExW(key, L"HostA", nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size),
+              ERROR_SUCCESS);
     RegCloseKey(key);
     EXPECT_EQ(appbox::WideToUTF8(buffer), "host-a");
 }

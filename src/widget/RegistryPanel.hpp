@@ -64,8 +64,8 @@ private:
          */
         enum class Kind
         {
-            Key,   ///< A sub key of the displayed key.
-            Value  ///< A value of the displayed key.
+            Key,  ///< A sub key of the displayed key.
+            Value ///< A value of the displayed key.
         };
 
         /**

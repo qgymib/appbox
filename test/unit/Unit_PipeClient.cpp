@@ -21,8 +21,7 @@ std::atomic<uint32_t> g_pipe_counter = 0;
 std::wstring MakePipePath()
 {
     const uint32_t index = g_pipe_counter.fetch_add(1);
-    return L"\\\\.\\pipe\\appbox_unit_pipe_" + std::to_wstring(GetCurrentProcessId()) + L"_" +
-           std::to_wstring(index);
+    return L"\\\\.\\pipe\\appbox_unit_pipe_" + std::to_wstring(GetCurrentProcessId()) + L"_" + std::to_wstring(index);
 }
 
 /**
@@ -95,7 +94,7 @@ using ReplyBuilder = std::function<std::string(const std::string& request)>;
  */
 struct FakeLoader
 {
-    std::wstring path;                    /* Pipe path of this instance. */
+    std::wstring path; /* Pipe path of this instance. */
     HANDLE       pipe = INVALID_HANDLE_VALUE;
     std::thread  worker;
 
@@ -286,7 +285,9 @@ TEST(UnitPipeClient, ValidResponseIsDelivered)
         nlohmann::json rsp;
         rsp["jsonrpc"] = "2.0";
         rsp["id"] = req["id"].get<uint64_t>();
-        rsp["result"] = {{"method", req["method"].get<std::string>()}};
+        rsp["result"] = {
+            { "method", req["method"].get<std::string>() }
+        };
         return rsp.dump();
     });
 

@@ -28,13 +28,13 @@ TEST_F(Reg, WriteValue_NewKey)
 
     auto config = tree.Build();
 
-    const auto       subkey = L"Software\\AppBoxTest\\WriteValue_NewKey_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\WriteValue_NewKey_" + appbox::UTF8ToWide(appbox::RandomString(8));
     const std::string expected = "HelloAppBox";
 
     ProtocolRegWriteValue::Req req;
-    req.Key   = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey);
     req.Value = "TestValue";
-    req.Data  = expected;
+    req.Data = expected;
 
     auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
     ASSERT_EQ(rsp.create_code, 0u);
@@ -46,7 +46,7 @@ TEST_F(Reg, WriteValue_NewKey)
     /* The real registry must not contain the key. */
     {
         HKEY key = nullptr;
-        auto r   = RegOpenKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, KEY_READ, &key);
+        auto r = RegOpenKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, KEY_READ, &key);
         ASSERT_NE(r, ERROR_SUCCESS);
         if (r == ERROR_SUCCESS)
         {

@@ -39,8 +39,8 @@ std::string FormatElapsed(std::chrono::milliseconds elapsed)
         elapsed = std::chrono::milliseconds::zero();
     }
 
-    const auto seconds = static_cast<unsigned long long>(
-        std::chrono::duration_cast<std::chrono::seconds>(elapsed).count());
+    const auto seconds =
+        static_cast<unsigned long long>(std::chrono::duration_cast<std::chrono::seconds>(elapsed).count());
     const auto hours = seconds / 3600;
     const auto minutes = (seconds % 3600) / 60;
     const auto rest = seconds % 60;
@@ -92,8 +92,7 @@ MessageExtent MeasureMessageExtent(const std::string& text)
          * continuation bytes belong to it and it occupies two columns.
          */
         current += 2;
-        while (index + 1 < text.size()
-               && (static_cast<unsigned char>(text[index + 1]) & 0xC0) == 0x80)
+        while (index + 1 < text.size() && (static_cast<unsigned char>(text[index + 1]) & 0xC0) == 0x80)
         {
             index++;
         }
@@ -118,7 +117,7 @@ std::string BuildProgressMessage(const BuildProgress& progress, std::chrono::mil
     }
 
     const char* const action = progress.stage == BuildStage::Packing ? "Packing files" : "Extracting files";
-    std::string text(action);
+    std::string       text(action);
 
     if (progress.total > 0)
     {
@@ -145,30 +144,26 @@ std::string BuildProgressMessage(const BuildProgress& progress, std::chrono::mil
     return text;
 }
 
-std::string BuildResultMessage(BuildOutcome outcome, const std::wstring& archive_path,
-                               const std::string& error)
+std::string BuildResultMessage(BuildOutcome outcome, const std::wstring& archive_path, const std::string& error)
 {
     const auto path = archive_path.empty() ? std::string() : WideToUTF8(archive_path);
 
     switch (outcome)
     {
-        case BuildOutcome::ArchiveWritten:
-            return AppendArchivePath("The archive was written successfully.", path);
+    case BuildOutcome::ArchiveWritten:
+        return AppendArchivePath("The archive was written successfully.", path);
 
-        case BuildOutcome::ApplicationStarted:
-            return AppendArchivePath(
-                "The archive was written successfully. The packaged application is starting.", path);
+    case BuildOutcome::ApplicationStarted:
+        return AppendArchivePath("The archive was written successfully. The packaged application is starting.", path);
 
-        case BuildOutcome::Cancelled:
-            return "The build run was cancelled; no archive was written.";
+    case BuildOutcome::Cancelled:
+        return "The build run was cancelled; no archive was written.";
 
-        case BuildOutcome::Failed:
-            return error.empty() ? std::string("The build run failed.")
-                                 : "The build run failed: " + error;
+    case BuildOutcome::Failed:
+        return error.empty() ? std::string("The build run failed.") : "The build run failed: " + error;
 
-        case BuildOutcome::LaunchFailed:
-            return AppendArchivePath(
-                "The archive was written, but the packaged loader could not be started.", path);
+    case BuildOutcome::LaunchFailed:
+        return AppendArchivePath("The archive was written, but the packaged loader could not be started.", path);
     }
 
     return "The build run finished.";

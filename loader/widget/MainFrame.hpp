@@ -16,6 +16,7 @@ public:
     virtual ~MainFrame();
 
     struct Data;
+
 private:
     /**
      * @brief Install the icon of the loader as the icon of the frame.

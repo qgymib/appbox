@@ -64,7 +64,7 @@ TEST(UnitRegistryWhiteout, KeyPathPrefixes)
  */
 TEST(UnitRegistryWhiteout, KeyPathPrefixesEmpty)
 {
-    std::vector<std::wstring> prefixes = {L"Stale"};
+    std::vector<std::wstring> prefixes = { L"Stale" };
 
     appbox::registry::KeyPathPrefixes(L"", prefixes);
     ASSERT_TRUE(prefixes.empty());

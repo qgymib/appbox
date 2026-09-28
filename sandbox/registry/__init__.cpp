@@ -34,31 +34,31 @@
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regloadappkeyw
  */
 typedef LONG(WINAPI* T_RegLoadAppKeyW)(
-    /* [IN] */  LPCWSTR lpFile,
-    /* [OUT] */ PHKEY   phKey,
-    /* [IN] */  REGSAM  samDesired,
-    /* [IN] */  DWORD   dwFlags,
-    /* [IN] */  DWORD   dwReserved);
+    /* [IN] */ LPCWSTR lpFile,
+    /* [OUT] */ PHKEY  phKey,
+    /* [IN] */ REGSAM  samDesired,
+    /* [IN] */ DWORD   dwFlags,
+    /* [IN] */ DWORD   dwReserved);
 
 /**
  * @brief Opens the access token of a process.
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntopenprocesstoken
  */
 typedef NTSTATUS (*T_NtOpenProcessToken)(
-    /* [IN] */  HANDLE      ProcessHandle,
-    /* [IN] */  ACCESS_MASK DesiredAccess,
-    /* [OUT] */ PHANDLE     TokenHandle);
+    /* [IN] */ HANDLE      ProcessHandle,
+    /* [IN] */ ACCESS_MASK DesiredAccess,
+    /* [OUT] */ PHANDLE    TokenHandle);
 
 /**
  * @brief Queries the access token of a process.
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationtoken
  */
 typedef NTSTATUS (*T_NtQueryInformationToken)(
-    /* [IN] */       HANDLE Handle,
-    /* [IN] */       ULONG  TokenInformationClass,
-    /* [OUT] */      PVOID  TokenInformation,
-    /* [IN] */       ULONG  TokenInformationLength,
-    /* [OUT,OPT] */  PULONG ReturnLength);
+    /* [IN] */ HANDLE      Handle,
+    /* [IN] */ ULONG       TokenInformationClass,
+    /* [OUT] */ PVOID      TokenInformation,
+    /* [IN] */ ULONG       TokenInformationLength,
+    /* [OUT,OPT] */ PULONG ReturnLength);
 
 /**
  * @brief Converts a SID into its string representation.
@@ -66,8 +66,8 @@ typedef NTSTATUS (*T_NtQueryInformationToken)(
  */
 typedef NTSTATUS (*T_RtlConvertSidToUnicodeString)(
     /* [OUT] */ PUNICODE_STRING UnicodeString,
-    /* [IN] */  PVOID           Sid,
-    /* [IN] */  BOOLEAN         AllocateDestinationString);
+    /* [IN] */ PVOID            Sid,
+    /* [IN] */ BOOLEAN          AllocateDestinationString);
 
 /**
  * @brief Frees a buffer which was allocated by RtlConvertSidToUnicodeString().
@@ -251,8 +251,7 @@ static bool QueryHkcuPrefix(std::wstring& prefix)
     }
 
     auto fn_open_token = reinterpret_cast<T_NtOpenProcessToken>(GetProcAddress(ntdll, "NtOpenProcessToken"));
-    auto fn_query_token =
-        reinterpret_cast<T_NtQueryInformationToken>(GetProcAddress(ntdll, "NtQueryInformationToken"));
+    auto fn_query_token = reinterpret_cast<T_NtQueryInformationToken>(GetProcAddress(ntdll, "NtQueryInformationToken"));
     auto fn_sid_to_string =
         reinterpret_cast<T_RtlConvertSidToUnicodeString>(GetProcAddress(ntdll, "RtlConvertSidToUnicodeString"));
     auto fn_free_string = reinterpret_cast<T_RtlFreeUnicodeStringLocal>(GetProcAddress(ntdll, "RtlFreeUnicodeString"));
@@ -326,15 +325,14 @@ static NTSTATUS CreateRootKeys(HANDLE hive_root)
     {
         UNICODE_STRING    us;
         OBJECT_ATTRIBUTES oa;
-        us.Buffer        = const_cast<PWSTR>(root_name.c_str());
-        us.Length        = static_cast<USHORT>(root_name.size() * sizeof(wchar_t));
+        us.Buffer = const_cast<PWSTR>(root_name.c_str());
+        us.Length = static_cast<USHORT>(root_name.size() * sizeof(wchar_t));
         us.MaximumLength = static_cast<USHORT>(us.Length + sizeof(wchar_t));
         InitializeObjectAttributes(&oa, &us, OBJ_CASE_INSENSITIVE, hive_root, nullptr);
 
         HANDLE   key = nullptr;
         ULONG    disposition = 0;
-        NTSTATUS status =
-            fn_create_key(&key, KEY_ALL_ACCESS, &oa, 0, nullptr, REG_OPTION_NON_VOLATILE, &disposition);
+        NTSTATUS status = fn_create_key(&key, KEY_ALL_ACCESS, &oa, 0, nullptr, REG_OPTION_NON_VOLATILE, &disposition);
         if (!NT_SUCCESS(status))
         {
             LOG_E("failed to create the root key {} in the hive: {:#x}", appbox::WideToUTF8(root_name), status);
@@ -429,10 +427,9 @@ static bool HiveHoldsValue(HANDLE key, const std::wstring& value_name)
     UNICODE_STRING us;
     sys_RtlInitUnicodeString(&us, value_name.c_str());
 
-    BYTE   buffer[sizeof(KEY_VALUE_BASIC_INFORMATION) + 0x100] = {};
-    ULONG  result = 0;
-    const NTSTATUS status =
-        sys_NtQueryValueKey(key, &us, KeyValueBasicInformation, buffer, sizeof(buffer), &result);
+    BYTE           buffer[sizeof(KEY_VALUE_BASIC_INFORMATION) + 0x100] = {};
+    ULONG          result = 0;
+    const NTSTATUS status = sys_NtQueryValueKey(key, &us, KeyValueBasicInformation, buffer, sizeof(buffer), &result);
     return NT_SUCCESS(status) || status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL;
 }
 
@@ -493,8 +490,8 @@ static bool RecordKeyWhiteout(const std::wstring& relative)
 
     HANDLE   marker = nullptr;
     NTSTATUS status = appbox::registry::Hive::CreateKey(appbox::registry::WhiteoutKeyPath(relative), KEY_ALL_ACCESS,
-                                                       OBJ_CASE_INSENSITIVE, nullptr, nullptr, 0, nullptr,
-                                                       REG_OPTION_NON_VOLATILE, &marker, nullptr);
+                                                        OBJ_CASE_INSENSITIVE, nullptr, nullptr, 0, nullptr,
+                                                        REG_OPTION_NON_VOLATILE, &marker, nullptr);
     if (!NT_SUCCESS(status))
     {
         LOG_E("failed to record the whiteout of the key {}: {:#x}", appbox::WideToUTF8(relative), status);
@@ -527,8 +524,8 @@ static bool RecordValueWhiteout(const std::wstring& relative, const std::wstring
 
     HANDLE   marker = nullptr;
     NTSTATUS status = appbox::registry::Hive::CreateKey(appbox::registry::WhiteoutValueKeyPath(relative),
-                                                       KEY_SET_VALUE | KEY_QUERY_VALUE, OBJ_CASE_INSENSITIVE, nullptr,
-                                                       nullptr, 0, nullptr, REG_OPTION_NON_VOLATILE, &marker, nullptr);
+                                                        KEY_SET_VALUE | KEY_QUERY_VALUE, OBJ_CASE_INSENSITIVE, nullptr,
+                                                        nullptr, 0, nullptr, REG_OPTION_NON_VOLATILE, &marker, nullptr);
     if (!NT_SUCCESS(status))
     {
         LOG_E("failed to record the whiteout of the value {} of {}: {:#x}", appbox::WideToUTF8(value_name),
@@ -584,8 +581,7 @@ static bool IsHiddenRealEntry(const std::wstring& relative, bool values, const s
 
     if (values)
     {
-        return appbox::registry::IsolationTable::HidesHost(
-                   appbox::registry::Hive::ValueIsolation(relative, name)) ||
+        return appbox::registry::IsolationTable::HidesHost(appbox::registry::Hive::ValueIsolation(relative, name)) ||
                appbox::registry::Hive::IsValueWhitedOut(relative, name);
     }
 
@@ -692,9 +688,9 @@ static std::wstring LastKeyComponent(const std::wstring& relative)
  */
 struct MergedEntry
 {
-    std::wstring name;                 /* Name of the entry inside its layer. */
-    HANDLE       handle = nullptr;     /* Handle which holds the entry. */
-    bool         real = false;         /* The entry comes from the real layer. */
+    std::wstring name;             /* Name of the entry inside its layer. */
+    HANDLE       handle = nullptr; /* Handle which holds the entry. */
+    bool         real = false;     /* The entry comes from the real layer. */
 };
 
 /**
@@ -733,8 +729,8 @@ static NTSTATUS ResolveMergedEntry(HANDLE hive_key, const std::wstring& view_pat
     entry.handle = entry.real ? real : hive_key;
 
     std::vector<std::wstring> names;
-    const NTSTATUS status = values ? appbox::registry::Hive::CollectValueNames(entry.handle, names)
-                                   : appbox::registry::Hive::CollectSubKeyNames(entry.handle, names);
+    const NTSTATUS            status = values ? appbox::registry::Hive::CollectValueNames(entry.handle, names)
+                                              : appbox::registry::Hive::CollectSubKeyNames(entry.handle, names);
     if (!NT_SUCCESS(status) || layer_index >= names.size())
     {
         if (entry.real)
@@ -771,7 +767,7 @@ static NTSTATUS CopyMergedKey(HANDLE hive_key, const std::wstring& view_path, co
     for (ULONG index = 0;; ++index)
     {
         MergedEntry entry;
-        NTSTATUS   status = ResolveMergedEntry(hive_key, view_path, true, index, entry);
+        NTSTATUS    status = ResolveMergedEntry(hive_key, view_path, true, index, entry);
         if (status == STATUS_NO_MORE_ENTRIES)
         {
             break;
@@ -805,7 +801,7 @@ static NTSTATUS CopyMergedKey(HANDLE hive_key, const std::wstring& view_path, co
     for (ULONG index = 0;; ++index)
     {
         MergedEntry entry;
-        NTSTATUS   status = ResolveMergedEntry(hive_key, view_path, false, index, entry);
+        NTSTATUS    status = ResolveMergedEntry(hive_key, view_path, false, index, entry);
         if (status == STATUS_NO_MORE_ENTRIES)
         {
             break;
@@ -841,9 +837,9 @@ static NTSTATUS CopyMergedKey(HANDLE hive_key, const std::wstring& view_path, co
         }
 
         HANDLE   child_destination = nullptr;
-        NTSTATUS create_status = CreateHiveKeyRelative(destination, entry.name, KEY_ALL_ACCESS, OBJ_CASE_INSENSITIVE,
-                                                       nullptr, nullptr, 0, nullptr, REG_OPTION_NON_VOLATILE,
-                                                       &child_destination, nullptr);
+        NTSTATUS create_status =
+            CreateHiveKeyRelative(destination, entry.name, KEY_ALL_ACCESS, OBJ_CASE_INSENSITIVE, nullptr, nullptr, 0,
+                                  nullptr, REG_OPTION_NON_VOLATILE, &child_destination, nullptr);
         if (NT_SUCCESS(create_status))
         {
             create_status = CopyMergedKey(child_hive, child_view, child_relative, child_destination, depth + 1);
@@ -1036,9 +1032,8 @@ NTSTATUS appbox::registry::Hive::Init()
      */
     data->whiteout_possible = WhiteoutStoreExists();
 
-    LOG_I("registry hive mounted: {} (mount: {}, hkcu: {}, whiteout store: {})",
-          appbox::WideToUTF8(data->hive_path), appbox::WideToUTF8(data->hive_mount_name),
-          appbox::WideToUTF8(data->hkcu_prefix), data->whiteout_possible);
+    LOG_I("registry hive mounted: {} (mount: {}, hkcu: {}, whiteout store: {})", appbox::WideToUTF8(data->hive_path),
+          appbox::WideToUTF8(data->hive_mount_name), appbox::WideToUTF8(data->hkcu_prefix), data->whiteout_possible);
     return STATUS_SUCCESS;
 }
 
@@ -1140,7 +1135,7 @@ appbox::RegistryIsolation appbox::registry::Hive::KeyIsolation(const std::wstrin
 }
 
 appbox::RegistryIsolation appbox::registry::Hive::ValueIsolation(const std::wstring& relative,
-                                                                const std::wstring& value_name)
+                                                                 const std::wstring& value_name)
 {
     if (s_hive_data == nullptr)
     {
@@ -1229,8 +1224,7 @@ bool appbox::registry::ReadValueName(PUNICODE_STRING ValueName, std::wstring& na
 }
 
 NTSTATUS appbox::registry::Hive::OpenKey(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
-                                         PVOID SecurityDescriptor, PVOID SecurityQualityOfService,
-                                         PHANDLE KeyHandle)
+                                         PVOID SecurityDescriptor, PVOID SecurityQualityOfService, PHANDLE KeyHandle)
 {
     if (s_hive_data == nullptr)
     {
@@ -1247,8 +1241,8 @@ NTSTATUS appbox::registry::Hive::OpenKey(const std::wstring& relative, ACCESS_MA
 }
 
 NTSTATUS appbox::registry::Hive::OpenKeyEx(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
-                                          PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG OpenOptions,
-                                          PHANDLE KeyHandle)
+                                           PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG OpenOptions,
+                                           PHANDLE KeyHandle)
 {
     if (s_hive_data == nullptr)
     {
@@ -1279,8 +1273,7 @@ NTSTATUS appbox::registry::Hive::OpenRealKey(const std::wstring& view_path, ACCE
 
 NTSTATUS appbox::registry::Hive::OpenRealKeyEx(const std::wstring& view_path, ACCESS_MASK DesiredAccess,
                                                ULONG Attributes, PVOID SecurityDescriptor,
-                                               PVOID SecurityQualityOfService, ULONG OpenOptions,
-                                               PHANDLE KeyHandle)
+                                               PVOID SecurityQualityOfService, ULONG OpenOptions, PHANDLE KeyHandle)
 {
     UNICODE_STRING    us;
     OBJECT_ATTRIBUTES oa;
@@ -1346,11 +1339,11 @@ static NTSTATUS OpenRealKeyEntry(const std::wstring& view_path, ACCESS_MASK Desi
     if (extended)
     {
         return appbox::registry::Hive::OpenRealKeyEx(view_path, DesiredAccess, Attributes, SecurityDescriptor,
-                                                    SecurityQualityOfService, OpenOptions, KeyHandle);
+                                                     SecurityQualityOfService, OpenOptions, KeyHandle);
     }
 
     return appbox::registry::Hive::OpenRealKey(view_path, DesiredAccess, Attributes, SecurityDescriptor,
-                                              SecurityQualityOfService, KeyHandle);
+                                               SecurityQualityOfService, KeyHandle);
 }
 
 /**
@@ -1373,11 +1366,11 @@ static NTSTATUS OpenHiveKeyEntry(const std::wstring& relative, ACCESS_MASK Desir
     if (extended)
     {
         return appbox::registry::Hive::OpenKeyEx(relative, DesiredAccess, Attributes, SecurityDescriptor,
-                                                SecurityQualityOfService, OpenOptions, KeyHandle);
+                                                 SecurityQualityOfService, OpenOptions, KeyHandle);
     }
 
     return appbox::registry::Hive::OpenKey(relative, DesiredAccess, Attributes, SecurityDescriptor,
-                                          SecurityQualityOfService, KeyHandle);
+                                           SecurityQualityOfService, KeyHandle);
 }
 
 /**
@@ -1441,8 +1434,7 @@ static NTSTATUS OpenIsolatedKeyEntry(const std::wstring& view_path, const std::w
         return OpenRealKeyEntry(view_path, DesiredAccess, Attributes, SecurityDescriptor, SecurityQualityOfService,
                                 OpenOptions, extended, KeyHandle);
 
-    case appbox::registry::OpenFallback::CopyUp:
-    {
+    case appbox::registry::OpenFallback::CopyUp: {
         /*
          * `WriteCopy` with write access: the caller would modify the host key
          * through a real handle, so the key is copied up instead. The shadow
@@ -1480,9 +1472,8 @@ static NTSTATUS OpenIsolatedKeyEntry(const std::wstring& view_path, const std::w
 }
 
 NTSTATUS appbox::registry::Hive::OpenIsolatedKey(const std::wstring& view_path, const std::wstring& relative,
-                                                 ACCESS_MASK DesiredAccess, ULONG Attributes,
-                                                 PVOID SecurityDescriptor, PVOID SecurityQualityOfService,
-                                                 PHANDLE KeyHandle)
+                                                 ACCESS_MASK DesiredAccess, ULONG Attributes, PVOID SecurityDescriptor,
+                                                 PVOID SecurityQualityOfService, PHANDLE KeyHandle)
 {
     return OpenIsolatedKeyEntry(view_path, relative, DesiredAccess, Attributes, SecurityDescriptor,
                                 SecurityQualityOfService, 0, false, KeyHandle);
@@ -1528,9 +1519,9 @@ static NTSTATUS CreateHiveKeyRelative(HANDLE parent, const std::wstring& name, A
 }
 
 NTSTATUS appbox::registry::Hive::CreateKey(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
-                                          PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG TitleIndex,
-                                          PUNICODE_STRING Class, ULONG CreateOptions, PHANDLE KeyHandle,
-                                          PULONG Disposition)
+                                           PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG TitleIndex,
+                                           PUNICODE_STRING Class, ULONG CreateOptions, PHANDLE KeyHandle,
+                                           PULONG Disposition)
 {
     if (s_hive_data == nullptr)
     {
@@ -1557,9 +1548,9 @@ NTSTATUS appbox::registry::Hive::CreateKey(const std::wstring& relative, ACCESS_
     for (std::size_t index = 0; index + 1 < components.size(); ++index)
     {
         HANDLE   child = nullptr;
-        NTSTATUS status = CreateHiveKeyRelative(parent, components[index], KEY_ALL_ACCESS, Attributes,
-                                                SecurityDescriptor, SecurityQualityOfService, 0, nullptr,
-                                                REG_OPTION_NON_VOLATILE, &child, nullptr);
+        NTSTATUS status =
+            CreateHiveKeyRelative(parent, components[index], KEY_ALL_ACCESS, Attributes, SecurityDescriptor,
+                                  SecurityQualityOfService, 0, nullptr, REG_OPTION_NON_VOLATILE, &child, nullptr);
         if (!NT_SUCCESS(status))
         {
             for (const HANDLE handle : intermediates)
@@ -1598,9 +1589,8 @@ NTSTATUS appbox::registry::Hive::CreateIsolatedKey(const std::wstring& view_path
                                                    ULONG TitleIndex, PUNICODE_STRING Class, ULONG CreateOptions,
                                                    PHANDLE KeyHandle, PULONG Disposition)
 {
-    const NTSTATUS status = CreateKey(relative, DesiredAccess, Attributes, SecurityDescriptor,
-                                      SecurityQualityOfService, TitleIndex, Class, CreateOptions, KeyHandle,
-                                      Disposition);
+    const NTSTATUS status = CreateKey(relative, DesiredAccess, Attributes, SecurityDescriptor, SecurityQualityOfService,
+                                      TitleIndex, Class, CreateOptions, KeyHandle, Disposition);
     if (!NT_SUCCESS(status) || Disposition == nullptr)
     {
         return status;
@@ -1621,9 +1611,9 @@ NTSTATUS appbox::registry::Hive::CreateIsolatedKey(const std::wstring& view_path
      * real registry, and the host content stays hidden.
      */
     const RegistryIsolation mode = KeyIsolation(relative);
-    const bool host_holds_key = *Disposition == REG_CREATED_NEW_KEY
-                                && !appbox::registry::IsolationTable::HidesHost(mode)
-                                && !IsKeyWhitedOut(relative) && HostHoldsKey(view_path);
+    const bool host_holds_key = *Disposition == REG_CREATED_NEW_KEY &&
+                                !appbox::registry::IsolationTable::HidesHost(mode) && !IsKeyWhitedOut(relative) &&
+                                HostHoldsKey(view_path);
 
     *Disposition = appbox::registry::ViewCreateDisposition(mode, *Disposition, host_holds_key);
     return status;
@@ -1784,8 +1774,8 @@ NTSTATUS appbox::registry::Hive::CollectValueNames(HANDLE KeyHandle, std::vector
         if (st == STATUS_BUFFER_OVERFLOW || st == STATUS_BUFFER_TOO_SMALL)
         {
             buf.resize(result);
-            st = sys_NtEnumerateValueKey(KeyHandle, i, KeyValueBasicInformation, buf.data(), (ULONG)buf.size(),
-                                         &result);
+            st =
+                sys_NtEnumerateValueKey(KeyHandle, i, KeyValueBasicInformation, buf.data(), (ULONG)buf.size(), &result);
             if (st == STATUS_BUFFER_OVERFLOW || st == STATUS_BUFFER_TOO_SMALL)
             {
                 /* Even the reported size is not enough, report the failure. */
@@ -1814,7 +1804,7 @@ NTSTATUS appbox::registry::Hive::CollectValueNames(HANDLE KeyHandle, std::vector
     }
 }
 
-appbox::registry::MergedResolve appbox::registry::Hive::ResolveMergedIndex(HANDLE KeyHandle,
+appbox::registry::MergedResolve appbox::registry::Hive::ResolveMergedIndex(HANDLE              KeyHandle,
                                                                            const std::wstring& view_path, bool values,
                                                                            ULONG Index, HANDLE& real_handle,
                                                                            ULONG& layer_index)
@@ -1940,8 +1930,8 @@ static bool MergedViewHoldsSubKeys(HANDLE hive_key, const std::wstring& view_pat
 
     std::vector<std::wstring> real_names;
     HANDLE                    real = nullptr;
-    if (NT_SUCCESS(appbox::registry::Hive::OpenRealKey(view_path, KEY_ENUMERATE_SUB_KEYS, OBJ_CASE_INSENSITIVE,
-                                                       nullptr, nullptr, &real)))
+    if (NT_SUCCESS(appbox::registry::Hive::OpenRealKey(view_path, KEY_ENUMERATE_SUB_KEYS, OBJ_CASE_INSENSITIVE, nullptr,
+                                                       nullptr, &real)))
     {
         appbox::registry::KeyGuard guard(real);
         if (NT_SUCCESS(appbox::registry::Hive::CollectSubKeyNames(real, real_names)))
@@ -2042,11 +2032,10 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedValue(HANDLE KeyHandle, const std
         return status;
     }
 
-    const bool host_visible =
-        !appbox::registry::IsolationTable::HidesHost(ValueIsolation(relative, value_name));
-    const appbox::registry::DeleteTarget target = appbox::registry::DeleteOutcomeOf(
-        ValueIsolation(relative, value_name), NT_SUCCESS(status),
-        host_visible && HostHoldsValue(view_path, value_name));
+    const bool host_visible = !appbox::registry::IsolationTable::HidesHost(ValueIsolation(relative, value_name));
+    const appbox::registry::DeleteTarget target =
+        appbox::registry::DeleteOutcomeOf(ValueIsolation(relative, value_name), NT_SUCCESS(status),
+                                          host_visible && HostHoldsValue(view_path, value_name));
 
     switch (target)
     {
@@ -2162,7 +2151,7 @@ NTSTATUS appbox::registry::Hive::QueryMultipleValues(HANDLE KeyHandle, const std
 
     for (ULONG index = 0; index < EntryCount; ++index)
     {
-        const HANDLE owner = from_hive[index] ? KeyHandle : real;
+        const HANDLE   owner = from_hive[index] ? KeyHandle : real;
         const NTSTATUS status = ReadValueFull(owner, names[index], types[index], datas[index]);
         if (!NT_SUCCESS(status))
         {
@@ -2193,8 +2182,8 @@ NTSTATUS appbox::registry::Hive::QueryMultipleValues(HANDLE KeyHandle, const std
         return STATUS_BUFFER_OVERFLOW;
     }
 
-    auto*      out = static_cast<BYTE*>(ValueBuffer);
-    ULONG      offset = 0;
+    auto* out = static_cast<BYTE*>(ValueBuffer);
+    ULONG offset = 0;
     for (ULONG index = 0; index < EntryCount; ++index)
     {
         if (!datas[index].empty())
@@ -2271,9 +2260,9 @@ NTSTATUS appbox::registry::Hive::SaveIsolatedKey(HANDLE KeyHandle, const std::ws
      * file describes the same key a direct save would describe.
      */
     HANDLE   snapshot = nullptr;
-    NTSTATUS status = CreateHiveKeyRelative(scratch_handle, LastKeyComponent(relative), KEY_ALL_ACCESS,
-                                            OBJ_CASE_INSENSITIVE, nullptr, nullptr, 0, nullptr,
-                                            REG_OPTION_NON_VOLATILE, &snapshot, nullptr);
+    NTSTATUS status =
+        CreateHiveKeyRelative(scratch_handle, LastKeyComponent(relative), KEY_ALL_ACCESS, OBJ_CASE_INSENSITIVE, nullptr,
+                              nullptr, 0, nullptr, REG_OPTION_NON_VOLATILE, &snapshot, nullptr);
     if (NT_SUCCESS(status))
     {
         status = CopyMergedKey(hive_key, view_path, relative, snapshot, 0);

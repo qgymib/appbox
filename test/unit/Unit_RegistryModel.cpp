@@ -14,8 +14,7 @@ namespace
  * @param[in] name Name of the row.
  * @return true when the row exists.
  */
-bool HasRow(const std::vector<appbox::RegistryRow>& rows, appbox::RegistryRow::Kind kind,
-            const std::wstring& name)
+bool HasRow(const std::vector<appbox::RegistryRow>& rows, appbox::RegistryRow::Kind kind, const std::wstring& name)
 {
     for (const auto& row : rows)
     {
@@ -67,7 +66,7 @@ TEST(UnitRegistryModel, RowsOfTheContainerListTheRootKeys)
 TEST(UnitRegistryModel, FindKeyIgnoresTheCase)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.AddKey(L"HKEY_CURRENT_USER", L"Vendor", error)) << error;
 
@@ -79,7 +78,7 @@ TEST(UnitRegistryModel, FindKeyIgnoresTheCase)
 TEST(UnitRegistryModel, AddKeyCreatesAndSortsSubKeys)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.AddKey(L"HKEY_CURRENT_USER", L"Vendor", error)) << error;
     ASSERT_TRUE(model.AddKey(L"HKEY_CURRENT_USER", L"Alpha", error)) << error;
@@ -96,7 +95,7 @@ TEST(UnitRegistryModel, AddKeyCreatesAndSortsSubKeys)
 TEST(UnitRegistryModel, AddKeyRejectsInvalidAndDuplicateNames)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.AddKey(L"HKEY_CURRENT_USER", L"Vendor", error)) << error;
 
@@ -124,7 +123,7 @@ TEST(UnitRegistryModel, AddKeyRejectsInvalidAndDuplicateNames)
 TEST(UnitRegistryModel, EnsureKeyCreatesTheIntermediateKeys)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Software\\Vendor\\App", error)) << error;
 
@@ -142,7 +141,7 @@ TEST(UnitRegistryModel, EnsureKeyCreatesTheIntermediateKeys)
 TEST(UnitRegistryModel, EnsureKeyRejectsAnUnknownRootKey)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     EXPECT_FALSE(model.EnsureKey(L"HKEY_DYN_DATA\\Software", error));
     EXPECT_FALSE(error.empty());
@@ -155,7 +154,7 @@ TEST(UnitRegistryModel, EnsureKeyRejectsAnUnknownRootKey)
 TEST(UnitRegistryModel, RenameKeyKeepsTheSubtreeAndRejectsRoots)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor\\App", error)) << error;
     ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path", appbox::RegistryValueType::String,
@@ -180,7 +179,7 @@ TEST(UnitRegistryModel, RenameKeyKeepsTheSubtreeAndRejectsRoots)
 TEST(UnitRegistryModel, RenameKeyRejectsEveryFixedKeyWithoutChangingTheModel)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor", error)) << error;
     ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Path", appbox::RegistryValueType::String,
@@ -221,7 +220,7 @@ TEST(UnitRegistryModel, RenameKeyRejectsEveryFixedKeyWithoutChangingTheModel)
 TEST(UnitRegistryModel, RenameKeyRejectsAnExistingSiblingAndKeepsTheCaseChange)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.AddKey(L"HKEY_CURRENT_USER", L"Alpha", error)) << error;
     ASSERT_TRUE(model.AddKey(L"HKEY_CURRENT_USER", L"Beta", error)) << error;
@@ -241,7 +240,7 @@ TEST(UnitRegistryModel, RenameKeyRejectsAnExistingSiblingAndKeepsTheCaseChange)
 TEST(UnitRegistryModel, RemoveKeyDropsTheSubtreeAndRejectsRoots)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor\\App", error)) << error;
     ASSERT_TRUE(model.RemoveKey(L"HKEY_CURRENT_USER\\Vendor", error)) << error;
@@ -261,7 +260,7 @@ TEST(UnitRegistryModel, RemoveKeyDropsTheSubtreeAndRejectsRoots)
 TEST(UnitRegistryModel, RowsListTheSubKeysBeforeTheValues)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.AddKey(L"HKEY_CURRENT_USER", L"Vendor", error)) << error;
     ASSERT_TRUE(model.AddValue(L"HKEY_CURRENT_USER", L"Beta", appbox::RegistryValueType::Dword,
@@ -292,7 +291,7 @@ TEST(UnitRegistryModel, RowsListTheSubKeysBeforeTheValues)
 TEST(UnitRegistryModel, AddValueAcceptsTheDefaultValueAndRejectsDuplicates)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.AddValue(L"HKEY_CURRENT_USER", L"", appbox::RegistryValueType::String,
                                appbox::RegistryStringData(L"default"), error))
@@ -315,7 +314,7 @@ TEST(UnitRegistryModel, AddValueAcceptsTheDefaultValueAndRejectsDuplicates)
 TEST(UnitRegistryModel, SetValueOverwritesAndKeepsTheIsolationMode)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER", L"Path", appbox::RegistryValueType::String,
                                appbox::RegistryStringData(L"C:\\Old"), error))
@@ -335,7 +334,7 @@ TEST(UnitRegistryModel, SetValueOverwritesAndKeepsTheIsolationMode)
 TEST(UnitRegistryModel, UpdateValueReplacesNameTypeAndData)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.AddValue(L"HKEY_CURRENT_USER", L"Old", appbox::RegistryValueType::String,
                                appbox::RegistryStringData(L"text"), error))
@@ -354,40 +353,37 @@ TEST(UnitRegistryModel, UpdateValueReplacesNameTypeAndData)
     EXPECT_EQ(number, 7u);
 
     error.clear();
-    EXPECT_FALSE(model.UpdateValue(L"HKEY_CURRENT_USER", L"Missing", L"Other",
-                                   appbox::RegistryValueType::Dword, {}, error));
+    EXPECT_FALSE(
+        model.UpdateValue(L"HKEY_CURRENT_USER", L"Missing", L"Other", appbox::RegistryValueType::Dword, {}, error));
     EXPECT_FALSE(error.empty());
 }
 
 TEST(UnitRegistryModel, UpdateValueRejectsTheNameOfAnotherValue)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
-    ASSERT_TRUE(model.AddValue(L"HKEY_CURRENT_USER", L"Alpha", appbox::RegistryValueType::String, {}, error))
-        << error;
-    ASSERT_TRUE(model.AddValue(L"HKEY_CURRENT_USER", L"Beta", appbox::RegistryValueType::String, {}, error))
-        << error;
+    ASSERT_TRUE(model.AddValue(L"HKEY_CURRENT_USER", L"Alpha", appbox::RegistryValueType::String, {}, error)) << error;
+    ASSERT_TRUE(model.AddValue(L"HKEY_CURRENT_USER", L"Beta", appbox::RegistryValueType::String, {}, error)) << error;
 
     error.clear();
-    EXPECT_FALSE(model.UpdateValue(L"HKEY_CURRENT_USER", L"Alpha", L"beta",
-                                   appbox::RegistryValueType::String, {}, error));
+    EXPECT_FALSE(
+        model.UpdateValue(L"HKEY_CURRENT_USER", L"Alpha", L"beta", appbox::RegistryValueType::String, {}, error));
     EXPECT_FALSE(error.empty());
 
     /* Renaming a value onto its own name is allowed. */
     error.clear();
-    ASSERT_TRUE(model.UpdateValue(L"HKEY_CURRENT_USER", L"Alpha", L"Alpha",
-                                  appbox::RegistryValueType::String, {}, error))
+    ASSERT_TRUE(
+        model.UpdateValue(L"HKEY_CURRENT_USER", L"Alpha", L"Alpha", appbox::RegistryValueType::String, {}, error))
         << error;
 }
 
 TEST(UnitRegistryModel, RemoveValueReportsWhetherTheValueExisted)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
-    ASSERT_TRUE(model.AddValue(L"HKEY_CURRENT_USER", L"Alpha", appbox::RegistryValueType::String, {}, error))
-        << error;
+    ASSERT_TRUE(model.AddValue(L"HKEY_CURRENT_USER", L"Alpha", appbox::RegistryValueType::String, {}, error)) << error;
 
     EXPECT_TRUE(model.RemoveValue(L"HKEY_CURRENT_USER", L"alpha"));
     EXPECT_FALSE(model.RemoveValue(L"HKEY_CURRENT_USER", L"Alpha"));
@@ -397,14 +393,13 @@ TEST(UnitRegistryModel, RemoveValueReportsWhetherTheValueExisted)
 TEST(UnitRegistryModel, SetKeyIsolationOnlyChangesTheKey)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor\\App", error)) << error;
-    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path",
-                               appbox::RegistryValueType::String, {}, error))
+    ASSERT_TRUE(
+        model.SetValue(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path", appbox::RegistryValueType::String, {}, error))
         << error;
-    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {},
-                               error))
+    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {}, error))
         << error;
 
     ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryIsolation::Full));
@@ -433,23 +428,21 @@ TEST(UnitRegistryModel, SetKeyIsolationOnlyChangesTheKey)
 TEST(UnitRegistryModel, ApplyIsolationToSubtreeOverwritesEveryKeyAndValue)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor\\App\\Sub", error)) << error;
-    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {},
-                               error))
+    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {}, error))
         << error;
-    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path",
-                               appbox::RegistryValueType::String, {}, error))
+    ASSERT_TRUE(
+        model.SetValue(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path", appbox::RegistryValueType::String, {}, error))
         << error;
 
     /* Entries below the key are changed before the subtree is overwritten. */
     ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor\\App", appbox::RegistryIsolation::Hide));
-    ASSERT_TRUE(model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path",
-                                        appbox::RegistryIsolation::WriteCopy));
+    ASSERT_TRUE(
+        model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path", appbox::RegistryIsolation::WriteCopy));
 
-    ASSERT_TRUE(model.ApplyIsolationToSubtree(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryIsolation::Full,
-                                              true));
+    ASSERT_TRUE(model.ApplyIsolationToSubtree(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryIsolation::Full, true));
 
     const auto* vendor = model.FindKey(L"HKEY_CURRENT_USER\\Vendor");
     ASSERT_NE(vendor, nullptr);
@@ -467,25 +460,22 @@ TEST(UnitRegistryModel, ApplyIsolationToSubtreeOverwritesEveryKeyAndValue)
     ASSERT_EQ(app.children.size(), 1u);
     EXPECT_EQ(app.children[0].isolation, appbox::RegistryIsolation::Full);
 
-    EXPECT_FALSE(model.ApplyIsolationToSubtree(L"HKEY_CURRENT_USER\\Missing",
-                                               appbox::RegistryIsolation::Full, true));
+    EXPECT_FALSE(model.ApplyIsolationToSubtree(L"HKEY_CURRENT_USER\\Missing", appbox::RegistryIsolation::Full, true));
 }
 
 TEST(UnitRegistryModel, ApplyIsolationToSubtreeKeepsTheValuesWhenTheyAreNotIncluded)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor\\App", error)) << error;
-    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {},
-                               error))
+    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {}, error))
         << error;
-    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path",
-                               appbox::RegistryValueType::String, {}, error))
+    ASSERT_TRUE(
+        model.SetValue(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path", appbox::RegistryValueType::String, {}, error))
         << error;
 
-    ASSERT_TRUE(model.ApplyIsolationToSubtree(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryIsolation::Hide,
-                                              false));
+    ASSERT_TRUE(model.ApplyIsolationToSubtree(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryIsolation::Hide, false));
 
     const auto* vendor = model.FindKey(L"HKEY_CURRENT_USER\\Vendor");
     ASSERT_NE(vendor, nullptr);
@@ -502,7 +492,7 @@ TEST(UnitRegistryModel, ApplyIsolationToSubtreeKeepsTheValuesWhenTheyAreNotInclu
 TEST(UnitRegistryModel, NewEntriesFollowTheKeyTheyAreCreatedIn)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor", error)) << error;
     ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryIsolation::Hide));
@@ -518,11 +508,9 @@ TEST(UnitRegistryModel, NewEntriesFollowTheKeyTheyAreCreatedIn)
 
     /* Keys and values added by hand follow the key they are added to as well. */
     ASSERT_TRUE(model.AddKey(L"HKEY_CURRENT_USER\\Vendor\\App", L"Child", error)) << error;
-    ASSERT_TRUE(model.AddValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {},
-                               error))
+    ASSERT_TRUE(model.AddValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {}, error))
         << error;
-    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Other", appbox::RegistryValueType::String, {},
-                               error))
+    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Other", appbox::RegistryValueType::String, {}, error))
         << error;
 
     const auto* vendor = model.FindKey(L"HKEY_CURRENT_USER\\Vendor");
@@ -541,18 +529,15 @@ TEST(UnitRegistryModel, NewEntriesFollowTheKeyTheyAreCreatedIn)
 TEST(UnitRegistryModel, SetValueIsolationOnlyChangesTheValue)
 {
     appbox::RegistryModel model;
-    std::string error;
+    std::string           error;
 
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor", error)) << error;
-    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {},
-                               error))
+    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {}, error))
         << error;
-    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Other", appbox::RegistryValueType::String, {},
-                               error))
+    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Other", appbox::RegistryValueType::String, {}, error))
         << error;
 
-    ASSERT_TRUE(model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor", L"Name",
-                                        appbox::RegistryIsolation::Full));
+    ASSERT_TRUE(model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryIsolation::Full));
 
     const auto* vendor = model.FindKey(L"HKEY_CURRENT_USER\\Vendor");
     ASSERT_NE(vendor, nullptr);
@@ -563,8 +548,7 @@ TEST(UnitRegistryModel, SetValueIsolationOnlyChangesTheValue)
     EXPECT_EQ(vendor->values[1].isolation, appbox::RegistryIsolation::WriteCopy);
 
     EXPECT_FALSE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Missing", appbox::RegistryIsolation::Full));
-    EXPECT_FALSE(model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor", L"Missing",
-                                         appbox::RegistryIsolation::Full));
+    EXPECT_FALSE(model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor", L"Missing", appbox::RegistryIsolation::Full));
 }
 
 TEST(UnitRegistryModel, IsolationNamesCoverEveryMode)
@@ -610,7 +594,7 @@ TEST(UnitRegistryModel, StringAndMultiStringDataRoundTrip)
     EXPECT_EQ(text, L"Hello");
 
     const std::vector<std::wstring> parts = { L"one", L"two" };
-    const auto data = appbox::RegistryMultiStringData(parts);
+    const auto                      data = appbox::RegistryMultiStringData(parts);
     EXPECT_EQ(appbox::RegistryMultiStringValue(data), parts);
 
     EXPECT_TRUE(appbox::RegistryMultiStringValue(appbox::RegistryMultiStringData({})).empty());
@@ -633,11 +617,11 @@ TEST(UnitRegistryModel, NumberDataRoundTrip)
 TEST(UnitRegistryModel, HexTextRoundTripAndErrors)
 {
     const std::vector<std::uint8_t> bytes = { 0x0A, 0xB1, 0x00 };
-    const auto text = appbox::FormatRegistryHexText(bytes);
+    const auto                      text = appbox::FormatRegistryHexText(bytes);
     EXPECT_EQ(text, L"0A B1 00");
 
     std::vector<std::uint8_t> parsed;
-    std::string error;
+    std::string               error;
     ASSERT_TRUE(appbox::ParseRegistryHexText(L"0a,b1, 00", parsed, error)) << error;
     EXPECT_EQ(parsed, bytes);
 
@@ -653,31 +637,27 @@ TEST(UnitRegistryModel, HexTextRoundTripAndErrors)
 TEST(UnitRegistryModel, ValueTextParsingFollowsTheType)
 {
     std::vector<std::uint8_t> data;
-    std::string error;
+    std::string               error;
 
-    ASSERT_TRUE(appbox::ParseRegistryValueText(appbox::RegistryValueType::Dword, L"0x10", data, error))
-        << error;
+    ASSERT_TRUE(appbox::ParseRegistryValueText(appbox::RegistryValueType::Dword, L"0x10", data, error)) << error;
     std::uint32_t number = 0;
     ASSERT_TRUE(appbox::RegistryDwordValue(data, number));
     EXPECT_EQ(number, 16u);
 
     error.clear();
-    ASSERT_TRUE(appbox::ParseRegistryValueText(appbox::RegistryValueType::Qword, L"123", data, error))
-        << error;
+    ASSERT_TRUE(appbox::ParseRegistryValueText(appbox::RegistryValueType::Qword, L"123", data, error)) << error;
     std::uint64_t wide = 0;
     ASSERT_TRUE(appbox::RegistryQwordValue(data, wide));
     EXPECT_EQ(wide, 123u);
 
     error.clear();
-    ASSERT_TRUE(appbox::ParseRegistryValueText(appbox::RegistryValueType::MultiString, L"one\r\ntwo", data,
-                                               error))
+    ASSERT_TRUE(appbox::ParseRegistryValueText(appbox::RegistryValueType::MultiString, L"one\r\ntwo", data, error))
         << error;
     const std::vector<std::wstring> parts = { L"one", L"two" };
     EXPECT_EQ(appbox::RegistryMultiStringValue(data), parts);
 
     error.clear();
-    ASSERT_TRUE(appbox::ParseRegistryValueText(appbox::RegistryValueType::Binary, L"01,02", data, error))
-        << error;
+    ASSERT_TRUE(appbox::ParseRegistryValueText(appbox::RegistryValueType::Binary, L"01,02", data, error)) << error;
     EXPECT_EQ(data, (std::vector<std::uint8_t>{ 0x01, 0x02 }));
 
     error.clear();
@@ -691,17 +671,14 @@ TEST(UnitRegistryModel, ValueTextParsingFollowsTheType)
 
 TEST(UnitRegistryModel, ValueTextFormattingFollowsTheType)
 {
-    EXPECT_EQ(appbox::FormatRegistryValueText(appbox::RegistryValueType::String,
-                                              appbox::RegistryStringData(L"text")),
+    EXPECT_EQ(appbox::FormatRegistryValueText(appbox::RegistryValueType::String, appbox::RegistryStringData(L"text")),
               L"text");
 
     const auto parts = appbox::RegistryMultiStringData({ L"one", L"two" });
     EXPECT_EQ(appbox::FormatRegistryValueText(appbox::RegistryValueType::MultiString, parts), L"one\r\ntwo");
-    EXPECT_EQ(appbox::FormatRegistryValueData(appbox::RegistryValueType::MultiString, parts, 100),
-              L"one; two");
+    EXPECT_EQ(appbox::FormatRegistryValueData(appbox::RegistryValueType::MultiString, parts, 100), L"one; two");
 
-    EXPECT_EQ(appbox::FormatRegistryValueData(appbox::RegistryValueType::Dword,
-                                              appbox::RegistryDwordData(30), 100),
+    EXPECT_EQ(appbox::FormatRegistryValueData(appbox::RegistryValueType::Dword, appbox::RegistryDwordData(30), 100),
               L"0x0000001E (30)");
 
     /* The value column truncates long data. */

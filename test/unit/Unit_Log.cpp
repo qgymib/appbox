@@ -116,9 +116,8 @@ TEST(UnitLog, FailingSinkDoesNotThrowAndCountsDrop)
 TEST(UnitLog, ThrowingSinkDoesNotThrowAndCountsDrop)
 {
     appbox::LogEnable(true);
-    appbox::SetLogSink([](const appbox::MsgLog::Req&, nlohmann::json&) -> bool {
-        throw std::runtime_error("broken transport");
-    });
+    appbox::SetLogSink(
+        [](const appbox::MsgLog::Req&, nlohmann::json&) -> bool { throw std::runtime_error("broken transport"); });
 
     const uint64_t before = appbox::DroppedLogCount();
 
@@ -194,7 +193,7 @@ TEST(UnitLog, LogGuardSuppressesOutput)
 TEST(UnitLog, UnicodeStringIsReadByLength)
 {
     /* No terminator behind the characters. */
-    wchar_t       buffer[] = {L'a', L'b', L'c'};
+    wchar_t        buffer[] = { L'a', L'b', L'c' };
     UNICODE_STRING str = {};
     str.Buffer = buffer;
     str.Length = static_cast<USHORT>(sizeof(buffer));
@@ -210,7 +209,7 @@ TEST(UnitLog, UnicodeStringIsReadByLength)
  */
 TEST(UnitLog, UnicodeStringWithInconsistentLengthIsNotRead)
 {
-    wchar_t        buffer[4] = {L'a', L'b', L'c', L'd'};
+    wchar_t        buffer[4] = { L'a', L'b', L'c', L'd' };
     UNICODE_STRING str = {};
     str.Buffer = buffer;
     str.Length = static_cast<USHORT>(8 * sizeof(wchar_t));
@@ -228,7 +227,7 @@ TEST(UnitLog, UnicodeStringWithInconsistentLengthIsNotRead)
  */
 TEST(UnitLog, UnicodeStringWithUnalignedLengthIsNotRead)
 {
-    wchar_t        buffer[4] = {L'a', L'b', L'c', L'd'};
+    wchar_t        buffer[4] = { L'a', L'b', L'c', L'd' };
     UNICODE_STRING str = {};
     str.Buffer = buffer;
     str.Length = 3;
@@ -257,7 +256,7 @@ TEST(UnitLog, UnicodeStringWithoutBufferIsReported)
  */
 TEST(UnitLog, UnicodeStringWithAnUnpairedSurrogateIsSafe)
 {
-    wchar_t        buffer[1] = {static_cast<wchar_t>(0xD800)};
+    wchar_t        buffer[1] = { static_cast<wchar_t>(0xD800) };
     UNICODE_STRING str = {};
     str.Buffer = buffer;
     str.Length = static_cast<USHORT>(sizeof(buffer));
@@ -294,7 +293,9 @@ TEST(UnitLog, DumpJsonReplacesInvalidUtf8)
  */
 TEST(UnitLog, ParseBitHandlesEmptyAndUnknownTables)
 {
-    const appbox::BitData table[] = {{ "known", 0x1 }};
+    const appbox::BitData table[] = {
+        { "known", 0x1 }
+    };
 
     EXPECT_TRUE(appbox::ParseBit(0xFFFF, nullptr, 0).empty());
     EXPECT_TRUE(appbox::ParseBit(0xFFFF, table, 0).empty());

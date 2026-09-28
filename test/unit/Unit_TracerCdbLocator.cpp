@@ -19,8 +19,7 @@ namespace
 std::filesystem::path ExistingFile()
 {
     std::vector<wchar_t> buffer(MAX_PATH, L'\0');
-    const DWORD length =
-        ::GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    const DWORD          length = ::GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
     return std::filesystem::path(std::wstring(buffer.data(), length));
 }
 
@@ -44,9 +43,9 @@ TEST(TracerCdbLocator, TheFirstExistingCandidateWins)
     const std::filesystem::path missing =
         std::filesystem::path(L"Z:\\appbox\\no\\such\\directory") / appbox::tracer::kCdbFileName;
 
-    EXPECT_EQ(appbox::tracer::FindCdb({missing, existing}), existing);
-    EXPECT_EQ(appbox::tracer::FindCdb({existing, missing}), existing);
-    EXPECT_TRUE(appbox::tracer::FindCdb({missing}).empty());
+    EXPECT_EQ(appbox::tracer::FindCdb({ missing, existing }), existing);
+    EXPECT_EQ(appbox::tracer::FindCdb({ existing, missing }), existing);
+    EXPECT_TRUE(appbox::tracer::FindCdb({ missing }).empty());
 }
 
 /**

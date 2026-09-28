@@ -104,8 +104,8 @@ TEST_F(Reg, ShadowKey_HidesRealEntriesOfSameName)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\ShadowKey_HidesRealEntriesOfSameName_"
-                        + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey =
+        L"Software\\AppBoxTest\\ShadowKey_HidesRealEntriesOfSameName_" + appbox::UTF8ToWide(appbox::RandomString(8));
     const auto conflict = subkey + L"\\Conflict";
 
     const std::string host_data = "host";

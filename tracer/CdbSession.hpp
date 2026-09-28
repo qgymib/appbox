@@ -23,26 +23,27 @@ enum class RunStatus
 /** Result of one trace run. */
 struct TraceResult
 {
-    std::vector<std::wstring> names;          ///< Every hit name, sorted and unique.
-    std::vector<std::size_t> calls_per_process; ///< Observed calls per process, in session order.
-    std::size_t processes = 0;                ///< Processes (debugger sessions) which were armed.
-    std::size_t breakpoints = 0;              ///< Breakpoints armed in one process.
-    std::size_t unexpected_stops = 0;         ///< Debugger stops the tracer had to continue.
-    int debugger_exit_code = 0;               ///< Exit code of the debugger process.
-    RunStatus status = RunStatus::Completed;  ///< How the run ended.
-    std::wstring message;                     ///< Details of a run which did not complete.
+    std::vector<std::wstring> names;             ///< Every hit name, sorted and unique.
+    std::vector<std::size_t>  calls_per_process; ///< Observed calls per process, in session order.
+    std::size_t               processes = 0;     ///< Processes (debugger sessions) which were armed.
+    std::size_t               breakpoints = 0;   ///< Breakpoints armed in the first process, the ones
+                                                 ///< armed after a module load included.
+    std::size_t  unexpected_stops = 0;           ///< Debugger stops the tracer had to continue.
+    int          debugger_exit_code = 0;         ///< Exit code of the debugger process.
+    RunStatus    status = RunStatus::Completed;  ///< How the run ended.
+    std::wstring message;                        ///< Details of a run which did not complete.
 };
 
 /** Everything one trace run needs. */
 struct TraceRequest
 {
-    std::filesystem::path debugger;         ///< Debugger to drive (cdb.exe).
-    std::filesystem::path program;          ///< Program to run.
-    std::vector<std::wstring> program_args; ///< Arguments of the program.
-    std::vector<ArmGroup> plan;             ///< Breakpoints to arm in every process.
-    unsigned timeout_seconds = 600;         ///< Hard limit of the whole run.
-    unsigned stall_timeout_seconds = 30;    ///< Limit for consuming a batch which was fed.
-    std::filesystem::path keep_raw_path;    ///< Optional file for the raw debugger output.
+    std::filesystem::path     debugger;                   ///< Debugger to drive (cdb.exe).
+    std::filesystem::path     program;                    ///< Program to run.
+    std::vector<std::wstring> program_args;               ///< Arguments of the program.
+    std::vector<ArmGroup>     plan;                       ///< Breakpoints to arm in every process.
+    unsigned                  timeout_seconds = 600;      ///< Hard limit of the whole run.
+    unsigned                  stall_timeout_seconds = 30; ///< Limit for consuming a batch which was fed.
+    std::filesystem::path     keep_raw_path;              ///< Optional file for the raw debugger output.
 };
 
 /**
@@ -56,6 +57,9 @@ struct TraceRequest
  * - Every process gets its own script: a child process is a new debugger
  *   session which does not inherit the breakpoints, and the addresses have to
  *   be computed from the module base addresses of that session.
+ * - A module which is loaded on demand (`ws2_32`, `dnsapi`) is watched with a
+ *   module load filter of the debugger: the session stops when the loader maps
+ *   it, which is the moment its breakpoints are armed.
  * - The debugger prints one prompt per executed command, so
  *   `prompts - commands fed` is zero while the program runs and one while the
  *   debugger waits for input. That is how an unexpected stop (an exception, for

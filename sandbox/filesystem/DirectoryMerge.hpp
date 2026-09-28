@@ -58,8 +58,8 @@ bool IsSupportedDirectoryInformationClass(FILE_INFORMATION_CLASS info_class);
  * @param[in] extended true when the caller used the extended entry point.
  * @return Status code.
  */
-NTSTATUS QueryDirectoryInformation(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation, ULONG Length,
-                                   ULONG QueryFlags, PUNICODE_STRING FileName,
+NTSTATUS QueryDirectoryInformation(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation,
+                                   ULONG Length, ULONG QueryFlags, PUNICODE_STRING FileName,
                                    FILE_INFORMATION_CLASS FileInformationClass, bool extended);
 
 } // namespace filesystem

@@ -92,7 +92,7 @@ bool ZipWriter::AddFileDisk(const std::wstring& disk_path, const std::string& en
     }
 
     /* libzip interprets file names as UTF-8 and converts them to UTF-16. */
-    const auto path = WideToUTF8(disk_path);
+    const auto  path = WideToUTF8(disk_path);
     zip_source* source = zip_source_file(archive_, path.c_str(), 0, -1);
     if (source == nullptr)
     {

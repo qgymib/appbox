@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -24,8 +25,8 @@ inline constexpr const char* kHitMarker = "APPBOXHIT";
 /** One traced module: the image file and its parsed content. */
 struct TracedModule
 {
-    std::filesystem::path path; ///< Image file of the module.
-    PeImage image;              ///< Parsed image.
+    std::filesystem::path path;  ///< Image file of the module.
+    PeImage               image; ///< Parsed image.
 };
 
 /** Traced modules, keyed by the lowercase base name without extension. */
@@ -37,9 +38,9 @@ using ModuleBases = std::map<std::wstring, std::uint64_t>;
 /** One breakpoint address together with every name which resolves to it. */
 struct ArmGroup
 {
-    std::wstring module;              ///< Implementation module (lowercase base name).
-    std::uint32_t rva = 0;            ///< Offset of the implementation inside the module.
-    std::vector<std::wstring> names;  ///< Sorted `module!function` names sharing the address.
+    std::wstring              module;  ///< Implementation module (lowercase base name).
+    std::uint32_t             rva = 0; ///< Offset of the implementation inside the module.
+    std::vector<std::wstring> names;   ///< Sorted `module!function` names sharing the address.
 };
 
 /**
@@ -65,10 +66,8 @@ struct ArmGroup
  *                             the traced set (an API set DLL).
  * @return The plan, sorted by implementation module and RVA.
  */
-std::vector<ArmGroup> BuildArmPlan(const ModuleImages& modules,
-                                   const std::vector<Category>& categories,
-                                   bool all_exports,
-                                   const std::filesystem::path& module_directory);
+std::vector<ArmGroup> BuildArmPlan(const ModuleImages& modules, const std::vector<Category>& categories,
+                                   bool all_exports, const std::filesystem::path& module_directory);
 
 /**
  * @brief Build the debugger command lines which arm a plan for one session.
@@ -79,6 +78,52 @@ std::vector<ArmGroup> BuildArmPlan(const ModuleImages& modules,
  *         the plan; groups whose module has no known base are skipped.
  */
 std::vector<std::string> BuildArmLines(const std::vector<ArmGroup>& plan, const ModuleBases& bases);
+
+/**
+ * @brief Collect the implementation modules of a plan which are not loaded yet.
+ *
+ * A module the debugger has not mapped can not carry a breakpoint, so a session
+ * has to be woken up when it appears. `ws2_32` and `dnsapi` are loaded on
+ * demand, which means they are pending at the first prompt of a session while
+ * `ntdll`, `kernel32` and `kernelbase` are always mapped before the initial
+ * break of the process.
+ *
+ * @param[in] plan Breakpoint plan.
+ * @param[in] bases Module base addresses which are known in the session.
+ * @return The module names, sorted and without duplicates.
+ */
+std::vector<std::wstring> SelectPendingModules(const std::vector<ArmGroup>& plan, const ModuleBases& bases);
+
+/**
+ * @brief Collect the groups of a plan which can be armed in a session.
+ *
+ * A group is armable when the module which holds its implementation has a known
+ * base address and its module does not carry the breakpoints of the plan yet.
+ * The result is the part of the plan a session still needs, which is the whole
+ * plan for a session which was not armed at all and the groups of a module
+ * which was loaded later for one which was.
+ *
+ * @param[in] plan Breakpoint plan.
+ * @param[in] bases Module base addresses of the session.
+ * @param[in] armed_modules Modules which already carry the breakpoints of the plan.
+ * @return The groups to arm, in the order of the plan.
+ */
+std::vector<ArmGroup> SelectArmable(const std::vector<ArmGroup>& plan, const ModuleBases& bases,
+                                    const std::set<std::wstring>& armed_modules);
+
+/**
+ * @brief Build the debugger commands which stop a session when a module is loaded.
+ *
+ * The filter is the mechanism which makes a module that is loaded on demand
+ * observable at all: the debugger reports the load, prints its `ModLoad:` line
+ * and waits for input, which is the moment the breakpoints of that module can be
+ * armed. The filter is a property of the debugger, not of one process, so it
+ * stays in effect for the child processes as well.
+ *
+ * @param[in] modules Modules to watch.
+ * @return One `sxe ld:<module>` line per module, in the order of the input.
+ */
+std::vector<std::string> BuildLoadFilterLines(const std::vector<std::wstring>& modules);
 
 } // namespace appbox::tracer
 

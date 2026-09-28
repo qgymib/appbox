@@ -16,8 +16,8 @@ namespace
  * The order is the alphabetical one of the dialog, so a change of the list or
  * of its order is a deliberate change of the dialog and not an accident.
  */
-const std::vector<std::string> kExpectedDependencies = {
-    "asio", "Detours", "expected", "libzip", "nlohmann_json", "spdlog", "wxWidgets", "zlib"};
+const std::vector<std::string> kExpectedDependencies = { "asio",          "Detours", "expected",  "libzip",
+                                                         "nlohmann_json", "spdlog",  "wxWidgets", "zlib" };
 
 /**
  * @brief Check whether a text is matched by a regular expression as a whole.
@@ -44,7 +44,7 @@ TEST(UnitAboutInfo, SummaryIsOneShortSentence)
     EXPECT_EQ(summary.find('\n'), std::string::npos);
     EXPECT_EQ(summary.find('\r'), std::string::npos);
     EXPECT_EQ(summary.back(), '.');
-    EXPECT_LT(summary.size(), std::size_t{100});
+    EXPECT_LT(summary.size(), std::size_t{ 100 });
 }
 
 /**
@@ -60,8 +60,7 @@ TEST(UnitAboutInfo, VersionIsADottedNumber)
  */
 TEST(UnitAboutInfo, BuildDateIsATimestamp)
 {
-    EXPECT_TRUE(Matches(appbox::GetAboutInfo().build_date,
-                        "[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}"));
+    EXPECT_TRUE(Matches(appbox::GetAboutInfo().build_date, "[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}"));
 }
 
 /**
@@ -100,8 +99,7 @@ TEST(UnitAboutInfo, DependenciesAreTheLinkedLibraries)
         const auto& dependency = info.dependencies[index];
 
         EXPECT_EQ(dependency.name, kExpectedDependencies[index]);
-        EXPECT_TRUE(seen.insert(dependency.name).second)
-            << "duplicate dependency: " << dependency.name;
+        EXPECT_TRUE(seen.insert(dependency.name).second) << "duplicate dependency: " << dependency.name;
         EXPECT_TRUE(Matches(dependency.version, "[0-9]+\\.[0-9]+(\\.[0-9]+)?"))
             << dependency.name << " has the unexpected version " << dependency.version;
     }

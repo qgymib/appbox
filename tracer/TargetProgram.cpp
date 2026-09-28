@@ -26,8 +26,8 @@ std::filesystem::path ResolveTargetProgram(const std::filesystem::path& target)
      * a typo in a relative path a hard error.
      */
     std::vector<wchar_t> buffer(MAX_PATH);
-    const DWORD length = ::SearchPathW(nullptr, target.c_str(), L".exe",
-                                       static_cast<DWORD>(buffer.size()), buffer.data(), nullptr);
+    const DWORD          length =
+        ::SearchPathW(nullptr, target.c_str(), L".exe", static_cast<DWORD>(buffer.size()), buffer.data(), nullptr);
     if (length == 0)
     {
         return {};
@@ -37,8 +37,8 @@ std::filesystem::path ResolveTargetProgram(const std::filesystem::path& target)
     {
         /* The buffer was too small: the call reports the required size. */
         buffer.resize(static_cast<std::size_t>(length) + 1);
-        const DWORD retry = ::SearchPathW(nullptr, target.c_str(), L".exe",
-                                          static_cast<DWORD>(buffer.size()), buffer.data(), nullptr);
+        const DWORD retry =
+            ::SearchPathW(nullptr, target.c_str(), L".exe", static_cast<DWORD>(buffer.size()), buffer.data(), nullptr);
         if (retry == 0 || retry >= buffer.size())
         {
             return {};

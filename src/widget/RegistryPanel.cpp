@@ -56,12 +56,10 @@ int IsolationMenuId()
 
 } // namespace
 
-RegistryPanel::RegistryPanel(wxWindow* parent, appbox::RegistryModel& model)
-    : wxPanel(parent, wxID_ANY),
-      model_(model)
+RegistryPanel::RegistryPanel(wxWindow* parent, appbox::RegistryModel& model) : wxPanel(parent, wxID_ANY), model_(model)
 {
-    auto* splitter = new wxSplitterWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                                         wxSP_LIVE_UPDATE | wxSP_3DSASH);
+    auto* splitter =
+        new wxSplitterWindow(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxSP_LIVE_UPDATE | wxSP_3DSASH);
     splitter->SetMinimumPaneSize(180);
 
     auto folder_icon = wxArtProvider::GetBitmap(wxART_FOLDER, wxART_OTHER, wxSize(16, 16));
@@ -112,8 +110,7 @@ RegistryPanel::RegistryPanel(wxWindow* parent, appbox::RegistryModel& model)
 
 void RegistryPanel::CreateList(wxWindow* parent)
 {
-    list_ = new wxDataViewListCtrl(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                                   wxDV_ROW_LINES | wxDV_SINGLE);
+    list_ = new wxDataViewListCtrl(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxDV_ROW_LINES | wxDV_SINGLE);
     /*
      * The Name column shows an icon before the name of the row: a folder for a
      * sub key and a plain file for a value, so the kind of a row is visible
@@ -193,8 +190,7 @@ void RegistryPanel::BuildTree()
 
     /* The five root keys are opened, so their content is visible at a glance. */
     wxTreeItemIdValue cookie = nullptr;
-    for (auto item = tree_->GetFirstChild(root, cookie); item.IsOk();
-         item = tree_->GetNextChild(root, cookie))
+    for (auto item = tree_->GetFirstChild(root, cookie); item.IsOk(); item = tree_->GetNextChild(root, cookie))
     {
         tree_->Expand(item);
     }
@@ -314,9 +310,8 @@ void RegistryPanel::AppendRow(const RowInfo& row, std::size_t index)
     values.push_back(name);
     values.push_back(wxVariant(wxString(appbox::RegistryIsolationName(row.isolation))));
     values.push_back(wxVariant(is_value ? wxString(appbox::RegistryValueTypeName(row.type)) : wxString()));
-    values.push_back(wxVariant(is_value ? wxString(appbox::FormatRegistryValueData(
-                                              row.type, row.data, kValuePreviewLength))
-                                        : wxString()));
+    values.push_back(wxVariant(
+        is_value ? wxString(appbox::FormatRegistryValueData(row.type, row.data, kValuePreviewLength)) : wxString()));
 
     list_->AppendItem(values, static_cast<wxUIntPtr>(index));
 }
@@ -345,7 +340,7 @@ void RegistryPanel::UpdateToolBarState()
         return;
     }
 
-    bool removable = false;
+    bool      removable = false;
     const int index = SelectedRowIndex();
     if (index >= 0)
     {
@@ -420,8 +415,8 @@ void RegistryPanel::EditKey(int index)
     const auto* key = model_.FindKey(path);
     if (key != nullptr && !key->removable)
     {
-        wxMessageBox("The root keys of the registry view cannot be renamed.", "Edit Key",
-                     wxOK | wxICON_INFORMATION, this);
+        wxMessageBox("The root keys of the registry view cannot be renamed.", "Edit Key", wxOK | wxICON_INFORMATION,
+                     this);
         return;
     }
 
@@ -433,7 +428,7 @@ void RegistryPanel::EditKey(int index)
     RegistryKeyDialog dialog(this, "Edit Key", wxString(current_path_), wxString(row.name),
                              [this, path](const std::wstring& name) -> std::string {
                                  appbox::RegistryModel copy = model_;
-                                 std::string error;
+                                 std::string           error;
                                  if (!copy.RenameKey(path, name, error))
                                  {
                                      return error;
@@ -463,18 +458,17 @@ void RegistryPanel::EditValue(int index)
     const auto key_path = current_path_;
     const auto old_name = row.name;
 
-    RegistryValueDialog dialog(
-        this, "Edit Value", wxString(key_path), wxString(old_name), row.type, row.data,
-        [this, key_path, old_name](const std::wstring& name, appbox::RegistryValueType type,
-                                   const std::vector<std::uint8_t>& data) -> std::string {
-            appbox::RegistryModel copy = model_;
-            std::string error;
-            if (!copy.UpdateValue(key_path, old_name, name, type, data, error))
-            {
-                return error;
-            }
-            return {};
-        });
+    RegistryValueDialog dialog(this, "Edit Value", wxString(key_path), wxString(old_name), row.type, row.data,
+                               [this, key_path, old_name](const std::wstring& name, appbox::RegistryValueType type,
+                                                          const std::vector<std::uint8_t>& data) -> std::string {
+                                   appbox::RegistryModel copy = model_;
+                                   std::string           error;
+                                   if (!copy.UpdateValue(key_path, old_name, name, type, data, error))
+                                   {
+                                       return error;
+                                   }
+                                   return {};
+                               });
     if (dialog.ShowModal() != wxID_OK)
     {
         return;
@@ -523,8 +517,7 @@ void RegistryPanel::OnTreeRightClick(wxTreeEvent& event)
 
     wxMenu menu;
     menu.Append(IsolationMenuId(), "Isolation Mode...");
-    menu.Bind(
-        wxEVT_MENU, [this, path](wxCommandEvent&) { EditIsolation(path); }, IsolationMenuId());
+    menu.Bind(wxEVT_MENU, [this, path](wxCommandEvent&) { EditIsolation(path); }, IsolationMenuId());
     PopupMenu(&menu);
 }
 
@@ -595,8 +588,7 @@ void RegistryPanel::OnIsolationChanged(wxDataViewEvent& event)
         return;
     }
 
-    const auto chosen = list_->GetTextValue(static_cast<unsigned int>(row_in_control), kIsolationColumn)
-                            .ToStdWstring();
+    const auto chosen = list_->GetTextValue(static_cast<unsigned int>(row_in_control), kIsolationColumn).ToStdWstring();
     const auto& names = appbox::RegistryIsolationNames();
     for (std::size_t position = 0; position < names.size(); ++position)
     {
@@ -625,7 +617,7 @@ void RegistryPanel::OnAddKey(wxCommandEvent&)
     RegistryKeyDialog dialog(this, "Add Key", wxString(current_path_), wxEmptyString,
                              [this](const std::wstring& name) -> std::string {
                                  appbox::RegistryModel copy = model_;
-                                 std::string error;
+                                 std::string           error;
                                  if (!copy.AddKey(current_path_, name, error))
                                  {
                                      return error;
@@ -656,18 +648,18 @@ void RegistryPanel::OnAddValue(wxCommandEvent&)
         return;
     }
 
-    RegistryValueDialog dialog(
-        this, "Add Value", wxString(current_path_), wxEmptyString, appbox::RegistryValueType::String, {},
-        [this](const std::wstring& name, appbox::RegistryValueType type,
-               const std::vector<std::uint8_t>& data) -> std::string {
-            appbox::RegistryModel copy = model_;
-            std::string error;
-            if (!copy.AddValue(current_path_, name, type, data, error))
-            {
-                return error;
-            }
-            return {};
-        });
+    RegistryValueDialog dialog(this, "Add Value", wxString(current_path_), wxEmptyString,
+                               appbox::RegistryValueType::String, {},
+                               [this](const std::wstring& name, appbox::RegistryValueType type,
+                                      const std::vector<std::uint8_t>& data) -> std::string {
+                                   appbox::RegistryModel copy = model_;
+                                   std::string           error;
+                                   if (!copy.AddValue(current_path_, name, type, data, error))
+                                   {
+                                       return error;
+                                   }
+                                   return {};
+                               });
     if (dialog.ShowModal() != wxID_OK)
     {
         return;
@@ -700,17 +692,16 @@ void RegistryPanel::OnRemove(wxCommandEvent&)
         return;
     }
 
-    const auto path = appbox::JoinRegistryPath(current_path_, row.name);
+    const auto  path = appbox::JoinRegistryPath(current_path_, row.name);
     const auto* key = model_.FindKey(path);
     if (key == nullptr || !key->removable)
     {
-        wxMessageBox("The root keys of the registry view cannot be removed.", "Remove",
-                     wxOK | wxICON_INFORMATION, this);
+        wxMessageBox("The root keys of the registry view cannot be removed.", "Remove", wxOK | wxICON_INFORMATION,
+                     this);
         return;
     }
 
-    const auto question =
-        wxString::Format("Remove the key '%s' and everything below it?", wxString(row.name));
+    const auto      question = wxString::Format("Remove the key '%s' and everything below it?", wxString(row.name));
     wxMessageDialog confirm(this, question, "Remove", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
     if (confirm.ShowModal() != wxID_YES)
     {

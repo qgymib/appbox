@@ -78,8 +78,7 @@ struct AboutInfo
  * The text is the complete functional description of the About dialog: it
  * replaces the multi paragraph explanation the dialog used to show.
  */
-inline constexpr const char* kAboutSummary =
-    "Package an installed application into a portable, sandboxed archive.";
+inline constexpr const char* kAboutSummary = "Package an installed application into a portable, sandboxed archive.";
 
 /**
  * @brief Get the build information recorded when the application was built.

@@ -17,8 +17,7 @@ static nlohmann::json ProbeRegEnumValue_Entry(const nlohmann::json& data)
     appbox::test::ProtocolRegEnumValue::Rsp rsp;
 
     HKEY key = nullptr;
-    rsp.open_code =
-        RegOpenKeyExW(HKEY_CURRENT_USER, appbox::UTF8ToWide(req.Key).c_str(), 0, KEY_READ, &key);
+    rsp.open_code = RegOpenKeyExW(HKEY_CURRENT_USER, appbox::UTF8ToWide(req.Key).c_str(), 0, KEY_READ, &key);
     if (rsp.open_code != ERROR_SUCCESS)
     {
         return rsp;
@@ -32,7 +31,7 @@ static nlohmann::json ProbeRegEnumValue_Entry(const nlohmann::json& data)
         wchar_t name[16384] = {};
         DWORD   name_len = (DWORD)std::size(name);
         DWORD   type = 0;
-        LONG rc = RegEnumValueW(key, i, name, &name_len, nullptr, &type, nullptr, nullptr);
+        LONG    rc = RegEnumValueW(key, i, name, &name_len, nullptr, &type, nullptr, nullptr);
         if (rc == ERROR_NO_MORE_ITEMS)
         {
             rsp.enum_code = 0;

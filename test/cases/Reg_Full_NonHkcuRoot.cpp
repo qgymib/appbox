@@ -37,8 +37,8 @@ ProtocolRegReadValue::Rsp ReadValue(const std::string& root_name, const std::wst
                                     const appbox::LoaderConfig& config)
 {
     ProtocolRegReadValue::Req req;
-    req.Root  = root_name;
-    req.Key   = appbox::WideToUTF8(key_path);
+    req.Root = root_name;
+    req.Key = appbox::WideToUTF8(key_path);
     req.Value = value_name;
     return ProbeRegReadValue.Call(req, cwd, config).get<ProtocolRegReadValue::Rsp>();
 }

@@ -68,18 +68,18 @@ wxRibbonButtonBar* RibbonBar::AppendButtonGroup(wxRibbonPage* page, const wxStri
     return new wxRibbonButtonBar(panel);
 }
 
-void RibbonBar::AddLargeButton(wxRibbonButtonBar* bar, int id, const wxString& label,
-                               const wxString& art, const wxString& help, bool enabled)
+void RibbonBar::AddLargeButton(wxRibbonButtonBar* bar, int id, const wxString& label, const wxString& art,
+                               const wxString& help, bool enabled)
 {
     bar->AddButton(id, label, LoadIcon(art, kLargeIconSize), help);
     bar->EnableButton(id, enabled);
 }
 
-void RibbonBar::AddSmallButton(wxRibbonButtonBar* bar, int id, const wxString& label,
-                               const wxString& art, const wxString& help, bool enabled)
+void RibbonBar::AddSmallButton(wxRibbonButtonBar* bar, int id, const wxString& label, const wxString& art,
+                               const wxString& help, bool enabled)
 {
-    bar->AddButton(id, label, LoadIcon(art, kLargeIconSize), LoadIcon(art, kSmallIconSize),
-                   wxNullBitmap, wxNullBitmap, wxRIBBON_BUTTON_NORMAL, help);
+    bar->AddButton(id, label, LoadIcon(art, kLargeIconSize), LoadIcon(art, kSmallIconSize), wxNullBitmap, wxNullBitmap,
+                   wxRIBBON_BUTTON_NORMAL, help);
     bar->EnableButton(id, enabled);
 }
 
@@ -89,8 +89,7 @@ void RibbonBar::AppendOutputGroup(wxRibbonPage* page)
     auto* sizer = new wxBoxSizer(wxVERTICAL);
 
     auto* file_row = new wxBoxSizer(wxHORIZONTAL);
-    file_row->Add(new wxStaticText(panel, wxID_ANY, "Output File:"), 0,
-                  wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+    file_row->Add(new wxStaticText(panel, wxID_ANY, "Output File:"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
     output_path_ = new wxTextCtrl(panel, kRibbonOutputPath);
     output_path_->SetToolTip("Destination archive written by the Build command");
     file_row->Add(output_path_, 1, wxALIGN_CENTER_VERTICAL);
@@ -98,13 +97,12 @@ void RibbonBar::AppendOutputGroup(wxRibbonPage* page)
     sizer->Add(file_row, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 6);
 
     auto* type_row = new wxBoxSizer(wxHORIZONTAL);
-    type_row->Add(new wxStaticText(panel, wxID_ANY, "Project Type:"), 0,
-                  wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+    type_row->Add(new wxStaticText(panel, wxID_ANY, "Project Type:"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
 
     wxArrayString project_types;
     project_types.Add("Standalone (ZIP)");
-    auto* project_type = new wxComboBox(panel, wxID_ANY, "Standalone (ZIP)", wxDefaultPosition,
-                                        wxDefaultSize, project_types, wxCB_READONLY);
+    auto* project_type = new wxComboBox(panel, wxID_ANY, "Standalone (ZIP)", wxDefaultPosition, wxDefaultSize,
+                                        project_types, wxCB_READONLY);
     project_type->SetToolTip("The packer always writes a standalone zip archive");
     type_row->Add(project_type, 1, wxALIGN_CENTER_VERTICAL);
 
@@ -121,18 +119,17 @@ void RibbonBar::CreateHomePage()
     auto* page = AppendRibbonPage("Home");
 
     auto* capture = AppendButtonGroup(page, "Capture");
-    AddLargeButton(capture, wxNewId(), "Start Capture", wxART_FIND,
-                   "Capture the changes of a running application", false);
-    AddSmallButton(capture, wxNewId(), "Capture Before", wxART_GO_BACK,
-                   "Take a snapshot before the capture starts", false);
+    AddLargeButton(capture, wxNewId(), "Start Capture", wxART_FIND, "Capture the changes of a running application",
+                   false);
+    AddSmallButton(capture, wxNewId(), "Capture Before", wxART_GO_BACK, "Take a snapshot before the capture starts",
+                   false);
     AddSmallButton(capture, wxNewId(), "Capture and Diff", wxART_GO_FORWARD,
                    "Capture and compare against the previous snapshot", false);
 
     auto* snapshot = AppendButtonGroup(page, "Snapshot");
-    AddLargeButton(snapshot, wxNewId(), "Snapshot", wxART_FOLDER,
-                   "Store the current filesystem snapshot", false);
-    AddSmallButton(snapshot, wxNewId(), "Merge Snapshot", wxART_REDO,
-                   "Merge a stored snapshot into the project", false);
+    AddLargeButton(snapshot, wxNewId(), "Snapshot", wxART_FOLDER, "Store the current filesystem snapshot", false);
+    AddSmallButton(snapshot, wxNewId(), "Merge Snapshot", wxART_REDO, "Merge a stored snapshot into the project",
+                   false);
 
     auto* build = AppendButtonGroup(page, "Build");
     AddLargeButton(build, kRibbonBuild, "Build", wxART_FILE_SAVE,
@@ -149,8 +146,8 @@ void RibbonBar::CreateHomePage()
     AppendOutputGroup(page);
 
     auto* publish = AppendButtonGroup(page, "Publish");
-    AddLargeButton(publish, wxNewId(), "Publish to Server", wxART_GO_UP,
-                   "Upload the archive to a remote repository", false);
+    AddLargeButton(publish, wxNewId(), "Publish to Server", wxART_GO_UP, "Upload the archive to a remote repository",
+                   false);
     AddLargeButton(publish, wxNewId(), "Publish to Local Repository", wxART_HARDDISK,
                    "Copy the archive into the local package repository", false);
 }
@@ -162,12 +159,10 @@ void RibbonBar::CreateAdvancedPage()
     auto* diagnostics = AppendButtonGroup(page, "Diagnostics");
     AddLargeButton(diagnostics, wxNewId(), "Verify Archive", wxART_INFORMATION,
                    "Check the entries of a written archive", false);
-    AddSmallButton(diagnostics, wxNewId(), "Show Log", wxART_LIST_VIEW,
-                   "Show the packer log of the last run", false);
-    AddSmallButton(diagnostics, wxNewId(), "Clear Log", wxART_DELETE,
-                   "Drop the buffered log of the last run", false);
+    AddSmallButton(diagnostics, wxNewId(), "Show Log", wxART_LIST_VIEW, "Show the packer log of the last run", false);
+    AddSmallButton(diagnostics, wxNewId(), "Clear Log", wxART_DELETE, "Drop the buffered log of the last run", false);
 
     auto* layers = AppendButtonGroup(page, "Layers");
-    AddLargeButton(layers, wxNewId(), "Edit Layers", wxART_FOLDER,
-                   "Reorder the lower filesystem layers of the project", false);
+    AddLargeButton(layers, wxNewId(), "Edit Layers", wxART_FOLDER, "Reorder the lower filesystem layers of the project",
+                   false);
 }

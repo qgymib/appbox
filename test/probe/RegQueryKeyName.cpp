@@ -29,13 +29,13 @@ static nlohmann::json ProbeRegQueryKeyName_Entry(const nlohmann::json& data)
     auto ntdll = GetModuleHandleW(L"ntdll.dll");
     if (ntdll != nullptr)
     {
-        auto fn_query_key = reinterpret_cast<NTSTATUS (*)(HANDLE, ULONG, PVOID, ULONG, PULONG)>(
-            GetProcAddress(ntdll, "NtQueryKey"));
+        auto fn_query_key =
+            reinterpret_cast<NTSTATUS (*)(HANDLE, ULONG, PVOID, ULONG, PULONG)>(GetProcAddress(ntdll, "NtQueryKey"));
         if (fn_query_key != nullptr)
         {
             /* KeyNameInformation == 3 */
-            BYTE  buf[1024] = {};
-            ULONG needed = 0;
+            BYTE     buf[1024] = {};
+            ULONG    needed = 0;
             NTSTATUS st = fn_query_key(key, 3, buf, sizeof(buf), &needed);
             rsp.query_key_code = static_cast<DWORD>(st);
             if (NT_SUCCESS(st))
@@ -45,20 +45,19 @@ static nlohmann::json ProbeRegQueryKeyName_Entry(const nlohmann::json& data)
                 memcpy(&name_len, buf, sizeof(name_len));
                 if (name_len > 0 && 4 + name_len <= sizeof(buf))
                 {
-                    rsp.key_name =
-                        appbox::WideToUTF8(std::wstring(reinterpret_cast<const wchar_t*>(buf + 4),
-                                                        name_len / sizeof(wchar_t)));
+                    rsp.key_name = appbox::WideToUTF8(
+                        std::wstring(reinterpret_cast<const wchar_t*>(buf + 4), name_len / sizeof(wchar_t)));
                 }
             }
         }
 
-        auto fn_query_object = reinterpret_cast<NTSTATUS (*)(HANDLE, ULONG, PVOID, ULONG, PULONG)>(
-            GetProcAddress(ntdll, "NtQueryObject"));
+        auto fn_query_object =
+            reinterpret_cast<NTSTATUS (*)(HANDLE, ULONG, PVOID, ULONG, PULONG)>(GetProcAddress(ntdll, "NtQueryObject"));
         if (fn_query_object != nullptr)
         {
             /* ObjectNameInformation == 1 */
-            BYTE  buf[1024] = {};
-            ULONG needed = 0;
+            BYTE     buf[1024] = {};
+            ULONG    needed = 0;
             NTSTATUS st = fn_query_object(key, 1, buf, sizeof(buf), &needed);
             rsp.query_object_code = static_cast<DWORD>(st);
             if (NT_SUCCESS(st))
@@ -70,9 +69,8 @@ static nlohmann::json ProbeRegQueryKeyName_Entry(const nlohmann::json& data)
                 memcpy(&buffer, reinterpret_cast<BYTE*>(buf) + sizeof(void*), sizeof(buffer));
                 if (length > 0 && buffer != nullptr)
                 {
-                    rsp.object_name =
-                        appbox::WideToUTF8(std::wstring(reinterpret_cast<const wchar_t*>(buffer),
-                                                        length / sizeof(wchar_t)));
+                    rsp.object_name = appbox::WideToUTF8(
+                        std::wstring(reinterpret_cast<const wchar_t*>(buffer), length / sizeof(wchar_t)));
                 }
             }
         }

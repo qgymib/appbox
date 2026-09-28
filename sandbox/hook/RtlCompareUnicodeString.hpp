@@ -24,7 +24,7 @@ extern T_RtlCompareUnicodeString sys_RtlCompareUnicodeString;
 
 namespace appbox
 {
-    
+
 /**
  * @brief Hook RtlCompareUnicodeString().
  */

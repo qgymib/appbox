@@ -63,18 +63,19 @@ TEST_F(Fs, ListDir_IsolationFiltersTheEntries)
     /* clang-format on */
 
     auto config = tree.Build();
-    ASSERT_TRUE(WriteFsIsolationFile(config, {
-        { L"#APPDATA#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
-          appbox::FilesystemIsolation::Full },
-        { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\hidden.txt", appbox::FilesystemEntryKind::File,
-          appbox::FilesystemIsolation::Whiteout }
+    ASSERT_TRUE(WriteFsIsolationFile(
+        config, {
+                    { L"#APPDATA#\\" + std::wstring(kFolderName),                   appbox::FilesystemEntryKind::Directory,
+                     appbox::FilesystemIsolation::Full     },
+                    { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\hidden.txt", appbox::FilesystemEntryKind::File,
+                     appbox::FilesystemIsolation::Whiteout }
     }));
 
     const auto folder = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName;
 
     /* The user mode wrappers report the visible entry only. */
-    for (const auto method : { ProtocolListDir::Req::Method::Std, ProtocolListDir::Req::Method::WinAPI,
-                               ProtocolListDir::Req::Method::CRT })
+    for (const auto method :
+         { ProtocolListDir::Req::Method::Std, ProtocolListDir::Req::Method::WinAPI, ProtocolListDir::Req::Method::CRT })
     {
         ProtocolListDir::Req req;
         req.path = appbox::WideToUTF8(folder);

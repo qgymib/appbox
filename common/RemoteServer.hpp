@@ -87,19 +87,18 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
         {
         }
 
-        const uint64_t    uid;        /* Global unique id */
-        const uint64_t    session_id; /* Session id */
-        nlohmann::json    request;    /* Client request */
-        std::string       method;     /* Request method */
-        nlohmann::json    id;         /* Request id in the request object */
+        const uint64_t uid;        /* Global unique id */
+        const uint64_t session_id; /* Session id */
+        nlohmann::json request;    /* Client request */
+        std::string    method;     /* Request method */
+        nlohmann::json id;         /* Request id in the request object */
     };
 
-    typedef std::map<std::string, MethodCallback>   MethodCallbackMap;
-    typedef std::map<uint64_t, RemoteSession::Ptr>  SessionMap;
+    typedef std::map<std::string, MethodCallback>    MethodCallbackMap;
+    typedef std::map<uint64_t, RemoteSession::Ptr>   SessionMap;
     typedef std::map<uint64_t, IncomingRequest::Ptr> IncomingRequestMap;
 
-    Data()
-        : uid_gen(0)
+    Data() : uid_gen(0)
     {
     }
 
@@ -128,8 +127,8 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
     {
         auto self = shared_from_this();
         auto pipe = std::make_shared<asio::windows::stream_handle>(io_context, CreatePipeInstance(pipe_path));
-        asio::windows::overlapped_ptr ov(io_context,
-                                         [self, pipe](asio::error_code ec, std::size_t) { self->OnConnected(ec, pipe); });
+        asio::windows::overlapped_ptr ov(
+            io_context, [self, pipe](asio::error_code ec, std::size_t) { self->OnConnected(ec, pipe); });
 
         BOOL  ok = ConnectNamedPipe(pipe->native_handle(), ov.get());
         DWORD err = GetLastError();
@@ -315,8 +314,7 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
      */
     static HANDLE CreatePipeInstance(const std::string& pipe_name)
     {
-        HANDLE h = ::CreateNamedPipeA(pipe_name.c_str(),
-                                      PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED, /* IOCP */
+        HANDLE h = ::CreateNamedPipeA(pipe_name.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED, /* IOCP */
                                       PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
                                       PIPE_UNLIMITED_INSTANCES, /* Allow any number of clients */
                                       4096,                     /* Output buffer */
@@ -337,7 +335,7 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
 
     asio::io_context io_context; /* IO context of the private IO thread */
 
-    std::thread         thread;  /* Working thread */
+    std::thread          thread;  /* Working thread */
     std::atomic_uint64_t uid_gen; /* Request id generator */
 
     IncomingRequestMap request_map;       /* Incoming request map */
@@ -347,8 +345,7 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
     std::mutex session_map_mutex; /* Session map lock */
 };
 
-inline RemoteServer::RemoteServer()
-    : data_(std::make_shared<Data>())
+inline RemoteServer::RemoteServer() : data_(std::make_shared<Data>())
 {
 }
 

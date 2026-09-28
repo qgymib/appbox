@@ -63,7 +63,7 @@ TEST_F(Reg, Full_HidesRealValue)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegReadValue::Req shared;
-    shared.Key   = appbox::WideToUTF8(subkey);
+    shared.Key = appbox::WideToUTF8(subkey);
     shared.Value = "Shared";
 
     const auto shared_rsp = ProbeRegReadValue.Call(shared, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
@@ -72,7 +72,7 @@ TEST_F(Reg, Full_HidesRealValue)
     EXPECT_EQ(shared_rsp.data, "sandbox");
 
     ProtocolRegReadValue::Req hidden;
-    hidden.Key   = appbox::WideToUTF8(subkey);
+    hidden.Key = appbox::WideToUTF8(subkey);
     hidden.Value = "RealOnly";
 
     const auto hidden_rsp = ProbeRegReadValue.Call(hidden, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
@@ -80,10 +80,10 @@ TEST_F(Reg, Full_HidesRealValue)
     EXPECT_EQ(hidden_rsp.query_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
 
     /* Both values of the host registry are unchanged. */
-    HKEY  key = nullptr;
-    DWORD type = 0;
+    HKEY    key = nullptr;
+    DWORD   type = 0;
     wchar_t buffer[64] = {};
-    DWORD size = sizeof(buffer);
+    DWORD   size = sizeof(buffer);
     ASSERT_EQ(RegOpenKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, KEY_QUERY_VALUE, &key), ERROR_SUCCESS);
     ASSERT_EQ(RegQueryValueExW(key, L"RealOnly", nullptr, &type, reinterpret_cast<LPBYTE>(buffer), &size),
               ERROR_SUCCESS);

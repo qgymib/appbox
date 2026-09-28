@@ -96,9 +96,9 @@ static nlohmann::json ProbeRegQueryMultipleValues_Entry(const nlohmann::json& da
     for (std::size_t index = 0; index < names.size(); ++index)
     {
         entries[index].ve_valuename = const_cast<LPWSTR>(names[index].c_str());
-        entries[index].ve_valuelen  = 0;
-        entries[index].ve_valueptr  = 0;
-        entries[index].ve_type      = 0;
+        entries[index].ve_valuelen = 0;
+        entries[index].ve_valueptr = 0;
+        entries[index].ve_type = 0;
     }
 
     std::vector<wchar_t> buffer(2048);
@@ -110,7 +110,7 @@ static nlohmann::json ProbeRegQueryMultipleValues_Entry(const nlohmann::json& da
     if (rsp.query_code == ERROR_SUCCESS)
     {
         const auto base = reinterpret_cast<DWORD_PTR>(buffer.data());
-        const auto end  = base + buffer.size() * sizeof(wchar_t);
+        const auto end = base + buffer.size() * sizeof(wchar_t);
 
         for (const auto& entry : entries)
         {

@@ -16,7 +16,7 @@ const appbox::DetourOps& appbox::DefaultDetourOps()
 }
 
 appbox::HookTransactionResult appbox::ApplyHookTransaction(const HookRecord* const* hooks, size_t count,
-                                                          HookAction action, const DetourOps& ops)
+                                                           HookAction action, const DetourOps& ops)
 {
     HookTransactionResult result;
 
@@ -46,7 +46,7 @@ appbox::HookTransactionResult appbox::ApplyHookTransaction(const HookRecord* con
         }
 
         status = (action == HookAction::Attach) ? ops.fn_attach(hook->ppPointer, hook->pDetour)
-                                               : ops.fn_detach(hook->ppPointer, hook->pDetour);
+                                                : ops.fn_detach(hook->ppPointer, hook->pDetour);
         if (status != NO_ERROR)
         {
             result.pFailedHook = hook->name;

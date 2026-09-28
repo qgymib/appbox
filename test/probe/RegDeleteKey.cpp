@@ -46,8 +46,7 @@ static nlohmann::json ProbeRegDeleteKey_Entry(const nlohmann::json& data)
         rsp.open_code = RegOpenKeyExW(root, key_path.c_str(), 0, KEY_READ, &key);
         if (rsp.open_code == ERROR_SUCCESS)
         {
-            auto* fn = reinterpret_cast<T_NtDeleteKey>(
-                GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtDeleteKey"));
+            auto* fn = reinterpret_cast<T_NtDeleteKey>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtDeleteKey"));
             if (fn != nullptr)
             {
                 rsp.delete_code = static_cast<DWORD>(fn(reinterpret_cast<HANDLE>(key)));

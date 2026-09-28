@@ -208,10 +208,10 @@ TEST(UnitHiveReader, EnumSubKeys)
  */
 TEST(UnitHiveReader, EnumValues)
 {
-    const wchar_t  text[]    = L"Hello";
-    const DWORD    dword     = 16;
-    const BYTE     bytes[3]  = {0x48, 0x65, 0x6c};
-    const wchar_t  multi[]   = L"first\0second\0"; /* Trailing NUL of the literal terminates the list. */
+    const wchar_t text[] = L"Hello";
+    const DWORD   dword = 16;
+    const BYTE    bytes[3] = { 0x48, 0x65, 0x6c };
+    const wchar_t multi[] = L"first\0second\0"; /* Trailing NUL of the literal terminates the list. */
 
     {
         HiveWriter writer;
@@ -420,29 +420,29 @@ TEST(UnitHiveReader, FormatValueData)
 
     /* Strings are shown verbatim, empty ones as not set. */
     value.type = REG_SZ;
-    value.data = std::vector<BYTE>{0x48, 0x00, 0x69, 0x00, 0x00, 0x00}; /* L"Hi\0" */
+    value.data = std::vector<BYTE>{ 0x48, 0x00, 0x69, 0x00, 0x00, 0x00 }; /* L"Hi\0" */
     ASSERT_EQ(appbox::FormatValueData(value, 0), L"Hi");
     value.data.clear();
     ASSERT_EQ(appbox::FormatValueData(value, 0), L"(value not set)");
 
     /* DWORD is shown as hexadecimal and decimal. */
     value.type = REG_DWORD;
-    value.data = std::vector<BYTE>{0x10, 0x00, 0x00, 0x00};
+    value.data = std::vector<BYTE>{ 0x10, 0x00, 0x00, 0x00 };
     ASSERT_EQ(appbox::FormatValueData(value, 0), L"0x00000010 (16)");
 
     /* QWORD is shown as hexadecimal and decimal. */
     value.type = REG_QWORD;
-    value.data = std::vector<BYTE>{0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+    value.data = std::vector<BYTE>{ 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
     ASSERT_EQ(appbox::FormatValueData(value, 0), L"0x0000000000000010 (16)");
 
     /* MULTI_SZ entries are joined with a space. */
     value.type = REG_MULTI_SZ;
-    value.data = std::vector<BYTE>{L'a', 0x00, 0x00, 0x00, L'b', 0x00, 0x00, 0x00, 0x00, 0x00}; /* L"a\0b\0\0" */
+    value.data = std::vector<BYTE>{ L'a', 0x00, 0x00, 0x00, L'b', 0x00, 0x00, 0x00, 0x00, 0x00 }; /* L"a\0b\0\0" */
     ASSERT_EQ(appbox::FormatValueData(value, 0), L"a b");
 
     /* Binary data becomes a byte hex dump, empty data a placeholder. */
     value.type = REG_BINARY;
-    value.data = std::vector<BYTE>{0x48, 0x65, 0x6c};
+    value.data = std::vector<BYTE>{ 0x48, 0x65, 0x6c };
     ASSERT_EQ(appbox::FormatValueData(value, 0), L"48 65 6c");
     value.data.clear();
     ASSERT_EQ(appbox::FormatValueData(value, 0), L"(zero-length binary value)");
@@ -459,9 +459,8 @@ TEST(UnitHiveReader, FormatHexDump)
 {
     ASSERT_EQ(appbox::FormatHexDump({}), L"");
 
-    const std::vector<BYTE> data = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-                                    0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10};
-    ASSERT_EQ(appbox::FormatHexDump(data),
-              L"00000000  00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f\r\n"
-              L"00000010  10");
+    const std::vector<BYTE> data = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                                     0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10 };
+    ASSERT_EQ(appbox::FormatHexDump(data), L"00000000  00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f\r\n"
+                                           L"00000010  10");
 }

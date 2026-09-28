@@ -41,14 +41,15 @@ TEST_F(Reg, DeleteKey_NonEmpty)
 
     {
         HKEY child = nullptr;
-        ASSERT_EQ(RegCreateKeyExW(real_key.get(), L"HostChild", 0, nullptr, 0, KEY_ALL_ACCESS, nullptr, &child, nullptr),
-                  ERROR_SUCCESS);
+        ASSERT_EQ(
+            RegCreateKeyExW(real_key.get(), L"HostChild", 0, nullptr, 0, KEY_ALL_ACCESS, nullptr, &child, nullptr),
+            ERROR_SUCCESS);
         RegCloseKey(child);
     }
 
     /* The key which still holds a visible sub key cannot be deleted. */
     ProtocolRegDeleteKey::Req blocked;
-    blocked.Key  = appbox::WideToUTF8(subkey);
+    blocked.Key = appbox::WideToUTF8(subkey);
     blocked.Mode = "reg";
 
     const auto blocked_rsp = ProbeRegDeleteKey.Call(blocked, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();
@@ -57,7 +58,7 @@ TEST_F(Reg, DeleteKey_NonEmpty)
 
     /* The sub key of the host is deleted inside the sandbox. */
     ProtocolRegDeleteKey::Req child;
-    child.Key  = appbox::WideToUTF8(subkey + L"\\HostChild");
+    child.Key = appbox::WideToUTF8(subkey + L"\\HostChild");
     child.Mode = "reg";
 
     const auto child_rsp = ProbeRegDeleteKey.Call(child, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();

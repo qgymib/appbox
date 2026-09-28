@@ -25,19 +25,16 @@ const RegistryIsolation kModes[] = { RegistryIsolation::Full, RegistryIsolation:
  */
 TEST(UnitRegistryIsolationPolicy, FallbackTable)
 {
-    EXPECT_EQ(appbox::registry::FallbackForKey(RegistryIsolation::Full, KEY_READ),
-              OpenFallback::ReportHiveFailure);
+    EXPECT_EQ(appbox::registry::FallbackForKey(RegistryIsolation::Full, KEY_READ), OpenFallback::ReportHiveFailure);
     EXPECT_EQ(appbox::registry::FallbackForKey(RegistryIsolation::Full, KEY_ALL_ACCESS),
               OpenFallback::ReportHiveFailure);
 
-    EXPECT_EQ(appbox::registry::FallbackForKey(RegistryIsolation::Hide, KEY_READ),
-              OpenFallback::ReportHiveFailure);
+    EXPECT_EQ(appbox::registry::FallbackForKey(RegistryIsolation::Hide, KEY_READ), OpenFallback::ReportHiveFailure);
     EXPECT_EQ(appbox::registry::FallbackForKey(RegistryIsolation::Hide, KEY_SET_VALUE),
               OpenFallback::ReportHiveFailure);
 
     EXPECT_EQ(appbox::registry::FallbackForKey(RegistryIsolation::WriteCopy, KEY_READ), OpenFallback::UseHost);
-    EXPECT_EQ(appbox::registry::FallbackForKey(RegistryIsolation::WriteCopy, KEY_QUERY_VALUE),
-              OpenFallback::UseHost);
+    EXPECT_EQ(appbox::registry::FallbackForKey(RegistryIsolation::WriteCopy, KEY_QUERY_VALUE), OpenFallback::UseHost);
     EXPECT_EQ(appbox::registry::FallbackForKey(RegistryIsolation::WriteCopy, KEY_SET_VALUE), OpenFallback::CopyUp);
     EXPECT_EQ(appbox::registry::FallbackForKey(RegistryIsolation::WriteCopy, KEY_ALL_ACCESS), OpenFallback::CopyUp);
 }
@@ -188,9 +185,8 @@ TEST(UnitRegistryIsolationPolicy, ViewCreateDispositionAgreesWithHidesHost)
 {
     for (const auto mode : kModes)
     {
-        const bool reports_existing =
-            appbox::registry::ViewCreateDisposition(mode, REG_CREATED_NEW_KEY, true)
-            == static_cast<ULONG>(REG_OPENED_EXISTING_KEY);
+        const bool reports_existing = appbox::registry::ViewCreateDisposition(mode, REG_CREATED_NEW_KEY, true) ==
+                                      static_cast<ULONG>(REG_OPENED_EXISTING_KEY);
         EXPECT_EQ(reports_existing, !appbox::registry::IsolationTable::HidesHost(mode));
     }
 }

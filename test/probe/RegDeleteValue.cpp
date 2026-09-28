@@ -23,7 +23,7 @@ static nlohmann::json ProbeRegDeleteValue_Entry(const nlohmann::json& data)
         return rsp;
     }
 
-    const auto key_path   = appbox::UTF8ToWide(req.Key);
+    const auto key_path = appbox::UTF8ToWide(req.Key);
     const auto value_name = appbox::UTF8ToWide(req.Value);
 
     HKEY key = nullptr;
@@ -45,14 +45,15 @@ static nlohmann::json ProbeRegDeleteValue_Entry(const nlohmann::json& data)
 
     wchar_t buffer[128] = {};
     DWORD   size = sizeof(buffer);
-    rsp.query_code = RegQueryValueExW(probe, value_name.c_str(), nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size);
+    rsp.query_code =
+        RegQueryValueExW(probe, value_name.c_str(), nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size);
 
     /* The merged value enumeration, so a test can see whether the name is gone. */
     for (DWORD index = 0;; ++index)
     {
-        wchar_t name[256] = {};
-        DWORD   name_len  = sizeof(name) / sizeof(name[0]);
-        const LONG ret    = RegEnumValueW(probe, index, name, &name_len, nullptr, nullptr, nullptr, nullptr);
+        wchar_t    name[256] = {};
+        DWORD      name_len = sizeof(name) / sizeof(name[0]);
+        const LONG ret = RegEnumValueW(probe, index, name, &name_len, nullptr, nullptr, nullptr, nullptr);
         if (ret == ERROR_NO_MORE_ITEMS)
         {
             rsp.enum_code = ERROR_SUCCESS;

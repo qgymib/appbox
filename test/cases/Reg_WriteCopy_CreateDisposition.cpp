@@ -24,7 +24,7 @@ LONG ReadHostString(const std::wstring& subkey, const std::wstring& name, std::w
 {
     value.clear();
 
-    HKEY key = nullptr;
+    HKEY       key = nullptr;
     const LONG open = RegOpenKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, KEY_QUERY_VALUE, &key);
     if (open != ERROR_SUCCESS)
     {
@@ -80,15 +80,15 @@ TEST_F(Reg, WriteCopy_CreateDisposition)
 
     auto config = tree.Build();
 
-    const auto        prefix = L"Software\\AppBoxTest\\WriteCopy_CreateDisposition_"
-                        + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto prefix =
+        L"Software\\AppBoxTest\\WriteCopy_CreateDisposition_" + appbox::UTF8ToWide(appbox::RandomString(8));
     const std::string host_text = "HostValue";
     const std::string sandbox_text = "SandboxValue";
 
     const auto host_only = prefix + L"\\HostOnly";
     const auto hive_held = prefix + L"\\HiveHeld";
-    const auto full_key  = prefix + L"\\FullKey";
-    const auto new_key   = prefix + L"\\NewKey";
+    const auto full_key = prefix + L"\\FullKey";
+    const auto new_key = prefix + L"\\NewKey";
 
     /* The host holds two of the keys, the hive holds one and the isolation
      * file marks one of the host keys `Full`. */
@@ -111,9 +111,9 @@ TEST_F(Reg, WriteCopy_CreateDisposition)
      * merged view of `WriteCopy`. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key   = appbox::WideToUTF8(host_only);
+        req.Key = appbox::WideToUTF8(host_only);
         req.Value = "TestValue";
-        req.Data  = sandbox_text;
+        req.Data = sandbox_text;
 
         const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
         ASSERT_EQ(rsp.create_code, 0u);
@@ -126,9 +126,9 @@ TEST_F(Reg, WriteCopy_CreateDisposition)
      * as well. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key   = appbox::WideToUTF8(hive_held);
+        req.Key = appbox::WideToUTF8(hive_held);
         req.Value = "TestValue";
-        req.Data  = sandbox_text;
+        req.Data = sandbox_text;
 
         const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
         ASSERT_EQ(rsp.create_code, 0u);
@@ -141,9 +141,9 @@ TEST_F(Reg, WriteCopy_CreateDisposition)
      * sandbox. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key   = appbox::WideToUTF8(full_key);
+        req.Key = appbox::WideToUTF8(full_key);
         req.Value = "TestValue";
-        req.Data  = sandbox_text;
+        req.Data = sandbox_text;
 
         const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
         ASSERT_EQ(rsp.create_code, 0u);
@@ -155,9 +155,9 @@ TEST_F(Reg, WriteCopy_CreateDisposition)
     /* Neither layer holds the key: the create builds it inside the hive. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key   = appbox::WideToUTF8(new_key);
+        req.Key = appbox::WideToUTF8(new_key);
         req.Value = "TestValue";
-        req.Data  = sandbox_text;
+        req.Data = sandbox_text;
 
         const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
         ASSERT_EQ(rsp.create_code, 0u);

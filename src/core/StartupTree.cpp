@@ -69,8 +69,7 @@ bool HasExtension(const std::wstring& path, const std::wstring& extension)
  * @param[in] right Right row.
  * @return true when the left row comes first.
  */
-bool RowComesFirst(const std::unique_ptr<appbox::StartupNode>& left,
-                   const std::unique_ptr<appbox::StartupNode>& right)
+bool RowComesFirst(const std::unique_ptr<appbox::StartupNode>& left, const std::unique_ptr<appbox::StartupNode>& right)
 {
     const bool left_folder = left->kind != appbox::StartupNodeKind::Executable;
     const bool right_folder = right->kind != appbox::StartupNodeKind::Executable;
@@ -144,7 +143,7 @@ void StartupTree::EnumerateChildren(StartupNode& node)
 {
     node.populated = true;
 
-    std::error_code ec;
+    std::error_code                     ec;
     std::filesystem::directory_iterator it(node.host_path, ec);
     if (ec)
     {
@@ -156,10 +155,10 @@ void StartupTree::EnumerateChildren(StartupNode& node)
     const std::filesystem::directory_iterator end;
     while (it != end)
     {
-        const auto& path = it->path();
+        const auto&     path = it->path();
         std::error_code entry_ec;
-        const bool is_directory = it->is_directory(entry_ec);
-        const bool is_file = !is_directory && it->is_regular_file(entry_ec);
+        const bool      is_directory = it->is_directory(entry_ec);
+        const bool      is_file = !is_directory && it->is_regular_file(entry_ec);
 
         if (is_directory || (is_file && HasExtension(path.wstring(), L".exe")))
         {
@@ -259,8 +258,8 @@ bool StartupTree::IsChecked(const StartupNode& node) const
         return false;
     }
 
-    return node.preset_id == checked_.preset_id && EqualsIgnoreCase(node.import_name, checked_.import_name)
-           && EqualsIgnoreCase(node.relative_path, checked_.relative_path);
+    return node.preset_id == checked_.preset_id && EqualsIgnoreCase(node.import_name, checked_.import_name) &&
+           EqualsIgnoreCase(node.relative_path, checked_.relative_path);
 }
 
 bool StartupTree::SetChecked(const StartupNode& node)

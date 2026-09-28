@@ -72,8 +72,8 @@ public:
      * @param[in] mouseEvent Mouse event which activated the cell, may be null.
      * @return true when the value was changed.
      */
-    bool ActivateCell(const wxRect& cell, wxDataViewModel* model, const wxDataViewItem& item,
-                      unsigned int col, const wxMouseEvent* mouseEvent) override;
+    bool ActivateCell(const wxRect& cell, wxDataViewModel* model, const wxDataViewItem& item, unsigned int col,
+                      const wxMouseEvent* mouseEvent) override;
 
 private:
     /**

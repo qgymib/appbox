@@ -246,7 +246,7 @@ nlohmann::json appbox::ToJson(const PUNICODE_STRING FileName)
     }
 
     nlohmann::json json;
-    json["Length"]        = FileName->Length;
+    json["Length"] = FileName->Length;
     json["MaximumLength"] = FileName->MaximumLength;
 
     /*

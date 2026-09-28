@@ -79,8 +79,8 @@ private:
      * @param[in] help Tooltip text.
      * @param[in] enabled Whether the button accepts input.
      */
-    static void AddLargeButton(wxRibbonButtonBar* bar, int id, const wxString& label,
-                               const wxString& art, const wxString& help, bool enabled);
+    static void AddLargeButton(wxRibbonButtonBar* bar, int id, const wxString& label, const wxString& art,
+                               const wxString& help, bool enabled);
 
     /**
      * @brief Add a button drawn with a small icon left of the label.
@@ -91,8 +91,8 @@ private:
      * @param[in] help Tooltip text.
      * @param[in] enabled Whether the button accepts input.
      */
-    static void AddSmallButton(wxRibbonButtonBar* bar, int id, const wxString& label,
-                               const wxString& art, const wxString& help, bool enabled);
+    static void AddSmallButton(wxRibbonButtonBar* bar, int id, const wxString& label, const wxString& art,
+                               const wxString& help, bool enabled);
 
     /**
      * @brief Append the Output group with the archive path and project type.

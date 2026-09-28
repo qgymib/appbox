@@ -23,7 +23,7 @@ namespace
 std::wstring UniqueFragment()
 {
     static unsigned counter = 0;
-    const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto      ticks = std::chrono::steady_clock::now().time_since_epoch().count();
     return std::to_wstring(ticks) + L"-" + std::to_wstring(++counter);
 }
 
@@ -92,7 +92,7 @@ bool MakeArchiveWithEntry(const std::filesystem::path& path, const char* entry, 
 {
     const auto utf8_path = appbox::WideToUTF8(path.wstring());
 
-    int error_code = 0;
+    int    error_code = 0;
     zip_t* archive = zip_open(utf8_path.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &error_code);
     if (archive == nullptr)
     {
@@ -122,22 +122,19 @@ bool MakeArchiveWithEntry(const std::filesystem::path& path, const char* entry, 
 
 TEST(ZipReader, ExtractsArchiveWrittenByZipWriter)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto archive_path = temp.Get() / L"round-trip.zip";
     const auto dest = temp.Get() / L"extracted";
 
     {
         appbox::ZipWriter writer(archive_path.wstring());
-        std::string error;
+        std::string       error;
         ASSERT_TRUE(writer.AddDirectory("filesystem", error)) << error;
         ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#", error)) << error;
         ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#/MyApp", error)) << error;
         ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#/MyApp/emptydir", error)) << error;
-        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/app.exe", "EXE", 3, error))
-            << error;
-        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/data/config.txt", "CFG", 3,
-                                         error))
-            << error;
+        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/app.exe", "EXE", 3, error)) << error;
+        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/data/config.txt", "CFG", 3, error)) << error;
         ASSERT_TRUE(writer.Close(error)) << error;
     }
 
@@ -152,13 +149,13 @@ TEST(ZipReader, ExtractsArchiveWrittenByZipWriter)
 
 TEST(ZipReader, CreatesTheDestinationFolder)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto archive_path = temp.Get() / L"dest.zip";
     const auto dest = temp.Get() / L"a" / L"b" / L"c";
 
     {
         appbox::ZipWriter writer(archive_path.wstring());
-        std::string error;
+        std::string       error;
         ASSERT_TRUE(writer.AddFileBuffer("note.txt", "NOTE", 4, error)) << error;
         ASSERT_TRUE(writer.Close(error)) << error;
     }
@@ -170,7 +167,7 @@ TEST(ZipReader, CreatesTheDestinationFolder)
 
 TEST(ZipReader, ReportsMissingArchive)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto missing = temp.Get() / L"missing.zip";
 
     const auto result = appbox::ExtractArchive(missing.wstring(), (temp.Get() / L"out").wstring());
@@ -179,7 +176,7 @@ TEST(ZipReader, ReportsMissingArchive)
 
 TEST(ZipReader, RejectsParentReferenceEntry)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto archive_path = temp.Get() / L"evil.zip";
     ASSERT_TRUE(MakeArchiveWithEntry(archive_path, "../escaped.txt", "EVIL"));
 
@@ -193,7 +190,7 @@ TEST(ZipReader, RejectsParentReferenceEntry)
 
 TEST(ZipReader, RejectsAbsoluteEntry)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto archive_path = temp.Get() / L"absolute.zip";
     ASSERT_TRUE(MakeArchiveWithEntry(archive_path, "/escaped.txt", "EVIL"));
 
@@ -206,13 +203,13 @@ TEST(ZipReader, RejectsAbsoluteEntry)
 
 TEST(ZipReader, OverwritesExistingFiles)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto archive_path = temp.Get() / L"overwrite.zip";
     const auto dest = temp.Get() / L"dest";
 
     {
         appbox::ZipWriter writer(archive_path.wstring());
-        std::string error;
+        std::string       error;
         ASSERT_TRUE(writer.AddFileBuffer("app/config.ini", "NEW", 3, error)) << error;
         ASSERT_TRUE(writer.Close(error)) << error;
     }
@@ -234,29 +231,26 @@ TEST(ZipReader, OverwritesExistingFiles)
  */
 TEST(ZipReader, ReportsEveryExtractedFile)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto archive_path = temp.Get() / L"progress.zip";
     const auto dest = temp.Get() / L"progress-dest";
 
     {
         appbox::ZipWriter writer(archive_path.wstring());
-        std::string error;
+        std::string       error;
         ASSERT_TRUE(writer.AddDirectory("filesystem", error)) << error;
         ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#", error)) << error;
         ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#/MyApp", error)) << error;
         ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#/MyApp/data", error)) << error;
         ASSERT_TRUE(writer.AddFileBuffer("MyApp.exe", "LOADER", 6, error)) << error;
         ASSERT_TRUE(writer.AddFileBuffer("MyApp.exe.json", "{}", 2, error)) << error;
-        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/app.exe", "EXE", 3, error))
-            << error;
-        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/data/config.txt", "CFG", 3,
-                                         error))
-            << error;
+        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/app.exe", "EXE", 3, error)) << error;
+        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/data/config.txt", "CFG", 3, error)) << error;
         ASSERT_TRUE(writer.Close(error)) << error;
     }
 
     std::vector<appbox::BuildProgress> reports;
-    const auto progress = [&reports](const appbox::BuildProgress& report) {
+    const auto                         progress = [&reports](const appbox::BuildProgress& report) {
         reports.emplace_back(report);
         return true;
     };
@@ -277,7 +271,7 @@ TEST(ZipReader, ReportsEveryExtractedFile)
      * the two entries of the archive root plus the two content files.
      */
     std::set<std::wstring> named;
-    std::size_t seen = 0;
+    std::size_t            seen = 0;
     for (const auto& report : reports)
     {
         EXPECT_EQ(report.stage, appbox::BuildStage::Extracting);
@@ -303,13 +297,13 @@ TEST(ZipReader, ReportsEveryExtractedFile)
  */
 TEST(ZipReader, ExtractCanBeCancelled)
 {
-    TempDir temp;
+    TempDir    temp;
     const auto archive_path = temp.Get() / L"cancel.zip";
     const auto dest = temp.Get() / L"cancel-dest";
 
     {
         appbox::ZipWriter writer(archive_path.wstring());
-        std::string error;
+        std::string       error;
         ASSERT_TRUE(writer.AddFileBuffer("note.txt", "NOTE", 4, error)) << error;
         ASSERT_TRUE(writer.Close(error)) << error;
     }

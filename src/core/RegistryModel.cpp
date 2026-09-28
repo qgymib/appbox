@@ -101,7 +101,7 @@ bool ParseUnsigned(const std::wstring& text, std::uint64_t maximum, std::uint64_
         return false;
     }
 
-    bool hexadecimal = false;
+    bool        hexadecimal = false;
     std::size_t begin = 0;
     if (trimmed.size() > 2 && trimmed[0] == L'0' && (trimmed[1] == L'x' || trimmed[1] == L'X'))
     {
@@ -186,10 +186,8 @@ namespace appbox
 
 const std::vector<std::wstring>& RegistryRootKeyNames()
 {
-    static const std::vector<std::wstring> names = {
-        L"HKEY_CLASSES_ROOT", L"HKEY_CURRENT_USER", L"HKEY_LOCAL_MACHINE", L"HKEY_USERS",
-        L"HKEY_CURRENT_CONFIG"
-    };
+    static const std::vector<std::wstring> names = { L"HKEY_CLASSES_ROOT", L"HKEY_CURRENT_USER", L"HKEY_LOCAL_MACHINE",
+                                                     L"HKEY_USERS", L"HKEY_CURRENT_CONFIG" };
     return names;
 }
 
@@ -202,7 +200,7 @@ const std::vector<std::wstring>& RegistryIsolationNames()
 std::wstring RegistryIsolationName(RegistryIsolation isolation)
 {
     const auto& names = RegistryIsolationNames();
-    const auto index = static_cast<std::size_t>(isolation);
+    const auto  index = static_cast<std::size_t>(isolation);
     if (index >= names.size())
     {
         return names.front();
@@ -213,8 +211,8 @@ std::wstring RegistryIsolationName(RegistryIsolation isolation)
 const std::vector<RegistryValueType>& RegistryValueTypes()
 {
     static const std::vector<RegistryValueType> types = {
-        RegistryValueType::None,      RegistryValueType::String, RegistryValueType::ExpandString,
-        RegistryValueType::Binary,    RegistryValueType::Dword,  RegistryValueType::MultiString,
+        RegistryValueType::None,   RegistryValueType::String, RegistryValueType::ExpandString,
+        RegistryValueType::Binary, RegistryValueType::Dword,  RegistryValueType::MultiString,
         RegistryValueType::Qword
     };
     return types;
@@ -271,7 +269,7 @@ bool ResolveRegistryValueType(std::uint32_t code, RegistryValueType& out)
 std::vector<std::wstring> SplitRegistryPath(const std::wstring& path)
 {
     std::vector<std::wstring> parts;
-    std::wstring current;
+    std::wstring              current;
 
     for (const wchar_t character : path)
     {
@@ -375,8 +373,8 @@ std::wstring RegistryStringValue(const std::vector<std::uint8_t>& data)
     std::wstring text;
     for (std::size_t index = 0; index + 1 < data.size(); index += 2)
     {
-        const auto code = static_cast<std::uint16_t>(
-            static_cast<std::uint16_t>(data[index]) | (static_cast<std::uint16_t>(data[index + 1]) << 8));
+        const auto code = static_cast<std::uint16_t>(static_cast<std::uint16_t>(data[index]) |
+                                                     (static_cast<std::uint16_t>(data[index + 1]) << 8));
         if (code == 0)
         {
             break;
@@ -404,12 +402,12 @@ std::vector<std::uint8_t> RegistryMultiStringData(const std::vector<std::wstring
 std::vector<std::wstring> RegistryMultiStringValue(const std::vector<std::uint8_t>& data)
 {
     std::vector<std::wstring> parts;
-    std::wstring current;
+    std::wstring              current;
 
     for (std::size_t index = 0; index + 1 < data.size(); index += 2)
     {
-        const auto code = static_cast<std::uint16_t>(
-            static_cast<std::uint16_t>(data[index]) | (static_cast<std::uint16_t>(data[index + 1]) << 8));
+        const auto code = static_cast<std::uint16_t>(static_cast<std::uint16_t>(data[index]) |
+                                                     (static_cast<std::uint16_t>(data[index + 1]) << 8));
         if (code == 0)
         {
             if (current.empty())
@@ -434,8 +432,7 @@ std::vector<std::wstring> RegistryMultiStringValue(const std::vector<std::uint8_
 std::vector<std::uint8_t> RegistryDwordData(std::uint32_t value)
 {
     return { static_cast<std::uint8_t>(value & 0xFF), static_cast<std::uint8_t>((value >> 8) & 0xFF),
-             static_cast<std::uint8_t>((value >> 16) & 0xFF),
-             static_cast<std::uint8_t>((value >> 24) & 0xFF) };
+             static_cast<std::uint8_t>((value >> 16) & 0xFF), static_cast<std::uint8_t>((value >> 24) & 0xFF) };
 }
 
 bool RegistryDwordValue(const std::vector<std::uint8_t>& data, std::uint32_t& out)
@@ -445,8 +442,8 @@ bool RegistryDwordValue(const std::vector<std::uint8_t>& data, std::uint32_t& ou
         return false;
     }
 
-    out = static_cast<std::uint32_t>(data[0]) | (static_cast<std::uint32_t>(data[1]) << 8)
-          | (static_cast<std::uint32_t>(data[2]) << 16) | (static_cast<std::uint32_t>(data[3]) << 24);
+    out = static_cast<std::uint32_t>(data[0]) | (static_cast<std::uint32_t>(data[1]) << 8) |
+          (static_cast<std::uint32_t>(data[2]) << 16) | (static_cast<std::uint32_t>(data[3]) << 24);
     return true;
 }
 
@@ -480,13 +477,12 @@ bool RegistryQwordValue(const std::vector<std::uint8_t>& data, std::uint64_t& ou
 bool ParseRegistryHexText(const std::wstring& text, std::vector<std::uint8_t>& out, std::string& error)
 {
     std::vector<std::uint8_t> bytes;
-    int high = -1;
+    int                       high = -1;
 
     for (const wchar_t character : text)
     {
         /* The registry editor separates the bytes of a `.reg` block by commas. */
-        if (character == L' ' || character == L'\t' || character == L'\r' || character == L'\n'
-            || character == L',')
+        if (character == L' ' || character == L'\t' || character == L'\r' || character == L'\n' || character == L',')
         {
             continue;
         }
@@ -559,8 +555,7 @@ std::wstring FormatRegistryValueData(RegistryValueType type, const std::vector<s
     case RegistryValueType::ExpandString:
         text = RegistryStringValue(data);
         break;
-    case RegistryValueType::Dword:
-    {
+    case RegistryValueType::Dword: {
         std::uint32_t value = 0;
         if (RegistryDwordValue(data, value))
         {
@@ -572,8 +567,7 @@ std::wstring FormatRegistryValueData(RegistryValueType type, const std::vector<s
         }
         break;
     }
-    case RegistryValueType::Qword:
-    {
+    case RegistryValueType::Qword: {
         std::uint64_t value = 0;
         if (RegistryQwordValue(data, value))
         {
@@ -585,8 +579,7 @@ std::wstring FormatRegistryValueData(RegistryValueType type, const std::vector<s
         }
         break;
     }
-    case RegistryValueType::MultiString:
-    {
+    case RegistryValueType::MultiString: {
         const auto parts = RegistryMultiStringValue(data);
         for (std::size_t index = 0; index < parts.size(); ++index)
         {
@@ -622,8 +615,7 @@ std::wstring FormatRegistryValueText(RegistryValueType type, const std::vector<s
     case RegistryValueType::String:
     case RegistryValueType::ExpandString:
         return RegistryStringValue(data);
-    case RegistryValueType::Dword:
-    {
+    case RegistryValueType::Dword: {
         std::uint32_t value = 0;
         if (RegistryDwordValue(data, value))
         {
@@ -631,8 +623,7 @@ std::wstring FormatRegistryValueText(RegistryValueType type, const std::vector<s
         }
         return FormatRegistryHexText(data);
     }
-    case RegistryValueType::Qword:
-    {
+    case RegistryValueType::Qword: {
         std::uint64_t value = 0;
         if (RegistryQwordValue(data, value))
         {
@@ -640,9 +631,8 @@ std::wstring FormatRegistryValueText(RegistryValueType type, const std::vector<s
         }
         return FormatRegistryHexText(data);
     }
-    case RegistryValueType::MultiString:
-    {
-        const auto parts = RegistryMultiStringValue(data);
+    case RegistryValueType::MultiString: {
+        const auto   parts = RegistryMultiStringValue(data);
         std::wstring text;
         for (std::size_t index = 0; index < parts.size(); ++index)
         {
@@ -661,8 +651,8 @@ std::wstring FormatRegistryValueText(RegistryValueType type, const std::vector<s
     return {};
 }
 
-bool ParseRegistryValueText(RegistryValueType type, const std::wstring& text,
-                            std::vector<std::uint8_t>& data, std::string& error)
+bool ParseRegistryValueText(RegistryValueType type, const std::wstring& text, std::vector<std::uint8_t>& data,
+                            std::string& error)
 {
     switch (type)
     {
@@ -670,8 +660,7 @@ bool ParseRegistryValueText(RegistryValueType type, const std::wstring& text,
     case RegistryValueType::ExpandString:
         data = RegistryStringData(text);
         return true;
-    case RegistryValueType::Dword:
-    {
+    case RegistryValueType::Dword: {
         std::uint64_t value = 0;
         if (!ParseUnsigned(text, 0xFFFFFFFFULL, value))
         {
@@ -681,8 +670,7 @@ bool ParseRegistryValueText(RegistryValueType type, const std::wstring& text,
         data = RegistryDwordData(static_cast<std::uint32_t>(value));
         return true;
     }
-    case RegistryValueType::Qword:
-    {
+    case RegistryValueType::Qword: {
         std::uint64_t value = 0;
         if (!ParseUnsigned(text, 0xFFFFFFFFFFFFFFFFULL, value))
         {
@@ -692,10 +680,9 @@ bool ParseRegistryValueText(RegistryValueType type, const std::wstring& text,
         data = RegistryQwordData(value);
         return true;
     }
-    case RegistryValueType::MultiString:
-    {
+    case RegistryValueType::MultiString: {
         std::vector<std::wstring> parts;
-        std::wstring current;
+        std::wstring              current;
         for (const wchar_t character : text)
         {
             if (character == L'\n')
@@ -946,7 +933,7 @@ bool RegistryModel::RemoveKey(const std::wstring& path, std::string& error)
         return false;
     }
 
-    const auto parent_path = RegistryParentPath(path);
+    const auto       parent_path = RegistryParentPath(path);
     RegistryKeyNode* parent = FindKey(parent_path);
     if (parent == nullptr)
     {
@@ -1042,9 +1029,8 @@ bool RegistryModel::SetValue(const std::wstring& parent, const std::wstring& nam
     return true;
 }
 
-bool RegistryModel::UpdateValue(const std::wstring& parent, const std::wstring& old_name,
-                                const std::wstring& new_name, RegistryValueType type,
-                                const std::vector<std::uint8_t>& data, std::string& error)
+bool RegistryModel::UpdateValue(const std::wstring& parent, const std::wstring& old_name, const std::wstring& new_name,
+                                RegistryValueType type, const std::vector<std::uint8_t>& data, std::string& error)
 {
     RegistryKeyNode* node = FindKey(parent);
     if (node == nullptr)
@@ -1120,8 +1106,7 @@ bool RegistryModel::SetKeyIsolation(const std::wstring& path, RegistryIsolation 
     return true;
 }
 
-bool RegistryModel::SetValueIsolation(const std::wstring& parent, const std::wstring& name,
-                                      RegistryIsolation isolation)
+bool RegistryModel::SetValueIsolation(const std::wstring& parent, const std::wstring& name, RegistryIsolation isolation)
 {
     RegistryKeyNode* node = FindKey(parent);
     if (node == nullptr)
@@ -1140,8 +1125,7 @@ bool RegistryModel::SetValueIsolation(const std::wstring& parent, const std::wst
     return true;
 }
 
-bool RegistryModel::ApplyIsolationToSubtree(const std::wstring& path, RegistryIsolation isolation,
-                                            bool include_values)
+bool RegistryModel::ApplyIsolationToSubtree(const std::wstring& path, RegistryIsolation isolation, bool include_values)
 {
     RegistryKeyNode* node = FindKey(path);
     if (node == nullptr)
@@ -1179,10 +1163,9 @@ std::ptrdiff_t RegistryModel::ValueIndex(const RegistryKeyNode& parent, const st
 
 void RegistryModel::SortKey(RegistryKeyNode& key)
 {
-    std::sort(key.children.begin(), key.children.end(),
-              [](const RegistryKeyNode& left, const RegistryKeyNode& right) {
-                  return LessIgnoreCase(left.name, right.name);
-              });
+    std::sort(key.children.begin(), key.children.end(), [](const RegistryKeyNode& left, const RegistryKeyNode& right) {
+        return LessIgnoreCase(left.name, right.name);
+    });
     std::sort(key.values.begin(), key.values.end(),
               [](const RegistryValueEntry& left, const RegistryValueEntry& right) {
                   return LessIgnoreCase(left.name, right.name);

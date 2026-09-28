@@ -47,16 +47,16 @@ TEST_F(Reg, EnumerateValue_Merged)
 
     auto config = tree.Build();
 
-    const auto       subkey = L"Software\\AppBoxTest\\EnumerateValue_Merged_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\EnumerateValue_Merged_" + appbox::UTF8ToWide(appbox::RandomString(8));
     const std::string real_data = "RealData";
     const std::string sandbox_data = "SandboxData";
 
     /* Create the key and the real value outside the sandbox. */
     {
         HKEY key = nullptr;
-        ASSERT_EQ(RegCreateKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key,
-                                  nullptr),
-                  ERROR_SUCCESS);
+        ASSERT_EQ(
+            RegCreateKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr),
+            ERROR_SUCCESS);
 
         auto wdata = appbox::UTF8ToWide(real_data);
         ASSERT_EQ(RegSetValueExW(key, L"RealValue", 0, REG_SZ, reinterpret_cast<const BYTE*>(wdata.c_str()),

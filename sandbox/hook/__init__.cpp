@@ -1,6 +1,7 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "utils/GetPEB.hpp"
+#include "utils/NameResolution.hpp"
 #include "hook/CreateProcessInternalW.hpp"
 #include "hook/LdrQueryImageFileExecutionOptionsEx.hpp"
 #include "hook/NtClose.hpp"
@@ -33,11 +34,18 @@
 #include "hook/NtSaveKeyEx.hpp"
 #include "hook/NtSetInformationFile.hpp"
 #include "hook/NtWriteFile.hpp"
+#include "hook/DnsQuery_A.hpp"
+#include "hook/DnsQuery_UTF8.hpp"
+#include "hook/DnsQuery_W.hpp"
+#include "hook/GetAddrInfoExW.hpp"
+#include "hook/GetAddrInfoW.hpp"
+#include "hook/getaddrinfo.hpp"
+#include "hook/gethostbyname.hpp"
 #include "hook/RtlCompareUnicodeString.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
 #include "hook/SetProcessMitigationPolicy.hpp"
 #include "__init__.hpp"
-#include "HookTransaction.hpp"
+#include "utils/HookTransaction.hpp"
 #include "Sandbox.hpp"
 #include <exception>
 #include <iterator>
@@ -45,6 +53,13 @@
 
 static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookCreateProcessInternalW,
+    &appbox::HookDnsQueryA,
+    &appbox::HookDnsQueryUTF8,
+    &appbox::HookDnsQueryW,
+    &appbox::HookGetAddrInfo,
+    &appbox::HookGetAddrInfoExW,
+    &appbox::HookGetAddrInfoW,
+    &appbox::HookGetHostByName,
     &appbox::HookLdrQueryImageFileExecutionOptionsEx,
     &appbox::HookNtClose,
     &appbox::HookNtCreateFile,
@@ -103,6 +118,18 @@ NTSTATUS appbox::InitHook()
     }
 
     /*
+     * The name resolution of an application lives in modules which a process
+     * loads on demand, so they are loaded before the entry points are resolved:
+     * a hook which cannot be resolved is fatal in isolation mode, because the
+     * sandbox would silently stop redirecting the name resolution.
+     */
+    if (!appbox::network::LoadNameResolutionModules())
+    {
+        LOG_E("failed to load the modules of the name resolution");
+        return STATUS_DLL_NOT_FOUND;
+    }
+
+    /*
      * Resolve the entry point of every hook. In isolation mode a hook which
      * cannot be resolved is fatal when it carries a detour, because the sandbox
      * would silently stop isolating the corresponding API.
@@ -135,8 +162,8 @@ NTSTATUS appbox::InitHook()
         s_hooks, std::size(s_hooks), appbox::HookAction::Attach, appbox::DefaultDetourOps());
     if (!result.bSuccess)
     {
-        LOG_E("failed to attach hooks ({}): {}",
-              result.pFailedHook != nullptr ? result.pFailedHook : "transaction", result.status);
+        LOG_E("failed to attach hooks ({}): {}", result.pFailedHook != nullptr ? result.pFailedHook : "transaction",
+              result.status);
         return STATUS_UNSUCCESSFUL;
     }
 
@@ -160,7 +187,7 @@ void appbox::ExitHook()
         s_hooks, std::size(s_hooks), appbox::HookAction::Detach, appbox::DefaultDetourOps());
     if (!result.bSuccess)
     {
-        LOG_E("failed to detach hooks ({}): {}",
-              result.pFailedHook != nullptr ? result.pFailedHook : "transaction", result.status);
+        LOG_E("failed to detach hooks ({}): {}", result.pFailedHook != nullptr ? result.pFailedHook : "transaction",
+              result.status);
     }
 }

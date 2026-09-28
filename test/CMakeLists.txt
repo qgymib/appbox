@@ -19,6 +19,10 @@ add_executable(AppBoxTests
     "cases/Fs_Whiteout_CreateInSandbox.cpp"
     "cases/Fs_Whiteout_FileNotFound.cpp"
     "cases/Fs_Whiteout_FolderHidesSubtree.cpp"
+    "cases/Net_Dns_FamilyOfTheRedirectIsHonoured.cpp"
+    "cases/Net_Dns_HostnameIsNormalized.cpp"
+    "cases/Net_Dns_MissIsResolvedByTheHost.cpp"
+    "cases/Net_Dns_RedirectIsReturned.cpp"
     "cases/Reg_DeleteKey_NonEmpty.cpp"
     "cases/Reg_DeleteKey_ReadHandle.cpp"
     "cases/Reg_DeleteKey_ShadowKeyRemoved.cpp"
@@ -64,6 +68,7 @@ add_executable(AppBoxTests
     "probe/RegSaveKey.cpp"
     "probe/RegShadowRead.cpp"
     "probe/RegWriteValue.cpp"
+    "probe/ResolveName.cpp"
     "utils/CommandLine.cpp"
     "utils/CommonFixture.cpp"
     "utils/Coredump.cpp"
@@ -72,6 +77,7 @@ add_executable(AppBoxTests
     "utils/FsIsolationBuilder.cpp"
     "utils/HiveBuilder.cpp"
     "utils/KnownFolder.cpp"
+    "utils/NetworkIsolationBuilder.cpp"
     "utils/ProbeCall.cpp"
     "utils/ReadFileFull.cpp"
     "utils/RealFsFolder.cpp"
@@ -98,6 +104,9 @@ target_link_libraries(AppBoxTests PRIVATE AppBoxCommon)
 
 find_package(base64 REQUIRED)
 target_link_libraries(AppBoxTests PRIVATE base64)
+
+# The probe of the name resolution calls the DNS client of the system.
+target_link_libraries(AppBoxTests PRIVATE dnsapi)
 
 find_package(CLI11 REQUIRED)
 target_link_libraries(AppBoxTests PRIVATE CLI11::CLI11)
@@ -134,6 +143,7 @@ add_executable(AppBoxUnitTests
     "unit/Unit_AboutInfo.cpp"
     "unit/Unit_ApplicationIcon.cpp"
     "unit/Unit_BuildReport.cpp"
+    "unit/Unit_DnsTable.cpp"
     "unit/Unit_HiveReader.cpp"
     "unit/Unit_HookTransaction.cpp"
     "unit/Unit_ExpandKnownFolder.cpp"
@@ -145,6 +155,9 @@ add_executable(AppBoxUnitTests
     "unit/Unit_Log.cpp"
     "unit/Unit_MiniLauncher.cpp"
     "unit/Unit_ModuleTable.cpp"
+    "unit/Unit_NetworkIsolation.cpp"
+    "unit/Unit_NetworkIsolationFile.cpp"
+    "unit/Unit_NetworkModel.cpp"
     "unit/Unit_PackModel.cpp"
     "unit/Unit_PackService.cpp"
     "unit/Unit_PipeClient.cpp"
@@ -178,6 +191,7 @@ add_executable(AppBoxUnitTests
     "unit/Unit_ZipWriter.cpp"
     "utils/CommandLine.cpp"
     "utils/Coredump.cpp"
+    "utils/NameResolutionProbe.cpp"
     "utils/TestTimeout.cpp"
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/registry/HiveReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ConvertDosPathToNtPath.cpp
@@ -192,6 +206,8 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/NetworkIsolationFile.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/NetworkModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PresetDirectory.cpp
@@ -206,13 +222,14 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipWriter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/ModuleTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/IsolationTable.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/hook/HookTransaction.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/network/DnsTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/EnumMerge.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/IsolationTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/KeyPath.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/RootMap.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/Whiteout.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/BitParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/HookTransaction.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/Log.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/PipeClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/ArmPlan.cpp

@@ -107,8 +107,7 @@ HANDLE OpenProcessToDump(unsigned long pid)
     /* The handle data of a dump needs the duplication right, which a process
      * with a protected handle table may refuse; the rest of the dump does not
      * need it. */
-    HANDLE process =
-        ::OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE, FALSE, pid);
+    HANDLE process = ::OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE, FALSE, pid);
     if (process == nullptr)
     {
         process = ::OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
@@ -161,8 +160,8 @@ bool WriteDumpOnce(HANDLE process, unsigned long pid, const std::filesystem::pat
         static_cast<MINIDUMP_TYPE>(MiniDumpWithFullMemory | MiniDumpWithProcessThreadData | MiniDumpWithThreadInfo |
                                    MiniDumpWithHandleData | MiniDumpWithUnloadedModules);
 
-    const BOOL written = ::MiniDumpWriteDump(process, static_cast<DWORD>(pid), file, dump_type, nullptr, nullptr,
-                                             nullptr);
+    const BOOL written =
+        ::MiniDumpWriteDump(process, static_cast<DWORD>(pid), file, dump_type, nullptr, nullptr, nullptr);
     if (!written)
     {
         error = fmt::format("MiniDumpWriteDump({}) failed: {}", pid, ::GetLastError());
@@ -251,7 +250,7 @@ bool appbox::test::ParseCoredumpRequest(const std::wstring& command_line, Coredu
         return false;
     }
 
-    wchar_t*           end = nullptr;
+    wchar_t*            end = nullptr;
     const unsigned long pid = std::wcstoul(value.c_str(), &end, 10);
     if (pid == 0 || end == nullptr || *end != L'\0')
     {
@@ -381,7 +380,7 @@ bool appbox::test::WriteCoredump(unsigned long pid, const std::filesystem::path&
     return written;
 }
 
-std::vector<std::filesystem::path> appbox::test::DumpProcessTree(const CoredumpRequest& request,
+std::vector<std::filesystem::path> appbox::test::DumpProcessTree(const CoredumpRequest&    request,
                                                                  std::vector<std::string>& errors)
 {
     std::vector<std::filesystem::path> dumps;
@@ -390,8 +389,8 @@ std::vector<std::filesystem::path> appbox::test::DumpProcessTree(const CoredumpR
     std::filesystem::create_directories(request.dump_dir, ec);
     if (ec)
     {
-        errors.push_back(fmt::format("create_directories({}) failed: {}", appbox::WideToUTF8(request.dump_dir.wstring()),
-                                     ec.message()));
+        errors.push_back(fmt::format("create_directories({}) failed: {}",
+                                     appbox::WideToUTF8(request.dump_dir.wstring()), ec.message()));
         return dumps;
     }
 
@@ -406,8 +405,8 @@ std::vector<std::filesystem::path> appbox::test::DumpProcessTree(const CoredumpR
         }
         else
         {
-            errors.push_back(fmt::format("process {} ({}): {}", pid, appbox::WideToUTF8(GetProcessImageStem(pid)),
-                                         error));
+            errors.push_back(
+                fmt::format("process {} ({}): {}", pid, appbox::WideToUTF8(GetProcessImageStem(pid)), error));
         }
     }
 
@@ -446,7 +445,7 @@ bool appbox::test::RunCoredumpWriterIfRequested()
         return false;
     }
 
-    std::vector<std::string>           errors;
+    std::vector<std::string>                 errors;
     const std::vector<std::filesystem::path> dumps = DumpProcessTree(request, errors);
 
     for (const auto& dump : dumps)

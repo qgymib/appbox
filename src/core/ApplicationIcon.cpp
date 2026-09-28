@@ -106,8 +106,7 @@ public:
      * @brief Take ownership of a module handle.
      * @param[in] module Module handle, may be nullptr.
      */
-    explicit LoadedImage(HMODULE module)
-        : module_(module)
+    explicit LoadedImage(HMODULE module) : module_(module)
     {
     }
 
@@ -157,8 +156,7 @@ public:
      * @brief Take ownership of a resource update handle.
      * @param[in] handle Handle returned by BeginUpdateResourceW.
      */
-    explicit UpdateSession(HANDLE handle)
-        : handle_(handle)
+    explicit UpdateSession(HANDLE handle) : handle_(handle)
     {
     }
 
@@ -213,8 +211,7 @@ public:
      * @brief Remember the path of the file to remove.
      * @param[in] path Path of the temporary file.
      */
-    explicit TemporaryFile(std::filesystem::path path)
-        : path_(std::move(path))
+    explicit TemporaryFile(std::filesystem::path path) : path_(std::move(path))
     {
     }
 
@@ -332,8 +329,8 @@ bool LooksLikePeImage(const void* bytes, std::size_t size)
         return false;
     }
 
-    return data[signature_offset] == 'P' && data[signature_offset + 1] == 'E'
-           && data[signature_offset + 2] == 0 && data[signature_offset + 3] == 0;
+    return data[signature_offset] == 'P' && data[signature_offset + 1] == 'E' && data[signature_offset + 2] == 0 &&
+           data[signature_offset + 3] == 0;
 }
 
 /**
@@ -350,8 +347,7 @@ bool LooksLikePeImage(const void* bytes, std::size_t size)
  */
 HMODULE LoadAsDataFile(const std::wstring& path, std::string& error)
 {
-    const DWORD flags[] = {LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE,
-                           LOAD_LIBRARY_AS_DATAFILE};
+    const DWORD flags[] = { LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE, LOAD_LIBRARY_AS_DATAFILE };
     for (const auto flag : flags)
     {
         if (HMODULE module = LoadLibraryExW(path.c_str(), nullptr, flag); module != nullptr)
@@ -360,8 +356,8 @@ HMODULE LoadAsDataFile(const std::wstring& path, std::string& error)
         }
     }
 
-    error = "failed to open '" + appbox::WideToUTF8(path) + "' as a data file (error "
-            + std::to_string(GetLastError()) + ")";
+    error = "failed to open '" + appbox::WideToUTF8(path) + "' as a data file (error " +
+            std::to_string(GetLastError()) + ")";
     return nullptr;
 }
 
@@ -392,25 +388,23 @@ bool CollectIconGroup(HMODULE module, std::vector<char>& group, std::vector<std:
                       std::string& error)
 {
     GroupIconChoice choice;
-    EnumResourceNamesW(module, RT_GROUP_ICON, CaptureFirstGroupIcon,
-                       reinterpret_cast<LONG_PTR>(&choice));
+    EnumResourceNamesW(module, RT_GROUP_ICON, CaptureFirstGroupIcon, reinterpret_cast<LONG_PTR>(&choice));
     if (!choice.found)
     {
         error = "the image does not carry an icon group";
         return false;
     }
 
-    const HRSRC resource = choice.numeric
-                               ? FindResourceW(module, MAKEINTRESOURCEW(choice.id), RT_GROUP_ICON)
-                               : FindResourceW(module, choice.name.c_str(), RT_GROUP_ICON);
+    const HRSRC resource = choice.numeric ? FindResourceW(module, MAKEINTRESOURCEW(choice.id), RT_GROUP_ICON)
+                                          : FindResourceW(module, choice.name.c_str(), RT_GROUP_ICON);
     if (resource == nullptr)
     {
         error = "the icon group cannot be located (error " + std::to_string(GetLastError()) + ")";
         return false;
     }
 
-    const DWORD group_size = SizeofResource(module, resource);
-    const HGLOBAL group_handle = LoadResource(module, resource);
+    const DWORD       group_size = SizeofResource(module, resource);
+    const HGLOBAL     group_handle = LoadResource(module, resource);
     const void* const group_data = group_handle != nullptr ? LockResource(group_handle) : nullptr;
     if (group_data == nullptr || group_size < kGroupIconHeaderSize)
     {
@@ -418,13 +412,12 @@ bool CollectIconGroup(HMODULE module, std::vector<char>& group, std::vector<std:
         return false;
     }
 
-    group.assign(static_cast<const char*>(group_data),
-                 static_cast<const char*>(group_data) + group_size);
+    group.assign(static_cast<const char*>(group_data), static_cast<const char*>(group_data) + group_size);
 
     GroupIconDirectory directory = {};
     std::memcpy(&directory, group.data(), sizeof(directory));
-    if (directory.count == 0
-        || group.size() != kGroupIconHeaderSize + static_cast<std::size_t>(directory.count) * kGroupIconEntrySize)
+    if (directory.count == 0 ||
+        group.size() != kGroupIconHeaderSize + static_cast<std::size_t>(directory.count) * kGroupIconEntrySize)
     {
         error = "the icon group of the image is malformed";
         return false;
@@ -435,19 +428,17 @@ bool CollectIconGroup(HMODULE module, std::vector<char>& group, std::vector<std:
     for (std::uint32_t index = 0; index < directory.count; ++index)
     {
         GroupIconDirectoryEntry entry = {};
-        std::memcpy(&entry, group.data() + kGroupIconHeaderSize + index * kGroupIconEntrySize,
-                    sizeof(entry));
+        std::memcpy(&entry, group.data() + kGroupIconHeaderSize + index * kGroupIconEntrySize, sizeof(entry));
 
         const HRSRC image_resource = FindResourceW(module, MAKEINTRESOURCEW(entry.id), RT_ICON);
         if (image_resource == nullptr)
         {
-            error = "the icon group references the missing image "
-                    + std::to_string(entry.id);
+            error = "the icon group references the missing image " + std::to_string(entry.id);
             return false;
         }
 
-        const DWORD image_size = SizeofResource(module, image_resource);
-        const HGLOBAL image_handle = LoadResource(module, image_resource);
+        const DWORD       image_size = SizeofResource(module, image_resource);
+        const HGLOBAL     image_handle = LoadResource(module, image_resource);
         const void* const image_data = image_handle != nullptr ? LockResource(image_handle) : nullptr;
         if (image_data == nullptr || image_size != entry.bytes_in_res)
         {
@@ -455,8 +446,7 @@ bool CollectIconGroup(HMODULE module, std::vector<char>& group, std::vector<std:
             return false;
         }
 
-        images.emplace_back(static_cast<const char*>(image_data),
-                            static_cast<const char*>(image_data) + image_size);
+        images.emplace_back(static_cast<const char*>(image_data), static_cast<const char*>(image_data) + image_size);
     }
 
     return true;
@@ -475,8 +465,8 @@ bool CollectIconGroup(HMODULE module, std::vector<char>& group, std::vector<std:
  */
 bool SameResourceName(const std::wstring& left, const std::wstring& right)
 {
-    const auto result = CompareStringOrdinal(left.c_str(), static_cast<int>(left.size()),
-                                             right.c_str(), static_cast<int>(right.size()), TRUE);
+    const auto result = CompareStringOrdinal(left.c_str(), static_cast<int>(left.size()), right.c_str(),
+                                             static_cast<int>(right.size()), TRUE);
     return result == CSTR_EQUAL;
 }
 
@@ -494,15 +484,14 @@ bool SameResourceName(const std::wstring& left, const std::wstring& right)
 bool IsFirstIconGroup(const std::filesystem::path& path, const std::wstring& name)
 {
     std::string open_error;
-    LoadedImage  image(LoadAsDataFile(path.wstring(), open_error));
+    LoadedImage image(LoadAsDataFile(path.wstring(), open_error));
     if (!image)
     {
         return false;
     }
 
     GroupIconChoice choice;
-    EnumResourceNamesW(image.Get(), RT_GROUP_ICON, CaptureFirstGroupIcon,
-                       reinterpret_cast<LONG_PTR>(&choice));
+    EnumResourceNamesW(image.Get(), RT_GROUP_ICON, CaptureFirstGroupIcon, reinterpret_cast<LONG_PTR>(&choice));
     return choice.found && !choice.numeric && SameResourceName(choice.name, name);
 }
 
@@ -552,7 +541,7 @@ void RemapIconIds(std::vector<char>& group, WORD base)
 
     for (std::size_t index = 0; index < directory.count; ++index)
     {
-        const std::size_t offset = kGroupIconHeaderSize + index * kGroupIconEntrySize;
+        const std::size_t       offset = kGroupIconHeaderSize + index * kGroupIconEntrySize;
         GroupIconDirectoryEntry entry = {};
         std::memcpy(&entry, group.data() + offset, sizeof(entry));
         entry.id = static_cast<WORD>(base + index);
@@ -572,8 +561,7 @@ void RemapIconIds(std::vector<char>& group, WORD base)
  * @return true when the icon group was added.
  */
 bool AddIconResources(const std::filesystem::path& path, const std::vector<char>& group,
-                      const std::vector<std::vector<char>>& images, WORD image_base,
-                      std::string& error, DWORD& code)
+                      const std::vector<std::vector<char>>& images, WORD image_base, std::string& error, DWORD& code)
 {
     code = 0;
 
@@ -581,22 +569,21 @@ bool AddIconResources(const std::filesystem::path& path, const std::vector<char>
     if (update == nullptr)
     {
         code = GetLastError();
-        error = "failed to open '" + appbox::WideToUTF8(path.wstring())
-                + "' for the icon update (error " + std::to_string(code) + ")";
+        error = "failed to open '" + appbox::WideToUTF8(path.wstring()) + "' for the icon update (error " +
+                std::to_string(code) + ")";
         return false;
     }
 
     UpdateSession session(update);
     for (std::size_t index = 0; index < images.size(); ++index)
     {
-        const auto id = static_cast<WORD>(image_base + index);
+        const auto  id = static_cast<WORD>(image_base + index);
         const auto& image = images[index];
         if (!UpdateResourceW(session.Get(), RT_ICON, MAKEINTRESOURCEW(id), LANG_NEUTRAL,
                              const_cast<char*>(image.data()), static_cast<DWORD>(image.size())))
         {
             code = GetLastError();
-            error = "failed to add the icon image " + std::to_string(id) + " (error "
-                    + std::to_string(code) + ")";
+            error = "failed to add the icon image " + std::to_string(id) + " (error " + std::to_string(code) + ")";
             return false;
         }
     }
@@ -612,8 +599,8 @@ bool AddIconResources(const std::filesystem::path& path, const std::vector<char>
     if (!session.Commit())
     {
         code = GetLastError();
-        error = "failed to write the icon of '" + appbox::WideToUTF8(path.wstring()) + "' (error "
-                + std::to_string(code) + ")";
+        error = "failed to write the icon of '" + appbox::WideToUTF8(path.wstring()) + "' (error " +
+                std::to_string(code) + ")";
         return false;
     }
 
@@ -681,8 +668,8 @@ bool WriteIconGroup(const std::filesystem::path& path, const std::vector<char>& 
              */
             if (!IsFirstIconGroup(path, kApplicationIconGroup))
             {
-                error = "the icon group of the application does not precede the icon groups of '"
-                        + appbox::WideToUTF8(path.wstring()) + "'";
+                error = "the icon group of the application does not precede the icon groups of '" +
+                        appbox::WideToUTF8(path.wstring()) + "'";
                 return false;
             }
 
@@ -707,8 +694,7 @@ bool WriteIconGroup(const std::filesystem::path& path, const std::vector<char>& 
  * @param[out] error Error description on failure.
  * @return true on success.
  */
-bool WriteFileBytes(const std::filesystem::path& path, const void* data, std::size_t size,
-                    std::string& error)
+bool WriteFileBytes(const std::filesystem::path& path, const void* data, std::size_t size, std::string& error)
 {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file)
@@ -776,8 +762,8 @@ bool ReadFileBytes(const std::filesystem::path& path, std::vector<char>& bytes, 
 std::filesystem::path TemporaryPayloadPath()
 {
     const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
-    const auto name = L"AppBox-Icon-" + std::to_wstring(GetCurrentProcessId()) + L"-"
-                      + std::to_wstring(ticks) + L".exe";
+    const auto name =
+        L"AppBox-Icon-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(ticks) + L".exe";
     return std::filesystem::temp_directory_path() / name;
 }
 
@@ -807,12 +793,12 @@ std::vector<char> ApplyApplicationIcon(const void* loader_bytes, std::size_t loa
         return {};
     }
 
-    const auto application = WideToUTF8(application_path);
+    const auto  application = WideToUTF8(application_path);
     std::string error;
     try
     {
-        std::vector<char>                    group;
-        std::vector<std::vector<char>>       images;
+        std::vector<char>              group;
+        std::vector<std::vector<char>> images;
         {
             LoadedImage module(LoadAsDataFile(application_path, error));
             if (!module)
@@ -828,7 +814,7 @@ std::vector<char> ApplyApplicationIcon(const void* loader_bytes, std::size_t loa
             }
         }
 
-        const auto temporary_path = TemporaryPayloadPath();
+        const auto          temporary_path = TemporaryPayloadPath();
         const TemporaryFile payload(temporary_path);
         if (!WriteFileBytes(temporary_path, loader_bytes, loader_size, error))
         {

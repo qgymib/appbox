@@ -9,8 +9,7 @@
  */
 TEST(GetExecutableDir, DefaultConfigPathKeepsTheExecutableExtension)
 {
-    EXPECT_EQ(appbox::DefaultConfigPathForExecutable(L"C:\\app\\foo.exe"),
-              L"C:\\app\\foo.exe.json");
+    EXPECT_EQ(appbox::DefaultConfigPathForExecutable(L"C:\\app\\foo.exe"), L"C:\\app\\foo.exe.json");
 }
 
 /**
@@ -26,8 +25,7 @@ TEST(GetExecutableDir, DefaultConfigPathKeepsAPathWithoutExtension)
  */
 TEST(GetExecutableDir, DefaultConfigPathKeepsEveryDotOfTheFileName)
 {
-    EXPECT_EQ(appbox::DefaultConfigPathForExecutable(L"C:\\app\\my.app.exe"),
-              L"C:\\app\\my.app.exe.json");
+    EXPECT_EQ(appbox::DefaultConfigPathForExecutable(L"C:\\app\\my.app.exe"), L"C:\\app\\my.app.exe.json");
 }
 
 /**
@@ -47,8 +45,7 @@ TEST(GetExecutableDir, ConfigurationIsNamedAfterTheRunningExecutable)
 {
     const auto file_name = appbox::GetExecutableFileName();
 
-    EXPECT_EQ(file_name,
-              std::filesystem::path(appbox::GetExecutablePath()).filename().wstring());
+    EXPECT_EQ(file_name, std::filesystem::path(appbox::GetExecutablePath()).filename().wstring());
     EXPECT_EQ(std::filesystem::path(file_name).extension().wstring(), L".exe");
     EXPECT_EQ(std::filesystem::path(file_name).stem().wstring(), appbox::GetExecutableName());
 

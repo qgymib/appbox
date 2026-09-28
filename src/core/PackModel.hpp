@@ -241,8 +241,7 @@ public:
      * @return true on success.
      */
     bool RestoreImportedFile(const std::string& preset_id, const std::wstring& target_dir,
-                             const std::wstring& file_name, const std::wstring& source_path,
-                             std::string& error);
+                             const std::wstring& file_name, const std::wstring& source_path, std::string& error);
 
     /**
      * @brief Restore the main program selection without touching the host filesystem.

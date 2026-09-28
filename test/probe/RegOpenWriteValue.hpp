@@ -23,11 +23,11 @@ struct ProtocolRegOpenWriteValue
 
     struct Rsp
     {
-        DWORD open_code = static_cast<DWORD>(-1);  /* RegOpenKeyExW() error code. */
-        DWORD set_code = static_cast<DWORD>(-1);   /* RegSetValueExW() error code. */
-        DWORD query_code = static_cast<DWORD>(-1); /* RegQueryValueExW() error code. */
-        DWORD type = 0;                            /* Value type. */
-        std::string readback;                      /* Value data which was read back. Encoding in UTF-8. */
+        DWORD       open_code = static_cast<DWORD>(-1);  /* RegOpenKeyExW() error code. */
+        DWORD       set_code = static_cast<DWORD>(-1);   /* RegSetValueExW() error code. */
+        DWORD       query_code = static_cast<DWORD>(-1); /* RegQueryValueExW() error code. */
+        DWORD       type = 0;                            /* Value type. */
+        std::string readback;                            /* Value data which was read back. Encoding in UTF-8. */
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, open_code, set_code, query_code, type, readback)
     };
 };

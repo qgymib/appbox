@@ -27,11 +27,11 @@ struct ProtocolRegDeleteKey
 
     struct Rsp
     {
-        DWORD open_code = static_cast<DWORD>(-1);   /* Open of the handle the delete runs on. */
-        DWORD delete_code = static_cast<DWORD>(-1); /* The delete call itself. */
-        DWORD reopen_code = static_cast<DWORD>(-1); /* Read access open after the delete. */
-        DWORD query_code = static_cast<DWORD>(-1);  /* Read of the value `HostValue` after the delete. */
-        std::string readback;                       /* Data of `HostValue`. Encoding in UTF-8. */
+        DWORD       open_code = static_cast<DWORD>(-1);   /* Open of the handle the delete runs on. */
+        DWORD       delete_code = static_cast<DWORD>(-1); /* The delete call itself. */
+        DWORD       reopen_code = static_cast<DWORD>(-1); /* Read access open after the delete. */
+        DWORD       query_code = static_cast<DWORD>(-1);  /* Read of the value `HostValue` after the delete. */
+        std::string readback;                             /* Data of `HostValue`. Encoding in UTF-8. */
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, open_code, delete_code, reopen_code, query_code, readback)
     };
 };

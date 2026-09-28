@@ -138,6 +138,43 @@ bool BuildSampleIsolation(appbox::FilesystemIsolationModel& isolation)
 }
 
 /**
+ * @brief Build the document of a session with the network model left out.
+ *
+ * The DNS redirections of the network workspace have their own cases; the cases
+ * of the other parts of the schema build their document through this helper, so
+ * they do not have to carry a network model which they do not check.
+ *
+ * @param[in] model Configuration to store.
+ * @param[in] registry Registry to store.
+ * @param[in] isolation Filesystem modes to store.
+ * @param[in] output_path Output path to store.
+ * @return The document of the session.
+ */
+appbox::ProjectDocument MakeDocument(const appbox::PackModel& model, const appbox::RegistryModel& registry,
+                                     const appbox::FilesystemIsolationModel& isolation, const std::wstring& output_path)
+{
+    return appbox::MakeProjectDocument(model, registry, isolation, appbox::NetworkModel{}, output_path);
+}
+
+/**
+ * @brief Apply a document and drop the network model of the session.
+ *
+ * @param[in] document Document to apply.
+ * @param[out] model Model replaced with the configuration of the document.
+ * @param[out] registry Registry replaced with the registry of the document.
+ * @param[out] isolation Isolation modes replaced with the modes of the document.
+ * @param[out] output_path Destination archive path of the document.
+ * @param[out] error Error description on failure.
+ * @return true on success.
+ */
+bool ApplyDocument(const appbox::ProjectDocument& document, appbox::PackModel& model, appbox::RegistryModel& registry,
+                   appbox::FilesystemIsolationModel& isolation, std::wstring& output_path, std::string& error)
+{
+    appbox::NetworkModel network;
+    return appbox::ApplyProjectDocument(document, model, registry, isolation, network, output_path, error);
+}
+
+/**
  * @brief Save a session and read it back into the models of a fresh session.
  *
  * The document is built from the models, written to the file and read back,
@@ -160,7 +197,7 @@ bool RoundTrip(const std::filesystem::path& path, const appbox::PackModel& model
                appbox::PackModel& loaded, appbox::RegistryModel& loaded_registry,
                appbox::FilesystemIsolationModel& loaded_isolation, std::wstring& loaded_output, std::string& error)
 {
-    const auto document = appbox::MakeProjectDocument(model, registry, isolation, output_path);
+    const auto document = MakeDocument(model, registry, isolation, output_path);
     if (!appbox::SaveProject(document, path.wstring(), error))
     {
         return false;
@@ -172,8 +209,7 @@ bool RoundTrip(const std::filesystem::path& path, const appbox::PackModel& model
         return false;
     }
 
-    return appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_output,
-                                        error);
+    return ApplyDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_output, error);
 }
 
 /*
@@ -239,9 +275,8 @@ TEST(ProjectFile, ExportWritesStrictUtf8WithoutByteOrderMark)
                                             std::wstring(L"C:\\Program Files\\") + kChineseName, error))
         << error;
 
-    const auto document =
-        appbox::MakeProjectDocument(model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
-                                    std::wstring(L"D:\\") + kChineseName + L".zip");
+    const auto document = MakeDocument(model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
+                                       std::wstring(L"D:\\") + kChineseName + L".zip");
     ASSERT_TRUE(appbox::SaveProject(document, file.wstring(), error)) << error;
 
     const auto text = ReadBytes(file);
@@ -265,8 +300,8 @@ TEST(ProjectFile, RoundTripOfAnEmptyConfiguration)
     TempDir    temp;
     const auto file = temp.File(L"empty.json");
 
-    const auto  document = appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{},
-                                                       appbox::FilesystemIsolationModel{}, L"");
+    const auto document =
+        MakeDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, L"");
     std::string error;
     ASSERT_TRUE(appbox::SaveProject(document, file.wstring(), error)) << error;
 
@@ -292,7 +327,7 @@ TEST(ProjectFile, RoundTripOfAnEmptyConfiguration)
     appbox::RegistryModel            registry;
     appbox::FilesystemIsolationModel isolation;
     std::wstring                     output = L"untouched";
-    ASSERT_TRUE(appbox::ApplyProjectDocument(loaded, model, registry, isolation, output, error)) << error;
+    ASSERT_TRUE(ApplyDocument(loaded, model, registry, isolation, output, error)) << error;
 
     EXPECT_TRUE(model.IsEmpty());
     EXPECT_TRUE(output.empty());
@@ -306,8 +341,7 @@ TEST(ProjectFile, MakeProjectDocumentListsTheFoldersInPresetOrder)
     ASSERT_TRUE(model.RestoreImportedFolder("user_profile", L"Tool", L"C:\\Tool", error)) << error;
     ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
 
-    const auto document =
-        appbox::MakeProjectDocument(model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, L"");
+    const auto document = MakeDocument(model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, L"");
 
     /* The order of the document follows the preset directories, not the user. */
     ASSERT_EQ(document.folders.size(), 2u);
@@ -355,10 +389,9 @@ TEST(ProjectFile, ApplyReplacesTheExistingConfiguration)
 
     appbox::ProjectDocument document;
     std::string             error;
-    ASSERT_TRUE(
-        appbox::SaveProject(appbox::MakeProjectDocument(model, appbox::RegistryModel{},
-                                                        appbox::FilesystemIsolationModel{}, L"D:\\out\\MyApp.zip"),
-                            file.wstring(), error))
+    ASSERT_TRUE(appbox::SaveProject(
+        MakeDocument(model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, L"D:\\out\\MyApp.zip"),
+        file.wstring(), error))
         << error;
     ASSERT_TRUE(appbox::LoadProject(file.wstring(), document, error)) << error;
 
@@ -373,8 +406,8 @@ TEST(ProjectFile, ApplyReplacesTheExistingConfiguration)
     std::wstring                     output;
 
     /* Applying twice must not append either. */
-    ASSERT_TRUE(appbox::ApplyProjectDocument(document, loaded, registry, isolation, output, error)) << error;
-    ASSERT_TRUE(appbox::ApplyProjectDocument(document, loaded, registry, isolation, output, error)) << error;
+    ASSERT_TRUE(ApplyDocument(document, loaded, registry, isolation, output, error)) << error;
+    ASSERT_TRUE(ApplyDocument(document, loaded, registry, isolation, output, error)) << error;
 
     EXPECT_EQ(loaded.ImportsOf("user_profile").size(), 0u);
     EXPECT_EQ(loaded.ImportsOf("program_files").size(), 1u);
@@ -388,8 +421,8 @@ TEST(ProjectFile, ApplyKeepsTheModelsUntouchedOnFailure)
     appbox::PackModel model;
     ASSERT_TRUE(BuildSampleModel(model));
 
-    appbox::ProjectDocument document = appbox::MakeProjectDocument(
-        model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, L"D:\\out\\MyApp.zip");
+    appbox::ProjectDocument document =
+        MakeDocument(model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, L"D:\\out\\MyApp.zip");
 
     /* The second folder names a preset directory which does not exist. */
     appbox::ProjectFolderRecord unknown;
@@ -404,8 +437,7 @@ TEST(ProjectFile, ApplyKeepsTheModelsUntouchedOnFailure)
     std::wstring                     loaded_output = L"untouched";
     std::string                      error;
 
-    EXPECT_FALSE(
-        appbox::ApplyProjectDocument(document, loaded, loaded_registry, loaded_isolation, loaded_output, error));
+    EXPECT_FALSE(ApplyDocument(document, loaded, loaded_registry, loaded_isolation, loaded_output, error));
     EXPECT_NE(error.find("folders[1]"), std::string::npos);
     EXPECT_NE(error.find("unknown preset directory"), std::string::npos);
 
@@ -600,7 +632,7 @@ TEST(ProjectFile, ApplyRejectsUnknownPresetDirectories)
     appbox::RegistryModel            registry;
     appbox::FilesystemIsolationModel isolation;
     std::wstring                     output;
-    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error));
+    EXPECT_FALSE(ApplyDocument(document, model, registry, isolation, output, error));
     EXPECT_NE(error.find("folders[0]"), std::string::npos);
     EXPECT_NE(error.find("unknown preset directory"), std::string::npos);
     EXPECT_TRUE(model.IsEmpty());
@@ -622,7 +654,7 @@ TEST(ProjectFile, ApplyRejectsDuplicateImports)
     appbox::RegistryModel            registry;
     appbox::FilesystemIsolationModel isolation;
     std::wstring                     output;
-    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error));
+    EXPECT_FALSE(ApplyDocument(document, model, registry, isolation, output, error));
     EXPECT_NE(error.find("folders[1]"), std::string::npos);
     EXPECT_TRUE(model.IsEmpty());
 }
@@ -644,7 +676,7 @@ TEST(ProjectFile, ApplyRejectsAFileOutsideAnImportedFolder)
     appbox::RegistryModel            registry;
     appbox::FilesystemIsolationModel isolation;
     std::wstring                     output;
-    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error));
+    EXPECT_FALSE(ApplyDocument(document, model, registry, isolation, output, error));
     EXPECT_NE(error.find("files[0]"), std::string::npos);
     EXPECT_NE(error.find("not an imported folder"), std::string::npos);
     EXPECT_TRUE(model.IsEmpty());
@@ -722,7 +754,7 @@ TEST(ProjectFile, ApplyOfADocumentWithoutARegistryRestoresAnEmptyRegistry)
     appbox::PackModel                model;
     appbox::FilesystemIsolationModel isolation;
     std::wstring                     output;
-    ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error)) << error;
+    ASSERT_TRUE(ApplyDocument(document, model, registry, isolation, output, error)) << error;
 
     /* The document does not describe a registry, so the workspace starts empty. */
     EXPECT_EQ(registry.Root().children.size(), 5u);
@@ -769,7 +801,7 @@ TEST(ProjectFile, LoadRejectsABrokenRegistry)
      * the failure is reported while it is applied.
      */
     ASSERT_TRUE(appbox::LoadProject(unknown_root.wstring(), document, error)) << error;
-    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error));
+    EXPECT_FALSE(ApplyDocument(document, model, registry, isolation, output, error));
     EXPECT_NE(error.find("registry[0]"), std::string::npos);
     EXPECT_NE(error.find("unknown root key 'HKEY_OTHER'"), std::string::npos);
 
@@ -833,7 +865,7 @@ TEST(ProjectFile, ApplyOfADocumentWithoutAFilesystemRestoresAnEmptyModel)
     appbox::PackModel     model;
     appbox::RegistryModel registry;
     std::wstring          output;
-    ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error)) << error;
+    ASSERT_TRUE(ApplyDocument(document, model, registry, isolation, output, error)) << error;
 
     /* The document does not describe the filesystem, so every entry follows its default. */
     EXPECT_TRUE(isolation.IsEmpty());
@@ -894,16 +926,99 @@ TEST(ProjectFile, ApplyRejectsABrokenFilesystemMember)
     /* The mode a file cannot hold and a path which is listed twice are rules of
      * the model, so the failure is reported while the document is applied. */
     ASSERT_TRUE(appbox::LoadProject(file_mode.wstring(), document, error)) << error;
-    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error));
+    EXPECT_FALSE(ApplyDocument(document, model, registry, isolation, output, error));
     EXPECT_NE(error.find("filesystem[0]"), std::string::npos);
     EXPECT_NE(error.find("write_copy"), std::string::npos);
 
     ASSERT_TRUE(appbox::LoadProject(duplicate.wstring(), document, error)) << error;
-    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, output, error));
+    EXPECT_FALSE(ApplyDocument(document, model, registry, isolation, output, error));
     EXPECT_NE(error.find("filesystem[1]"), std::string::npos);
     EXPECT_NE(error.find("listed twice"), std::string::npos);
 
     /* A rejected document leaves the model untouched. */
     ASSERT_EQ(isolation.Entries().size(), 1u);
     EXPECT_EQ(isolation.Entries()[0].isolation, appbox::FilesystemIsolation::Whiteout);
+}
+
+TEST(ProjectFile, NetworkRedirectionsTravelWithTheProjectFile)
+{
+    TempDir temp;
+
+    appbox::NetworkModel network;
+    std::string          error;
+    ASSERT_TRUE(network.AddDnsEntry(L"update.example.com", L"127.0.0.1", error)) << error;
+    ASSERT_TRUE(network.AddDnsEntry(L"api.example.com", L"::1", error)) << error;
+
+    const auto document =
+        appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
+                                    network, L"D:\\out\\MyApp.zip");
+
+    const auto path = temp.File(L"network.json");
+    ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
+
+    appbox::ProjectDocument loaded_document;
+    ASSERT_TRUE(appbox::LoadProject(path.wstring(), loaded_document, error)) << error;
+
+    appbox::PackModel                loaded;
+    appbox::RegistryModel            loaded_registry;
+    appbox::FilesystemIsolationModel loaded_isolation;
+    appbox::NetworkModel             loaded_network;
+    std::wstring                     loaded_output;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
+                                             loaded_output, error))
+        << error;
+
+    ASSERT_EQ(loaded_network.DnsEntries().size(), 2u);
+    EXPECT_EQ(loaded_network.DnsEntries()[0].hostname, L"update.example.com");
+    EXPECT_EQ(loaded_network.DnsEntries()[0].redirect, L"127.0.0.1");
+    EXPECT_EQ(loaded_network.DnsEntries()[1].hostname, L"api.example.com");
+    EXPECT_EQ(loaded_network.DnsEntries()[1].redirect, L"::1");
+    EXPECT_EQ(loaded_output, L"D:\\out\\MyApp.zip");
+}
+
+TEST(ProjectFile, ApplyRejectsABrokenNetworkMember)
+{
+    TempDir temp;
+
+    const auto missing = temp.File(L"network-missing.json");
+    WriteBytes(missing, "{ \"version\": 1, \"network\": [ { \"hostname\": \"example.com\" } ] }");
+
+    const auto bad_address = temp.File(L"network-bad-address.json");
+    WriteBytes(bad_address,
+               "{ \"version\": 1, \"network\": [ { \"hostname\": \"example.com\", \"redirect\": \"nope\" } ] }");
+
+    const auto duplicate = temp.File(L"network-duplicate.json");
+    WriteBytes(duplicate,
+               "{ \"version\": 1, \"network\": [ { \"hostname\": \"example.com\", \"redirect\": \"127.0.0.1\" }, "
+               "{ \"hostname\": \"EXAMPLE.COM\", \"redirect\": \"127.0.0.2\" } ] }");
+
+    appbox::NetworkModel network;
+    std::string          error;
+    ASSERT_TRUE(network.AddDnsEntry(L"keep.example.com", L"10.0.0.1", error)) << error;
+
+    appbox::PackModel                model;
+    appbox::RegistryModel            registry;
+    appbox::FilesystemIsolationModel isolation;
+    std::wstring                     output;
+    appbox::ProjectDocument          document;
+
+    EXPECT_FALSE(appbox::LoadProject(missing.wstring(), document, error));
+    EXPECT_NE(error.find("'redirect'"), std::string::npos);
+
+    /* The address and the uniqueness of a hostname are rules of the model, so
+     * the failure is reported while the document is applied. */
+    ASSERT_TRUE(appbox::LoadProject(bad_address.wstring(), document, error)) << error;
+    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, output, error));
+    EXPECT_NE(error.find("network[0]"), std::string::npos);
+    EXPECT_NE(error.find("is not an IPv4 or an IPv6 address"), std::string::npos);
+
+    ASSERT_TRUE(appbox::LoadProject(duplicate.wstring(), document, error)) << error;
+    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, output, error));
+    EXPECT_NE(error.find("network[1]"), std::string::npos);
+    EXPECT_NE(error.find("listed twice"), std::string::npos);
+
+    /* A rejected document leaves the network model of the session untouched. */
+    ASSERT_EQ(network.DnsEntries().size(), 1u);
+    EXPECT_EQ(network.DnsEntries()[0].hostname, L"keep.example.com");
+    EXPECT_EQ(network.DnsEntries()[0].redirect, L"10.0.0.1");
 }

@@ -16,7 +16,7 @@ struct PresetDefinition
 };
 
 const PresetDefinition s_preset_definitions[] = {
-    { "program_files", L"Program Files",         L"#ProgramFiles#" },
+    { "program_files", L"Program Files",          L"#ProgramFiles#" },
     { "user_profile",  L"Current User Directory", L"#USERPROFILE#"  },
 };
 

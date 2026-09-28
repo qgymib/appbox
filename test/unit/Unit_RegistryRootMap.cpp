@@ -42,8 +42,7 @@ std::wstring ToView(const std::wstring& relative, const std::wstring& hkcu_prefi
 TEST(UnitRegistryRootMap, ViewPathToHive)
 {
     ASSERT_EQ(ToHive(L"\\REGISTRY\\USER\\S-1-5-21-1000"), L"HKEY_CURRENT_USER");
-    ASSERT_EQ(ToHive(L"\\REGISTRY\\USER\\S-1-5-21-1000\\Software\\Vendor"),
-              L"HKEY_CURRENT_USER\\Software\\Vendor");
+    ASSERT_EQ(ToHive(L"\\REGISTRY\\USER\\S-1-5-21-1000\\Software\\Vendor"), L"HKEY_CURRENT_USER\\Software\\Vendor");
 
     ASSERT_EQ(ToHive(L"\\REGISTRY\\MACHINE"), L"HKEY_LOCAL_MACHINE");
     ASSERT_EQ(ToHive(L"\\REGISTRY\\MACHINE\\SOFTWARE\\Vendor"), L"HKEY_LOCAL_MACHINE\\SOFTWARE\\Vendor");
@@ -78,8 +77,7 @@ TEST(UnitRegistryRootMap, CurrentUserWinsOverUsers)
     ASSERT_EQ(ToHive(L"\\REGISTRY\\USER\\S-1-5-21-1000\\Software"), L"HKEY_CURRENT_USER\\Software");
 
     /* A user with a longer SID is not the current user. */
-    ASSERT_EQ(ToHive(L"\\REGISTRY\\USER\\S-1-5-21-1000-extra\\Software"),
-              L"HKEY_USERS\\S-1-5-21-1000-extra\\Software");
+    ASSERT_EQ(ToHive(L"\\REGISTRY\\USER\\S-1-5-21-1000-extra\\Software"), L"HKEY_USERS\\S-1-5-21-1000-extra\\Software");
 }
 
 /**
@@ -114,8 +112,8 @@ TEST(UnitRegistryRootMap, ViewPathToHiveNotIsolated)
 {
     std::wstring relative;
 
-    ASSERT_FALSE(appbox::registry::MapViewPathToHive(L"\\REGISTRY\\A\\{00000000-0000-0000-0000-000000000000}",
-                                                     kHkcu, relative));
+    ASSERT_FALSE(
+        appbox::registry::MapViewPathToHive(L"\\REGISTRY\\A\\{00000000-0000-0000-0000-000000000000}", kHkcu, relative));
     ASSERT_FALSE(appbox::registry::MapViewPathToHive(L"\\Device\\HarddiskVolume1\\Windows", kHkcu, relative));
     ASSERT_FALSE(appbox::registry::MapViewPathToHive(L"", kHkcu, relative));
 }

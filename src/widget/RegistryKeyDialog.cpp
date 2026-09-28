@@ -8,8 +8,7 @@
 
 RegistryKeyDialog::RegistryKeyDialog(wxWindow* parent, const wxString& title, const wxString& parent_path,
                                      const wxString& initial_name, Validator validator)
-    : wxDialog(parent, wxID_ANY, title, wxDefaultPosition, wxDefaultSize),
-      validator_(std::move(validator))
+    : wxDialog(parent, wxID_ANY, title, wxDefaultPosition, wxDefaultSize), validator_(std::move(validator))
 {
     const auto shown_path = parent_path.empty() ? wxString(appbox::kRegistryContainerLabel) : parent_path;
 

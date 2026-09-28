@@ -130,7 +130,7 @@ TEST(UnitRpcCodec, DecodeOversizedLengthIsProtocolError)
  */
 TEST(UnitRpcCodec, DecodeTwoFramesInOneBuffer)
 {
-    std::vector<uint8_t> buffer = MakeFrame("first");
+    std::vector<uint8_t>       buffer = MakeFrame("first");
     const std::vector<uint8_t> second = MakeFrame("second");
     buffer.insert(buffer.end(), second.begin(), second.end());
 
@@ -212,11 +212,15 @@ TEST(UnitRpcCodec, MakeFrameHeaderRoundTrip)
  */
 TEST(UnitRpcCodec, ParseResponseWithResult)
 {
-    const nlohmann::json rsp = { { "jsonrpc", "2.0" }, { "id", 7 }, { "result", { { "value", 42 } } } };
+    const nlohmann::json rsp = {
+        { "jsonrpc", "2.0"               },
+        { "id",      7                   },
+        { "result",  { { "value", 42 } } }
+    };
 
-    uint64_t    id = 0;
+    uint64_t             id = 0;
     appbox::RemoteResult result;
-    std::string error;
+    std::string          error;
 
     ASSERT_TRUE(appbox::ParseRpcResponse(rsp, id, result, error));
     EXPECT_EQ(id, 7u);
@@ -229,9 +233,11 @@ TEST(UnitRpcCodec, ParseResponseWithResult)
  */
 TEST(UnitRpcCodec, ParseResponseWithError)
 {
-    const nlohmann::json rsp = { { "jsonrpc", "2.0" },
-                                 { "id", 9 },
-                                 { "error", { { "code", -32601 }, { "message", "Method not found" } } } };
+    const nlohmann::json rsp = {
+        { "jsonrpc", "2.0"                                                     },
+        { "id",      9                                                         },
+        { "error",   { { "code", -32601 }, { "message", "Method not found" } } }
+    };
 
     uint64_t             id = 0;
     appbox::RemoteResult result;
@@ -249,7 +255,9 @@ TEST(UnitRpcCodec, ParseResponseWithError)
  */
 TEST(UnitRpcCodec, ParseResponseWithoutId)
 {
-    const nlohmann::json rsp = { { "result", 1 } };
+    const nlohmann::json rsp = {
+        { "result", 1 }
+    };
 
     uint64_t             id = 0;
     appbox::RemoteResult result;
@@ -264,7 +272,9 @@ TEST(UnitRpcCodec, ParseResponseWithoutId)
  */
 TEST(UnitRpcCodec, ParseResponseWithoutResultAndError)
 {
-    const nlohmann::json rsp = { { "id", 3 } };
+    const nlohmann::json rsp = {
+        { "id", 3 }
+    };
 
     uint64_t             id = 0;
     appbox::RemoteResult result;
@@ -294,7 +304,10 @@ TEST(UnitRpcCodec, ParseResponseNotAnObject)
  */
 TEST(UnitRpcCodec, ParseResponseWithInvalidErrorField)
 {
-    const nlohmann::json rsp = { { "id", 4 }, { "error", "oops" } };
+    const nlohmann::json rsp = {
+        { "id",    4      },
+        { "error", "oops" }
+    };
 
     uint64_t             id = 0;
     appbox::RemoteResult result;

@@ -21,8 +21,8 @@ static nlohmann::json ProbeRegWriteValue_Entry(const nlohmann::json& data)
     {
         auto wdata = appbox::UTF8ToWide(req.Data);
         rsp.set_code = RegSetValueExW(key, appbox::UTF8ToWide(req.Value).c_str(), 0, REG_SZ,
-                                       reinterpret_cast<const BYTE*>(wdata.c_str()),
-                                       static_cast<DWORD>((wdata.size() + 1) * sizeof(wchar_t)));
+                                      reinterpret_cast<const BYTE*>(wdata.c_str()),
+                                      static_cast<DWORD>((wdata.size() + 1) * sizeof(wchar_t)));
 
         wchar_t buf[128] = {};
         DWORD   buf_size = sizeof(buf);

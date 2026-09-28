@@ -6,6 +6,7 @@
 #include "hook/NtCreateFile.hpp"
 #include "hook/NtCurrentTeb.hpp"
 #include "filesystem/Isolation.hpp"
+#include "network/Isolation.hpp"
 #include "registry/__init__.hpp"
 #include "utils/Defines.hpp"
 #include "utils/HandleInfo.hpp"
@@ -15,10 +16,11 @@
 #include "WString.hpp"
 
 static const appbox::ModuleInitializer s_module[] = {
-    { appbox::HandleInfo::Init,              appbox::HandleInfo::Exit              },
-    { appbox::registry::Hive::Init,          appbox::registry::Hive::Exit          },
-    { appbox::filesystem::Isolation::Init,   appbox::filesystem::Isolation::Exit   },
-    { appbox::InitHook,                      appbox::ExitHook                      },
+    { appbox::HandleInfo::Init,            appbox::HandleInfo::Exit            },
+    { appbox::registry::Hive::Init,        appbox::registry::Hive::Exit        },
+    { appbox::filesystem::Isolation::Init, appbox::filesystem::Isolation::Exit },
+    { appbox::network::Isolation::Init,    appbox::network::Isolation::Exit    },
+    { appbox::InitHook,                    appbox::ExitHook                    },
 };
 
 appbox::Sandbox* appbox::sandbox = nullptr;
@@ -44,6 +46,7 @@ static void ParseInjectData(const std::string& data)
     appbox::sandbox->wRegistryHiveDOSPath = appbox::UTF8ToWide(inject_data.registry_hive_dos_path);
     appbox::sandbox->wRegistryIsolationDOSPath = appbox::UTF8ToWide(inject_data.registry_isolation_dos_path);
     appbox::sandbox->wFilesystemIsolationDOSPath = appbox::UTF8ToWide(inject_data.filesystem_isolation_dos_path);
+    appbox::sandbox->wNetworkIsolationDOSPath = appbox::UTF8ToWide(inject_data.network_isolation_dos_path);
 
     appbox::sandbox->client = std::make_shared<appbox::PipeClient>(appbox::sandbox->wPipePath);
     if (!appbox::sandbox->client->Start())
@@ -231,6 +234,8 @@ void appbox::to_json(nlohmann::json& j, const Sandbox& r)
     j["registry_isolation_dos_path"] = appbox::WideToUTF8(r.wRegistryIsolationDOSPath);
     j["filesystem_isolation_dos_path"] = appbox::WideToUTF8(r.wFilesystemIsolationDOSPath);
     j["fs_isolation_entries"] = r.fs_isolation.Count();
+    j["network_isolation_dos_path"] = appbox::WideToUTF8(r.wNetworkIsolationDOSPath);
+    j["dns_entries"] = r.dns_table.Count();
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)

@@ -30,7 +30,13 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
   inside the hive instead of touching the host registry, and a save exports the
   merged view of a key
   (see [Registry Isolation](docs/RegistryIsolation.md))
-- **Network Isolation**: Network access control (documented)
+- **Network Isolation**: The `Network` workspace of the packer collects the DNS
+  redirections of the packaged application, which travel as an isolation file
+  into the overlay of the archive. The sandbox answers the name resolution of
+  the packaged application from that file: a name the workspace lists is
+  resolved to the address it stores without asking a server, and every other
+  name keeps the resolution of the host
+  (see [Network Isolation](docs/NetworkIsolation.md))
 
 ### Build System
 
@@ -102,6 +108,65 @@ test executables keep their own subdirectory scripts.
 
 **GCC/Clang**: Requires multilib support (`gcc-multilib`, `g++-multilib`).
 
+## Formatting
+
+`tools/format.py` formats every `.hpp` and `.cpp` file of the repository with
+`clang-format`, using the `.clang-format` file at the root of the repository.
+The submodule directory `third_party` and the generated or tool owned
+directories (`build*`, `cmake-build-*`, `out*`, `.git`, `.vs`, `.idea`,
+`.codebuddy`, `.vscode`) are skipped, so a run touches the sources of the
+repository alone. Files with another suffix are not covered, which includes
+`sandbox/utils/WinAPI.h`, the one C++ header of the repository which does not
+carry the `.hpp` suffix.
+
+The script looks for `clang-format` in this order and uses the first candidate
+which answers `--version`:
+
+1. the `clang-format` of the `PATH`,
+2. the `clang-format` of every Visual Studio installation which `vswhere.exe`
+   reports, below `<installation>\VC\Tools\Llvm\<arch>\bin\clang-format.exe`
+   (`x64` first, then `ARM64`, then every other architecture),
+3. the well known install locations: the Visual Studio directories of
+   `%ProgramFiles%` and `%ProgramFiles(x86)%` and the standalone LLVM
+   directories `%ProgramFiles%\LLVM\bin`, `%ProgramFiles(x86)%\LLVM\bin` and
+   `%LOCALAPPDATA%\Programs\LLVM\bin`.
+
+A run which finds no usable candidate prints the paths it tried and stops with
+exit code `2`.
+
+```bash
+# Format every source file in place
+python tools/format.py
+
+# Report the files which are not formatted without writing one of them
+python tools/format.py --check
+
+# Name the result of every file
+python tools/format.py --verbose
+
+# Eight parallel runs, one minute of budget per file
+python tools/format.py -j 8 --timeout 60
+```
+
+| Option | Meaning |
+| --- | --- |
+| `--check`, `--dry-run` | Report the files which are not formatted instead of writing them; the run ends with exit code `1` when it finds one. |
+| `-j N`, `--jobs N` | Number of parallel `clang-format` runs; default the number of processors, at most eight. `1` runs one file after the other. |
+| `--timeout SECONDS` | Budget of one `clang-format` run, in seconds; a run which needs longer is stopped and counted as a failure. Default `120`. |
+| `-v`, `--verbose` | Name the result of every file, not only of the files which need attention. |
+
+A run ends with exit code `0` when every file was processed successfully, `1`
+when a file failed or `--check` found a file which is not formatted, and `2`
+when the environment or the command line is unusable, for example when no
+`clang-format` could be located. A file which fails does not stop the run: its
+diagnostics are reported and the remaining files are handled.
+
+`clang-format` runs with `--style=file --fallback-style=none`, so a file is
+never rewritten with the built in style when the `.clang-format` file is not
+reachable. The repository is not formatted as a whole at the moment, so a
+`--check` run reports the files a run in place would change, which shows the
+extent of that change before the files are written.
+
 ## Project Components
 
 ### Common Module
@@ -150,8 +215,9 @@ icon navigation on the left and the workspace on the right.
   The file name of that executable names the loader program and its launch
   configuration inside the archive. Groups without a counterpart in the packer
   are shown disabled.
-- **Navigation**: Filesystem / Registry / Network / Settings; the filesystem
-  and the registry workspace are implemented, the other pages are empty states.
+- **Navigation**: Filesystem / Registry / Network / Settings; the filesystem,
+  the registry and the network workspace are implemented, the settings page is
+  an empty state.
 - **Filesystem workspace**: the top item of the tree is the
   `Sandbox Filesystem` container, which is selected when the workspace is
   opened. The container lists the preset directories (`Program Files`,
@@ -183,6 +249,22 @@ icon navigation on the left and the workspace on the right.
   `data/registry/isolation.json` into the overlay of the archive, and the
   project file stores it as well, so the modes which were picked are the ones
   the packaged application runs with.
+- **Network workspace**: a flat tab strip with the pages `Proxy`, `DNS` and
+  `IP Restrictions`, which opens on `DNS`. The `DNS` page carries the `Add...`
+  and `Remove` buttons above the table of the DNS redirections of the packaged
+  application, whose columns `Hostname or IP Address` and `Redirect` are edited
+  inside the cell: `Add...` appends a row and opens its first cell, and the row
+  reaches the model as soon as both of its cells carry a value, so the table
+  holds at most one row which is still being filled in. The hostname of a
+  redirection has to be unique (ignoring the case and a trailing dot) and
+  neither field may be empty or contain a whitespace character, while the
+  `Redirect` cell has to hold an IPv4 or an IPv6 address literal; a refused
+  value is reported and the stored value is put back into the cell. The
+  redirections travel with the project file and into the archive: `Build`
+  writes them as `data/network-isolation.json` into the overlay, and the sandbox
+  answers the name resolution of the packaged application from that file
+  (see [Network Isolation](docs/NetworkIsolation.md)). `Proxy` and
+  `IP Restrictions` show the empty state of a reserved isolation domain.
 - **File list**: the columns `Filename`, `Isolation`, `Read Only`,
   `No Upgrade`, `Size` and `Source Path`. `Filename` shows an icon before the
   name of the row, a folder for a folder and a plain file for a file; the icons
@@ -317,11 +399,17 @@ writes and reads the file and maps the document to the models of the workspace.
 ### Tracer
 
 Console tool which reports the functions a program uses:
-- Drives `cdb.exe` to arm one-shot breakpoints on `ntdll`, `kernel32` and
-  `kernelbase` and collects the functions which are actually called
-- Traces the child processes of the program as well
-- Default scope: the functions of the three isolation domains (filesystem,
-  registry, network); `--all-exports` widens it, `--list-scope` shows it
+- Drives `cdb.exe` to arm one-shot breakpoints on `ntdll`, `kernel32`,
+  `kernelbase`, `ws2_32` and `dnsapi` and collects the functions which are
+  actually called
+- Traces the child processes of the program as well, and arms a module which is
+  loaded on demand when the loader maps it
+- Default scope: the lowest level entry points of the three isolation domains
+  (filesystem, registry, network), independent of the hooks the sandbox
+  implements; the name resolution of the network domain lives in `ws2_32` and
+  `dnsapi`, because it has no NT entry point
+- `--all-exports` widens the run to every export of the traced modules (the Win32
+  wrappers included), `--list-scope` shows the scope without running anything
 - Writes a UTF-8 report to a file or to the standard output
 
 ```

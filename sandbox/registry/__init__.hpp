@@ -152,8 +152,7 @@ public:
      *                      example `HKEY_CURRENT_USER\Software`.
      * @return The mapping result.
      */
-    static HiveMap MapKeyPath(POBJECT_ATTRIBUTES ObjectAttributes, std::wstring& view_path,
-                              std::wstring& relative);
+    static HiveMap MapKeyPath(POBJECT_ATTRIBUTES ObjectAttributes, std::wstring& view_path, std::wstring& relative);
 
     /**
      * @brief Convert a logical view path into the hive relative path.
@@ -395,8 +394,7 @@ public:
      */
     static NTSTATUS CreateKey(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
                               PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG TitleIndex,
-                              PUNICODE_STRING Class, ULONG CreateOptions, PHANDLE KeyHandle,
-                              PULONG Disposition);
+                              PUNICODE_STRING Class, ULONG CreateOptions, PHANDLE KeyHandle, PULONG Disposition);
 
     /**
      * @brief Create or open an isolated key with the route of its isolation mode (NtCreateKey semantics).

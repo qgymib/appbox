@@ -26,7 +26,7 @@ namespace
  */
 std::vector<std::wstring> CommandLineArguments()
 {
-    int count = 0;
+    int     count = 0;
     LPWSTR* list = ::CommandLineToArgvW(::GetCommandLineW(), &count);
     if (list == nullptr)
     {
@@ -80,8 +80,7 @@ std::filesystem::path ModuleDirectoryForTarget(const std::filesystem::path& targ
 {
     try
     {
-        return appbox::tracer::SystemDirectoryForMachine(
-            appbox::tracer::PeImage::FromFile(target).Machine());
+        return appbox::tracer::SystemDirectoryForMachine(appbox::tracer::PeImage::FromFile(target).Machine());
     }
     catch (const std::runtime_error&)
     {
@@ -100,8 +99,7 @@ std::filesystem::path ModuleDirectoryForTarget(const std::filesystem::path& targ
  * @return The plan, empty when it could not be built.
  */
 std::vector<appbox::tracer::ArmGroup> BuildPlan(const appbox::tracer::Options& options,
-                                                const std::filesystem::path& target,
-                                                std::filesystem::path& directory,
+                                                const std::filesystem::path& target, std::filesystem::path& directory,
                                                 std::wstring& error)
 {
     directory = ModuleDirectoryForTarget(target);
@@ -123,12 +121,11 @@ std::vector<appbox::tracer::ArmGroup> BuildPlan(const appbox::tracer::Options& o
  * @param[in] scope Text which describes the scope.
  * @return 0 when the listing was written, 1 when it could not be written.
  */
-int ListScope(const appbox::tracer::Options& options, const std::filesystem::path& target,
-              const std::wstring& scope)
+int ListScope(const appbox::tracer::Options& options, const std::filesystem::path& target, const std::wstring& scope)
 {
     std::filesystem::path directory;
-    std::wstring error;
-    const auto plan = BuildPlan(options, target, directory, error);
+    std::wstring          error;
+    const auto            plan = BuildPlan(options, target, directory, error);
     if (!error.empty())
     {
         appbox::tracer::WriteStderr(L"AppBoxTracer: " + error + L"\n");
@@ -165,8 +162,8 @@ int Trace(const appbox::tracer::Options& options, const std::filesystem::path& t
           const std::filesystem::path& debugger, const std::wstring& scope)
 {
     std::filesystem::path directory;
-    std::wstring error;
-    const auto plan = BuildPlan(options, target, directory, error);
+    std::wstring          error;
+    const auto            plan = BuildPlan(options, target, directory, error);
     if (!error.empty())
     {
         appbox::tracer::WriteStderr(L"AppBoxTracer: " + error + L"\n");
@@ -175,9 +172,8 @@ int Trace(const appbox::tracer::Options& options, const std::filesystem::path& t
 
     if (options.all_exports)
     {
-        appbox::tracer::WriteStderr(
-            L"AppBoxTracer: the exhaustive scope arms every executable export of the three "
-            L"modules; arming them takes much longer than the category scope\n");
+        appbox::tracer::WriteStderr(L"AppBoxTracer: the exhaustive scope arms every executable export of the traced "
+                                    L"modules; arming them takes much longer than the category scope\n");
     }
 
     appbox::tracer::TraceRequest request;
@@ -197,12 +193,10 @@ int Trace(const appbox::tracer::Options& options, const std::filesystem::path& t
     header.scope = scope;
     header.processes = result.processes;
     header.breakpoints = result.breakpoints;
-    header.status = result.status == appbox::tracer::RunStatus::Completed
-                        ? std::wstring(L"completed")
-                        : L"aborted: " + result.message;
+    header.status = result.status == appbox::tracer::RunStatus::Completed ? std::wstring(L"completed")
+                                                                          : L"aborted: " + result.message;
 
-    const std::wstring report = appbox::tracer::FormatReport(header, result.names,
-                                                             options.with_categories);
+    const std::wstring report = appbox::tracer::FormatReport(header, result.names, options.with_categories);
     if (options.output_path.empty())
     {
         appbox::tracer::WriteStdout(report);
@@ -219,9 +213,8 @@ int Trace(const appbox::tracer::Options& options, const std::filesystem::path& t
 
     for (std::size_t index = 0; index < result.calls_per_process.size(); ++index)
     {
-        appbox::tracer::WriteStderr(L"AppBoxTracer: process " + std::to_wstring(index + 1U) +
-                                    L": " + std::to_wstring(result.calls_per_process[index]) +
-                                    L" calls\n");
+        appbox::tracer::WriteStderr(L"AppBoxTracer: process " + std::to_wstring(index + 1U) + L": " +
+                                    std::to_wstring(result.calls_per_process[index]) + L" calls\n");
     }
 
     if (result.status == appbox::tracer::RunStatus::Completed)
@@ -231,8 +224,7 @@ int Trace(const appbox::tracer::Options& options, const std::filesystem::path& t
         return 0;
     }
 
-    appbox::tracer::WriteStderr(L"AppBoxTracer: the run did not complete: " + result.message +
-                                L"\n");
+    appbox::tracer::WriteStderr(L"AppBoxTracer: the run did not complete: " + result.message + L"\n");
     return 1;
 }
 
@@ -257,7 +249,7 @@ int main()
         return 2;
     }
 
-    appbox::tracer::Options options;
+    appbox::tracer::Options           options;
     const appbox::tracer::ParseResult result = appbox::tracer::ParseOptions(arguments, options);
     if (result.status == appbox::tracer::ParseStatus::Help)
     {
@@ -279,8 +271,8 @@ int main()
         return 2;
     }
 
-    const std::wstring scope = options.all_exports ? std::wstring(L"all exports")
-                                                   : JoinCategoryNames(options.categories);
+    const std::wstring scope =
+        options.all_exports ? std::wstring(L"all exports") : JoinCategoryNames(options.categories);
     if (options.list_scope)
     {
         return ListScope(options, target, scope);
@@ -289,8 +281,7 @@ int main()
     const std::filesystem::path debugger = appbox::tracer::ResolveCdb(options.cdb_path);
     if (debugger.empty())
     {
-        appbox::tracer::WriteStderr(
-            L"AppBoxTracer: cdb.exe was not found; pass its path with --cdb <path>\n");
+        appbox::tracer::WriteStderr(L"AppBoxTracer: cdb.exe was not found; pass its path with --cdb <path>\n");
         return 2;
     }
 
