@@ -83,6 +83,7 @@ add_executable(AppBoxTests
     "e2e/Fs_Whiteout_FileNotFound.cpp"
     "e2e/Fs_Whiteout_FolderHidesSubtree.cpp"
     "e2e/Fs_WriteLowerLayerFile_CopyUp.cpp"
+    "e2e/Loader_Startup.cpp"
     "e2e/Net_Dns_EveryResolutionApiIsRedirected.cpp"
     "e2e/Net_Dns_FamilyOfTheRedirectIsHonoured.cpp"
     "e2e/Net_Dns_HostnameIsNormalized.cpp"
@@ -149,6 +150,7 @@ add_executable(AppBoxTests
     "probe/WriteFile.cpp"
     "probe/ResolveName.cpp"
     "probe/SocketTraffic.cpp"
+    "probe/StartupStarted.cpp"
 
     # Test helpers.
     "utils/CommandLine.cpp"

@@ -65,9 +65,14 @@ struct ImportedFile
 };
 
 /**
- * @brief The main executable of the sandboxed application.
+ * @brief One executable the sandboxed application starts.
+ *
+ * A startup file is an executable of an imported folder. The sandbox starts
+ * every startup file whose `auto_start` flag is set; a startup file which is
+ * not marked for auto start can be started by naming its `trigger` on the
+ * `--X-AppBox-Startup` command line of the packaged loader.
  */
-struct MainProgram
+struct StartupFile
 {
     /**
      * @brief Identifier of the preset directory owning the imported folder.
@@ -83,20 +88,73 @@ struct MainProgram
      * @brief Executable path relative to the imported folder root.
      */
     std::wstring relative_path;
+
+    /**
+     * @brief Trigger name of the startup file.
+     *
+     * The trigger selects the startup file on the `--X-AppBox-Startup`
+     * command line. It is unique ignoring case and defaults to the file name
+     * of the executable without its extension.
+     */
+    std::wstring trigger;
+
+    /**
+     * @brief Whether the sandbox starts the file without being asked to.
+     */
+    bool auto_start = true;
 };
+
+/**
+ * @brief Get the default trigger of an executable path.
+ *
+ * The default trigger is the file name without its extension, e.g. `app` for
+ * `bin\app.exe`.
+ *
+ * @param[in] relative_path Executable path relative to an import root.
+ * @return The default trigger of the path.
+ */
+std::wstring DefaultStartupTrigger(const std::wstring& relative_path);
+
+/**
+ * @brief Strip the surrounding whitespace of a trigger name.
+ *
+ * A trigger is typed by the user, so it is stored without the surrounding
+ * whitespace: `app ` and `app` would otherwise be two different triggers.
+ *
+ * @param[in] text Trigger name to trim.
+ * @return The trimmed trigger name.
+ */
+std::wstring TrimStartupTrigger(const std::wstring& text);
+
+/**
+ * @brief Get the first trigger of a base name which is still free.
+ *
+ * The base name itself is used when it is free already; otherwise a numeric
+ * suffix is appended (`app`, `app-2`, `app-3`, ...).
+ *
+ * @param[in] files Startup files which already hold their triggers.
+ * @param[in] base Base trigger derived from the file name.
+ * @return A trigger which none of the files uses.
+ */
+std::wstring FreeStartupTrigger(const std::vector<StartupFile>& files, const std::wstring& base);
 
 /**
  * @brief Editable model of a packer session.
  *
- * The model tracks the imported folders per preset directory and the main
- * program choice. All validation (name uniqueness, executable checks)
- * happens here so the UI layer stays free of business rules.
+ * The model tracks the imported folders per preset directory and the startup
+ * files of the packaged application. All validation (name uniqueness,
+ * executable checks, trigger uniqueness) happens here so the UI layer stays
+ * free of business rules.
+ *
+ * The startup file list keeps the order the files were added in, which is the
+ * order the sandbox starts them in. The first entry also names the loader
+ * program inside the archive.
  */
 class PackModel
 {
 public:
     /**
-     * @brief Drop every import and the main program selection.
+     * @brief Drop every import and every startup file.
      *
      * The model is left in the state of a fresh session, which is the starting
      * point of a project import: the imported content of a project file is
@@ -105,7 +163,7 @@ public:
     void Clear();
 
     /**
-     * @brief Whether the model holds no import and no main program.
+     * @brief Whether the model holds no import and no startup file.
      * @return true when the model describes an empty session.
      */
     bool IsEmpty() const;
@@ -128,8 +186,8 @@ public:
     /**
      * @brief Remove a previously imported folder.
      *
-     * A main program pointing at the removed import is cleared as well, and
-     * every imported file below the removed folder is dropped.
+     * Every startup file pointing at the removed import is dropped as well,
+     * and every imported file below the removed folder is dropped.
      *
      * @param[in] preset_id Identifier of the preset directory.
      * @param[in] import_name Name of the imported folder.
@@ -161,6 +219,10 @@ public:
 
     /**
      * @brief Remove a previously imported file.
+     *
+     * A startup file pointing at the removed file is dropped as well, because
+     * the file it refers to is no longer part of the archive.
+     *
      * @param[in] preset_id Identifier of the preset directory.
      * @param[in] target_dir Directory relative to the preset directory.
      * @param[in] file_name Name of the file inside the target directory.
@@ -184,20 +246,69 @@ public:
     const std::vector<ImportedFile>& AllImportedFiles() const;
 
     /**
-     * @brief Select the main program of the sandboxed application.
+     * @brief Get the startup files of the sandboxed application.
+     * @return The startup files in startup order.
+     */
+    const std::vector<StartupFile>& StartupFiles() const;
+
+    /**
+     * @brief Whether the model holds at least one startup file.
+     * @return true when a startup file is configured.
+     */
+    bool HasStartupFiles() const;
+
+    /**
+     * @brief Whether at least one startup file starts automatically.
+     * @return true when a startup file carries the auto start flag.
+     */
+    bool HasAutoStart() const;
+
+    /**
+     * @brief Whether one executable is already a startup file.
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] import_name Name of the imported folder.
+     * @param[in] relative_path Executable path relative to the import root.
+     * @return true when the executable is in the startup file list.
+     */
+    bool IsStartupFile(const std::string& preset_id, const std::wstring& import_name,
+                       const std::wstring& relative_path) const;
+
+    /**
+     * @brief Append one executable to the startup files.
      *
      * The relative path may use forward or backslashes and is normalized to
      * backslashes. The referenced file must exist inside the imported folder
-     * and must be an executable.
+     * and must be an executable. The trigger defaults to the file name without
+     * its extension; when that trigger is taken already, a numeric suffix is
+     * appended so the list stays unambiguous.
+     *
+     * An executable which is already a startup file is not added a second
+     * time: its auto start flag is updated instead and its trigger is kept.
      *
      * @param[in] preset_id Identifier of the preset directory.
      * @param[in] import_name Name of the imported folder.
      * @param[in] relative_path Executable path relative to the import root.
+     * @param[in] auto_start Whether the sandbox starts the file by itself.
      * @param[out] error Error description on failure.
      * @return true on success.
      */
-    bool SetMainProgram(const std::string& preset_id, const std::wstring& import_name,
-                        const std::wstring& relative_path, std::string& error);
+    bool AddStartupFile(const std::string& preset_id, const std::wstring& import_name,
+                        const std::wstring& relative_path, bool auto_start, std::string& error);
+
+    /**
+     * @brief Replace the whole startup file list.
+     *
+     * The operation is atomic: every entry is validated before the list is
+     * replaced, so a rejected list leaves the model unchanged. Every entry
+     * must name an existing executable of an imported folder and must carry a
+     * trigger which is neither empty nor used by another entry (ignoring
+     * case).
+     *
+     * @param[in] files The startup files in startup order.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool SetStartupFiles(std::vector<StartupFile> files, std::string& error);
 
     /**
      * @brief Restore an imported folder without touching the host filesystem.
@@ -244,20 +355,23 @@ public:
                              const std::wstring& file_name, const std::wstring& source_path, std::string& error);
 
     /**
-     * @brief Restore the main program selection without touching the host filesystem.
+     * @brief Restore one startup file without touching the host filesystem.
      *
-     * Unlike SetMainProgram(), the referenced executable does not have to
-     * exist; only the shape of the path and the imported folder it lives in
-     * are validated.
+     * Unlike AddStartupFile(), the referenced executable does not have to
+     * exist; only the shape of the path, the imported folder it lives in and
+     * the trigger are validated.
      *
      * @param[in] preset_id Identifier of the preset directory.
      * @param[in] import_name Name of the imported folder containing the file.
      * @param[in] relative_path Executable path relative to the import root.
+     * @param[in] trigger Trigger name of the startup file.
+     * @param[in] auto_start Whether the sandbox starts the file by itself.
      * @param[out] error Error description on failure.
      * @return true on success.
      */
-    bool RestoreMainProgram(const std::string& preset_id, const std::wstring& import_name,
-                            const std::wstring& relative_path, std::string& error);
+    bool RestoreStartupFile(const std::string& preset_id, const std::wstring& import_name,
+                            const std::wstring& relative_path, const std::wstring& trigger, bool auto_start,
+                            std::string& error);
 
     /**
      * @brief Get the imports of one preset directory.
@@ -276,30 +390,36 @@ public:
     bool GetImport(const std::string& preset_id, const std::wstring& import_name, ImportedFolder& out) const;
 
     /**
-     * @brief Whether a main program is selected.
-     * @return true when a main program is set.
-     */
-    bool HasMainProgram() const;
-
-    /**
-     * @brief Get the selected main program.
-     * @return The main program description; only valid when
-     *         HasMainProgram() returns true.
-     */
-    const MainProgram& MainProgramChoice() const;
-
-    /**
-     * @brief Get the full host path of the selected main program.
+     * @brief Get the full host path of one startup file.
+     * @param[in] file The startup file to resolve.
      * @param[out] path The resolved host path when found.
-     * @return true when a main program is set.
+     * @return true when the imported folder of the file still exists.
      */
-    bool MainProgramPath(std::wstring& path) const;
+    bool StartupFilePath(const StartupFile& file, std::wstring& path) const;
 
 private:
+    /**
+     * @brief Resolve and validate one startup file reference.
+     *
+     * The preset directory and the imported folder have to exist, the path has
+     * to stay inside the imported folder and has to name an executable. When
+     * `require_host` is set the file also has to exist on the host.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] import_name Name of the imported folder.
+     * @param[in] relative_path Executable path relative to the import root.
+     * @param[in] require_host Whether the executable must exist on the host.
+     * @param[out] out The resolved startup file without its trigger.
+     * @param[out] error Error description on failure.
+     * @return true when the reference is usable.
+     */
+    bool ResolveStartupFile(const std::string& preset_id, const std::wstring& import_name,
+                            const std::wstring& relative_path, bool require_host, StartupFile& out,
+                            std::string& error) const;
+
     std::vector<ImportedFolder> imports_;
     std::vector<ImportedFile>   imported_files_;
-    MainProgram                 main_program_;
-    bool                        has_main_program_ = false;
+    std::vector<StartupFile>    startup_files_;
 };
 
 } // namespace appbox

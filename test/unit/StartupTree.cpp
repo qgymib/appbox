@@ -370,7 +370,7 @@ TEST(Unit_StartupTree, FindNodeRejectsUnknownPath)
     EXPECT_NE(tree.FindNode(*import, L"APP.EXE"), nullptr) << "the lookup ignores the case";
 }
 
-TEST(Unit_StartupTree, OnlyExecutablesAreCheckable)
+TEST(Unit_StartupTree, OnlyExecutablesCanBecomeStartupFiles)
 {
     ImportedApp app;
     ASSERT_TRUE(app.Imported());
@@ -392,12 +392,17 @@ TEST(Unit_StartupTree, OnlyExecutablesAreCheckable)
     EXPECT_FALSE(appbox::StartupTree::IsCheckable(*tree.Roots().front()));
     EXPECT_TRUE(appbox::StartupTree::IsCheckable(file));
 
-    EXPECT_FALSE(tree.SetChecked(folder));
-    EXPECT_FALSE(tree.SetChecked(*import));
-    EXPECT_FALSE(tree.HasChecked());
+    EXPECT_FALSE(tree.SetAutoStart(folder, true));
+    EXPECT_FALSE(tree.SetAutoStart(*import, true));
+    EXPECT_FALSE(tree.HasFiles());
+
+    EXPECT_TRUE(tree.SetAutoStart(file, true));
+    EXPECT_TRUE(tree.HasFiles());
+    EXPECT_TRUE(tree.Contains(file));
+    EXPECT_TRUE(tree.IsAutoStart(file));
 }
 
-TEST(Unit_StartupTree, CheckIsExclusive)
+TEST(Unit_StartupTree, StartupFilesAreIndependent)
 {
     ImportedApp app;
     ASSERT_TRUE(app.Imported());
@@ -414,21 +419,24 @@ TEST(Unit_StartupTree, CheckIsExclusive)
     const appbox::StartupNode& first = *import->children[0];
     const appbox::StartupNode& second = *import->children[1];
 
-    EXPECT_TRUE(tree.SetChecked(first));
-    EXPECT_TRUE(tree.HasChecked());
-    EXPECT_TRUE(tree.IsChecked(first));
-    EXPECT_FALSE(tree.IsChecked(second));
-    EXPECT_EQ(tree.Checked().relative_path, L"first.exe");
+    EXPECT_TRUE(tree.SetAutoStart(first, true));
+    EXPECT_TRUE(tree.SetAutoStart(second, true));
+    EXPECT_TRUE(tree.SetAutoStart(second, false));
 
-    EXPECT_TRUE(tree.SetChecked(second));
-    EXPECT_FALSE(tree.IsChecked(first));
-    EXPECT_TRUE(tree.IsChecked(second));
-    EXPECT_EQ(tree.Checked().relative_path, L"second.exe");
-    EXPECT_EQ(tree.Checked().import_name, app.ImportName());
-    EXPECT_EQ(tree.Checked().preset_id, "program_files");
+    const auto& files = tree.Files();
+    ASSERT_EQ(files.size(), static_cast<std::size_t>(2));
+    EXPECT_EQ(files[0].relative_path, L"first.exe");
+    EXPECT_EQ(files[0].import_name, app.ImportName());
+    EXPECT_EQ(files[0].preset_id, "program_files");
+    EXPECT_EQ(files[1].relative_path, L"second.exe");
+
+    EXPECT_TRUE(tree.Contains(first));
+    EXPECT_TRUE(tree.Contains(second));
+    EXPECT_TRUE(tree.IsAutoStart(first));
+    EXPECT_FALSE(tree.IsAutoStart(second));
 }
 
-TEST(Unit_StartupTree, ClearCheckedDropsSelection)
+TEST(Unit_StartupTree, SetAutoStartClearsTheFlag)
 {
     ImportedApp app;
     ASSERT_TRUE(app.Imported());
@@ -441,14 +449,109 @@ TEST(Unit_StartupTree, ClearCheckedDropsSelection)
     tree.EnsureChildren(*import);
     ASSERT_EQ(import->children.size(), static_cast<std::size_t>(1));
 
-    ASSERT_TRUE(tree.SetChecked(*import->children[0]));
-    tree.ClearChecked();
+    const appbox::StartupNode& file = *import->children[0];
 
-    EXPECT_FALSE(tree.HasChecked());
-    EXPECT_FALSE(tree.IsChecked(*import->children[0]));
+    ASSERT_TRUE(tree.SetAutoStart(file, true));
+    EXPECT_TRUE(tree.SetAutoStart(file, false));
+
+    EXPECT_TRUE(tree.Contains(file));
+    EXPECT_FALSE(tree.IsAutoStart(file));
+    EXPECT_EQ(tree.Files().size(), static_cast<std::size_t>(1));
 }
 
-TEST(Unit_StartupTree, PreselectMatchesAfterExpansion)
+TEST(Unit_StartupTree, RemoveDropsAStartupFile)
+{
+    ImportedApp app;
+    ASSERT_TRUE(app.Imported());
+
+    MakeFile(app.Folder(), L"app.exe", "EXE");
+
+    appbox::StartupTree        tree(app.Model());
+    appbox::StartupNode* const import = ImportRow(tree);
+    ASSERT_NE(import, nullptr);
+    tree.EnsureChildren(*import);
+    ASSERT_EQ(import->children.size(), static_cast<std::size_t>(1));
+
+    const appbox::StartupNode& file = *import->children[0];
+
+    ASSERT_TRUE(tree.SetAutoStart(file, true));
+    EXPECT_TRUE(tree.Remove(file));
+
+    EXPECT_FALSE(tree.HasFiles());
+    EXPECT_FALSE(tree.Contains(file));
+    EXPECT_FALSE(tree.Remove(file)) << "the row is no longer a startup file";
+}
+
+TEST(Unit_StartupTree, TriggerDefaultsToTheFileName)
+{
+    ImportedApp app;
+    ASSERT_TRUE(app.Imported());
+
+    MakeFile(MakeFolder(app.Folder(), L"bin"), L"app.exe", "EXE");
+
+    appbox::StartupTree        tree(app.Model());
+    appbox::StartupNode* const import = ImportRow(tree);
+    ASSERT_NE(import, nullptr);
+
+    appbox::StartupNode* const file = tree.FindNode(*import, L"bin\\app.exe");
+    ASSERT_NE(file, nullptr);
+    ASSERT_TRUE(tree.SetAutoStart(*file, true));
+
+    EXPECT_EQ(tree.TriggerOf(*file), L"app");
+}
+
+TEST(Unit_StartupTree, SetTriggerRejectsEmptyAndDuplicate)
+{
+    ImportedApp app;
+    ASSERT_TRUE(app.Imported());
+
+    MakeFile(app.Folder(), L"first.exe", "EXE");
+    MakeFile(app.Folder(), L"second.exe", "EXE");
+
+    appbox::StartupTree        tree(app.Model());
+    appbox::StartupNode* const import = ImportRow(tree);
+    ASSERT_NE(import, nullptr);
+    tree.EnsureChildren(*import);
+
+    ASSERT_EQ(import->children.size(), static_cast<std::size_t>(2));
+    const appbox::StartupNode& first = *import->children[0];
+    const appbox::StartupNode& second = *import->children[1];
+
+    ASSERT_TRUE(tree.SetAutoStart(first, true));
+    ASSERT_TRUE(tree.SetAutoStart(second, true));
+
+    std::string error;
+    EXPECT_FALSE(tree.SetTrigger(first, L"   ", error));
+    EXPECT_FALSE(error.empty());
+    EXPECT_EQ(tree.TriggerOf(first), L"first");
+
+    EXPECT_TRUE(tree.SetTrigger(first, L"main", error)) << error;
+    EXPECT_EQ(tree.TriggerOf(first), L"main");
+
+    EXPECT_FALSE(tree.SetTrigger(second, L"MAIN", error));
+    EXPECT_NE(error.find("used twice"), std::string::npos);
+    EXPECT_EQ(tree.TriggerOf(second), L"second");
+}
+
+TEST(Unit_StartupTree, SetTriggerRequiresAStartupFile)
+{
+    ImportedApp app;
+    ASSERT_TRUE(app.Imported());
+
+    MakeFile(app.Folder(), L"app.exe", "EXE");
+
+    appbox::StartupTree        tree(app.Model());
+    appbox::StartupNode* const import = ImportRow(tree);
+    ASSERT_NE(import, nullptr);
+    tree.EnsureChildren(*import);
+    ASSERT_EQ(import->children.size(), static_cast<std::size_t>(1));
+
+    std::string error;
+    EXPECT_FALSE(tree.SetTrigger(*import->children[0], L"main", error));
+    EXPECT_FALSE(tree.HasFiles());
+}
+
+TEST(Unit_StartupTree, PreselectTakesOverTheList)
 {
     ImportedApp app;
     ASSERT_TRUE(app.Imported());
@@ -457,15 +560,19 @@ TEST(Unit_StartupTree, PreselectMatchesAfterExpansion)
 
     appbox::StartupTree tree(app.Model());
 
-    appbox::MainProgram choice;
+    appbox::StartupFile choice;
     choice.preset_id = "program_files";
     choice.import_name = app.ImportName();
     choice.relative_path = L"BIN\\APP.EXE";
-    tree.Preselect(choice);
+    choice.trigger = L"main";
+    choice.auto_start = true;
+    tree.Preselect({ choice });
 
-    EXPECT_TRUE(tree.HasChecked());
+    EXPECT_TRUE(tree.HasFiles());
+    ASSERT_EQ(tree.Files().size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(tree.Files()[0].trigger, L"main");
 
-    /* The row does not exist yet, the check follows the identifier. */
+    /* The row does not exist yet, the state follows the identifier. */
     appbox::StartupNode* const import = ImportRow(tree);
     ASSERT_NE(import, nullptr);
     EXPECT_FALSE(import->populated) << "the preselect does not expand the tree";
@@ -473,11 +580,13 @@ TEST(Unit_StartupTree, PreselectMatchesAfterExpansion)
     appbox::StartupNode* const file = tree.FindChoice(choice);
     ASSERT_NE(file, nullptr);
     EXPECT_EQ(file->kind, appbox::StartupNodeKind::Executable);
-    EXPECT_TRUE(tree.IsChecked(*file));
-    EXPECT_FALSE(tree.IsChecked(*file->parent));
+    EXPECT_TRUE(tree.Contains(*file));
+    EXPECT_TRUE(tree.IsAutoStart(*file));
+    EXPECT_EQ(tree.TriggerOf(*file), L"main");
+    EXPECT_FALSE(tree.Contains(*file->parent));
 }
 
-TEST(Unit_StartupTree, CheckedChoiceIsAcceptedByModel)
+TEST(Unit_StartupTree, TreeListIsAcceptedByModel)
 {
     ImportedApp app;
     ASSERT_TRUE(app.Imported());
@@ -491,12 +600,14 @@ TEST(Unit_StartupTree, CheckedChoiceIsAcceptedByModel)
 
     appbox::StartupNode* const file = tree.FindNode(*import, L"app.exe");
     ASSERT_NE(file, nullptr);
-    ASSERT_TRUE(tree.SetChecked(*file));
+    ASSERT_TRUE(tree.SetAutoStart(*file, true));
 
     std::string error;
-    EXPECT_TRUE(
-        model.SetMainProgram(tree.Checked().preset_id, tree.Checked().import_name, tree.Checked().relative_path, error))
-        << error;
-    EXPECT_TRUE(model.HasMainProgram());
-    EXPECT_EQ(model.MainProgramChoice().relative_path, L"app.exe");
+    ASSERT_TRUE(tree.SetTrigger(*file, L"main", error)) << error;
+    EXPECT_TRUE(model.SetStartupFiles(tree.Files(), error)) << error;
+
+    EXPECT_TRUE(model.HasStartupFiles());
+    EXPECT_TRUE(model.HasAutoStart());
+    EXPECT_EQ(model.StartupFiles()[0].relative_path, L"app.exe");
+    EXPECT_EQ(model.StartupFiles()[0].trigger, L"main");
 }

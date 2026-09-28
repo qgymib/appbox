@@ -11,18 +11,22 @@
 #include <wx/dataview.h>
 #include "core/PackModel.hpp"
 #include "core/StartupTree.hpp"
+#include <string>
+#include <vector>
 
 /**
  * @brief Tree model of the startup file browser.
  *
  * The model presents the startup file tree of the pack model as a tree table
- * with the columns Name, Type and Startup. Host subfolders are enumerated by
- * the tree on demand, so a folder is read only once it is shown for the first
- * time.
+ * with the columns Name, Type, Auto Start and Trigger. Host subfolders are
+ * enumerated by the tree on demand, so a folder is read only once it is shown
+ * for the first time.
  *
- * The Startup column reports a checkbox state for executable rows only; the
- * rows which cannot be the startup file report no value at all, which keeps
- * their cell empty and non clickable.
+ * The Auto Start and Trigger columns report a value for executable rows only;
+ * the rows which cannot be a startup file report no value at all, which keeps
+ * their cells empty and non clickable. Checking the box of an executable adds
+ * it to the startup file list, clearing the box keeps it in the list but stops
+ * the sandbox from starting it on its own.
  */
 class StartupTreeModel : public wxDataViewModel
 {
@@ -32,9 +36,10 @@ public:
      */
     enum Column
     {
-        NameColumn = 0,   ///< Tree column with the icon and the name of the row.
-        TypeColumn = 1,   ///< Folder or Executable.
-        StartupColumn = 2 ///< Checkbox marking the startup file.
+        NameColumn = 0,      ///< Tree column with the icon and the name of the row.
+        TypeColumn = 1,      ///< Folder or Executable.
+        AutoStartColumn = 2, ///< Checkbox marking the automatic start.
+        TriggerColumn = 3    ///< Trigger name of a startup file.
     };
 
     /**
@@ -58,49 +63,73 @@ public:
     wxDataViewItem Item(const appbox::StartupNode* node) const;
 
     /**
-     * @brief Find the row of a startup file choice.
+     * @brief Find the row of a startup file.
      *
      * The folders on the way to the row are enumerated, so the row can be
      * expanded and shown without expanding the tree by hand.
      *
-     * @param[in] choice The startup file to look up.
+     * @param[in] file The startup file to look up.
      * @return The row, null when it does not exist.
      */
-    appbox::StartupNode* FindChoice(const appbox::MainProgram& choice);
+    appbox::StartupNode* FindChoice(const appbox::StartupFile& file);
 
     /**
-     * @brief Pre-select the startup file of an existing model choice.
-     * @param[in] choice The startup file to pre-select.
+     * @brief Take over the startup file list of the model.
+     * @param[in] files The startup files to preselect.
      */
-    void Preselect(const appbox::MainProgram& choice);
+    void Preselect(const std::vector<appbox::StartupFile>& files);
 
     /**
-     * @brief Select one row as the startup file.
+     * @brief Whether the tree holds at least one startup file.
+     * @return true when a startup file is in the list.
+     */
+    bool HasFiles() const;
+
+    /**
+     * @brief Get the startup file list of the tree.
+     * @return The startup files in startup order.
+     */
+    const std::vector<appbox::StartupFile>& Files() const;
+
+    /**
+     * @brief Whether a row is a startup file.
+     * @param[in] item Data view item of the row.
+     * @return true when the row is in the startup file list.
+     */
+    bool IsStartupFile(const wxDataViewItem& item) const;
+
+    /**
+     * @brief Whether a row starts automatically.
+     * @param[in] item Data view item of the row.
+     * @return true when the row is a startup file with the auto start flag.
+     */
+    bool IsAutoStart(const wxDataViewItem& item) const;
+
+    /**
+     * @brief Drop a row from the startup file list.
      *
-     * The selection is exclusive: the previously checked row is repainted as
-     * well.
+     * The cells of the row are reported as changed, so the checkbox and the
+     * trigger disappear without a rebuild of the table.
      *
-     * @param[in] item Data view item of the row to select.
-     * @return true when the row is an executable and was selected.
+     * @param[in] item Data view item of the row.
+     * @return true when the row was a startup file and was dropped.
      */
-    bool SetChecked(const wxDataViewItem& item);
+    bool Remove(const wxDataViewItem& item);
 
     /**
-     * @brief Whether a startup file is selected.
-     * @return true when a startup file is selected.
+     * @brief Get and clear the description of the last rejected value.
+     *
+     * The dialog shows the description and asks the control to re-read the
+     * cell, which restores the value the tree kept.
+     *
+     * @return The description of the last rejected value, empty when the last
+     *         value was accepted.
      */
-    bool HasChecked() const;
-
-    /**
-     * @brief Get the selected startup file.
-     * @return The selected startup file; only valid when HasChecked() returns
-     *         true.
-     */
-    appbox::MainProgram Checked() const;
+    wxString TakeError();
 
     /**
      * @brief Get the value of one cell.
-     * @param[out] variant Value of the cell, null for a row without a startup
+     * @param[out] variant Value of the cell, empty for a row without a startup
      *             file.
      * @param[in] item Data view item of the row.
      * @param[in] col Column index.
@@ -180,10 +209,9 @@ private:
     wxBitmapBundle executable_icon_;
 
     /**
-     * @brief Data view item of the checked row, invalid while nothing is
-     *        checked or before the checked row was created.
+     * @brief Description of the last rejected value.
      */
-    wxDataViewItem checked_item_;
+    wxString error_;
 };
 
 #endif // APPBOX_PACKER_WIDGET_STARTUP_TREE_MODEL_HPP

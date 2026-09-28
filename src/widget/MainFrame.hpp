@@ -179,10 +179,10 @@ private:
     void OnImportRegistry(wxCommandEvent& event);
 
     /**
-     * @brief Open the main program browser and apply the selection.
+     * @brief Open the startup file browser and apply the selection.
      * @param[in] event Command event.
      */
-    void OnSelectMainProgram(wxCommandEvent& event);
+    void OnStartupFiles(wxCommandEvent& event);
 
     /**
      * @brief Choose the destination archive path.

@@ -1,6 +1,7 @@
 #include "utils/MiniLauncher.hpp"
 #include "CommandLineOptions.hpp"
 #include "SetLogLevel.hpp"
+#include "WString.hpp"
 #include <CLI/CLI.hpp>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -52,6 +53,7 @@ appbox::CommandLineOptions::CommandLineOptions()
     wargc = 0;
     wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
     is_launcher = false;
+    has_startup_trigger = false;
 }
 
 appbox::CommandLineOptions::~CommandLineOptions()
@@ -69,6 +71,13 @@ bool appbox::CommandLineOptions::ParseOptions()
         "--X-AppBox-ConfigFile", [this](const std::wstring& arg) { SetupConfigFile(*this, arg); },
         "Use config file instead of loading builtin config file");
     app.add_option("--X-AppBox-Launcher", is_launcher, "Run as minilauncher");
+    app.add_option_function<std::wstring>(
+        "--X-AppBox-Startup",
+        [this](const std::wstring& arg) {
+            startup_trigger = appbox::WideToUTF8(arg);
+            has_startup_trigger = true;
+        },
+        "Run the startup file with the given trigger instead of the auto start files");
 
     CLI11_PARSE(app, wargc, wargv);
 

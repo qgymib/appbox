@@ -37,16 +37,16 @@ std::size_t CountFilesBelow(const std::wstring& folder);
 /**
  * @brief Get the archive entry name of the loader program.
  *
- * The loader is named after the main program selected in the startup file
- * dialog, so the extracted archive looks like the packaged application: an
- * entry program named `foo.exe` (optionally inside a subdirectory of the
- * imported folder) produces the loader entry `foo.exe`. The loader resolves
- * its configuration as `<own file name>.json` beside itself, so the archive
- * entry of the configuration is `<loader entry>.json`, e.g. `foo.exe.json`.
+ * The loader is named after the first startup file of the model, so the
+ * extracted archive looks like the packaged application: an entry program
+ * named `foo.exe` (optionally inside a subdirectory of the imported folder)
+ * produces the loader entry `foo.exe`. The loader resolves its configuration
+ * as `<own file name>.json` beside itself, so the archive entry of the
+ * configuration is `<loader entry>.json`, e.g. `foo.exe.json`.
  *
  * @param[in] model The pack model.
- * @return The file name of the loader entry, empty when the model has no main
- *         program.
+ * @return The file name of the loader entry, empty when the model has no
+ *         startup file.
  */
 std::wstring LoaderEntryName(const PackModel& model);
 
@@ -56,9 +56,10 @@ std::wstring LoaderEntryName(const PackModel& model);
  * The archive layout matches the loader runtime conventions:
  *
  * ```
- * <main program name>                    loader payload (loader_bytes)
- * <main program name>.json               base_fs = ["."], overlay_fs = "data",
- *                                        launch.executable = <layer key>\<import>\<exe>
+ * <first startup file name>              loader payload (loader_bytes)
+ * <first startup file name>.json         base_fs = ["."], overlay_fs = "data",
+ *                                        startups[] = { trigger, auto_start,
+ *                                        executable = <layer key>\<import>\<exe> }
  * data/registry/user.hiv                 virtual registry of the workspace
  * data/registry/isolation.json           isolation modes of the registry
  * data/filesystem-isolation.json         isolation modes of the filesystem
@@ -67,9 +68,9 @@ std::wstring LoaderEntryName(const PackModel& model);
  * filesystem/<layer key>/<target>/<file> imported file content
  * ```
  *
- * The loader program and its configuration carry the file name of the main
- * program, see LoaderEntryName(). The entry program itself keeps its place
- * below the layer tree.
+ * The loader program and its configuration carry the file name of the first
+ * startup file, see LoaderEntryName(). The entry programs themselves keep
+ * their place below the layer tree.
  *
  * The registry artifacts land in the overlay folder (`overlay_fs`), which is
  * where the loader mounts the private hive of the sandbox: the hive holds the
@@ -77,11 +78,11 @@ std::wstring LoaderEntryName(const PackModel& model);
  * the modes which decide which host entries stay visible (see
  * `common/RegistryIsolation.hpp`).
  *
- * The loader program also carries the file icon of the main program: the icon
- * group which the shell shows for the main program is appended to the loader
- * payload (see ApplyApplicationIcon()), so Explorer shows the icon of the
- * packaged application for the extracted program while the loader keeps its
- * own icon resources. A main program without an icon leaves the payload
+ * The loader program also carries the file icon of the first startup file:
+ * the icon group which the shell shows for that program is appended to the
+ * loader payload (see ApplyApplicationIcon()), so Explorer shows the icon of
+ * the packaged application for the extracted program while the loader keeps
+ * its own icon resources. A startup file without an icon leaves the payload
  * unchanged; the run then only logs a warning instead of failing.
  *
  * The loader bytes are supplied by the caller so unit tests can inject a

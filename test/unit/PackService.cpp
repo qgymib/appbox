@@ -179,7 +179,7 @@ TEST(Unit_PackService, CountFilesBelowCountsRecursively)
     EXPECT_EQ(appbox::CountFilesBelow(temp.Get().wstring()), static_cast<std::size_t>(3));
 }
 
-TEST(Unit_PackService, PackRequiresAMainProgram)
+TEST(Unit_PackService, PackRequiresAStartupFile)
 {
     TempDir               temp;
     appbox::PackModel     model;
@@ -187,7 +187,24 @@ TEST(Unit_PackService, PackRequiresAMainProgram)
 
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
                                      "LOADER", 6, (temp.Get() / L"out.zip").wstring(), nullptr);
-    EXPECT_NE(result.find("main program"), std::string::npos);
+    EXPECT_NE(result.find("startup file"), std::string::npos);
+}
+
+TEST(Unit_PackService, PackRequiresAnAutoStartStartupFile)
+{
+    TempDir temp;
+    MakeFile(temp.Get(), L"app.exe", "EXE");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", temp.Get().filename().wstring(), L"app.exe", false, error))
+        << error;
+
+    const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                                     "LOADER", 6, (temp.Get() / L"out.zip").wstring(), nullptr);
+    EXPECT_NE(result.find("start automatically"), std::string::npos);
 }
 
 TEST(Unit_PackService, PackRequiresLoaderBytes)
@@ -199,7 +216,8 @@ TEST(Unit_PackService, PackRequiresLoaderBytes)
     appbox::RegistryModel registry;
     std::string           error;
     ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", temp.Get().filename().wstring(), L"app.exe", error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", temp.Get().filename().wstring(), L"app.exe", true, error))
+        << error;
 
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
                                      nullptr, 0, (temp.Get() / L"out.zip").wstring(), nullptr);
@@ -221,7 +239,7 @@ TEST(Unit_PackService, PackProducesLoaderConfigurationAndLayers)
     std::string           error;
     ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
     ASSERT_TRUE(model.ImportFolder("user_profile", (user_profile.Get() / L"MyUser").wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
 
     const auto zip_path = program_files.Get().parent_path() / (program_files.Get().filename().wstring() + L"-pack.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
@@ -247,8 +265,11 @@ TEST(Unit_PackService, PackProducesLoaderConfigurationAndLayers)
     ASSERT_EQ(config.base_fs.size(), static_cast<std::size_t>(1));
     EXPECT_EQ(config.base_fs[0], ".");
     EXPECT_EQ(config.overlay_fs, "data");
-    EXPECT_EQ(config.launch.executable, "#ProgramFiles#\\MyApp\\app.exe");
-    EXPECT_TRUE(config.launch.arguments.empty());
+    ASSERT_EQ(config.startups.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(config.startups[0].trigger, "app");
+    EXPECT_TRUE(config.startups[0].auto_start);
+    EXPECT_EQ(config.startups[0].executable, "#ProgramFiles#\\MyApp\\app.exe");
+    EXPECT_TRUE(config.startups[0].arguments.empty());
 
     /* Imported folders become lower layers below filesystem/<layer key>. */
     EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE-CONTENT");
@@ -270,7 +291,7 @@ TEST(Unit_PackService, PackWritesRegistryArtifacts)
     appbox::RegistryModel registry;
     std::string           error;
     ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
 
     ASSERT_TRUE(registry.EnsureKey(L"HKEY_CURRENT_USER\\Software\\AppBox", error)) << error;
     ASSERT_TRUE(registry.SetValue(L"HKEY_CURRENT_USER\\Software\\AppBox", L"Mode", appbox::RegistryValueType::String,
@@ -322,7 +343,7 @@ TEST(Unit_PackService, PackWritesFilesystemIsolationFile)
     appbox::FilesystemIsolationModel isolation;
     std::string                      error;
     ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
 
     ASSERT_TRUE(isolation.SetIsolation(L"#ProgramFiles#\\MyApp", appbox::FilesystemEntryKind::Directory,
                                        appbox::FilesystemIsolation::Full, error))
@@ -372,7 +393,7 @@ TEST(Unit_PackService, PackWritesNetworkIsolationFile)
     appbox::NetworkModel  network;
     std::string           error;
     ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
 
     ASSERT_TRUE(network.AddDnsEntry(L"update.example.com", L"127.0.0.1", error)) << error;
     ASSERT_TRUE(network.AddDnsEntry(L"api.example.com", L"::1", error)) << error;
@@ -419,7 +440,7 @@ TEST(Unit_PackService, PackWritesTheProxyOfTheNetworkWorkspace)
     appbox::NetworkModel  network;
     std::string           error;
     ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
 
     appbox::ProxyConfig proxy;
     proxy.tcp = true;
@@ -461,7 +482,7 @@ TEST(Unit_PackService, PackWritesTheProxyOfTheNetworkWorkspace)
     EXPECT_EQ(item["password"].get<std::string>(), "secret");
 }
 
-TEST(Unit_PackService, LoaderEntryNameIsEmptyWithoutAMainProgram)
+TEST(Unit_PackService, LoaderEntryNameIsEmptyWithoutAStartupFile)
 {
     appbox::PackModel     model;
     appbox::RegistryModel registry;
@@ -469,7 +490,7 @@ TEST(Unit_PackService, LoaderEntryNameIsEmptyWithoutAMainProgram)
     EXPECT_TRUE(appbox::LoaderEntryName(model).empty());
 }
 
-TEST(Unit_PackService, LoaderEntryNameDropsTheDirectoryOfTheMainProgram)
+TEST(Unit_PackService, LoaderEntryNameDropsTheDirectoryOfTheStartupFile)
 {
     TempDir    temp;
     const auto my_app = temp.Get() / L"MyApp";
@@ -479,7 +500,7 @@ TEST(Unit_PackService, LoaderEntryNameDropsTheDirectoryOfTheMainProgram)
     appbox::RegistryModel registry;
     std::string           error;
     ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"bin\\tool.exe", error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"bin\\tool.exe", true, error)) << error;
 
     /* Only the file name is used: the loader lives in the archive root. */
     EXPECT_EQ(appbox::LoaderEntryName(model), L"tool.exe");
@@ -498,10 +519,50 @@ TEST(Unit_PackService, LoaderEntryNameDropsTheDirectoryOfTheMainProgram)
     const auto json_text = ReadEntry(archive, "tool.exe.json");
     ASSERT_FALSE(json_text.empty());
     const auto config = nlohmann::json::parse(json_text).get<appbox::LoaderConfig>();
-    EXPECT_EQ(config.launch.executable, "#ProgramFiles#\\MyApp\\bin\\tool.exe");
+    ASSERT_EQ(config.startups.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(config.startups[0].executable, "#ProgramFiles#\\MyApp\\bin\\tool.exe");
 
     /* The entry program itself keeps its place below the layer tree. */
     EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/bin/tool.exe"), "EXE");
+}
+
+TEST(Unit_PackService, LoaderEntryNameFollowsTheFirstStartupFile)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"second.exe", "SECOND");
+    MakeFile(my_app, L"first.exe", "FIRST");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"second.exe", true, error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"first.exe", false, error)) << error;
+
+    EXPECT_EQ(appbox::LoaderEntryName(model), L"second.exe");
+
+    const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-order.zip");
+    const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                                     "FAKE-LOADER", 11, zip_path.wstring(), nullptr);
+    EXPECT_EQ(result, "") << result;
+
+    ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
+    zip_t*           archive = closer.archive;
+    ASSERT_NE(archive, nullptr);
+
+    const auto json_text = ReadEntry(archive, "second.exe.json");
+    ASSERT_FALSE(json_text.empty());
+    const auto config = nlohmann::json::parse(json_text).get<appbox::LoaderConfig>();
+
+    /* Every startup file is written in the order of the model. */
+    ASSERT_EQ(config.startups.size(), static_cast<std::size_t>(2));
+    EXPECT_EQ(config.startups[0].trigger, "second");
+    EXPECT_TRUE(config.startups[0].auto_start);
+    EXPECT_EQ(config.startups[0].executable, "#ProgramFiles#\\MyApp\\second.exe");
+    EXPECT_EQ(config.startups[1].trigger, "first");
+    EXPECT_FALSE(config.startups[1].auto_start);
+    EXPECT_EQ(config.startups[1].executable, "#ProgramFiles#\\MyApp\\first.exe");
 }
 
 TEST(Unit_PackService, PackReportsProgress)
@@ -515,7 +576,7 @@ TEST(Unit_PackService, PackReportsProgress)
     appbox::RegistryModel registry;
     std::string           error;
     ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
 
     std::vector<appbox::BuildProgress> reports;
     const auto                         progress = [&reports](const appbox::BuildProgress& report) {
@@ -568,7 +629,7 @@ TEST(Unit_PackService, PackCanBeCancelled)
     appbox::RegistryModel registry;
     std::string           error;
     ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-cancel.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
@@ -589,7 +650,7 @@ TEST(Unit_PackService, PackWritesImportedFiles)
     appbox::RegistryModel registry;
     std::string           error;
     ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
     ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp", { extra.wstring() }, error)) << error;
     ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp\\data", { note.wstring() }, error)) << error;
 
@@ -621,7 +682,7 @@ TEST(Unit_PackService, PackCreatesDirectoriesOfImportedFiles)
     appbox::RegistryModel registry;
     std::string           error;
     ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
 
     /* The intermediate folder exists on the host. */
     MakeFolder(my_app, L"plugins");
@@ -654,7 +715,7 @@ TEST(Unit_PackService, PackCountsImportedFilesInTheProgressTotal)
     appbox::RegistryModel registry;
     std::string           error;
     ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
     ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp", { extra.wstring() }, error)) << error;
 
     std::vector<appbox::BuildProgress> reports;

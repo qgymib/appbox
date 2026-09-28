@@ -26,6 +26,12 @@ const int kMenuImportFolder = wxNewId();
 /** Context menu command: remove an imported folder. */
 const int kMenuRemoveImport = wxNewId();
 
+/** Context menu command: add a row as an auto start startup file. */
+const int kMenuSetStartupFile = wxNewId();
+
+/** Context menu command: add a row as a startup file without auto start. */
+const int kMenuAddStartupFile = wxNewId();
+
 /** Minimum width of the tree pane. */
 constexpr int kTreePaneWidth = 260;
 
@@ -126,15 +132,13 @@ std::wstring VirtualPath(const appbox::PresetDirectory& preset, const std::wstri
 }
 
 /**
- * @brief Compare two host paths ignoring case.
- * @param[in] a Left path.
- * @param[in] b Right path.
- * @return true when both paths describe the same file.
+ * @brief Whether a file name carries the executable extension.
+ * @param[in] name Name of a file.
+ * @return true when the extension is `.exe`, ignoring case.
  */
-bool SameHostPath(const std::wstring& a, const std::wstring& b)
+bool IsExecutableName(const std::wstring& name)
 {
-    return EqualsIgnoreCase(std::filesystem::path(a).lexically_normal().wstring(),
-                            std::filesystem::path(b).lexically_normal().wstring());
+    return EqualsIgnoreCase(std::filesystem::path(name).extension().wstring(), L".exe");
 }
 
 } // namespace
@@ -191,6 +195,8 @@ FilesystemPanel::FilesystemPanel(wxWindow* parent, appbox::PackModel& model,
     tree_->Bind(wxEVT_TREE_ITEM_RIGHT_CLICK, &FilesystemPanel::OnTreeItemContextMenu, this);
     Bind(wxEVT_MENU, &FilesystemPanel::OnAddFolder, this, kMenuImportFolder);
     Bind(wxEVT_MENU, &FilesystemPanel::OnRemoveImportFromTree, this, kMenuRemoveImport);
+    Bind(wxEVT_MENU, &FilesystemPanel::OnSetStartupFile, this, kMenuSetStartupFile);
+    Bind(wxEVT_MENU, &FilesystemPanel::OnAddToStartupFileList, this, kMenuAddStartupFile);
 
     BuildTree();
 }
@@ -235,6 +241,7 @@ void FilesystemPanel::CreateList(wxWindow* parent)
     });
     list_->Bind(wxEVT_DATAVIEW_ITEM_ACTIVATED, &FilesystemPanel::OnRowActivated, this);
     list_->Bind(wxEVT_DATAVIEW_ITEM_VALUE_CHANGED, &FilesystemPanel::OnIsolationChanged, this);
+    list_->Bind(wxEVT_DATAVIEW_ITEM_CONTEXT_MENU, &FilesystemPanel::OnRowContextMenu, this);
 }
 
 wxWindow* FilesystemPanel::CreateToolBarRow(wxWindow* parent)
@@ -283,7 +290,28 @@ wxWindow* FilesystemPanel::CreateToolBarRow(wxWindow* parent)
 
 void FilesystemPanel::RefreshModel()
 {
+    /*
+     * The tree is rebuilt from scratch, so the folder the user was in is
+     * remembered first and looked up again afterwards. A folder which the
+     * model no longer holds falls back to the container.
+     */
+    TreePath   path;
+    const bool restore = SelectedTreePath(path);
+
+    /*
+     * The rebuild selects the container on its own and the lookup below
+     * selects the folder of the user, and the table would answer both with a
+     * rebuild of its own. The flag tells the handler of the tree that the
+     * panel is rebuilding, so the table is rebuilt once, at the end.
+     */
+    updating_ = true;
     BuildTree();
+    if (restore)
+    {
+        SelectTreePath(path);
+    }
+    updating_ = false;
+
     RefreshList();
 }
 
@@ -445,9 +473,6 @@ void FilesystemPanel::ListFolderContent(const TreeNode& node)
         folder /= node.relative_dir;
     }
 
-    std::wstring main_path;
-    const bool   has_main = model_.MainProgramPath(main_path);
-
     /* Folders first, then files, both ordered by name. */
     std::vector<std::pair<std::wstring, bool>> entries;
     std::error_code                            ec;
@@ -485,7 +510,8 @@ void FilesystemPanel::ListFolderContent(const TreeNode& node)
         row.file_name = entry.first;
         row.host_path = (folder / entry.first).wstring();
         row.is_directory = entry.second;
-        row.is_main_program = has_main && !entry.second && SameHostPath(row.host_path, main_path);
+        row.is_startup_file = !entry.second && IsExecutableName(row.file_name) &&
+                              model_.IsStartupFile(row.preset_id, row.import_name, StartupRelativePath(row));
         rows_.push_back(std::move(row));
     }
 
@@ -499,7 +525,8 @@ void FilesystemPanel::ListFolderContent(const TreeNode& node)
         row.target_dir = target_dir;
         row.file_name = file.file_name;
         row.source_path = file.source_path;
-        row.is_main_program = has_main && SameHostPath(file.source_path, main_path);
+        row.is_startup_file = IsExecutableName(row.file_name) &&
+                              model_.IsStartupFile(row.preset_id, row.import_name, StartupRelativePath(row));
         rows_.push_back(std::move(row));
     }
 }
@@ -586,39 +613,109 @@ const wxBitmapBundle& FilesystemPanel::IconOf(const RowInfo& row) const
     return row.is_directory ? folder_icon_ : file_icon_;
 }
 
-void FilesystemPanel::SelectNode(const std::string& preset_id, const std::wstring& import_name)
+bool FilesystemPanel::SelectedTreePath(TreePath& path) const
+{
+    const auto selection = tree_->GetSelection();
+    auto*      node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
+    if (node == nullptr)
+    {
+        return false;
+    }
+
+    path.preset_id = node->preset_id;
+    path.import_name = node->import_name;
+    path.relative_dir = node->relative_dir;
+    return true;
+}
+
+void FilesystemPanel::SelectTreePath(const TreePath& path)
 {
     const auto root = tree_->GetRootItem();
+    if (!root.IsOk())
+    {
+        return;
+    }
+
+    /*
+     * The container is the fallback of every path which the tree does not
+     * hold, so the panel never ends up without a selection.
+     */
+    auto selected = root;
 
     wxTreeItemIdValue preset_cookie = nullptr;
     for (auto item = tree_->GetFirstChild(root, preset_cookie); item.IsOk();
          item = tree_->GetNextChild(root, preset_cookie))
     {
         auto* node = static_cast<TreeNode*>(tree_->GetItemData(item));
-        if (node == nullptr || node->preset_id != preset_id)
+        if (node != nullptr && node->preset_id == path.preset_id)
         {
-            continue;
+            selected = item;
+            break;
         }
-        if (import_name.empty())
-        {
-            tree_->SelectItem(item);
-            return;
-        }
+    }
 
-        wxTreeItemIdValue child_cookie = nullptr;
-        for (auto child = tree_->GetFirstChild(item, child_cookie); child.IsOk();
-             child = tree_->GetNextChild(item, child_cookie))
+    if (selected != root && !path.import_name.empty())
+    {
+        wxTreeItemIdValue import_cookie = nullptr;
+        for (auto item = tree_->GetFirstChild(selected, import_cookie); item.IsOk();
+             item = tree_->GetNextChild(selected, import_cookie))
         {
-            auto* child_node = static_cast<TreeNode*>(tree_->GetItemData(child));
-            if (child_node != nullptr && EqualsIgnoreCase(child_node->import_name, import_name))
+            auto* node = static_cast<TreeNode*>(tree_->GetItemData(item));
+            if (node != nullptr && EqualsIgnoreCase(node->import_name, path.import_name))
             {
-                tree_->SelectItem(child);
-                return;
+                selected = item;
+                break;
             }
         }
-        tree_->SelectItem(item);
-        return;
     }
+
+    /*
+     * The folders below an imported folder are listed on demand, so every
+     * level of the path has to be opened before the next one can be looked
+     * up. The relative path of a child carries its whole path from the import
+     * root, which makes the prefix walked so far the key of the level.
+     */
+    if (selected != root && !path.relative_dir.empty())
+    {
+        std::wstring walked;
+        for (const auto& segment : appbox::Split(path.relative_dir, L"\\"))
+        {
+            if (segment.empty())
+            {
+                continue;
+            }
+            if (!walked.empty())
+            {
+                walked.push_back(L'\\');
+            }
+            walked += segment;
+
+            PopulateNode(selected);
+            tree_->Expand(selected);
+
+            wxTreeItemId      next;
+            wxTreeItemIdValue child_cookie = nullptr;
+            for (auto child = tree_->GetFirstChild(selected, child_cookie); child.IsOk();
+                 child = tree_->GetNextChild(selected, child_cookie))
+            {
+                auto* node = static_cast<TreeNode*>(tree_->GetItemData(child));
+                if (node != nullptr && EqualsIgnoreCase(node->relative_dir, walked))
+                {
+                    next = child;
+                    break;
+                }
+            }
+            if (!next.IsOk())
+            {
+                /* The folder is gone, so the deepest level which was found stays. */
+                break;
+            }
+            selected = next;
+        }
+    }
+
+    tree_->SelectItem(selected);
+    tree_->EnsureVisible(selected);
 }
 
 bool FilesystemPanel::SelectedTarget(std::string& preset_id, std::wstring& target_dir, std::wstring& import_name) const
@@ -664,6 +761,60 @@ int FilesystemPanel::SelectedRowIndex() const
 appbox::FilesystemEntryKind FilesystemPanel::RowKind(const RowInfo& row)
 {
     return row.is_directory ? appbox::FilesystemEntryKind::Directory : appbox::FilesystemEntryKind::File;
+}
+
+std::wstring FilesystemPanel::StartupRelativePath(const RowInfo& row)
+{
+    /*
+     * The first segment of the target directory is the name of the imported
+     * folder, which is the root a startup file is stored relative to.
+     */
+    const auto   segments = appbox::Split(row.target_dir, L"\\");
+    std::wstring relative;
+    for (std::size_t i = 1; i < segments.size(); ++i)
+    {
+        if (segments[i].empty())
+        {
+            continue;
+        }
+        if (!relative.empty())
+        {
+            relative.push_back(L'\\');
+        }
+        relative += segments[i];
+    }
+
+    if (!relative.empty())
+    {
+        relative.push_back(L'\\');
+    }
+    relative += row.file_name;
+    return relative;
+}
+
+void FilesystemPanel::AddSelectedStartupFile(bool auto_start)
+{
+    const int index = SelectedRowIndex();
+    if (index < 0)
+    {
+        return;
+    }
+
+    const auto& row = rows_[static_cast<std::size_t>(index)];
+    if (row.is_directory)
+    {
+        return;
+    }
+
+    std::string error;
+    if (!model_.AddStartupFile(row.preset_id, row.import_name, StartupRelativePath(row), auto_start, error))
+    {
+        wxMessageBox(error, "Startup Files", wxOK | wxICON_ERROR, this);
+        return;
+    }
+
+    /* The startup file mark of the rows changed, so the list is rebuilt. */
+    RefreshList();
 }
 
 std::wstring FilesystemPanel::RowViewPath(const RowInfo& row) const
@@ -785,7 +936,7 @@ void FilesystemPanel::OnRowActivated(wxDataViewEvent& event)
      * back to its plain click handling either.
      */
     const auto preset_id = rows_[index].preset_id;
-    CallAfter([this, preset_id]() { SelectNode(preset_id, std::wstring()); });
+    CallAfter([this, preset_id]() { SelectTreePath(TreePath{ preset_id }); });
 }
 
 void FilesystemPanel::OnIsolationChanged(wxDataViewEvent& event)
@@ -825,9 +976,45 @@ void FilesystemPanel::OnIsolationChanged(wxDataViewEvent& event)
     CallAfter([this, row, isolation]() { ApplyIsolation(row, isolation); });
 }
 
+void FilesystemPanel::OnRowContextMenu(wxDataViewEvent& event)
+{
+    const int index = RowIndex(event.GetItem());
+    if (index < 0)
+    {
+        return;
+    }
+
+    const auto& row = rows_[static_cast<std::size_t>(index)];
+    if (row.is_directory || !IsExecutableName(row.file_name))
+    {
+        /* Only an executable of an imported folder can be started. */
+        return;
+    }
+
+    list_->Select(event.GetItem());
+
+    wxMenu menu;
+    menu.Append(kMenuSetStartupFile, "Set as Startup File");
+    menu.Append(kMenuAddStartupFile, "Add to Startup File List");
+    PopupMenu(&menu);
+}
+
+void FilesystemPanel::OnSetStartupFile(wxCommandEvent&)
+{
+    AddSelectedStartupFile(true);
+}
+
+void FilesystemPanel::OnAddToStartupFileList(wxCommandEvent&)
+{
+    AddSelectedStartupFile(false);
+}
+
 void FilesystemPanel::OnTreeSelectionChanged(wxTreeEvent& event)
 {
-    RefreshList();
+    if (!updating_)
+    {
+        RefreshList();
+    }
     event.Skip();
 }
 
@@ -924,7 +1111,7 @@ void FilesystemPanel::OnAddFolder(wxCommandEvent&)
     }
 
     BuildTree();
-    SelectNode(preset_id, std::wstring());
+    SelectTreePath(TreePath{ preset_id });
     RefreshList();
 }
 
@@ -972,7 +1159,7 @@ void FilesystemPanel::OnRemove(wxCommandEvent&)
         isolation_.RemoveSubtree(RowViewPath(row));
         model_.RemoveImport(row.preset_id, row.import_name);
         BuildTree();
-        SelectNode(row.preset_id, std::wstring());
+        SelectTreePath(TreePath{ row.preset_id });
         RefreshList();
         return;
     }
@@ -1011,7 +1198,7 @@ void FilesystemPanel::OnRemoveImportFromTree(wxCommandEvent&)
     model_.RemoveImport(preset_id, node->import_name);
 
     BuildTree();
-    SelectNode(preset_id, std::wstring());
+    SelectTreePath(TreePath{ preset_id });
     RefreshList();
 }
 

@@ -103,9 +103,9 @@ struct ProjectFileRecord
 };
 
 /**
- * @brief The main program of a project document.
+ * @brief One startup file of a project document.
  */
-struct ProjectMainProgramRecord
+struct ProjectStartupRecord
 {
     /**
      * @brief Identifier of the preset directory owning the imported folder.
@@ -121,6 +121,16 @@ struct ProjectMainProgramRecord
      * @brief Executable path relative to the imported folder root.
      */
     std::wstring relative_path;
+
+    /**
+     * @brief Trigger name which selects the startup file.
+     */
+    std::wstring trigger;
+
+    /**
+     * @brief Whether the sandbox starts the file without being asked to.
+     */
+    bool auto_start = true;
 };
 
 /**
@@ -285,7 +295,7 @@ struct ProjectProxyRecord
  *
  * The structure is the document of the `File -> Export Configuration...` and
  * `File -> Import Configuration...` commands: the imported folders and files,
- * the main program, the virtual registry, the isolation modes of the virtual
+ * the startup files, the virtual registry, the isolation modes of the virtual
  * filesystem, the DNS redirections of the network workspace and the proxy of
  * the network workspace. It holds no host state and no wxWidgets dependency,
  * so the conversion is unit testable.
@@ -307,8 +317,9 @@ struct ProjectProxyRecord
  *                  "source": "C:\\Program Files\\MyApp" } ],
  *   "files": [ { "preset": "user_profile", "target_dir": "MyApp\\data",
  *                "name": "settings.ini", "source": "C:\\tmp\\settings.ini" } ],
- *   "main_program": { "preset": "program_files", "folder": "MyApp",
- *                     "path": "bin\\app.exe" },
+ *   "startup_files": [ { "preset": "program_files", "folder": "MyApp",
+ *                        "path": "bin\\app.exe", "trigger": "app",
+ *                        "auto_start": true } ],
  *   "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "full",
  *                   "values": [ { "name": "Server", "type": "REG_SZ",
  *                                 "data": "68 00 65 00 6C 00 6C 00 6F 00",
@@ -328,8 +339,7 @@ struct ProjectProxyRecord
  * the configuration; the file only records the imports, it never copies the
  * imported content itself.
  *
- * The `proxy` member is written only while a proxy is configured, like the
- * `main_program` member is written only while a main program is selected, so a
+ * The `proxy` member is written only while a proxy is configured, so a
  * document of a session without a proxy keeps the text it had before the
  * member was added to the schema.
  */
@@ -351,9 +361,9 @@ struct ProjectDocument
     std::vector<ProjectFileRecord> files;
 
     /**
-     * @brief The selected main program, absent while none is selected.
+     * @brief The startup files of the packaged application, in startup order.
      */
-    std::optional<ProjectMainProgramRecord> main_program;
+    std::vector<ProjectStartupRecord> startup_files;
 
     /**
      * @brief The root keys of the virtual registry with their subtree.
@@ -412,19 +422,19 @@ void to_json(nlohmann::ordered_json& json, const ProjectFileRecord& record);
 void from_json(const nlohmann::ordered_json& json, ProjectFileRecord& record);
 
 /**
- * @brief Store the main program of a document.
+ * @brief Store one startup file of a document.
  * @param[out] json Object which receives the record.
  * @param[in] record The record to store.
  */
-void to_json(nlohmann::ordered_json& json, const ProjectMainProgramRecord& record);
+void to_json(nlohmann::ordered_json& json, const ProjectStartupRecord& record);
 
 /**
- * @brief Read the main program of a document.
+ * @brief Read one startup file of a document.
  * @param[in] json Object holding the record.
  * @param[out] record The record to fill.
  * @throw ProjectDocumentError The object does not fit the schema.
  */
-void from_json(const nlohmann::ordered_json& json, ProjectMainProgramRecord& record);
+void from_json(const nlohmann::ordered_json& json, ProjectStartupRecord& record);
 
 /**
  * @brief Store one value of a registry key of a document.
@@ -506,8 +516,8 @@ void from_json(const nlohmann::ordered_json& json, ProjectProxyRecord& record);
  *
  * The members are written in the order of ProjectDocument with the schema
  * version first, so the text of a given document is stable and easy to read.
- * Every member is written, except `main_program` and `proxy`, which are
- * omitted while no main program is selected and while no proxy is configured.
+ * Every member is written, except `proxy`, which is omitted while no proxy is
+ * configured.
  *
  * @param[out] json Object which receives the document.
  * @param[in] document The document to store.

@@ -169,22 +169,71 @@ std::wstring JoinSegments(const std::vector<std::wstring>& segments, std::size_t
     return result;
 }
 
+/**
+ * @brief Whether one startup file refers to an executable.
+ * @param[in] file Startup file to test.
+ * @param[in] preset_id Identifier of the preset directory.
+ * @param[in] import_name Name of the imported folder.
+ * @param[in] relative_path Executable path relative to the import root.
+ * @return true when the three references match ignoring case.
+ */
+bool SameStartupFile(const appbox::StartupFile& file, const std::string& preset_id, const std::wstring& import_name,
+                     const std::wstring& relative_path)
+{
+    return file.preset_id == preset_id && EqualsIgnoreCase(file.import_name, import_name) &&
+           EqualsIgnoreCase(file.relative_path, relative_path);
+}
+
 } // namespace
 
 namespace appbox
 {
 
+std::wstring DefaultStartupTrigger(const std::wstring& relative_path)
+{
+    return std::filesystem::path(relative_path).stem().wstring();
+}
+
+std::wstring TrimStartupTrigger(const std::wstring& text)
+{
+    std::size_t begin = 0;
+    std::size_t end = text.size();
+    while (begin < end && std::iswspace(text[begin]) != 0)
+    {
+        ++begin;
+    }
+    while (end > begin && std::iswspace(text[end - 1]) != 0)
+    {
+        --end;
+    }
+    return text.substr(begin, end - begin);
+}
+
+std::wstring FreeStartupTrigger(const std::vector<StartupFile>& files, const std::wstring& base)
+{
+    const auto taken = [&](const std::wstring& trigger) {
+        return std::any_of(files.begin(), files.end(),
+                           [&](const StartupFile& file) { return EqualsIgnoreCase(file.trigger, trigger); });
+    };
+
+    std::wstring candidate = base;
+    for (int suffix = 2; taken(candidate); ++suffix)
+    {
+        candidate = base + L"-" + std::to_wstring(suffix);
+    }
+    return candidate;
+}
+
 void PackModel::Clear()
 {
     imports_.clear();
     imported_files_.clear();
-    main_program_ = MainProgram{};
-    has_main_program_ = false;
+    startup_files_.clear();
 }
 
 bool PackModel::IsEmpty() const
 {
-    return imports_.empty() && imported_files_.empty() && !has_main_program_;
+    return imports_.empty() && imported_files_.empty() && startup_files_.empty();
 }
 
 bool PackModel::ImportFolder(const std::string& preset_id, const std::wstring& source_path, std::string& error)
@@ -250,12 +299,13 @@ void PackModel::RemoveImport(const std::string& preset_id, const std::wstring& i
                                                  }),
                                   imported_files_.end());
 
-            if (has_main_program_ && main_program_.preset_id == removed.preset_id &&
-                EqualsIgnoreCase(main_program_.import_name, removed.import_name))
-            {
-                has_main_program_ = false;
-                main_program_ = MainProgram{};
-            }
+            /* Startup files of the removed folder have no lower layer anymore. */
+            startup_files_.erase(std::remove_if(startup_files_.begin(), startup_files_.end(),
+                                                [&removed](const StartupFile& file) {
+                                                    return file.preset_id == removed.preset_id &&
+                                                           EqualsIgnoreCase(file.import_name, removed.import_name);
+                                                }),
+                                 startup_files_.end());
             return;
         }
     }
@@ -371,7 +421,21 @@ bool PackModel::RemoveImportedFile(const std::string& preset_id, const std::wstr
         if (it->preset_id == preset_id && EqualsIgnoreCase(it->target_dir, directory) &&
             EqualsIgnoreCase(it->file_name, file_name))
         {
+            /*
+             * The startup file pointing at the removed file refers to an entry
+             * which is no longer part of the archive.
+             */
+            const auto segments = Split(it->target_dir, L"\\");
+            const auto remainder = JoinSegments(segments, 1);
+            const auto relative = remainder.empty() ? it->file_name : remainder + L"\\" + it->file_name;
+            const auto import_name = segments.empty() ? std::wstring() : segments.front();
+
             imported_files_.erase(it);
+            startup_files_.erase(std::remove_if(startup_files_.begin(), startup_files_.end(),
+                                                [&](const StartupFile& file) {
+                                                    return SameStartupFile(file, preset_id, import_name, relative);
+                                                }),
+                                 startup_files_.end());
             return true;
         }
     }
@@ -398,8 +462,9 @@ const std::vector<ImportedFile>& PackModel::AllImportedFiles() const
     return imported_files_;
 }
 
-bool PackModel::SetMainProgram(const std::string& preset_id, const std::wstring& import_name,
-                               const std::wstring& relative_path, std::string& error)
+bool PackModel::ResolveStartupFile(const std::string& preset_id, const std::wstring& import_name,
+                                   const std::wstring& relative_path, bool require_host, StartupFile& out,
+                                   std::string& error) const
 {
     PresetDirectory preset;
     if (!FindPresetDirectory(preset_id, preset))
@@ -415,51 +480,152 @@ bool PackModel::SetMainProgram(const std::string& preset_id, const std::wstring&
         return false;
     }
 
-    /* Normalize the separators so the loader side receives DOS style paths. */
-    std::wstring relative = relative_path;
-    for (auto& ch : relative)
-    {
-        if (ch == L'/')
-        {
-            ch = L'\\';
-        }
-    }
-    while (!relative.empty() && relative.front() == L'\\')
-    {
-        relative.erase(relative.begin());
-    }
-
+    const auto relative = NormalizeRelativeFile(relative_path);
     if (relative.empty())
     {
-        error = "the main program path is empty";
+        error = "the startup file path is empty or leaves the imported folder";
         return false;
     }
-    for (const auto& part : Split(relative, L"\\"))
+
+    if (!EqualsIgnoreCase(std::filesystem::path(relative).extension().wstring(), L".exe"))
     {
-        if (part == L"..")
+        error = "the startup file must be an executable (.exe) file";
+        return false;
+    }
+
+    if (require_host)
+    {
+        const auto      full = std::filesystem::path(imported.source_path) / relative;
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(full, ec))
         {
-            error = "the main program path must stay inside the imported folder";
-            return false;
+            /*
+             * A file which was imported on its own lives in the sandbox view
+             * of the import, not in the host folder of the import, so the
+             * imported files of the target directory are checked as well.
+             */
+            const auto parent = std::filesystem::path(relative).parent_path().wstring();
+            const auto name = std::filesystem::path(relative).filename().wstring();
+
+            std::wstring target_dir = imported.import_name;
+            if (!parent.empty())
+            {
+                target_dir.push_back(L'\\');
+                target_dir += parent;
+            }
+
+            const auto imported_files = FilesOf(preset_id, target_dir);
+            const auto found = std::any_of(imported_files.begin(), imported_files.end(), [&](const ImportedFile& file) {
+                return EqualsIgnoreCase(file.file_name, name);
+            });
+            if (!found)
+            {
+                error = "the startup file does not exist: " + WideToUTF8(relative);
+                return false;
+            }
         }
     }
 
-    const auto      full = std::filesystem::path(imported.source_path) / relative;
-    std::error_code ec;
-    if (!std::filesystem::is_regular_file(full, ec))
+    out.preset_id = preset_id;
+    out.import_name = imported.import_name;
+    out.relative_path = relative;
+    return true;
+}
+
+const std::vector<StartupFile>& PackModel::StartupFiles() const
+{
+    return startup_files_;
+}
+
+bool PackModel::HasStartupFiles() const
+{
+    return !startup_files_.empty();
+}
+
+bool PackModel::HasAutoStart() const
+{
+    return std::any_of(startup_files_.begin(), startup_files_.end(),
+                       [](const StartupFile& file) { return file.auto_start; });
+}
+
+bool PackModel::IsStartupFile(const std::string& preset_id, const std::wstring& import_name,
+                              const std::wstring& relative_path) const
+{
+    const auto relative = NormalizeRelativeFile(relative_path);
+    return std::any_of(startup_files_.begin(), startup_files_.end(), [&](const StartupFile& file) {
+        return SameStartupFile(file, preset_id, import_name, relative);
+    });
+}
+
+bool PackModel::AddStartupFile(const std::string& preset_id, const std::wstring& import_name,
+                               const std::wstring& relative_path, bool auto_start, std::string& error)
+{
+    StartupFile resolved;
+    if (!ResolveStartupFile(preset_id, import_name, relative_path, true, resolved, error))
     {
-        error = "the main program does not exist: " + WideToUTF8(relative);
-        return false;
-    }
-    if (!EqualsIgnoreCase(full.extension().wstring(), L".exe"))
-    {
-        error = "the main program must be an executable (.exe) file";
         return false;
     }
 
-    main_program_.preset_id = preset_id;
-    main_program_.import_name = import_name;
-    main_program_.relative_path = relative;
-    has_main_program_ = true;
+    for (auto& file : startup_files_)
+    {
+        if (SameStartupFile(file, resolved.preset_id, resolved.import_name, resolved.relative_path))
+        {
+            /* The executable is in the list already: only the flag changes. */
+            file.auto_start = auto_start;
+            return true;
+        }
+    }
+
+    resolved.trigger = FreeStartupTrigger(startup_files_, DefaultStartupTrigger(resolved.relative_path));
+    resolved.auto_start = auto_start;
+    startup_files_.push_back(std::move(resolved));
+    return true;
+}
+
+bool PackModel::SetStartupFiles(std::vector<StartupFile> files, std::string& error)
+{
+    std::vector<StartupFile> candidate;
+    candidate.reserve(files.size());
+
+    for (std::size_t i = 0; i < files.size(); ++i)
+    {
+        StartupFile resolved;
+        if (!ResolveStartupFile(files[i].preset_id, files[i].import_name, files[i].relative_path, true, resolved,
+                                error))
+        {
+            return false;
+        }
+
+        resolved.trigger = TrimStartupTrigger(files[i].trigger);
+        if (resolved.trigger.empty())
+        {
+            error = "the startup file trigger is empty";
+            return false;
+        }
+
+        const auto same_path = std::any_of(candidate.begin(), candidate.end(), [&](const StartupFile& other) {
+            return SameStartupFile(other, resolved.preset_id, resolved.import_name, resolved.relative_path);
+        });
+        if (same_path)
+        {
+            error = "the startup file '" + WideToUTF8(resolved.relative_path) + "' is listed twice";
+            return false;
+        }
+
+        const auto same_trigger = std::any_of(candidate.begin(), candidate.end(), [&](const StartupFile& other) {
+            return EqualsIgnoreCase(other.trigger, resolved.trigger);
+        });
+        if (same_trigger)
+        {
+            error = "the startup file trigger '" + WideToUTF8(resolved.trigger) + "' is used twice";
+            return false;
+        }
+
+        resolved.auto_start = files[i].auto_start;
+        candidate.push_back(std::move(resolved));
+    }
+
+    startup_files_ = std::move(candidate);
     return true;
 }
 
@@ -571,40 +737,43 @@ bool PackModel::RestoreImportedFile(const std::string& preset_id, const std::wst
     return true;
 }
 
-bool PackModel::RestoreMainProgram(const std::string& preset_id, const std::wstring& import_name,
-                                   const std::wstring& relative_path, std::string& error)
+bool PackModel::RestoreStartupFile(const std::string& preset_id, const std::wstring& import_name,
+                                   const std::wstring& relative_path, const std::wstring& trigger, bool auto_start,
+                                   std::string& error)
 {
-    PresetDirectory preset;
-    if (!FindPresetDirectory(preset_id, preset))
+    StartupFile resolved;
+    if (!ResolveStartupFile(preset_id, import_name, relative_path, false, resolved, error))
     {
-        error = "unknown preset directory: " + preset_id;
         return false;
     }
 
-    ImportedFolder imported;
-    if (!GetImport(preset_id, import_name, imported))
+    resolved.trigger = TrimStartupTrigger(trigger);
+    if (resolved.trigger.empty())
     {
-        error = "the imported folder no longer exists";
+        error = "the startup file trigger is empty";
         return false;
     }
 
-    const auto relative = NormalizeRelativeFile(relative_path);
-    if (relative.empty())
+    const auto same_path = std::any_of(startup_files_.begin(), startup_files_.end(), [&](const StartupFile& file) {
+        return SameStartupFile(file, resolved.preset_id, resolved.import_name, resolved.relative_path);
+    });
+    if (same_path)
     {
-        error = "the main program path is empty or leaves the imported folder";
+        error = "the startup file '" + WideToUTF8(resolved.relative_path) + "' is listed twice";
         return false;
     }
 
-    if (!EqualsIgnoreCase(std::filesystem::path(relative).extension().wstring(), L".exe"))
+    const auto same_trigger = std::any_of(startup_files_.begin(), startup_files_.end(), [&](const StartupFile& file) {
+        return EqualsIgnoreCase(file.trigger, resolved.trigger);
+    });
+    if (same_trigger)
     {
-        error = "the main program must be an executable (.exe) file";
+        error = "the startup file trigger '" + WideToUTF8(resolved.trigger) + "' is used twice";
         return false;
     }
 
-    main_program_.preset_id = preset_id;
-    main_program_.import_name = imported.import_name;
-    main_program_.relative_path = relative;
-    has_main_program_ = true;
+    resolved.auto_start = auto_start;
+    startup_files_.push_back(std::move(resolved));
     return true;
 }
 
@@ -634,30 +803,15 @@ bool PackModel::GetImport(const std::string& preset_id, const std::wstring& impo
     return false;
 }
 
-bool PackModel::HasMainProgram() const
+bool PackModel::StartupFilePath(const StartupFile& file, std::wstring& path) const
 {
-    return has_main_program_;
-}
-
-const MainProgram& PackModel::MainProgramChoice() const
-{
-    return main_program_;
-}
-
-bool PackModel::MainProgramPath(std::wstring& path) const
-{
-    if (!has_main_program_)
-    {
-        return false;
-    }
-
     ImportedFolder imported;
-    if (!GetImport(main_program_.preset_id, main_program_.import_name, imported))
+    if (!GetImport(file.preset_id, file.import_name, imported))
     {
         return false;
     }
 
-    path = (std::filesystem::path(imported.source_path) / main_program_.relative_path).wstring();
+    path = (std::filesystem::path(imported.source_path) / file.relative_path).wstring();
     return true;
 }
 

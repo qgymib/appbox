@@ -15,7 +15,7 @@ namespace appbox
  * @brief Build the document of a project file from the models of a session.
  *
  * The document describes the current configuration: the imported folders, the
- * imported files, the main program, the virtual registry with the isolation
+ * imported files, the startup files, the virtual registry with the isolation
  * modes of every key and value, the isolation modes of the virtual filesystem,
  * the DNS redirections and the proxy of the network workspace and the path of
  * the `Output File` box. The structure and the schema of the document are

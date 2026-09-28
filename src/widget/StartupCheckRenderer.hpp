@@ -4,15 +4,16 @@
 #include <wx/dataview.h>
 
 /**
- * @brief Renderer of the Startup column of the startup file tree.
+ * @brief Renderer of the Auto Start column of the startup file tree.
  *
  * The cell draws a native checkbox while the model reports a value for the
- * row. Rows which cannot be selected as the startup file report no value at
- * all: wxDataViewCtrl then leaves their cell empty and never calls the
- * renderer for them, so a folder row does not show a checkbox.
+ * row. Rows which cannot be a startup file report no value at all:
+ * wxDataViewCtrl then leaves their cell empty and never calls the renderer for
+ * them, so a folder row does not show a checkbox.
  *
- * Clicking or activating the cell toggles the value through the model, which
- * keeps the selection exclusive.
+ * Clicking or activating the cell toggles the value through the model: an
+ * executable which is not a startup file yet joins the list when the box is
+ * ticked.
  */
 class StartupCheckRenderer : public wxDataViewCustomRenderer
 {

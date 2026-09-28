@@ -1,7 +1,7 @@
 #include "MainFrame.hpp"
 #include "AboutDialog.hpp"
 #include "FilesystemPanel.hpp"
-#include "MainProgramDialog.hpp"
+#include "StartupFilesDialog.hpp"
 #include "NetworkPanel.hpp"
 #include "PlaceholderPanel.hpp"
 #include "RegistryPanel.hpp"
@@ -124,7 +124,7 @@ MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox", wxDefaultPosition,
     Bind(wxEVT_MENU, &MainFrame::OnExportConfiguration, this, kMenuExportConfiguration);
     Bind(wxEVT_MENU, &MainFrame::OnImportRegistry, this, kMenuImportRegistry);
     Bind(APPBOX_SIDE_NAV, &MainFrame::OnSideNavChanged, this);
-    Bind(wxEVT_RIBBONBUTTONBAR_CLICKED, &MainFrame::OnSelectMainProgram, this, kRibbonStartupFiles);
+    Bind(wxEVT_RIBBONBUTTONBAR_CLICKED, &MainFrame::OnStartupFiles, this, kRibbonStartupFiles);
     Bind(wxEVT_RIBBONBUTTONBAR_CLICKED, &MainFrame::OnBuild, this, kRibbonBuild);
     Bind(wxEVT_RIBBONBUTTONBAR_CLICKED, &MainFrame::OnBuildAndRun, this, kRibbonBuildAndRun);
     Bind(wxEVT_BUTTON, &MainFrame::OnBrowseOutput, this, kRibbonBrowseOutput);
@@ -224,22 +224,26 @@ void MainFrame::ApplyWindowIcon()
 
 void MainFrame::UpdateStatusBar()
 {
-    if (!model_.HasMainProgram())
+    if (!model_.HasStartupFiles())
     {
-        SetStatusText("No main program selected");
+        SetStatusText("No startup file selected");
         return;
     }
 
-    appbox::PresetDirectory preset;
-    if (!appbox::FindPresetDirectory(model_.MainProgramChoice().preset_id, preset))
+    const auto& files = model_.StartupFiles();
+
+    int auto_start = 0;
+    for (const auto& file : files)
     {
-        SetStatusText("No main program selected");
-        return;
+        if (file.auto_start)
+        {
+            ++auto_start;
+        }
     }
 
-    const auto& program = model_.MainProgramChoice();
-    SetStatusText(wxString::Format("Main program: %s / %s", preset.display_name,
-                                   program.import_name + "\\" + program.relative_path));
+    const auto& first = files.front();
+    SetStatusText(wxString::Format("Startup files: %d (%d auto start) - first: %s", static_cast<int>(files.size()),
+                                   auto_start, first.import_name + L"\\" + first.relative_path));
 }
 
 void MainFrame::UpdateTitle()
@@ -263,9 +267,9 @@ wxString MainFrame::OutputPath() const
 wxString MainFrame::DefaultOutputPath() const
 {
     wxFileName derived(wxFileName::GetCwd(), "AppBoxPackage.zip");
-    if (model_.HasMainProgram())
+    if (model_.HasStartupFiles())
     {
-        derived.SetName(model_.MainProgramChoice().import_name);
+        derived.SetName(model_.StartupFiles().front().import_name);
         derived.SetExt("zip");
     }
     return derived.GetFullPath();
@@ -448,26 +452,25 @@ void MainFrame::OnImportRegistry(wxCommandEvent&)
     SetStatusText("Registry imported from " + dialog.GetPath());
 }
 
-void MainFrame::OnSelectMainProgram(wxCommandEvent&)
+void MainFrame::OnStartupFiles(wxCommandEvent&)
 {
-    MainProgramDialog dialog(this, model_);
+    StartupFilesDialog dialog(this, model_);
     if (dialog.ShowModal() != wxID_OK)
     {
         return;
     }
 
-    const auto& selection = dialog.Selection();
     std::string error;
-    if (!model_.SetMainProgram(selection.preset_id, selection.import_name, selection.relative_path, error))
+    if (!model_.SetStartupFiles(dialog.Selection(), error))
     {
-        wxMessageBox(error, "Select Main Program", wxOK | wxICON_ERROR, this);
+        wxMessageBox(error, "Startup Files", wxOK | wxICON_ERROR, this);
         return;
     }
 
     filesystem_panel_->RefreshModel();
     UpdateStatusBar();
 
-    /* Keep following the main program until the user edits the path. */
+    /* Keep following the startup files until the user edits the path. */
     if (!output_path_edited_)
     {
         ribbon_->SetOutputPath(DefaultOutputPath());
@@ -508,9 +511,9 @@ void MainFrame::StartPack(bool run_after)
         return;
     }
 
-    if (!model_.HasMainProgram())
+    if (!model_.HasStartupFiles())
     {
-        wxMessageBox("Select the main program before building.", "Build", wxOK | wxICON_INFORMATION, this);
+        wxMessageBox("Select at least one startup file before building.", "Build", wxOK | wxICON_INFORMATION, this);
         return;
     }
 

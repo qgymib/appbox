@@ -20,12 +20,14 @@ struct CommandLineOptions
      */
     bool ParseOptions();
 
-    int                      wargc;           /* Command line argument count */
-    LPWSTR*                  wargv;           /* Command line argument array */
-    bool                     is_launcher;     /* True if it is a mini launcher */
-    std::wstring             config_dir;      /* Config file directory path */
-    nlohmann::json           override_config; /* Override config */
-    std::vector<std::string> extra_args;      /* Extra arguments, encoding in UTF-8 */
+    int                      wargc;               /* Command line argument count */
+    LPWSTR*                  wargv;               /* Command line argument array */
+    bool                     is_launcher;         /* True if it is a mini launcher */
+    std::wstring             config_dir;          /* Config file directory path */
+    nlohmann::json           override_config;     /* Override config */
+    std::vector<std::string> extra_args;          /* Extra arguments, encoding in UTF-8 */
+    std::string              startup_trigger;     /* Trigger of the startup file to run, encoding in UTF-8 */
+    bool                     has_startup_trigger; /* True if a startup trigger was given */
 };
 
 } // namespace appbox

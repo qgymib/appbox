@@ -217,23 +217,23 @@ StartupNode* StartupTree::FindNode(StartupNode& import_root, const std::wstring&
     return current;
 }
 
-StartupNode* StartupTree::FindChoice(const MainProgram& choice)
+StartupNode* StartupTree::FindChoice(const StartupFile& file)
 {
     for (const auto& root : roots_)
     {
-        if (root->preset_id != choice.preset_id)
+        if (root->preset_id != file.preset_id)
         {
             continue;
         }
 
         for (const auto& import_node : root->children)
         {
-            if (!EqualsIgnoreCase(import_node->import_name, choice.import_name))
+            if (!EqualsIgnoreCase(import_node->import_name, file.import_name))
             {
                 continue;
             }
 
-            return FindNode(*import_node, choice.relative_path);
+            return FindNode(*import_node, file.relative_path);
         }
     }
 
@@ -245,51 +245,131 @@ bool StartupTree::IsCheckable(const StartupNode& node)
     return node.kind == StartupNodeKind::Executable;
 }
 
-void StartupTree::Preselect(const MainProgram& choice)
+bool StartupTree::Matches(const StartupNode& node, const StartupFile& file)
 {
-    checked_ = choice;
-    has_checked_ = true;
+    return node.preset_id == file.preset_id && EqualsIgnoreCase(node.import_name, file.import_name) &&
+           EqualsIgnoreCase(node.relative_path, file.relative_path);
 }
 
-bool StartupTree::IsChecked(const StartupNode& node) const
+StartupFile StartupTree::MakeStartupFile(const StartupNode& node)
 {
-    if (!has_checked_ || !IsCheckable(node))
+    StartupFile file;
+    file.preset_id = node.preset_id;
+    file.import_name = node.import_name;
+    file.relative_path = node.relative_path;
+    return file;
+}
+
+void StartupTree::Preselect(const std::vector<StartupFile>& files)
+{
+    files_ = files;
+}
+
+const std::vector<StartupFile>& StartupTree::Files() const
+{
+    return files_;
+}
+
+bool StartupTree::HasFiles() const
+{
+    return !files_.empty();
+}
+
+int StartupTree::IndexOf(const StartupNode& node) const
+{
+    for (std::size_t i = 0; i < files_.size(); ++i)
     {
-        return false;
+        if (Matches(node, files_[i]))
+        {
+            return static_cast<int>(i);
+        }
     }
-
-    return node.preset_id == checked_.preset_id && EqualsIgnoreCase(node.import_name, checked_.import_name) &&
-           EqualsIgnoreCase(node.relative_path, checked_.relative_path);
+    return -1;
 }
 
-bool StartupTree::SetChecked(const StartupNode& node)
+bool StartupTree::Contains(const StartupNode& node) const
+{
+    return IsCheckable(node) && IndexOf(node) >= 0;
+}
+
+bool StartupTree::IsAutoStart(const StartupNode& node) const
+{
+    const auto index = IndexOf(node);
+    return index >= 0 && files_[static_cast<std::size_t>(index)].auto_start;
+}
+
+std::wstring StartupTree::TriggerOf(const StartupNode& node) const
+{
+    const auto index = IndexOf(node);
+    return index < 0 ? std::wstring() : files_[static_cast<std::size_t>(index)].trigger;
+}
+
+bool StartupTree::SetAutoStart(const StartupNode& node, bool auto_start)
 {
     if (!IsCheckable(node))
     {
         return false;
     }
 
-    checked_.preset_id = node.preset_id;
-    checked_.import_name = node.import_name;
-    checked_.relative_path = node.relative_path;
-    has_checked_ = true;
+    const auto index = IndexOf(node);
+    if (index >= 0)
+    {
+        files_[static_cast<std::size_t>(index)].auto_start = auto_start;
+        return true;
+    }
+
+    if (!auto_start)
+    {
+        /* A row which is not a startup file has no flag to clear. */
+        return false;
+    }
+
+    auto file = MakeStartupFile(node);
+    file.trigger = FreeStartupTrigger(files_, DefaultStartupTrigger(file.relative_path));
+    file.auto_start = true;
+    files_.push_back(std::move(file));
     return true;
 }
 
-void StartupTree::ClearChecked()
+bool StartupTree::SetTrigger(const StartupNode& node, const std::wstring& trigger, std::string& error)
 {
-    checked_ = MainProgram{};
-    has_checked_ = false;
+    const auto index = IndexOf(node);
+    if (index < 0)
+    {
+        /* Only a startup file carries a trigger. */
+        return false;
+    }
+
+    const auto trimmed = TrimStartupTrigger(trigger);
+    if (trimmed.empty())
+    {
+        error = "the startup file trigger is empty";
+        return false;
+    }
+
+    for (std::size_t i = 0; i < files_.size(); ++i)
+    {
+        if (static_cast<int>(i) != index && EqualsIgnoreCase(files_[i].trigger, trimmed))
+        {
+            error = "the startup file trigger '" + WideToUTF8(trimmed) + "' is used twice";
+            return false;
+        }
+    }
+
+    files_[static_cast<std::size_t>(index)].trigger = trimmed;
+    return true;
 }
 
-bool StartupTree::HasChecked() const
+bool StartupTree::Remove(const StartupNode& node)
 {
-    return has_checked_;
-}
+    const auto index = IndexOf(node);
+    if (index < 0)
+    {
+        return false;
+    }
 
-const MainProgram& StartupTree::Checked() const
-{
-    return checked_;
+    files_.erase(files_.begin() + index);
+    return true;
 }
 
 } // namespace appbox

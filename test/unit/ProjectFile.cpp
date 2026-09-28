@@ -89,7 +89,7 @@ std::string ReadBytes(const std::filesystem::path& path)
 }
 
 /**
- * @brief Build a model with one import, one imported file and a main program.
+ * @brief Build a model with one import, one imported file and a startup file.
  * @param[out] model Model to fill.
  * @return true when every entry was accepted.
  */
@@ -99,7 +99,7 @@ bool BuildSampleModel(appbox::PackModel& model)
     return model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\Program Files\\MyApp", detail) &&
            model.RestoreImportedFile("program_files", L"MyApp\\data", L"settings.ini", L"C:\\tmp\\settings.ini",
                                      detail) &&
-           model.RestoreMainProgram("program_files", L"MyApp", L"bin\\app.exe", detail);
+           model.RestoreStartupFile("program_files", L"MyApp", L"bin\\app.exe", L"app", true, detail);
 }
 
 /**
@@ -258,10 +258,14 @@ TEST(Unit_ProjectFile, RoundTripKeepsTheModelsAndTheOutputPath)
     EXPECT_EQ(files[0].file_name, L"settings.ini");
     EXPECT_EQ(files[0].source_path, L"C:\\tmp\\settings.ini");
 
-    ASSERT_TRUE(loaded.HasMainProgram());
-    EXPECT_EQ(loaded.MainProgramChoice().preset_id, "program_files");
-    EXPECT_EQ(loaded.MainProgramChoice().import_name, L"MyApp");
-    EXPECT_EQ(loaded.MainProgramChoice().relative_path, L"bin\\app.exe");
+    ASSERT_TRUE(loaded.HasStartupFiles());
+    const auto& startup = loaded.StartupFiles();
+    ASSERT_EQ(startup.size(), 1u);
+    EXPECT_EQ(startup[0].preset_id, "program_files");
+    EXPECT_EQ(startup[0].import_name, L"MyApp");
+    EXPECT_EQ(startup[0].relative_path, L"bin\\app.exe");
+    EXPECT_EQ(startup[0].trigger, L"app");
+    EXPECT_TRUE(startup[0].auto_start);
 }
 
 TEST(Unit_ProjectFile, ExportWritesStrictUtf8WithoutByteOrderMark)
@@ -311,7 +315,7 @@ TEST(Unit_ProjectFile, RoundTripOfAnEmptyConfiguration)
     EXPECT_TRUE(loaded.output_path.empty());
     EXPECT_TRUE(loaded.folders.empty());
     EXPECT_TRUE(loaded.files.empty());
-    EXPECT_FALSE(loaded.main_program.has_value());
+    EXPECT_TRUE(loaded.startup_files.empty());
     EXPECT_TRUE(loaded.filesystem.empty());
 
     /* The registry of a fresh session is its five root keys, all of them empty. */
@@ -349,7 +353,7 @@ TEST(Unit_ProjectFile, MakeProjectDocumentListsTheFoldersInPresetOrder)
     EXPECT_EQ(document.folders[0].name, L"MyApp");
     EXPECT_EQ(document.folders[1].preset_id, "user_profile");
     EXPECT_EQ(document.folders[1].name, L"Tool");
-    EXPECT_FALSE(document.main_program.has_value());
+    EXPECT_TRUE(document.startup_files.empty());
 }
 
 TEST(Unit_ProjectFile, LoadKeepsSourcePathsWhichDoNotExist)
@@ -399,7 +403,7 @@ TEST(Unit_ProjectFile, ApplyReplacesTheExistingConfiguration)
     appbox::PackModel loaded;
     ASSERT_TRUE(loaded.RestoreImportedFolder("user_profile", L"Other", L"C:\\Other", error)) << error;
     ASSERT_TRUE(loaded.RestoreImportedFile("user_profile", L"Other", L"other.exe", L"C:\\other.exe", error)) << error;
-    ASSERT_TRUE(loaded.RestoreMainProgram("user_profile", L"Other", L"other.exe", error)) << error;
+    ASSERT_TRUE(loaded.RestoreStartupFile("user_profile", L"Other", L"other.exe", L"other", true, error)) << error;
 
     appbox::RegistryModel            registry;
     appbox::FilesystemIsolationModel isolation;
@@ -412,7 +416,9 @@ TEST(Unit_ProjectFile, ApplyReplacesTheExistingConfiguration)
     EXPECT_EQ(loaded.ImportsOf("user_profile").size(), 0u);
     EXPECT_EQ(loaded.ImportsOf("program_files").size(), 1u);
     EXPECT_EQ(loaded.AllImportedFiles().size(), 1u);
-    EXPECT_EQ(loaded.MainProgramChoice().import_name, L"MyApp");
+    ASSERT_EQ(loaded.StartupFiles().size(), 1u);
+    EXPECT_EQ(loaded.StartupFiles()[0].import_name, L"MyApp");
+    EXPECT_EQ(loaded.StartupFiles()[0].trigger, L"app");
     EXPECT_EQ(output, L"D:\\out\\MyApp.zip");
 }
 
@@ -598,7 +604,7 @@ TEST(Unit_ProjectFile, LoadRejectsMalformedMembers)
     WriteBytes(files, "{ \"version\": 1, \"files\": [ \"MyApp\" ] }");
 
     const auto program = temp.File(L"program.json");
-    WriteBytes(program, "{ \"version\": 1, \"main_program\": 7 }");
+    WriteBytes(program, "{ \"version\": 1, \"startup_files\": 7 }");
 
     appbox::ProjectDocument document;
     std::string             error;
@@ -614,7 +620,7 @@ TEST(Unit_ProjectFile, LoadRejectsMalformedMembers)
     EXPECT_NE(error.find("files[0]"), std::string::npos);
 
     EXPECT_FALSE(appbox::LoadProject(program.wstring(), document, error));
-    EXPECT_NE(error.find("main_program"), std::string::npos);
+    EXPECT_NE(error.find("startup_files"), std::string::npos);
 }
 
 TEST(Unit_ProjectFile, ApplyRejectsUnknownPresetDirectories)

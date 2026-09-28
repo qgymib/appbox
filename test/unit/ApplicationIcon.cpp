@@ -655,7 +655,7 @@ TEST(Unit_ApplicationIcon, AppendsTheIconGroupOfTheApplication)
     EXPECT_EQ(RenderFileIcon(application.wstring(), false, 16), RenderFileIcon(patched_path.wstring(), false, 16));
 }
 
-TEST(Unit_ApplicationIcon, PackWritesTheIconOfTheMainProgram)
+TEST(Unit_ApplicationIcon, PackWritesTheIconOfTheStartupFile)
 {
     TempDir temp;
 
@@ -670,7 +670,7 @@ TEST(Unit_ApplicationIcon, PackWritesTheIconOfTheMainProgram)
 
     appbox::PackModel model;
     ASSERT_TRUE(model.ImportFolder("program_files", application.wstring(), error)) << error;
-    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
 
     /* The test executable stands in for the loader payload. */
     const auto payload = ReadAllBytes(SelfPath());

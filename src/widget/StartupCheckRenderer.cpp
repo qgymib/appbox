@@ -69,7 +69,7 @@ bool StartupCheckRenderer::GetValue(wxVariant& value) const
 #if wxUSE_ACCESSIBILITY
 wxString StartupCheckRenderer::GetAccessibleDescription() const
 {
-    return checked_ ? "startup file" : "not the startup file";
+    return checked_ ? "starts automatically" : "does not start automatically";
 }
 #endif // wxUSE_ACCESSIBILITY
 

@@ -21,13 +21,15 @@ constexpr const char* kVersionKey = "version";
 constexpr const char* kOutputPathKey = "output_path";
 constexpr const char* kFoldersKey = "folders";
 constexpr const char* kFilesKey = "files";
-constexpr const char* kMainProgramKey = "main_program";
+constexpr const char* kStartupFilesKey = "startup_files";
 constexpr const char* kPresetKey = "preset";
 constexpr const char* kNameKey = "name";
 constexpr const char* kSourceKey = "source";
 constexpr const char* kTargetDirKey = "target_dir";
 constexpr const char* kFolderKey = "folder";
 constexpr const char* kPathKey = "path";
+constexpr const char* kTriggerKey = "trigger";
+constexpr const char* kAutoStartKey = "auto_start";
 
 /* Member names of the registry part of the schema. */
 constexpr const char* kRegistryKey = "registry";
@@ -373,22 +375,26 @@ void from_json(const nlohmann::ordered_json& json, ProjectFileRecord& record)
     record = std::move(candidate);
 }
 
-void to_json(nlohmann::ordered_json& json, const ProjectMainProgramRecord& record)
+void to_json(nlohmann::ordered_json& json, const ProjectStartupRecord& record)
 {
     json = nlohmann::ordered_json::object();
     json[kPresetKey] = record.preset_id;
     json[kFolderKey] = WideToUTF8(record.folder);
     json[kPathKey] = WideToUTF8(record.relative_path);
+    json[kTriggerKey] = WideToUTF8(record.trigger);
+    json[kAutoStartKey] = record.auto_start;
 }
 
-void from_json(const nlohmann::ordered_json& json, ProjectMainProgramRecord& record)
+void from_json(const nlohmann::ordered_json& json, ProjectStartupRecord& record)
 {
     RequireObject(json);
 
-    ProjectMainProgramRecord candidate;
+    ProjectStartupRecord candidate;
     candidate.preset_id = ReadRequiredString(json, kPresetKey);
     candidate.folder = ReadRequiredText(json, kFolderKey);
     candidate.relative_path = ReadRequiredText(json, kPathKey);
+    candidate.trigger = ReadRequiredText(json, kTriggerKey);
+    candidate.auto_start = ReadRequiredBool(json, kAutoStartKey);
 
     record = std::move(candidate);
 }
@@ -510,13 +516,7 @@ void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
     json[kOutputPathKey] = WideToUTF8(document.output_path);
     json[kFoldersKey] = document.folders;
     json[kFilesKey] = document.files;
-
-    /* A document without a main program does not name the member at all. */
-    if (document.main_program.has_value())
-    {
-        json[kMainProgramKey] = *document.main_program;
-    }
-
+    json[kStartupFilesKey] = document.startup_files;
     json[kRegistryKey] = document.registry;
     json[kFilesystemKey] = document.filesystem;
     json[kNetworkKey] = document.network;
@@ -557,7 +557,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectDocument& document)
     candidate.output_path = ReadOptionalText(json, kOutputPathKey);
     ReadRecordArray(json, kFoldersKey, candidate.folders);
     ReadRecordArray(json, kFilesKey, candidate.files);
-    ReadOptionalRecord(json, kMainProgramKey, candidate.main_program);
+    ReadRecordArray(json, kStartupFilesKey, candidate.startup_files);
     ReadRecordArray(json, kRegistryKey, candidate.registry);
     ReadRecordArray(json, kFilesystemKey, candidate.filesystem);
     ReadRecordArray(json, kNetworkKey, candidate.network);

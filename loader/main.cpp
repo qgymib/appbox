@@ -2,9 +2,14 @@
 #include <CLI/CLI.hpp>
 #include <detours.h>
 #include <spdlog/spdlog.h>
+#include <cctype>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <stdexcept>
+#include <string>
+#include <vector>
 #include <base64.hpp>
 #include "sandbox/utils/Defines.hpp"
 #include "utils/CommandLineOptions.hpp"
@@ -18,10 +23,41 @@
 #include "Loader.hpp"
 #include "WString.hpp"
 
-static std::vector<std::wstring> BuildCmdArg()
+/**
+ * @brief Compare two trigger names ignoring case.
+ * @param[in] a Left operand.
+ * @param[in] b Right operand.
+ * @return true when both names are equal ignoring case.
+ */
+static bool EqualsIgnoreCase(const std::string& a, const std::string& b)
+{
+    if (a.size() != b.size())
+    {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < a.size(); ++i)
+    {
+        const auto left = std::tolower(static_cast<unsigned char>(a[i]));
+        const auto right = std::tolower(static_cast<unsigned char>(b[i]));
+        if (left != right)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * @brief Get the command line arguments of one startup file.
+ * @param[in] startup Startup file to convert.
+ * @return The arguments in wide characters.
+ */
+static std::vector<std::wstring> BuildCmdArg(const appbox::LoaderStartup& startup)
 {
     std::vector<std::wstring> args;
-    for (auto& arg : wxGetApp().loader_config.launch.arguments)
+    for (auto& arg : startup.arguments)
     {
         args.push_back(appbox::UTF8ToWide(arg));
     }
@@ -29,29 +65,120 @@ static std::vector<std::wstring> BuildCmdArg()
     return args;
 }
 
+/**
+ * @brief Select the startup files the loader runs.
+ *
+ * A trigger given on the command line selects exactly one startup file and
+ * suppresses the auto start of every other file. Without a trigger every
+ * startup file which carries the auto start flag is selected; a configuration
+ * without such a file is an error, because the sandbox would start nothing.
+ *
+ * @param[in] config The loader configuration.
+ * @param[in] trigger Trigger given on the command line.
+ * @param[in] has_trigger Whether a trigger was given on the command line.
+ * @param[out] selected The startup files to run, in configuration order.
+ * @param[out] error Error description on failure.
+ * @return true when at least one startup file was selected.
+ */
+static bool SelectStartups(const appbox::LoaderConfig& config, const std::string& trigger, bool has_trigger,
+                           std::vector<const appbox::LoaderStartup*>& selected, std::string& error)
+{
+    selected.clear();
+
+    if (has_trigger)
+    {
+        for (const auto& startup : config.startups)
+        {
+            if (EqualsIgnoreCase(startup.trigger, trigger))
+            {
+                selected.push_back(&startup);
+                return true;
+            }
+        }
+
+        error = "no startup file uses the trigger '" + trigger + "'";
+        return false;
+    }
+
+    for (const auto& startup : config.startups)
+    {
+        if (startup.auto_start)
+        {
+            selected.push_back(&startup);
+        }
+    }
+
+    if (selected.empty())
+    {
+        error = "no startup file is marked for auto start";
+        return false;
+    }
+
+    return true;
+}
+
 static void MainLoader()
 {
-    DWORD         ret;
     appbox::Defer defer([]() { wxGetApp().QueueEvent(new wxCommandEvent(APPBOX_EXIT_APPLICATION_IF_NO_GUI)); });
 
-    auto exe_path = appbox::UTF8ToWide(wxGetApp().loader_config.launch.executable.c_str());
-    exe_path = appbox::ExpandKnownFolder(exe_path);
-    auto               cmdline = BuildCmdArg();
-    appbox::ProcessJob job(exe_path, cmdline, wxGetApp().runtime->inject_data);
-
-    if ((ret = job.Start()) != 0)
+    if (!wxGetApp().startup_error.empty())
     {
-        SPDLOG_ERROR("Failed to start process: {}", ret);
-        return;
-    }
-    if ((ret = job.Wait(INFINITE)) != 0)
-    {
-        SPDLOG_ERROR("Failed to wait for process: {}", ret);
+        /* The selection failed already, the error was reported by OnInit(). */
         return;
     }
 
-    wxGetApp().exit_code = job.GetExitCode();
-    SPDLOG_INFO("application exited with code {}", wxGetApp().exit_code);
+    /*
+     * Every selected file is started before the first one is waited for, so
+     * the startup files of the application run side by side instead of one
+     * after the other.
+     */
+    std::vector<std::unique_ptr<appbox::ProcessJob>> jobs;
+    DWORD                                            exit_code = 0;
+
+    for (const auto* startup : wxGetApp().startups)
+    {
+        auto exe_path = appbox::UTF8ToWide(startup->executable.c_str());
+        exe_path = appbox::ExpandKnownFolder(exe_path);
+
+        auto job =
+            std::make_unique<appbox::ProcessJob>(exe_path, BuildCmdArg(*startup), wxGetApp().runtime->inject_data);
+        const auto ret = job->Start();
+        if (ret != 0)
+        {
+            SPDLOG_ERROR("Failed to start the startup file '{}': {}", startup->trigger, ret);
+            if (exit_code == 0)
+            {
+                exit_code = ret;
+            }
+            continue;
+        }
+
+        jobs.push_back(std::move(job));
+    }
+
+    for (auto& job : jobs)
+    {
+        const auto ret = job->Wait(INFINITE);
+        if (ret != 0)
+        {
+            SPDLOG_ERROR("Failed to wait for process: {}", ret);
+            if (exit_code == 0)
+            {
+                exit_code = ret;
+            }
+            continue;
+        }
+
+        const auto code = job->GetExitCode();
+        SPDLOG_INFO("application exited with code {}", code);
+        if (exit_code == 0)
+        {
+            exit_code = code;
+        }
+    }
+
+    wxGetApp().exit_code = exit_code;
+    SPDLOG_INFO("the sandboxed application exited with code {}", wxGetApp().exit_code);
 }
 
 /**
@@ -120,9 +247,16 @@ static void LoadConfig()
 
 static void FinializeCommandArgs(const appbox::CommandLineOptions& opt)
 {
-    for (auto& arg : opt.extra_args)
+    /*
+     * The arguments which were not consumed by the loader belong to the
+     * sandboxed application, so every startup file receives them.
+     */
+    for (auto& startup : wxGetApp().loader_config.startups)
     {
-        wxGetApp().loader_config.launch.arguments.push_back(arg);
+        for (const auto& arg : opt.extra_args)
+        {
+            startup.arguments.push_back(arg);
+        }
     }
 }
 
@@ -158,6 +292,25 @@ bool AppBoxLoader::OnInit()
         wxGenericMessageDialog dlg(nullptr, e.what(), "Error", wxOK | wxICON_ERROR);
         dlg.ShowModal();
         return false;
+    }
+
+    /*
+     * The startup files are selected on the main thread, so a rejected
+     * trigger is reported before the working thread starts. The failure is
+     * always logged and turns into a non zero exit code; the dialog is shown
+     * with the admin UI only, so an unattended run cannot wait for a click.
+     */
+    if (!SelectStartups(wxGetApp().loader_config, opt.startup_trigger, opt.has_startup_trigger, wxGetApp().startups,
+                        wxGetApp().startup_error))
+    {
+        SPDLOG_ERROR("{}", wxGetApp().startup_error);
+        this->exit_code = 1;
+
+        if (this->loader_config.enable_admin_ui)
+        {
+            wxGenericMessageDialog dlg(nullptr, wxGetApp().startup_error, "Error", wxOK | wxICON_ERROR);
+            dlg.ShowModal();
+        }
     }
 
     this->Bind(APPBOX_EXIT_APPLICATION_IF_NO_GUI, &AppBoxLoader::HandleEventExitApplicationNoGUI, this);

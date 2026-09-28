@@ -28,11 +28,13 @@ struct AppBoxLoader : wxApp
     int  OnRun() override;
     void HandleEventExitApplicationNoGUI(wxCommandEvent&);
 
-    appbox::LoaderConfig     loader_config;            /* Loader configuration */
-    AppBoxLoaderRuntime::Ptr runtime;                  /* Runtime information */
-    MainFrame*               main_frame = nullptr;     /* Main frame */
-    std::thread*             working_thread = nullptr; /* Working thread */
-    DWORD                    exit_code = 0;            /* Exit code */
+    appbox::LoaderConfig                      loader_config;            /* Loader configuration */
+    AppBoxLoaderRuntime::Ptr                  runtime;                  /* Runtime information */
+    MainFrame*                                main_frame = nullptr;     /* Main frame */
+    std::thread*                              working_thread = nullptr; /* Working thread */
+    DWORD                                     exit_code = 0;            /* Exit code */
+    std::vector<const appbox::LoaderStartup*> startups;                 /* Startup files to run */
+    std::string                               startup_error;            /* Startup selection error */
 };
 wxDECLARE_APP(AppBoxLoader);
 

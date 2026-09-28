@@ -21,6 +21,11 @@ struct ProbeCtx
  */
 static ProbeCtx::Ptr s_probe_ctx;
 
+/**
+ * @brief Marker of the startup file which started this process.
+ */
+static std::string s_startup_marker;
+
 static void ParseProbePipe(const std::wstring& url)
 {
     s_probe_ctx->rpc_client = appbox::RemoteClient::Create(CLI::narrow(url));
@@ -90,8 +95,15 @@ void appbox::test::ProbeInit(CLI::App& app)
 {
     s_probe_ctx = std::make_shared<ProbeCtx>();
 
+    app.add_option("--startup_marker", s_startup_marker, "Marker of the startup file which started this process");
+
     auto cmd = app.add_subcommand(PROBE_COMMAND);
     cmd->add_option_function<std::wstring>("--probe_pipe", ParseProbePipe)->required();
     cmd->add_option("--probe_key", s_probe_ctx->probe_key)->required();
     cmd->final_callback(ProbeRun);
+}
+
+const std::string& appbox::test::StartupMarker()
+{
+    return s_startup_marker;
 }

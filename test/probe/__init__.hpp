@@ -56,6 +56,18 @@ struct Probe
  */
 void ProbeInit(CLI::App& app);
 
+/**
+ * @brief Get the startup marker given on the command line of this process.
+ *
+ * The end-to-end cases of the loader put the marker of a startup file into the
+ * arguments of that file, so the probe process can tell which startup file the
+ * loader started it for.
+ *
+ * @return The marker, empty when the process was not started as a startup
+ *         file.
+ */
+const std::string& StartupMarker();
+
 } // namespace appbox::test
 
 #endif // APPBOX_TEST_PROBE_INIT_HPP

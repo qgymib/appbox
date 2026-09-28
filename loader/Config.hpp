@@ -8,8 +8,25 @@
 namespace appbox
 {
 
-struct LoaderLaunch
+/**
+ * @brief One executable the loader starts.
+ *
+ * A startup file with `auto_start` set is started as soon as the loader runs.
+ * A startup file without the flag is started only when the loader is asked for
+ * its `trigger` through the `--X-AppBox-Startup` option.
+ */
+struct LoaderStartup
 {
+    /**
+     * @brief Trigger which selects the startup file.
+     */
+    std::string trigger;
+
+    /**
+     * @brief Whether the loader starts the file without being asked to.
+     */
+    bool auto_start = true;
+
     /**
      * @brief Executable path.
      */
@@ -20,7 +37,7 @@ struct LoaderLaunch
      */
     std::vector<std::string> arguments;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderLaunch, executable, arguments)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderStartup, trigger, auto_start, executable, arguments)
 };
 
 struct LoaderEnvironment
@@ -56,16 +73,17 @@ struct LoaderConfig
     std::string overlay_fs = "data";
 
     /**
-     * @brief Launch configuration.
+     * @brief Startup files, in the order the loader starts them.
      */
-    LoaderLaunch launch;
+    std::vector<LoaderStartup> startups;
 
     /**
      * @brief Environment variables.
      */
     std::vector<LoaderEnvironment> environment;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderConfig, enable_admin_ui, base_fs, overlay_fs, launch, environment)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderConfig, enable_admin_ui, base_fs, overlay_fs, startups,
+                                                environment)
 };
 
 } // namespace appbox

@@ -415,13 +415,15 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
         document.files.push_back(std::move(record));
     }
 
-    if (model.HasMainProgram())
+    for (const auto& file : model.StartupFiles())
     {
-        ProjectMainProgramRecord record;
-        record.preset_id = model.MainProgramChoice().preset_id;
-        record.folder = model.MainProgramChoice().import_name;
-        record.relative_path = model.MainProgramChoice().relative_path;
-        document.main_program = std::move(record);
+        ProjectStartupRecord record;
+        record.preset_id = file.preset_id;
+        record.folder = file.import_name;
+        record.relative_path = file.relative_path;
+        record.trigger = file.trigger;
+        record.auto_start = file.auto_start;
+        document.startup_files.push_back(std::move(record));
     }
 
     for (const auto& key : registry.Root().children)
@@ -501,14 +503,17 @@ bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, Reg
         }
     }
 
-    if (document.main_program.has_value())
+    index = 0;
+    for (const auto& file : document.startup_files)
     {
-        const auto& program = *document.main_program;
+        const auto scope = "startup_files[" + std::to_string(index) + "]";
+        ++index;
 
         std::string detail;
-        if (!candidate.RestoreMainProgram(program.preset_id, program.folder, program.relative_path, detail))
+        if (!candidate.RestoreStartupFile(file.preset_id, file.folder, file.relative_path, file.trigger,
+                                          file.auto_start, detail))
         {
-            error = Scoped("main_program", detail);
+            error = Scoped(scope, detail);
             return false;
         }
     }

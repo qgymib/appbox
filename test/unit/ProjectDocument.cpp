@@ -71,11 +71,13 @@ appbox::ProjectDocument BuildSampleDocument()
     file.source_path = L"C:\\tmp\\settings.ini";
     document.files.push_back(file);
 
-    appbox::ProjectMainProgramRecord program;
-    program.preset_id = "program_files";
-    program.folder = L"MyApp";
-    program.relative_path = L"bin\\app.exe";
-    document.main_program = program;
+    appbox::ProjectStartupRecord startup;
+    startup.preset_id = "program_files";
+    startup.folder = L"MyApp";
+    startup.relative_path = L"bin\\app.exe";
+    startup.trigger = L"app";
+    startup.auto_start = true;
+    document.startup_files.push_back(startup);
 
     appbox::ProjectRegistryKeyRecord root;
     root.name = L"HKEY_CURRENT_USER";
@@ -146,10 +148,12 @@ TEST(Unit_ProjectDocument, RoundTripKeepsEveryMember)
     EXPECT_EQ(back.files[0].name, L"settings.ini");
     EXPECT_EQ(back.files[0].source_path, L"C:\\tmp\\settings.ini");
 
-    ASSERT_TRUE(back.main_program.has_value());
-    EXPECT_EQ(back.main_program->preset_id, "program_files");
-    EXPECT_EQ(back.main_program->folder, L"MyApp");
-    EXPECT_EQ(back.main_program->relative_path, L"bin\\app.exe");
+    ASSERT_EQ(back.startup_files.size(), 1u);
+    EXPECT_EQ(back.startup_files[0].preset_id, "program_files");
+    EXPECT_EQ(back.startup_files[0].folder, L"MyApp");
+    EXPECT_EQ(back.startup_files[0].relative_path, L"bin\\app.exe");
+    EXPECT_EQ(back.startup_files[0].trigger, L"app");
+    EXPECT_TRUE(back.startup_files[0].auto_start);
 
     ASSERT_EQ(back.registry.size(), 1u);
     const auto& root = back.registry[0];
@@ -219,7 +223,7 @@ TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
      * The version comes first and the members follow the order of the schema,
      * so the text of a given document is stable and easy to diff.
      */
-    const std::vector<std::string> expected{ "version",  "output_path", "folders", "files", "main_program",
+    const std::vector<std::string> expected{ "version",  "output_path", "folders", "files", "startup_files",
                                              "registry", "filesystem",  "network", "proxy" };
     EXPECT_EQ(members, expected);
     EXPECT_EQ(json.at("version").get<int>(), appbox::kProjectFileVersion);
@@ -285,14 +289,30 @@ TEST(Unit_ProjectDocument, WritesOneRecordAtATime)
     EXPECT_EQ(back.isolation, record.isolation);
 }
 
-TEST(Unit_ProjectDocument, OmitsTheMainProgramWhileNoneIsSelected)
+TEST(Unit_ProjectDocument, WritesTheStartupFilesAsAnArray)
+{
+    const auto json = nlohmann::ordered_json(BuildSampleDocument());
+    ASSERT_TRUE(json.contains("startup_files"));
+    ASSERT_TRUE(json.at("startup_files").is_array());
+    ASSERT_EQ(json.at("startup_files").size(), 1u);
+
+    const auto& startup = json.at("startup_files").at(0);
+    EXPECT_EQ(startup.at("preset").get<std::string>(), "program_files");
+    EXPECT_EQ(startup.at("folder").get<std::string>(), "MyApp");
+    EXPECT_EQ(startup.at("path").get<std::string>(), "bin\\app.exe");
+    EXPECT_EQ(startup.at("trigger").get<std::string>(), "app");
+    EXPECT_EQ(startup.at("auto_start").get<bool>(), true);
+}
+
+TEST(Unit_ProjectDocument, WritesAnEmptyStartupFileArray)
 {
     const auto json = nlohmann::ordered_json(appbox::ProjectDocument{});
-    EXPECT_FALSE(json.contains("main_program"));
+    ASSERT_TRUE(json.contains("startup_files"));
+    EXPECT_TRUE(json.at("startup_files").empty());
 
-    /* A hand written document may spell the absent member as a null value. */
-    const auto back = ParseDocument(R"({ "version": 1, "main_program": null })");
-    EXPECT_FALSE(back.main_program.has_value());
+    /* A document without startup files is read back as an empty list. */
+    const auto back = ParseDocument(R"({ "version": 1, "startup_files": [] })");
+    EXPECT_TRUE(back.startup_files.empty());
 }
 
 TEST(Unit_ProjectDocument, OmitsTheProxyWhileNoneIsConfigured)
@@ -359,7 +379,7 @@ TEST(Unit_ProjectDocument, ReadsMissingMembersAsEmpty)
     EXPECT_TRUE(document.output_path.empty());
     EXPECT_TRUE(document.folders.empty());
     EXPECT_TRUE(document.files.empty());
-    EXPECT_FALSE(document.main_program.has_value());
+    EXPECT_TRUE(document.startup_files.empty());
     EXPECT_TRUE(document.registry.empty());
     EXPECT_TRUE(document.filesystem.empty());
     EXPECT_TRUE(document.network.empty());
@@ -376,7 +396,7 @@ TEST(Unit_ProjectDocument, ReadingReplacesTheWholeDocument)
     EXPECT_EQ(document.output_path, L"D:\\out\\a.zip");
     EXPECT_TRUE(document.folders.empty());
     EXPECT_TRUE(document.files.empty());
-    EXPECT_FALSE(document.main_program.has_value());
+    EXPECT_TRUE(document.startup_files.empty());
     EXPECT_TRUE(document.registry.empty());
     EXPECT_TRUE(document.filesystem.empty());
     EXPECT_FALSE(document.proxy.has_value());
@@ -391,7 +411,7 @@ TEST(Unit_ProjectDocument, ReadingLeavesTheDocumentUntouchedOnFailure)
 
     EXPECT_EQ(document.folders.size(), 1u);
     EXPECT_EQ(document.files.size(), 1u);
-    EXPECT_TRUE(document.main_program.has_value());
+    EXPECT_EQ(document.startup_files.size(), 1u);
     EXPECT_TRUE(document.proxy.has_value());
 }
 
@@ -433,7 +453,15 @@ TEST(Unit_ProjectDocument, RejectsMalformedMembers)
     EXPECT_NE(ParseError(R"({ "version": 1, "files": [ { "preset": "user_profile", "name": "a.ini" } ] })")
                   .find("the 'target_dir' member is missing or not a string"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 1, "main_program": 7 })").find("main_program"), std::string::npos);
+    EXPECT_NE(ParseError(R"({ "version": 1, "startup_files": 7 })").find("startup_files"), std::string::npos);
+    EXPECT_NE(ParseError(R"({ "version": 1, "startup_files": [ { "preset": "program_files", "folder": "MyApp", )"
+                         R"("path": "app.exe", "trigger": "app" } ] })")
+                  .find("the 'auto_start' member is missing or not a boolean"),
+              std::string::npos);
+    EXPECT_NE(ParseError(R"({ "version": 1, "startup_files": [ { "preset": "program_files", "folder": "MyApp", )"
+                         R"("path": "app.exe", "trigger": "app", "auto_start": "yes" } ] })")
+                  .find("the 'auto_start' member is missing or not a boolean"),
+              std::string::npos);
 }
 
 TEST(Unit_ProjectDocument, ReportsThePathOfTheRejectedEntry)
@@ -449,6 +477,14 @@ TEST(Unit_ProjectDocument, ReportsThePathOfTheRejectedEntry)
                                        R"( { "path": "#Windows#" } ] })");
     EXPECT_NE(filesystem.find("filesystem[1]"), std::string::npos);
     EXPECT_NE(filesystem.find("'kind'"), std::string::npos);
+
+    const auto startup = ParseError(R"({ "version": 1, "startup_files": [)"
+                                    R"( { "preset": "program_files", "folder": "MyApp", "path": "one.exe",)"
+                                    R"( "trigger": "one", "auto_start": true },)"
+                                    R"( { "preset": "program_files", "folder": "MyApp", "path": "two.exe",)"
+                                    R"( "trigger": "two" } ] })");
+    EXPECT_NE(startup.find("startup_files[1]"), std::string::npos);
+    EXPECT_NE(startup.find("'auto_start'"), std::string::npos);
 
     /*
      * The path of a nested entry names the key it belongs to, so a value which

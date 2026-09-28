@@ -85,11 +85,16 @@ struct StartupNode
  *
  * The tree mirrors the sandbox view of the packer: the preset directories with
  * their imported folders, expanded into the host subfolders of an import on
- * demand. Only executable files can be selected and exactly one of them is the
- * startup file of the packaged application.
+ * demand. Only executable files can become startup files, and any number of
+ * them can be chosen.
  *
- * The class holds no wxWidgets dependency, so the tree and the single
- * selection rule are unit testable.
+ * The tree owns the startup file list the dialog edits: every executable row
+ * reports whether it is a startup file, whether it starts automatically and
+ * which trigger it carries. The list keeps the order the files were added in,
+ * which is the order the sandbox starts them in.
+ *
+ * The class holds no wxWidgets dependency, so the tree and the rules of the
+ * startup file list are unit testable.
  */
 class StartupTree
 {
@@ -130,68 +135,99 @@ public:
     StartupNode* FindNode(StartupNode& import_root, const std::wstring& relative_path);
 
     /**
-     * @brief Find the row of a startup file choice.
+     * @brief Find the row of a startup file.
      *
      * The preset and the import are matched by name ignoring the case, the
      * folders on the way to the file are expanded on demand.
      *
-     * @param[in] choice The startup file to look up.
+     * @param[in] file The startup file to look up.
      * @return The matching row, null when it does not exist.
      */
-    StartupNode* FindChoice(const MainProgram& choice);
+    StartupNode* FindChoice(const StartupFile& file);
 
     /**
-     * @brief Whether a row can be selected as the startup file.
+     * @brief Whether a row can be a startup file.
      * @param[in] node Row to test.
      * @return true for executable rows.
      */
     static bool IsCheckable(const StartupNode& node);
 
     /**
-     * @brief Pre-select the startup file of an existing model choice.
+     * @brief Replace the startup file list with the model content.
      *
-     * The choice is stored as an identifier, so a row which is not expanded
-     * yet reports IsChecked() as soon as it appears.
+     * The list is stored as an identifier, so a row which is not expanded yet
+     * reports its state as soon as it appears.
      *
-     * @param[in] choice The startup file to pre-select.
+     * @param[in] files The startup files of the model.
      */
-    void Preselect(const MainProgram& choice);
+    void Preselect(const std::vector<StartupFile>& files);
 
     /**
-     * @brief Whether a row is the selected startup file.
+     * @brief Get the startup file list of the tree.
+     * @return The startup files in startup order.
+     */
+    const std::vector<StartupFile>& Files() const;
+
+    /**
+     * @brief Whether the tree holds at least one startup file.
+     * @return true when a startup file is in the list.
+     */
+    bool HasFiles() const;
+
+    /**
+     * @brief Whether a row is a startup file.
      * @param[in] node Row to test.
-     * @return true when the row is the selected executable.
+     * @return true when the row is in the startup file list.
      */
-    bool IsChecked(const StartupNode& node) const;
+    bool Contains(const StartupNode& node) const;
 
     /**
-     * @brief Select a row as the startup file.
+     * @brief Whether a row starts automatically.
+     * @param[in] node Row to test.
+     * @return true when the row is a startup file with the auto start flag.
+     */
+    bool IsAutoStart(const StartupNode& node) const;
+
+    /**
+     * @brief Get the trigger of a row.
+     * @param[in] node Row to test.
+     * @return The trigger of the row, empty when it is not a startup file.
+     */
+    std::wstring TriggerOf(const StartupNode& node) const;
+
+    /**
+     * @brief Set the auto start flag of a row.
      *
-     * The selection is exclusive: selecting another executable replaces the
-     * previous choice.
+     * A row which is not a startup file yet is appended to the list with the
+     * default trigger. Clearing the flag of a row which is not in the list
+     * does nothing.
      *
-     * @param[in] node Row to select.
-     * @return true when the row is an executable and was selected.
+     * @param[in] node Row to change.
+     * @param[in] auto_start New state of the flag.
+     * @return true when the row is an executable and the list was changed.
      */
-    bool SetChecked(const StartupNode& node);
+    bool SetAutoStart(const StartupNode& node, bool auto_start);
 
     /**
-     * @brief Drop the startup file selection.
+     * @brief Set the trigger of a row.
+     *
+     * A row which is not a startup file yet is appended to the list. The
+     * trigger must not be empty and must not be used by another startup file
+     * of the tree, ignoring case.
+     *
+     * @param[in] node Row to change.
+     * @param[in] trigger New trigger of the row.
+     * @param[out] error Error description on failure.
+     * @return true when the row is an executable and the trigger was stored.
      */
-    void ClearChecked();
+    bool SetTrigger(const StartupNode& node, const std::wstring& trigger, std::string& error);
 
     /**
-     * @brief Whether a startup file is selected.
-     * @return true when a startup file is selected.
+     * @brief Drop a row from the startup file list.
+     * @param[in] node Row to drop.
+     * @return true when the row was a startup file and was dropped.
      */
-    bool HasChecked() const;
-
-    /**
-     * @brief Get the selected startup file.
-     * @return The selected startup file; only valid when HasChecked() returns
-     *         true.
-     */
-    const MainProgram& Checked() const;
+    bool Remove(const StartupNode& node);
 
 private:
     /**
@@ -200,9 +236,30 @@ private:
      */
     void EnumerateChildren(StartupNode& node);
 
+    /**
+     * @brief Whether one row and one startup file describe the same executable.
+     * @param[in] node Row to test.
+     * @param[in] file Startup file to test.
+     * @return true when both name the same executable of the same import.
+     */
+    static bool Matches(const StartupNode& node, const StartupFile& file);
+
+    /**
+     * @brief Build the startup file of a row.
+     * @param[in] node Executable row.
+     * @return The startup file of the row without its trigger.
+     */
+    static StartupFile MakeStartupFile(const StartupNode& node);
+
+    /**
+     * @brief Get the index of a row inside the startup file list.
+     * @param[in] node Row to look up.
+     * @return The index, -1 when the row is not a startup file.
+     */
+    int IndexOf(const StartupNode& node) const;
+
     std::vector<std::unique_ptr<StartupNode>> roots_;
-    MainProgram                               checked_;
-    bool                                      has_checked_ = false;
+    std::vector<StartupFile>                  files_;
 };
 
 } // namespace appbox

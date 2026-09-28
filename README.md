@@ -8,46 +8,9 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 
 ## Features
 
-### Resource Isolation
-
-- **Filesystem Isolation**: Three-layer filesystem architecture: the virtual
-  filesystem of the packer travels as a lower layer of the view plus an
-  isolation file into the overlay of the archive; the sandbox redirects every
-  file operation onto the view and enforces the isolation modes of the
-  workspace: `Full` of a folder hides the host folder together with its
-  subtree, `Write Copy` keeps the host entry visible behind the virtual
-  filesystem and copies every modification up into the overlay, and `Whiteout`
-  hides an entry in every layer until the sandboxed process creates it. Reads
-  fall back to the host filesystem (the read through) and a delete is recorded
-  inside the overlay instead of touching the host
-  (see [Filesystem Isolation](docs/FilesystemIsolation.md))
-- **Registry Isolation**: The virtual registry of the packer travels as a hive
-  file plus an isolation file into the overlay of the archive; the sandbox
-  redirects all five root keys onto the hive and enforces the three isolation
-  modes of the workspace: `Full` and `Hide` hide the host entry, and
-  `WriteCopy` keeps the hive in front and redirects every modification into it.
-  Reads fall back to the host registry (the read through), a delete is recorded
-  inside the hive instead of touching the host registry, and a save exports the
-  merged view of a key
-  (see [Registry Isolation](docs/RegistryIsolation.md))
-- **Network Isolation**: The `Network` workspace of the packer collects the DNS
-  redirections of the packaged application, which travel as an isolation file
-  into the overlay of the archive. The sandbox answers the name resolution of
-  the packaged application from that file: a name the workspace lists is
-  resolved to the address it stores without asking a server, and every other
-  name keeps the resolution of the host
-  (see [Network Isolation](docs/NetworkIsolation.md))
-
-### Build System
-
-- CMake-based build system
-- 32-bit and 64-bit sandbox DLL support
-- Every third-party dependency is built as a static library and linked into
-  the executables; the sandbox injection modules
-  (`AppBoxSandbox32.dll` / `AppBoxSandbox64.dll`) are the only dynamic
-  artifacts
-- Visual Studio and GCC/Clang compiler support
-- Resource embedding via CMakeRC
+- **Filesystem Isolation**: Redirects every file operation onto a layered view — a writable overlay on top of read-only base filesystems and the host — and enforces per-entry isolation modes (`Full`, `Write Copy`, `Whiteout`) that decide what the sandboxed process sees and where its modifications land (see [Filesystem Isolation](docs/FilesystemIsolation.md)).
+- **Registry Isolation**: Redirects all five root keys onto a private hive file inside the overlay and enforces three isolation modes (`Full`, `WriteCopy`, `Hide`); the host registry is never modified (see [Registry Isolation](docs/RegistryIsolation.md)).
+- **Network Isolation**: Answers the name resolution of the packaged application from the redirections of the workspace, and optionally carries its TCP and UDP traffic through a SOCKS5 proxy (see [Network Isolation](docs/NetworkIsolation.md)).
 
 ## Requirements
 
@@ -82,8 +45,7 @@ cmake .. -G "Visual Studio 17 2022" -A x64
 cmake --build . --config Release
 ```
 
-See [test/README.md](test/README.md) for the test suites and the way to
-run them.
+See [test/README.md](test/README.md) for the test suites and the way to run them.
 
 ### Build Artifacts
 
@@ -97,329 +59,52 @@ subdirectory (`Debug` or `Release`):
 | `AppBoxTracer.exe` (API tracer) | `build/<config>/tracer/<config>/AppBoxTracer.exe` |
 | `AppBoxTests.exe` (unit and end-to-end tests) | `build/<config>/test/<config>/AppBoxTests.exe` |
 
-`AppBox.exe` is described directly in the top level `CMakeLists.txt`, so its
-target directory is the top of the build tree; the loader, the tracer and the
-test executables keep their own subdirectory scripts.
-
 ### Architecture-Specific Build
 
 **MSVC**: Use `-A Win32` or `-A x64` to select architecture.
 
 **GCC/Clang**: Requires multilib support (`gcc-multilib`, `g++-multilib`).
 
-## Formatting
-
-`tools/format.py` formats every `.hpp` and `.cpp` file of the repository with
-`clang-format`, using the `.clang-format` file at the root of the repository.
-The submodule directory `third_party` and the generated or tool owned
-directories (`build*`, `cmake-build-*`, `out*`, `.git`, `.vs`, `.idea`,
-`.codebuddy`, `.vscode`) are skipped, so a run touches the sources of the
-repository alone. Files with another suffix are not covered, which includes
-`sandbox/utils/WinAPI.h`, the one C++ header of the repository which does not
-carry the `.hpp` suffix.
-
-The script looks for `clang-format` in this order and uses the first candidate
-which answers `--version`:
-
-1. the `clang-format` of the `PATH`,
-2. the `clang-format` of every Visual Studio installation which `vswhere.exe`
-   reports, below `<installation>\VC\Tools\Llvm\<arch>\bin\clang-format.exe`
-   (`x64` first, then `ARM64`, then every other architecture),
-3. the well known install locations: the Visual Studio directories of
-   `%ProgramFiles%` and `%ProgramFiles(x86)%` and the standalone LLVM
-   directories `%ProgramFiles%\LLVM\bin`, `%ProgramFiles(x86)%\LLVM\bin` and
-   `%LOCALAPPDATA%\Programs\LLVM\bin`.
-
-A run which finds no usable candidate prints the paths it tried and stops with
-exit code `2`.
-
-```bash
-# Format every source file in place
-python tools/format.py
-
-# Report the files which are not formatted without writing one of them
-python tools/format.py --check
-
-# Name the result of every file
-python tools/format.py --verbose
-
-# Eight parallel runs, one minute of budget per file
-python tools/format.py -j 8 --timeout 60
-```
-
-| Option | Meaning |
-| --- | --- |
-| `--check`, `--dry-run` | Report the files which are not formatted instead of writing them; the run ends with exit code `1` when it finds one. |
-| `-j N`, `--jobs N` | Number of parallel `clang-format` runs; default the number of processors, at most eight. `1` runs one file after the other. |
-| `--timeout SECONDS` | Budget of one `clang-format` run, in seconds; a run which needs longer is stopped and counted as a failure. Default `120`. |
-| `-v`, `--verbose` | Name the result of every file, not only of the files which need attention. |
-
-A run ends with exit code `0` when every file was processed successfully, `1`
-when a file failed or `--check` found a file which is not formatted, and `2`
-when the environment or the command line is unusable, for example when no
-`clang-format` could be located. A file which fails does not stop the run: its
-diagnostics are reported and the remaining files are handled.
-
-`clang-format` runs with `--style=file --fallback-style=none`, so a file is
-never rewritten with the built in style when the `.clang-format` file is not
-reachable. The repository is not formatted as a whole at the moment, so a
-`--check` run reports the files a run in place would change, which shows the
-extent of that change before the files are written.
-
 ## Project Components
-
-### Common Module
-
-Shared utilities used across the project:
-- `BuildCommandLine`: Build command line parsing
-- `CRC32`: CRC32 checksum computation
-- `Random`: Random number generation
-- `RemoteClient/RemoteServer/RemoteSession`: RPC communication
-- `SetLogLevel`: Logging configuration
-- `WString`: Wide string utilities
-
-### Loader
-
-wxWidgets-based GUI application for managing sandboxed processes:
-- Pipe-based RPC communication with sandbox
-- Configuration management
-- Process injection
-- Window icon taken from the icon resource of the loader executable, so a
-  packed loader keeps the icon of the loader in its title bar and on its
-  taskbar button even when the executable carries the icon of a packaged
-  application as well
-- Read-only sandbox registry browser (admin UI): a registry editor style key
-  tree and value list which mounts `<overlay_fs>\registry\user.hiv` directly,
-  never touching the host registry; the top item of the tree is the
-  `Sandbox Registry` container with the five root keys of the view below it
-  (see [Registry Isolation](docs/RegistryIsolation.md))
 
 ### AppBox
 
 The main product of the repository: a wxWidgets-based GUI application which
-packages an installed application into a portable zip archive. Its sources
-live in `src/` and the build product is `AppBox.exe`. The window follows the
-three part layout of a packaging tool: a ribbon toolbar on top, a vertical
-icon navigation on the left and the workspace on the right.
+packages an installed application into a portable zip archive. The window
+follows the three part layout of a packaging tool: a ribbon toolbar on top, a
+vertical icon navigation on the left and the workspace on the right.
 
-- **Ribbon toolbar**: the `Home` page carries the `Capture`, `Snapshot`,
-  `Build`, `Startup`, `Output` and `Publish` groups; the `Advanced` page
-  holds reserved groups. `Build` writes the archive to the path of the
-  `Output File` box, `Build and Run` additionally extracts it to a temporary
-  folder and starts the packaged loader, and `Startup Files` opens the startup
-  file tree: a tree table of the preset directories and their imported folders
-  with the `Name`, `Type` and `Startup` columns, whose `Startup` checkbox
-  column marks the executable the packaged application starts. Exactly one
-  executable is the startup file, so checking one unchecks the previous one.
-  The file name of that executable names the loader program and its launch
-  configuration inside the archive. Groups without a counterpart in the packer
-  are shown disabled.
-- **Navigation**: Filesystem / Registry / Network / Settings; the filesystem,
-  the registry and the network workspace are implemented, the settings page is
-  an empty state.
-- **Filesystem workspace**: the top item of the tree is the
-  `Sandbox Filesystem` container, which is selected when the workspace is
-  opened. The container lists the preset directories (`Program Files`,
-  `Current User Directory`) in the table below the tree, so they are reachable
-  without an import; they are fixed, so they can neither be removed nor
-  renamed, and a double click on one of them enters it. Below a preset
-  directory the tree shows its imported folders and expands into the host
-  subfolders of an import on demand. The toolbar row above the file list
-  offers `Add Files`, `Add Folder`, `New Folder` (reserved), `Remove`,
-  `Up Dir` and a filename search box.
-- **Registry workspace**: the tree always shows the `Sandbox Registry`
-  container with the five root keys, so the registry is reachable even before
-  a `.reg` file was imported. The table below it shows the sub keys and the
-  values of the selected key with the columns `Name`, `Isolation`, `Type` and
-  `Value`; `Name` shows an icon before the name of the row, a folder for a sub
-  key and a plain file for a value, using the standard icons of wxWidgets
-  instead of the icons of the host entries. The
-  toolbar offers `Add value`, `Add key` and `Remove`. The
-  isolation mode of every key and every value is picked from a dropdown in its
-  row, every other column is edited by double clicking the row, which opens
-  the key dialog or the value dialog (name, type and data, with an editor that
-  follows the type). The dropdown of a row changes that row alone; the context
-  menu of the tree offers `Isolation Mode...`, which overwrites a whole subtree
-  (and, on request, the values below it) when the dialog asks for it.
-  `File -> Import Registry...` merges a
-  `.reg` file into the view, keeping the isolation modes which were set
-  already (see [Registry Isolation](docs/RegistryIsolation.md)). The model
-  reaches the archive: `Build` writes it as `data/registry/user.hiv` and
-  `data/registry/isolation.json` into the overlay of the archive, and the
-  project file stores it as well, so the modes which were picked are the ones
-  the packaged application runs with.
-- **Network workspace**: a flat tab strip with the pages `Proxy`, `DNS` and
-  `IP Restrictions`, which opens on `Proxy`. The `DNS` page carries the `Add...`
-  and `Remove` buttons above the table of the DNS redirections of the packaged
-  application, whose columns `Hostname or IP Address` and `Redirect` are edited
-  inside the cell: `Add...` appends a row and opens its first cell, and the row
-  reaches the model as soon as both of its cells carry a value, so the table
-  holds at most one row which is still being filled in. The hostname of a
-  redirection has to be unique (ignoring the case and a trailing dot) and
-  neither field may be empty or contain a whitespace character, while the
-  `Redirect` cell has to hold an IPv4 or an IPv6 address literal; a refused
-  value is reported and the stored value is put back into the cell. The
-  redirections travel with the project file and into the archive: `Build`
-  writes them as `data/network-isolation.json` into the overlay, and the sandbox
-  answers the name resolution of the packaged application from that file
-  (see [Network Isolation](docs/NetworkIsolation.md)). The `Proxy` page holds
-  the SOCKS5 proxy of the packaged application: the protocol, the two check
-  boxes which pick the traffic it carries, the address of the server, its port
-  and the optional credentials (the password is masked). At least one of the
-  two check boxes has to be set for the proxy to be in effect, the server and
-  the port are required as soon as one of them is, and the hint line below the
-  form reports a refused value instead of a dialog. The proxy travels with the
-  project file and with the archive as the optional `proxy` member of the same
-  isolation file, and the sandbox carries the TCP traffic and the UDP traffic of
-  the packaged application through the server it names, at the winsock layer
-  (see [Network Isolation](docs/NetworkIsolation.md)). `IP Restrictions`
-  shows the empty state of a reserved isolation domain.
-- **File list**: the columns `Filename`, `Isolation`, `Read Only`,
-  `No Upgrade`, `Size` and `Source Path`. `Filename` shows an icon before the
-  name of the row, a folder for a folder and a plain file for a file; the icons
-  are the standard icons of wxWidgets and not the icons of the host entries.
-  The isolation mode of a row is picked from a dropdown in the row itself: a
-  folder offers `Full`, `Write Copy` and `Whiteout`, a file offers `Full` and
-  `Whiteout`. The mode of a folder reaches
-  the entries below it, so a row which was never touched shows the mode it
-  inherits from the closest folder above it; a folder defaults to
-  `Write Copy`, a file to `Full`. `Read Only` and `No Upgrade` are reserved and
-  stay read only. `Source Path` shows the virtual path of the entry inside the
-  sandbox view, e.g. `#ProgramFiles#\MyApp\app.exe`, which is also the key the
-  mode is stored under. The modes travel with the project file and into the
-  archive, which carries them as `data/filesystem-isolation.json` for the
-  sandbox, so the modes which were picked are the ones the packaged application
-  runs with (see [Filesystem Isolation](docs/FilesystemIsolation.md)).
-- **Imports**: `Add Folder` imports a host folder which becomes a
-  subdirectory of a preset directory; `Add Files` imports individual host
-  files into a folder of an already imported tree. Both are recorded in
-  `PackModel` and participate in packing.
-- The archive contains the embedded loader (compiled in via CMakeRC), the
-  generated launch configuration, the imported folders below
-  `filesystem/<layer key>/<import name>` and the individually imported files
-  below `filesystem/<layer key>/<target directory>/<file name>`. The loader
-  program and its configuration carry the file name of the startup file, so a
-  startup file named `foo.exe` is packed as the archive entries `foo.exe` and
-  `foo.exe.json`; extracting the archive and running `foo.exe` starts the
-  sandboxed application. The packed loader also carries the file icon of the
-  startup file: the icon group which the shell shows for that program is
-  appended to the loader image, so Explorer shows the icon of the packaged
-  application for `foo.exe` while the icon resources of the loader - and with
-  them its window icon - stay untouched. A startup file without an icon leaves
-  the icon of the loader in place
-- **Build progress**: `Build` and `Build and Run` report through a single
-  progress dialog. While the run is going on its first line shows the number of
-  handled files and the elapsed time in `mm:ss`, e.g.
-  `Packing files: 12 / 340 - Elapsed 00:12`, and the file it is working on
-  follows on a line of its own, which the dialog shows as a detail line in a
-  smaller font; `Cancel` is offered throughout. The file is shown as the path
-  below the import root, so it stays readable for deeply nested host folders.
-  The dialog carries no collapsible details area: the elapsed time is part of
-  the message, because the timing flags of wxWidgets would hide it behind a
-  `Show details` button. The extracting stage of `Build and Run` reports the
-  same way and continues the progress bar where the packing stage ended. The
-  native dialog keeps the size it was created with, so it is re-fitted whenever
-  a message needs more room than every message before it; without this the
-  buttons at its bottom would be cut off as soon as a file path makes the
-  message longer. When the run finished the same dialog keeps its progress bar
-  and presents the result instead - the outcome of the run (success,
-  cancellation or failure) is never reported by a second dialog, and a
-  successful run names the archive it wrote on a `Saved to: <path>` line.
-  `Cancel` becomes `Close` then and the dialog stays until it is dismissed
-- **Configuration import and export**: `File -> Export Configuration...` writes
-  the current configuration (imported folders, imported files, main program and
-  the `Output File` path) into a JSON project file, and
-  `File -> Import Configuration...` restores a configuration from such a file.
-  Importing replaces the whole configuration: an existing one is only dropped
-  after the user confirmed the replacement, and a file which cannot be read
-  leaves the current configuration untouched. Imported folders and files
-  recorded in a project file do not have to exist on the machine which imports
-  it, so a project can be exchanged before the packaged application is
-  installed; a missing source is reported by the pack run instead
-- **Help -> About**: the dialog describes the application in one sentence and
-  shows the information which was compiled into the binary: the version of the
-  project, the local time of the build, the git revision together with its
-  branch and the marker of a modified working tree, and the third-party
-  libraries the binary was linked against with their versions. Every value is
-  recorded while the application is built, so opening the dialog reads no
-  version file, calls no git and touches no file system. The header which
-  carries them is generated by `cmake/GenerateAboutInfo.cmake`, which the
-  `appbox_build_info` target runs on every build; a dependency whose version
-  cannot be read from its sources fails the build instead of showing an empty
-  entry.
+The navigation offers the Filesystem, Registry and Network workspaces, which
+edit the isolation the packaged application runs with, and the Settings page,
+which is an empty state. The Home page of the ribbon builds the archive to the
+path of the `Output File` box; the configuration of a session — imported
+folders, startup files and the three workspaces — travels with the JSON
+project file of `File -> Export Configuration...` and is restored by
+`File -> Import Configuration...`, which replaces the whole configuration
+after a confirmation. Imported folders and files do not have to exist on the
+machine which imports the project, so a project can be exchanged before the
+packaged application is installed.
 
-#### Configuration Project File
+### Loader
 
-A project file only records the configuration - it never copies the imported
-content - and is JSON text encoded as strict UTF-8 without a byte order mark.
-Paths are stored the way they exist on the machine which exported them, so a
-project file is not portable between machines with different install locations.
+wxWidgets-based GUI application for managing sandboxed processes:
 
-```json
-{
-  "version": 1,
-  "output_path": "D:\\out\\MyApp.zip",
-  "folders": [
-    { "preset": "program_files", "name": "MyApp", "source": "C:\\Program Files\\MyApp" }
-  ],
-  "files": [
-    { "preset": "user_profile", "target_dir": "MyApp\\data",
-      "name": "settings.ini", "source": "C:\\tmp\\settings.ini" }
-  ],
-  "main_program": { "preset": "program_files", "folder": "MyApp", "path": "bin\\app.exe" },
-  "registry": [
-    { "name": "HKEY_CURRENT_USER", "isolation": "full",
-      "values": [ { "name": "Server", "type": "REG_SZ",
-                    "data": "68 00 65 00 6C 00 6C 00 6F 00",
-                    "isolation": "write_copy" } ],
-      "children": [] }
-  ],
-  "filesystem": [
-    { "path": "#ProgramFiles#\\MyApp\\app.exe", "kind": "file", "isolation": "whiteout" }
-  ]
-}
-```
-
-| Member | Meaning |
-| --- | --- |
-| `version` | Format version of the file; the current format is version 1 and a different version is rejected |
-| `output_path` | Path of the `Output File` box, empty when none was chosen |
-| `folders` | Imported folders; `preset` is the preset directory, `name` the subdirectory below it and `source` the imported host folder |
-| `files` | Individually imported files; `target_dir` is relative to the preset directory and starts with the name of an imported folder |
-| `main_program` | Startup file; omitted while no main program is selected |
-| `registry` | The virtual registry, one entry per root key; every key carries its `isolation` mode, its `values` and its `children`, and the data of a value is its raw bytes as a hexadecimal string |
-| `filesystem` | The isolation modes of the virtual filesystem, one entry per path the user picked a mode for; `path` is the virtual path the `Source Path` column shows, `kind` is `file` or `directory` and `isolation` is `full`, `write_copy` or `whiteout` |
-
-`version` is the only required member: a top level member which the document
-does not hold is read as empty, while an entry which is present has to carry
-every member of its record.
-
-The file is written and read as strict UTF-8: a UTF-16 or UTF-32 byte order
-mark and malformed UTF-8 bytes are rejected with an encoding error instead of
-being decoded with replacement characters, while a leading UTF-8 byte order
-mark is accepted. This project file is not the launch configuration of the
-loader inside a packed archive (`<entry name>.json`, see the archive layout
-above), which uses its own schema.
-
-Implementation: `src/core/ProjectDocument.*` holds the document structure and
-the `to_json()` / `from_json()` conversion of the schema, `src/core/ProjectFile.*`
-writes and reads the file and maps the document to the models of the workspace.
+- Extracts the packed archive, injects the sandbox DLL and starts the
+  sandboxed processes.
+- Starts every startup file of its configuration which is marked for auto
+  start; `--X-AppBox-Startup <trigger>` starts the single startup file with
+  that trigger instead and suppresses the auto start of the other files. An
+  unknown trigger starts nothing and turns into a non zero exit code.
+- Offers a read-only sandbox registry browser in its admin UI, which mounts
+  the hive of the overlay directly and never touches the host registry
+  (see [Registry Isolation](docs/RegistryIsolation.md)).
 
 ### Tracer
 
-Console tool which reports the functions a program uses:
-- Drives `cdb.exe` to arm one-shot breakpoints on `ntdll`, `kernel32`,
-  `kernelbase`, `ws2_32` and `dnsapi` and collects the functions which are
-  actually called
-- Traces the child processes of the program as well, and arms a module which is
-  loaded on demand when the loader maps it
-- Default scope: the lowest level entry points of the three isolation domains
-  (filesystem, registry, network), independent of the hooks the sandbox
-  implements; the name resolution of the network domain lives in `ws2_32` and
-  `dnsapi`, because it has no NT entry point
-- `--all-exports` widens the run to every export of the traced modules (the Win32
-  wrappers included), `--list-scope` shows the scope without running anything
-- Writes a UTF-8 report to a file or to the standard output
+Console tool which reports the functions a program uses: it drives `cdb.exe`
+to arm one-shot breakpoints on `ntdll`, `kernel32`, `kernelbase`, `ws2_32`
+and `dnsapi` and collects the functions which are actually called, including
+the ones of the child processes.
 
 ```
 AppBoxTracer --output cmd.txt cmd.exe /c cmd.exe /c echo child
@@ -429,10 +114,9 @@ See [Tracer](docs/Tracer.md) for the usage, the mechanism and the measured cost.
 
 ### Sandbox
 
-Windows DLL providing runtime isolation:
-- Filesystem redirection via API hooks
-- Overlay filesystem for non-destructive testing
-- Named pipe communication with loader
+Windows DLL providing runtime isolation: filesystem, registry and network
+redirection via API hooks, an overlay filesystem for non-destructive testing,
+and named pipe communication with the loader.
 
 ## Documentation
 
@@ -441,6 +125,7 @@ Windows DLL providing runtime isolation:
 - [Network Isolation](docs/NetworkIsolation.md) - Network isolation architecture
 - [Tracer](docs/Tracer.md) - API tracer: usage, mechanism and measured cost
 - [Tests](test/README.md) - Unit tests and end-to-end tests of the sandbox
+
 ## License
 
 See [LICENSE](LICENSE) file for details.

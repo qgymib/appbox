@@ -141,7 +141,7 @@ void RibbonBar::CreateHomePage()
 
     auto* startup = AppendButtonGroup(page, "Startup");
     AddLargeButton(startup, kRibbonStartupFiles, "Startup Files", wxART_FILE_OPEN,
-                   "Browse the imported folders and select the main executable", true);
+                   "Browse the imported folders and manage the startup files", true);
 
     AppendOutputGroup(page);
 

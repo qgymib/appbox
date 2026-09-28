@@ -789,7 +789,7 @@ std::vector<char> ApplyApplicationIcon(const void* loader_bytes, std::size_t loa
     }
     if (application_path.empty())
     {
-        warning = "the path of the main program is empty";
+        warning = "the path of the startup file is empty";
         return {};
     }
 

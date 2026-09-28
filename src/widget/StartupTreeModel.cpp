@@ -16,35 +16,65 @@ wxDataViewItem StartupTreeModel::Item(const appbox::StartupNode* node) const
     return node != nullptr ? wxDataViewItem(const_cast<appbox::StartupNode*>(node)) : wxDataViewItem();
 }
 
-appbox::StartupNode* StartupTreeModel::FindChoice(const appbox::MainProgram& choice)
+appbox::StartupNode* StartupTreeModel::FindChoice(const appbox::StartupFile& file)
 {
-    return tree_.FindChoice(choice);
+    return tree_.FindChoice(file);
 }
 
-void StartupTreeModel::Preselect(const appbox::MainProgram& choice)
+void StartupTreeModel::Preselect(const std::vector<appbox::StartupFile>& files)
 {
-    tree_.Preselect(choice);
+    tree_.Preselect(files);
 
     /*
-     * The lookup creates the folders on the way to the file, so the row can be
+     * The lookup creates the folders on the way to a file, so the rows can be
      * expanded by the dialog afterwards.
      */
-    checked_item_ = Item(tree_.FindChoice(choice));
+    for (const auto& file : files)
+    {
+        (void)tree_.FindChoice(file);
+    }
 }
 
-bool StartupTreeModel::SetChecked(const wxDataViewItem& item)
+bool StartupTreeModel::HasFiles() const
 {
-    return ChangeValue(wxVariant(true), item, StartupColumn);
+    return tree_.HasFiles();
 }
 
-bool StartupTreeModel::HasChecked() const
+const std::vector<appbox::StartupFile>& StartupTreeModel::Files() const
 {
-    return tree_.HasChecked();
+    return tree_.Files();
 }
 
-appbox::MainProgram StartupTreeModel::Checked() const
+bool StartupTreeModel::IsStartupFile(const wxDataViewItem& item) const
 {
-    return tree_.Checked();
+    const appbox::StartupNode* const node = Node(item);
+    return node != nullptr && tree_.Contains(*node);
+}
+
+bool StartupTreeModel::IsAutoStart(const wxDataViewItem& item) const
+{
+    const appbox::StartupNode* const node = Node(item);
+    return node != nullptr && tree_.IsAutoStart(*node);
+}
+
+bool StartupTreeModel::Remove(const wxDataViewItem& item)
+{
+    const appbox::StartupNode* const node = Node(item);
+    if (node == nullptr || !tree_.Remove(*node))
+    {
+        return false;
+    }
+
+    ValueChanged(item, AutoStartColumn);
+    ValueChanged(item, TriggerColumn);
+    return true;
+}
+
+wxString StartupTreeModel::TakeError()
+{
+    wxString error;
+    error.swap(error_);
+    return error;
 }
 
 void StartupTreeModel::GetValue(wxVariant& variant, const wxDataViewItem& item, unsigned int col) const
@@ -52,8 +82,17 @@ void StartupTreeModel::GetValue(wxVariant& variant, const wxDataViewItem& item, 
     const appbox::StartupNode* const node = Node(item);
     if (node == nullptr)
     {
+        variant = wxVariant();
         return;
     }
+
+    /*
+     * A row which cannot be a startup file keeps its cells empty: the control
+     * does not render a cell without a value, so the renderer is never called
+     * for it. The variant is cleared explicitly because the caller may reuse
+     * it.
+     */
+    const bool checkable = appbox::StartupTree::IsCheckable(*node);
 
     switch (col)
     {
@@ -63,14 +102,11 @@ void StartupTreeModel::GetValue(wxVariant& variant, const wxDataViewItem& item, 
     case TypeColumn:
         variant = TypeLabel(*node);
         break;
-    case StartupColumn:
-        /*
-         * A row which cannot be the startup file keeps its cell empty: the
-         * control does not render a cell without a value, so the renderer is
-         * never called for it. The variant is cleared explicitly because the
-         * caller may reuse it.
-         */
-        variant = appbox::StartupTree::IsCheckable(*node) ? wxVariant(tree_.IsChecked(*node)) : wxVariant();
+    case AutoStartColumn:
+        variant = checkable ? wxVariant(tree_.IsAutoStart(*node)) : wxVariant();
+        break;
+    case TriggerColumn:
+        variant = checkable && tree_.Contains(*node) ? wxVariant(wxString(tree_.TriggerOf(*node))) : wxVariant();
         break;
     default:
         variant = wxVariant();
@@ -80,38 +116,36 @@ void StartupTreeModel::GetValue(wxVariant& variant, const wxDataViewItem& item, 
 
 bool StartupTreeModel::SetValue(const wxVariant& variant, const wxDataViewItem& item, unsigned int col)
 {
-    if (col != StartupColumn)
-    {
-        return false;
-    }
-
     const appbox::StartupNode* const node = Node(item);
-    if (node == nullptr)
+    if (node == nullptr || !appbox::StartupTree::IsCheckable(*node))
     {
         return false;
     }
 
-    const wxDataViewItem previous = checked_item_;
-    if (variant.GetBool())
+    if (col == AutoStartColumn)
     {
-        if (!tree_.SetChecked(*node))
+        if (!tree_.SetAutoStart(*node, variant.GetBool()))
         {
             return false;
         }
-        checked_item_ = item;
-    }
-    else
-    {
-        tree_.ClearChecked();
-        checked_item_ = wxDataViewItem();
+
+        /* A row which joined the list receives its default trigger. */
+        ValueChanged(item, TriggerColumn);
+        return true;
     }
 
-    /* The row which was checked before has to be repainted as well. */
-    if (previous.IsOk() && previous != item)
+    if (col == TriggerColumn)
     {
-        ValueChanged(previous, col);
+        std::string error;
+        if (!tree_.SetTrigger(*node, variant.GetString().ToStdWstring(), error))
+        {
+            error_ = wxString::FromUTF8(error);
+            return false;
+        }
+        return true;
     }
-    return true;
+
+    return false;
 }
 
 wxDataViewItem StartupTreeModel::GetParent(const wxDataViewItem& item) const

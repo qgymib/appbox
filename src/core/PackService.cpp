@@ -200,7 +200,7 @@ std::size_t CountFilesBelow(const std::wstring& folder)
 
 std::wstring LoaderEntryName(const PackModel& model)
 {
-    if (!model.HasMainProgram())
+    if (!model.HasStartupFiles())
     {
         return {};
     }
@@ -209,26 +209,24 @@ std::wstring LoaderEntryName(const PackModel& model)
      * Only the file name is used: the loader lives in the archive root, which
      * is the single base filesystem of the extracted application.
      */
-    return std::filesystem::path(model.MainProgramChoice().relative_path).filename().wstring();
+    return std::filesystem::path(model.StartupFiles().front().relative_path).filename().wstring();
 }
 
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
                  const NetworkModel& network, const void* loader_bytes, std::size_t loader_size,
                  const std::wstring& zip_path, const BuildProgressCallback& progress)
 {
-    if (!model.HasMainProgram())
+    if (!model.HasStartupFiles())
     {
-        return "no main program selected";
+        return "no startup file selected";
+    }
+    if (!model.HasAutoStart())
+    {
+        return "at least one startup file must start automatically";
     }
     if (loader_bytes == nullptr || loader_size == 0)
     {
         return "the embedded loader payload is empty";
-    }
-
-    PresetDirectory preset;
-    if (!FindPresetDirectory(model.MainProgramChoice().preset_id, preset))
-    {
-        return "the preset of the main program no longer exists";
     }
 
     /* Count the files once so the progress callback has a stable total. */
@@ -255,28 +253,28 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         std::string error;
 
         /*
-         * The loader executable itself, named after the main program: the
-         * extracted archive shows the packaged application under its own name
-         * instead of the loader name.
+         * The loader executable itself, named after the first startup file:
+         * the extracted archive shows the packaged application under its own
+         * name instead of the loader name.
          */
         const auto loader_entry = WideToUTF8(LoaderEntryName(model));
         if (loader_entry.empty())
         {
-            return "no main program selected";
+            return "no startup file selected";
         }
 
         /*
-         * The loader carries the file icon of the main program, so Explorer
-         * shows the icon of the packaged application for the extracted
-         * program. A program without an icon never fails the pack run: the
-         * loader then keeps its own icon and the reason is logged.
+         * The loader carries the file icon of the first startup file, so
+         * Explorer shows the icon of the packaged application for the
+         * extracted program. A program without an icon never fails the pack
+         * run: the loader then keeps its own icon and the reason is logged.
          */
-        std::wstring      main_program_path;
+        std::wstring      startup_path;
         std::vector<char> patched_loader;
-        if (model.MainProgramPath(main_program_path))
+        if (model.StartupFilePath(model.StartupFiles().front(), startup_path))
         {
             std::string icon_warning;
-            patched_loader = ApplyApplicationIcon(loader_bytes, loader_size, main_program_path, icon_warning);
+            patched_loader = ApplyApplicationIcon(loader_bytes, loader_size, startup_path, icon_warning);
             if (!icon_warning.empty())
             {
                 spdlog::warn("the loader keeps its own icon: {}", icon_warning);
@@ -292,19 +290,33 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
 
         /*
          * Loader configuration: the archive root is the single base
-         * filesystem, the overlay lives beside it, and the launch path is
-         * the layer key token of the preset expanded by the loader. The
-         * config file carries the name of the loader executable, which loads
-         * `<own file name>.json` from its own directory.
+         * filesystem, the overlay lives beside it, and every executable path
+         * starts with the layer key token of its preset, which the loader
+         * expands. The config file carries the name of the loader executable,
+         * which loads `<own file name>.json` from its own directory.
          */
         LoaderConfig config;
         config.base_fs.push_back(".");
         config.overlay_fs = "data";
 
-        auto launch = std::filesystem::path(preset.layer_key);
-        launch /= model.MainProgramChoice().import_name;
-        launch /= model.MainProgramChoice().relative_path;
-        config.launch.executable = WideToUTF8(launch.wstring());
+        for (const auto& file : model.StartupFiles())
+        {
+            PresetDirectory owner;
+            if (!FindPresetDirectory(file.preset_id, owner))
+            {
+                return "the preset of a startup file no longer exists";
+            }
+
+            auto launch = std::filesystem::path(owner.layer_key);
+            launch /= file.import_name;
+            launch /= file.relative_path;
+
+            LoaderStartup startup;
+            startup.trigger = WideToUTF8(file.trigger);
+            startup.auto_start = file.auto_start;
+            startup.executable = WideToUTF8(launch.wstring());
+            config.startups.push_back(std::move(startup));
+        }
 
         const auto json = nlohmann::json(config).dump(2);
         if (!writer.AddFileBuffer(loader_entry + ".json", json.data(), json.size(), error))

@@ -43,10 +43,41 @@ public:
 
     /**
      * @brief Rebuild tree and list after the model changed externally.
+     *
+     * The folder the user selected is looked up again after the rebuild, so
+     * the workspace stays where it was; a folder which the model no longer
+     * holds falls back to the container.
      */
     void RefreshModel();
 
 private:
+    /**
+     * @brief Location of a tree item inside the sandbox view.
+     *
+     * The fields mirror the client data of the tree items: the container
+     * leaves all of them empty, a preset directory carries its identifier
+     * only, an imported folder adds its name, and a folder below an import
+     * adds its path relative to the import root.
+     */
+    struct TreePath
+    {
+        /**
+         * @brief Identifier of the preset directory, empty for the container.
+         */
+        std::string preset_id;
+
+        /**
+         * @brief Name of the imported folder, empty for preset nodes.
+         */
+        std::wstring import_name;
+
+        /**
+         * @brief Folder path relative to the import root, empty for import
+         *        roots.
+         */
+        std::wstring relative_dir;
+    };
+
     /**
      * @brief Client data attached to one tree item.
      */
@@ -131,9 +162,9 @@ private:
         bool is_directory = false;
 
         /**
-         * @brief Whether the row is the selected main program.
+         * @brief Whether the row is a startup file of the model.
          */
-        bool is_main_program = false;
+        bool is_startup_file = false;
     };
 
     /**
@@ -203,11 +234,23 @@ private:
     const wxBitmapBundle& IconOf(const RowInfo& row) const;
 
     /**
-     * @brief Select one tree node by its preset and import.
-     * @param[in] preset_id Identifier of the preset directory.
-     * @param[in] import_name Name of the imported folder, empty for presets.
+     * @brief Get the path of the current tree selection.
+     * @param[out] path Path of the selected item.
+     * @return true when an item is selected.
      */
-    void SelectNode(const std::string& preset_id, const std::wstring& import_name);
+    bool SelectedTreePath(TreePath& path) const;
+
+    /**
+     * @brief Select the tree item of a path.
+     *
+     * The folders below an imported folder are listed on demand, so the levels
+     * of the path are opened while the item is looked up. A path which the
+     * tree does not hold falls back to the deepest level it was found in, and
+     * to the container when the preset directory itself is gone.
+     *
+     * @param[in] path Path of the item.
+     */
+    void SelectTreePath(const TreePath& path);
 
     /**
      * @brief Get the directory of the current selection inside the sandbox view.
@@ -237,6 +280,24 @@ private:
      * @return The kind of the entry.
      */
     static appbox::FilesystemEntryKind RowKind(const RowInfo& row);
+
+    /**
+     * @brief Get the path of a row relative to the root of its imported folder.
+     *
+     * A startup file of the model is stored relative to the import root, while
+     * a row stores its directory relative to the preset directory, whose first
+     * segment is the name of the imported folder.
+     *
+     * @param[in] row Row description.
+     * @return The path of the file relative to the import root.
+     */
+    static std::wstring StartupRelativePath(const RowInfo& row);
+
+    /**
+     * @brief Add the selected row to the startup files.
+     * @param[in] auto_start Whether the sandbox starts the file by itself.
+     */
+    void AddSelectedStartupFile(bool auto_start);
 
     /**
      * @brief Compose the virtual path of a row inside the sandbox view.
@@ -351,14 +412,38 @@ private:
      */
     void OnIsolationChanged(wxDataViewEvent& event);
 
+    /**
+     * @brief Show the context menu of a row of the file list.
+     *
+     * Only executable rows offer the startup file commands, because only an
+     * executable can be started by the sandbox.
+     *
+     * @param[in] event Table item context menu event.
+     */
+    void OnRowContextMenu(wxDataViewEvent& event);
+
+    /**
+     * @brief Add the selected executable as an auto start startup file.
+     * @param[in] event Command event.
+     */
+    void OnSetStartupFile(wxCommandEvent& event);
+
+    /**
+     * @brief Add the selected executable as a startup file without auto start.
+     * @param[in] event Command event.
+     */
+    void OnAddToStartupFileList(wxCommandEvent& event);
+
     appbox::PackModel&                model_;
     appbox::FilesystemIsolationModel& isolation_;
 
     /**
-     * @brief Whether the table is being rebuilt.
+     * @brief Whether the panel is rebuilding itself.
      *
-     * The rebuild suppresses the value change events of the control, which
-     * would otherwise be read as a mode the user picked.
+     * The rebuild suppresses the events of the controls which would otherwise
+     * be read as input of the user: the value change events of the table,
+     * which carry the isolation mode of a row, and the selection change events
+     * of the tree, which rebuild the table.
      */
     bool updating_ = false;
 

@@ -45,7 +45,7 @@ namespace appbox
  *
  * @param[in] loader_bytes Embedded loader payload.
  * @param[in] loader_size Payload size in bytes.
- * @param[in] application_path Host path of the main program executable.
+ * @param[in] application_path Host path of the startup file executable.
  * @param[out] warning Reason why the icon was not applied, empty on success.
  * @return The patched PE image, empty when the payload stays unchanged.
  */

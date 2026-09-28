@@ -220,9 +220,9 @@ The unit tests of the packer:
   round trip of every member of the schema, the version and the order of the
   written members, the paths as UTF-8 bytes, the members an entry needs, the
   path of a rejected entry, the unknown isolation, kind, value type and proxy
-  tokens, malformed value data, the optional `main_program` and `proxy`
-  members which are omitted while they are absent and read back as absent, and
-  the atomic read.
+  tokens, malformed value data, the `startup_files` array of the startup files
+  and the optional `proxy` member, which is omitted while it is absent and read
+  back as absent, and the atomic read.
 * `test/unit/ProjectFile.cpp` — the file layer of a project file: the
   round trip of the configuration, of the virtual registry, of the
   filesystem isolation modes and of the proxy of the network workspace, the
@@ -283,10 +283,12 @@ executable carries itself:
   layer of the packer, including the zip slip protection of an extraction.
 * `test/unit/BuildReport.cpp` — the progress and the result texts of the
   build report.
-* `test/unit/ApplicationIcon.cpp` — the icon the packer writes into the
-  main program of an archive, including the round trip through the real loader
+* `test/unit/ApplicationIcon.cpp` — the icon the packer writes into the first
+  startup file of an archive, including the round trip through the real loader
   payload.
-* `test/unit/StartupTree.cpp` — the startup check tree of the packer.
+* `test/unit/StartupTree.cpp` — the startup file tree of the packer: the rows
+  of the imports, the default trigger of a file, the uniqueness of a trigger
+  and the auto start flag.
 
 The timeout and the coredumps of a run have a unit test of their own:
 
@@ -496,6 +498,22 @@ isolation file as the server of the proxy.
 | `Net_Dns_FamilyOfTheRedirectIsHonoured` | `v4.…` → `127.0.0.1`, `v6.…` → `::1` | both names, both families | a question is answered by the entry of its family; the other family keeps the resolution of the host, which fails for a name only the file knows |
 | `Net_Dns_EveryResolutionApiIsRedirected` | `appbox-spike.invalid` → `127.0.0.1` | the name with every entry point the sandbox hooks: `GetAddrInfoW`, `getaddrinfo`, `GetAddrInfoExW`, `gethostbyname`, `DnsQuery_UTF8`, `DnsQuery_A` and `DnsQuery_W` | every API answers the redirect address, and the two ANSI entry points keep the resolution of the host for a name the file does not list |
 
+### Loader startup cases
+
+The startup cases (`test/e2e/Loader_Startup.cpp`) describe three startup files in
+one `LoaderConfig`: `one` and `two` are marked for auto start, `manual` is not.
+The arguments of every startup file carry its own marker, and the probe
+`test/probe/StartupStarted.cpp` reports the marker of the file which started it,
+so a case can tell which of the files the loader started; the file name of the
+first startup file decides the loader entry of a packed archive. Each case is
+documented in its own header comment.
+
+| Case | `--X-AppBox-Startup` | Expected |
+| --- | --- | --- |
+| `AutoStartAll` | – | `one` and `two` start, `manual` does not, the loader exits with zero |
+| `SelectedByTrigger` | `manual` | only `manual` starts, the auto start files do not, the loader exits with zero |
+| `UnknownTrigger` | `missing` | nothing starts, not even the auto start files, and the loader reports a non zero exit code |
+
 ## Test helpers
 
 * `test/utils/FsBuilder.*` — declarative tree builder. `FsRoot(root, {Upper, Lower1, Lower2})`
@@ -509,7 +527,10 @@ isolation file as the server of the proxy.
 * `test/utils/ProbeCall.*` — writes the `LoaderConfig` to `config.json`, starts the
   **loader** with `--X-AppBox-ConfigFile`, which launches the test binary as a probe
   process with the sandbox DLL injected; the probe asks the test process for its task
-  over a named pipe and reports the result back.
+  over a named pipe and reports the result back. `ProbeStartupRun()` runs the loader
+  for a startup file selection instead: it passes `--X-AppBox-Startup` when a trigger
+  is given and reports the markers of the startup files the loader started together
+  with its exit code.
 * `test/utils/HiveBuilder.*` — builds the artifacts of a test sandbox, so an
   end-to-end test owns what the sandbox mounts. The builder writes the hive
   file and the isolation file of an overlay directly and tracks the content of
@@ -565,6 +586,8 @@ isolation file as the server of the proxy.
   the addresses of every answer.
 * `test/probe/__init__.hpp` — the probe registry: a probe registers itself by
   name on start and `ProbeInit` registers the command which the loader starts.
+  `--startup_marker` carries the marker of the startup file a probe process was
+  started for, which `StartupMarker()` returns.
 
 ## Tracer tests
 

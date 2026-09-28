@@ -5,10 +5,13 @@
 #include "RemoteServer.hpp"
 #include "RemoteClient.hpp"
 #include <windows.h>
+#include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <map>
 #include <mutex>
+#include <vector>
 #include <spdlog/spdlog.h>
 #include <base64.hpp>
 #include <CLI/Encoding.hpp>
@@ -24,10 +27,12 @@ struct ProbeContext
 {
     typedef std::shared_ptr<ProbeContext> Ptr;
 
-    std::string       name;   /* Probe name */
-    nlohmann::json    data;   /* Probe data */
-    nlohmann::json    result; /* Probe result */
-    appbox::Semaphore sem;    /* Semaphore */
+    std::string                 name;         /* Probe name */
+    nlohmann::json              data;         /* Probe data */
+    nlohmann::json              result;       /* Probe result */
+    std::vector<nlohmann::json> results;      /* Probe results of every process which reported */
+    std::mutex                  result_mutex; /* Result mutex */
+    appbox::Semaphore           sem;          /* Semaphore */
 };
 typedef std::map<std::string, ProbeContext::Ptr> ProbeContextMap;
 
@@ -104,7 +109,16 @@ static void OnProbeResponse(uint64_t id, const nlohmann::json& req)
         ctx = it->second;
     }
 
-    ctx->result = c_req.result;
+    {
+        /*
+         * Several probe processes may report for the same key: the loader
+         * starts one process per startup file, so the results are collected in
+         * a list as well.
+         */
+        std::lock_guard<std::mutex> lock(ctx->result_mutex);
+        ctx->result = c_req.result;
+        ctx->results.push_back(c_req.result);
+    }
 
     /*
      * The semaphore is released before the acknowledgment is sent: the probe
@@ -191,11 +205,42 @@ ProbeKey::~ProbeKey()
 static appbox::LoaderConfig OverrideConfig(const appbox::LoaderConfig& config)
 {
     appbox::LoaderConfig copy_config = config;
-    copy_config.launch.executable = s_probe_srv->exe_path;
+
+    if (copy_config.startups.empty())
+    {
+        /*
+         * A configuration of a case which does not describe startup files
+         * starts the probe once, like the single main program of the packaged
+         * application.
+         */
+        appbox::LoaderStartup startup;
+        startup.trigger = "probe";
+        startup.auto_start = true;
+        copy_config.startups.push_back(std::move(startup));
+    }
+
+    /*
+     * The probe runs itself instead of the packaged application, so every
+     * startup file points at the probe executable.
+     */
+    for (auto& startup : copy_config.startups)
+    {
+        startup.executable = s_probe_srv->exe_path;
+    }
     return copy_config;
 }
 
-static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, const appbox::LoaderConfig& config)
+/**
+ * @brief Run the loader of a configuration and wait for it.
+ * @param[in] key Probe key passed to the probe processes.
+ * @param[in] cwd The current working directory.
+ * @param[in] config The loader configuration.
+ * @param[in] trigger Trigger for `--X-AppBox-Startup`, empty to omit the
+ *                    option so the loader starts the auto start files.
+ * @return The exit code of the loader.
+ */
+static DWORD RunLoader(const std::string& key, const std::wstring& cwd, const appbox::LoaderConfig& config,
+                       const std::string& trigger)
 {
     std::filesystem::path cfg_path;
     {
@@ -209,21 +254,23 @@ static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, cons
 
     auto log_path = std::filesystem::path(cwd) / "log.txt";
 
-    std::wstring cmd;
+    std::vector<std::wstring> args = {
+        L"--X-AppBox-ConfigFile",       cfg_path.wstring(),    L"--X-AppBox-LogLevel",
+        appbox::test::config.log_level, L"--X-AppBox-LogFile", log_path.wstring(),
+    };
+    if (!trigger.empty())
     {
-        /* clang-format off */
-        cmd = appbox::BuildCommandLine(appbox::test::config.loader_path,
-            {
-                L"--X-AppBox-ConfigFile", cfg_path.wstring(),
-                L"--X-AppBox-LogLevel", appbox::test::config.log_level,
-                L"--X-AppBox-LogFile", log_path.wstring(),
-                L"probe",
-                L"--probe_pipe", CLI::widen(s_probe_srv->pipe_path),
-                L"--probe_key", CLI::widen(key),
-            }
-        );
-        /* clang-format on */
+        args.push_back(L"--X-AppBox-Startup");
+        args.push_back(CLI::widen(trigger));
     }
+
+    args.push_back(L"probe");
+    args.push_back(L"--probe_pipe");
+    args.push_back(CLI::widen(s_probe_srv->pipe_path));
+    args.push_back(L"--probe_key");
+    args.push_back(CLI::widen(key));
+
+    auto cmd = appbox::BuildCommandLine(appbox::test::config.loader_path, args);
 
     STARTUPINFOW startup_info;
     ZeroMemory(&startup_info, sizeof(startup_info));
@@ -258,7 +305,12 @@ static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, cons
     }
 
     CloseHandle(process_info.hProcess);
+    return exit_code;
+}
 
+static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, const appbox::LoaderConfig& config)
+{
+    const auto exit_code = RunLoader(key, cwd, config, std::string());
     if (exit_code != 0)
     {
         auto msg = fmt::format("Probe exited with code {}", exit_code);
@@ -280,4 +332,33 @@ nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::
 
     key.ctx->sem.Acquire();
     return key.ctx->result;
+}
+
+appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, const LoaderConfig& loader_config,
+                                                       const std::string& trigger)
+{
+    static std::once_flag once;
+    std::call_once(once, InitProbeServer);
+
+    auto copy_config = OverrideConfig(loader_config);
+
+    ProbeKey key("StartupStarted", nlohmann::json::object());
+
+    StartupRun run;
+    run.exit_code = static_cast<std::uint32_t>(RunLoader(key.key, cwd, copy_config, trigger));
+
+    {
+        std::lock_guard<std::mutex> lock(key.ctx->result_mutex);
+        for (const auto& result : key.ctx->results)
+        {
+            const auto marker = result.find("marker");
+            if (marker != result.end() && marker->is_string())
+            {
+                run.started.push_back(marker->get<std::string>());
+            }
+        }
+    }
+
+    std::sort(run.started.begin(), run.started.end());
+    return run;
 }
