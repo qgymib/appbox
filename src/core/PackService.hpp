@@ -53,30 +53,34 @@ std::wstring LoaderEntryName(const PackModel& model);
 /**
  * @brief Pack the model into a self-contained zip archive.
  *
- * The archive layout matches the loader runtime conventions:
+ * The archive layout is the fixed convention of `common/SandboxLayout.hpp`:
+ * the read-only resources of the packaged application travel below `app`, one
+ * directory per isolation domain, while the `data` directory of the sandbox
+ * does not travel at all. The loader creates it at run time, next to `app`, so
+ * deleting it resets the sandbox to the state the archive carries.
  *
  * ```
  * <first startup file name>              loader payload (loader_bytes)
- * <first startup file name>.json         base_fs = ["."], overlay_fs = "data",
- *                                        startups[] = { trigger, auto_start,
+ * <first startup file name>.json         startups[] = { trigger, auto_start,
  *                                        executable = <layer key>\<import>\<exe> }
- * data/registry/user.hiv                 virtual registry of the workspace
- * data/registry/isolation.json           isolation modes of the registry
- * data/filesystem-isolation.json         isolation modes of the filesystem
- * data/network-isolation.json            network configuration of the workspace
- * filesystem/<layer key>/<import>/...    imported folder content
- * filesystem/<layer key>/<target>/<file> imported file content
+ * app/filesystem/isolation.json          isolation modes of the filesystem
+ * app/filesystem/<layer key>/<import>/... imported folder content
+ * app/filesystem/<layer key>/<target>/<file> imported file content
+ * app/registry/user.hiv                  virtual registry of the workspace
+ * app/registry/isolation.json            isolation modes of the registry
+ * app/network/isolation.json             network configuration of the workspace
  * ```
  *
  * The loader program and its configuration carry the file name of the first
  * startup file, see LoaderEntryName(). The entry programs themselves keep
  * their place below the layer tree.
  *
- * The registry artifacts land in the overlay folder (`overlay_fs`), which is
- * where the loader mounts the private hive of the sandbox: the hive holds the
- * virtual registry the packaged application sees and the isolation file holds
- * the modes which decide which host entries stay visible (see
- * `common/RegistryIsolation.hpp`).
+ * The registry artifacts land in the registry domain of the resources: the
+ * hive holds the virtual registry the packaged application sees and the
+ * isolation file holds the modes which decide which host entries stay visible
+ * (see `common/RegistryIsolation.hpp`). The loader seeds the hive into its
+ * state directory before the sandbox mounts it, because mounting a hive writes
+ * to the file and the resources below `app` stay read-only.
  *
  * The loader program also carries the file icon of the first startup file:
  * the icon group which the shell shows for that program is appended to the
@@ -98,27 +102,29 @@ std::wstring LoaderEntryName(const PackModel& model);
  * BuildProgress::current, using the path below the import root prefixed by the
  * import name, e.g. `L"MyApp\bin\tool.exe"`.
  *
- * The filesystem isolation modes land in the overlay as well, as
- * `data/filesystem-isolation.json`: the loader hands the file to the sandbox,
- * which redirects the filesystem of the packaged application through the modes
- * (see `common/FilesystemIsolation.hpp`).
+ * The filesystem isolation modes land in the filesystem domain as
+ * `app/filesystem/isolation.json`, next to the layers they describe: the
+ * loader hands the file to the sandbox, which redirects the filesystem of the
+ * packaged application through the modes (see
+ * `common/FilesystemIsolation.hpp`). The loader skips the file while it
+ * enumerates the layers of that folder.
  *
- * The network configuration of the workspace lands in the overlay as
- * `data/network-isolation.json`: the loader hands the file to the sandbox,
+ * The network configuration of the workspace lands in the network domain as
+ * `app/network/isolation.json`: the loader hands the file to the sandbox,
  * which answers a name resolution of the packaged application from its DNS
  * redirections and sends its traffic through its proxy (see
  * `common/NetworkIsolation.hpp`).
  *
  * @param[in] model The pack model.
  * @param[in] registry Virtual registry of the workspace, which is written into
- *                     the overlay of the archive as a hive file and an
+ *                     the registry domain of the archive as a hive file and an
  *                     isolation file.
  * @param[in] isolation Isolation modes of the virtual filesystem, which are
- *                      written into the overlay of the archive as an isolation
- *                      file.
+ *                      written into the filesystem domain of the archive as an
+ *                      isolation file.
  * @param[in] network DNS redirections of the network workspace, which are
- *                    written into the overlay of the archive as an isolation
- *                    file.
+ *                    written into the network domain of the archive as an
+ *                    isolation file.
  * @param[in] loader_bytes Embedded AppBoxLoader.exe payload.
  * @param[in] loader_size Payload size in bytes.
  * @param[in] zip_path Destination zip path (truncated when it exists).

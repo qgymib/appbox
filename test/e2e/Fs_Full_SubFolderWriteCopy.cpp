@@ -38,8 +38,8 @@ TEST_F(E2E_Fs, Full_SubFolderWriteCopyShowsTheHost)
 
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {
+        FsDir(L"data", {}),
+        FsDir(L"app", {
             FsDir(L"filesystem\\#APPDATA#", {
                 FsDir(kFolderName, {
                     FsDir(L"data", {
@@ -53,11 +53,11 @@ TEST_F(E2E_Fs, Full_SubFolderWriteCopyShowsTheHost)
 
     auto config = tree.Build();
     ASSERT_TRUE(WriteFsIsolationFile(
-        config, {
-                    { L"#APPDATA#\\" + std::wstring(kFolderName),             appbox::FilesystemEntryKind::Directory,
-                     appbox::FilesystemIsolation::Full      },
-                    { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\data", appbox::FilesystemEntryKind::Directory,
-                     appbox::FilesystemIsolation::WriteCopy }
+        GetCWD(), {
+                      { L"#APPDATA#\\" + std::wstring(kFolderName),             appbox::FilesystemEntryKind::Directory,
+                       appbox::FilesystemIsolation::Full      },
+                      { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\data", appbox::FilesystemEntryKind::Directory,
+                       appbox::FilesystemIsolation::WriteCopy }
     }));
 
     const auto folder = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName;
@@ -103,8 +103,8 @@ TEST_F(E2E_Fs, Full_SubFolderWriteCopyShowsTheHost)
     }
 
     {
-        const auto overlay = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) +
-                             L"\\" + kFolderName + L"\\data\\new.txt";
+        const auto overlay = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\" +
+                             kFolderName + L"\\data\\new.txt";
         ASSERT_TRUE(std::filesystem::exists(overlay));
     }
 

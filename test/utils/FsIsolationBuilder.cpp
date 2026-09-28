@@ -1,18 +1,38 @@
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include "SandboxLayout.hpp"
 #include "WString.hpp"
 #include "FsIsolationBuilder.hpp"
 
 /**
- * @brief Write the text of the filesystem isolation file of an overlay.
- * @param[in] config Loader configuration of the case.
+ * @brief Path of the filesystem isolation file of a case.
+ * @param[in] case_root Root directory of the case.
+ * @return The path of the file.
+ */
+static std::filesystem::path IsolationFilePath(const std::filesystem::path& case_root)
+{
+    return case_root / appbox::layout::kAppDirNameW / appbox::layout::kFilesystemDirNameW /
+           appbox::layout::kIsolationFileNameW;
+}
+
+/**
+ * @brief Write the text of the filesystem isolation file of a case.
+ * @param[in] case_root Root directory of the case.
  * @param[in] text Text to write.
  * @return true on success.
  */
-static bool WriteIsolationText(const appbox::LoaderConfig& config, const std::string& text)
+static bool WriteIsolationText(const std::filesystem::path& case_root, const std::string& text)
 {
-    const auto    path = std::filesystem::path(appbox::UTF8ToWide(config.overlay_fs)) / L"filesystem-isolation.json";
+    const auto path = IsolationFilePath(case_root);
+
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    if (ec)
+    {
+        return false;
+    }
+
     std::ofstream stream(path, std::ios::binary | std::ios::trunc);
     if (!stream.is_open())
     {
@@ -23,7 +43,7 @@ static bool WriteIsolationText(const appbox::LoaderConfig& config, const std::st
     return stream.good();
 }
 
-bool appbox::test::WriteFsIsolationFile(const appbox::LoaderConfig&          config,
+bool appbox::test::WriteFsIsolationFile(const std::filesystem::path&         case_root,
                                         const std::vector<FsIsolationEntry>& entries)
 {
     nlohmann::json document;
@@ -40,10 +60,10 @@ bool appbox::test::WriteFsIsolationFile(const appbox::LoaderConfig&          con
         document[appbox::filesystem_isolation::kEntriesKey].push_back(std::move(item));
     }
 
-    return WriteIsolationText(config, document.dump(2));
+    return WriteIsolationText(case_root, document.dump(2));
 }
 
-bool appbox::test::WriteRawFsIsolationFile(const appbox::LoaderConfig& config, const std::string& text)
+bool appbox::test::WriteRawFsIsolationFile(const std::filesystem::path& case_root, const std::string& text)
 {
-    return WriteIsolationText(config, text);
+    return WriteIsolationText(case_root, text);
 }

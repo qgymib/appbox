@@ -36,7 +36,7 @@ std::wstring CreatedDirectory()
  */
 std::wstring CreatedDirectoryInOverlay(const std::wstring& cwd)
 {
-    return cwd + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\" + kFolderName + L"\\created";
+    return cwd + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\" + kFolderName + L"\\created";
 }
 
 } // namespace
@@ -62,8 +62,8 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
 
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {})
+        FsDir(L"data", {}),
+        FsDir(L"app", {})
     });
     /* clang-format on */
 

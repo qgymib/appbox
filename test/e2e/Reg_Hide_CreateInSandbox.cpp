@@ -26,7 +26,7 @@ TEST_F(E2E_Reg, Hide_CreateInSandbox)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -40,7 +40,7 @@ TEST_F(E2E_Reg, Hide_CreateInSandbox)
     ASSERT_TRUE(real_key.SetString(L"HostValue", L"host"));
 
     /* The hive stays empty, the isolation file marks the key of the host. */
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey, appbox::RegistryIsolation::Hide);
 
     std::string error;

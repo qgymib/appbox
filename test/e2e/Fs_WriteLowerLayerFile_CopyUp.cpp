@@ -35,8 +35,8 @@ TEST_F(E2E_Fs, WriteLowerLayerFile_CopyUp)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {
+        FsDir(L"data", {}),
+        FsDir(L"app", {
             FsDir(L"filesystem\\#APPDATA#", {
                 FsDir(kFolderName, {
                     FsFile(L"data.txt", "packed")
@@ -65,8 +65,8 @@ TEST_F(E2E_Fs, WriteLowerLayerFile_CopyUp)
 
     /* The copy of the overlay carries the new content. */
     {
-        const auto overlay = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) +
-                             L"\\" + kFolderName + L"\\data.txt";
+        const auto overlay = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\" +
+                             kFolderName + L"\\data.txt";
 
         std::string data;
         ASSERT_EQ(ReadFileFull(overlay, data), static_cast<DWORD>(ERROR_SUCCESS));

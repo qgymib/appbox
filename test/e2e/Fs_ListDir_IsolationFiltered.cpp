@@ -50,8 +50,8 @@ TEST_F(E2E_Fs, ListDir_IsolationFiltersTheEntries)
 
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {
+        FsDir(L"data", {}),
+        FsDir(L"app", {
             FsDir(L"filesystem\\#APPDATA#", {
                 FsDir(kFolderName, {
                     FsFile(L"visible.txt", "packed"),
@@ -64,11 +64,11 @@ TEST_F(E2E_Fs, ListDir_IsolationFiltersTheEntries)
 
     auto config = tree.Build();
     ASSERT_TRUE(WriteFsIsolationFile(
-        config, {
-                    { L"#APPDATA#\\" + std::wstring(kFolderName),                   appbox::FilesystemEntryKind::Directory,
-                     appbox::FilesystemIsolation::Full     },
-                    { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\hidden.txt", appbox::FilesystemEntryKind::File,
-                     appbox::FilesystemIsolation::Whiteout }
+        GetCWD(), {
+                      { L"#APPDATA#\\" + std::wstring(kFolderName),                   appbox::FilesystemEntryKind::Directory,
+                       appbox::FilesystemIsolation::Full     },
+                      { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\hidden.txt", appbox::FilesystemEntryKind::File,
+                       appbox::FilesystemIsolation::Whiteout }
     }));
 
     const auto folder = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName;

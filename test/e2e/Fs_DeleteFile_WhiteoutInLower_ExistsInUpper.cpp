@@ -7,23 +7,29 @@
 typedef appbox::test::CommonFixture E2E_Fs;
 using namespace appbox::test;
 
+/**
+ * Condition:
+ * 1. The file exists in the state of the sandbox and the lower layer carries
+ *    a whiteout marker for the same name.
+ * 2. Try to delete the file of the state.
+ *
+ * Expected:
+ * 1. Delete file success.
+ * 2. No whiteout file is created, because the marker of the lower layer
+ *    already hides the name there.
+ */
 TEST_F(E2E_Fs, DeleteFile_WhiteoutInLower_ExistsInUpper)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {
+        FsDir(L"data", {
             FsDir(L"filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true), {
                 FsFile(L"data.txt", "hello")
             })
         }),
-        FsDir(L"Lower1", {
+        FsDir(L"app", {
             FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(L"data.txt.$APPBOX_DELETE$", "")
-            })
-        }),
-        FsDir(L"Lower2", {
-            FsDir(L"filesystem\\#APPDATA#", {
-                FsFile(L"data.txt", "hello2")
             })
         })
     });
@@ -41,13 +47,13 @@ TEST_F(E2E_Fs, DeleteFile_WhiteoutInLower_ExistsInUpper)
         ASSERT_EQ(rsp.code, 0);
     }
 
-    /* No whiteout file in upper fs */
+    /* No whiteout file in the state of the sandbox. */
     {
-        auto fPath = GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) +
+        auto fPath = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) +
                      L"\\data.txt.$APPBOX_DELETE$";
         ASSERT_FALSE(std::filesystem::exists(fPath));
     }
 
-    /* Verify lower filesystem content */
+    /* Verify that the resources of the application are untouched. */
     ASSERT_TRUE(tree.Verify());
 }

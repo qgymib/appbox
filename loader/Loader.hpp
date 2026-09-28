@@ -8,6 +8,7 @@
 #include "widget/MainFrame.hpp"
 #include "sandbox/Config.hpp"
 #include "RemoteServer.hpp"
+#include "utils/SandboxPaths.hpp"
 #include "Config.hpp"
 
 struct AppBoxLoaderRuntime
@@ -29,6 +30,7 @@ struct AppBoxLoader : wxApp
     void HandleEventExitApplicationNoGUI(wxCommandEvent&);
 
     appbox::LoaderConfig                      loader_config;            /* Loader configuration */
+    appbox::SandboxPaths                      sandbox_paths;            /* Layout of the sandbox */
     AppBoxLoaderRuntime::Ptr                  runtime;                  /* Runtime information */
     MainFrame*                                main_frame = nullptr;     /* Main frame */
     std::thread*                              working_thread = nullptr; /* Working thread */

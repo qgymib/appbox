@@ -2,7 +2,7 @@
 #define APPBOX_TEST_UTILS_FS_ISOLATION_BUILDER_HPP
 
 #include "FilesystemIsolation.hpp"
-#include "loader/Config.hpp"
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -37,16 +37,17 @@ struct FsIsolationEntry
  * @brief Write the filesystem isolation file of a test sandbox.
  *
  * The file describes the modes of the virtual filesystem and lives in the
- * overlay root of the configuration, which is where the loader looks for it
- * (`<overlay>/filesystem-isolation.json`). The document is built directly
- * instead of through the packer, so a case also pins the schema a hand written
- * file uses.
+ * filesystem domain of the resources of the case, which is where the loader
+ * looks for it (`<case root>/app/filesystem/isolation.json`). The document is
+ * built directly instead of through the packer, so a case also pins the schema
+ * a hand written file uses.
  *
- * @param[in] config Loader configuration of the case.
+ * @param[in] case_root Root directory of the case, normally the working
+ *                      directory.
  * @param[in] entries Entries to list.
  * @return true on success.
  */
-bool WriteFsIsolationFile(const appbox::LoaderConfig& config, const std::vector<FsIsolationEntry>& entries);
+bool WriteFsIsolationFile(const std::filesystem::path& case_root, const std::vector<FsIsolationEntry>& entries);
 
 /**
  * @brief Write the raw text of the filesystem isolation file of a test sandbox.
@@ -55,11 +56,12 @@ bool WriteFsIsolationFile(const appbox::LoaderConfig& config, const std::vector<
  * text itself with this helper, for example a document which is not valid JSON
  * or one of another version.
  *
- * @param[in] config Loader configuration of the case.
+ * @param[in] case_root Root directory of the case, normally the working
+ *                      directory.
  * @param[in] text Text to write.
  * @return true on success.
  */
-bool WriteRawFsIsolationFile(const appbox::LoaderConfig& config, const std::string& text);
+bool WriteRawFsIsolationFile(const std::filesystem::path& case_root, const std::string& text);
 
 } // namespace appbox::test
 

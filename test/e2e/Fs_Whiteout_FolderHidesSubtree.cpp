@@ -31,8 +31,8 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {
+        FsDir(L"data", {}),
+        FsDir(L"app", {
             FsDir(L"filesystem\\#APPDATA#", {
                 FsDir(kFolderName, {
                     FsFile(L"packed.txt", "packed")
@@ -44,9 +44,9 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
 
     auto config = tree.Build();
     ASSERT_TRUE(WriteFsIsolationFile(
-        config, {
-                    { L"#APPDATA#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
-                     appbox::FilesystemIsolation::Whiteout }
+        GetCWD(), {
+                      { L"#APPDATA#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
+                       appbox::FilesystemIsolation::Whiteout }
     }));
 
     const auto folder = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName;
@@ -107,7 +107,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
 
     {
         const auto overlay =
-            GetCWDString() + L"\\Upper\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\" + kFolderName;
+            GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\" + kFolderName;
         ASSERT_TRUE(std::filesystem::exists(overlay));
         ASSERT_TRUE(std::filesystem::exists(overlay + L"\\new.txt"));
     }

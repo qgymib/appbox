@@ -25,8 +25,8 @@ TEST_F(E2E_Net, Proxy_MalformedConfigurationFallsBack)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {})
+        FsDir(L"data", {}),
+        FsDir(L"app", { FsDir(L"network", {}) })
     });
     /* clang-format on */
 
@@ -45,7 +45,7 @@ TEST_F(E2E_Net, Proxy_MalformedConfigurationFallsBack)
                              "  \"proxy\": { \"type\": \"socks5\", \"tcp\": true, \"udp\": true,\n" +
                              "               \"server\": \"127.0.0.1\", \"port\": \"0" + std::to_string(proxy.Port()) +
                              "\",\n" + "               \"username\": \"\", \"password\": \"\" }\n" + "}\n";
-    ASSERT_TRUE(WriteNetworkIsolationFileText(config, text));
+    ASSERT_TRUE(WriteNetworkIsolationFileText(GetCWD(), text));
 
     ProtocolSocketTraffic::Step step;
     step.operation = ProtocolSocketTraffic::Operation::TcpEcho;

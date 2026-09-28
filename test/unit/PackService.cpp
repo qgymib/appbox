@@ -166,6 +166,28 @@ public:
     zip_t* archive = nullptr;
 };
 
+/**
+ * @brief Collect the entry names of an archive.
+ * @param[in] archive Open zip archive.
+ * @return The entry names of the archive.
+ */
+std::set<std::string> EntryNames(zip_t* archive)
+{
+    std::set<std::string> names;
+
+    const auto count = zip_get_num_entries(archive, 0);
+    for (auto index = static_cast<zip_uint64_t>(0); index < static_cast<zip_uint64_t>(count); ++index)
+    {
+        const char* name = zip_get_name(archive, index, 0);
+        if (name != nullptr)
+        {
+            names.insert(name);
+        }
+    }
+
+    return names;
+}
+
 } // namespace
 
 TEST(Unit_PackService, CountFilesBelowCountsRecursively)
@@ -258,27 +280,47 @@ TEST(Unit_PackService, PackProducesLoaderConfigurationAndLayers)
     EXPECT_EQ(zip_name_locate(archive, "AppBoxLoader.exe", 0), -1);
     EXPECT_EQ(zip_name_locate(archive, "AppBoxLoader.json", 0), -1);
 
-    /* The configuration matches the loader runtime conventions. */
+    /*
+     * The configuration carries the startup files only: the layout of the archive
+     * is the fixed convention of `common/SandboxLayout.hpp`, so the file names
+     * neither the resources nor the state of the sandbox.
+     */
     const auto json_text = ReadEntry(archive, "app.exe.json");
     ASSERT_FALSE(json_text.empty());
-    const auto config = nlohmann::json::parse(json_text).get<appbox::LoaderConfig>();
-    ASSERT_EQ(config.base_fs.size(), static_cast<std::size_t>(1));
-    EXPECT_EQ(config.base_fs[0], ".");
-    EXPECT_EQ(config.overlay_fs, "data");
+    const auto document = nlohmann::json::parse(json_text);
+    EXPECT_FALSE(document.contains("base_fs"));
+    EXPECT_FALSE(document.contains("overlay_fs"));
+    const auto config = document.get<appbox::LoaderConfig>();
     ASSERT_EQ(config.startups.size(), static_cast<std::size_t>(1));
     EXPECT_EQ(config.startups[0].trigger, "app");
     EXPECT_TRUE(config.startups[0].auto_start);
     EXPECT_EQ(config.startups[0].executable, "#ProgramFiles#\\MyApp\\app.exe");
     EXPECT_TRUE(config.startups[0].arguments.empty());
 
-    /* Imported folders become lower layers below filesystem/<layer key>. */
-    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE-CONTENT");
-    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/data/config.txt"), "CFG-CONTENT");
-    EXPECT_EQ(ReadEntry(archive, "filesystem/#USERPROFILE#/MyUser/settings.ini"), "INI-CONTENT");
+    /* Imported folders become lower layers below app/filesystem/<layer key>. */
+    EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE-CONTENT");
+    EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/data/config.txt"), "CFG-CONTENT");
+    EXPECT_EQ(ReadEntry(archive, "app/filesystem/#USERPROFILE#/MyUser/settings.ini"), "INI-CONTENT");
 
     /* Empty folders survive as directory entries (with trailing slash). */
-    const auto empty_index = zip_name_locate(archive, "filesystem/#ProgramFiles#/MyApp/emptydir/", 0);
+    const auto empty_index = zip_name_locate(archive, "app/filesystem/#ProgramFiles#/MyApp/emptydir/", 0);
     EXPECT_GE(empty_index, 0);
+
+    /* The archive carries the resource directories of the fixed layout. */
+    const auto names = EntryNames(archive);
+    EXPECT_EQ(names.count("app/"), static_cast<std::size_t>(1));
+    EXPECT_EQ(names.count("app/filesystem/"), static_cast<std::size_t>(1));
+    EXPECT_EQ(names.count("app/registry/"), static_cast<std::size_t>(1));
+    EXPECT_EQ(names.count("app/network/"), static_cast<std::size_t>(1));
+
+    /*
+     * The state of the sandbox never travels in the archive: the loader creates
+     * it at run time, so deleting it resets the sandbox to the packed state.
+     */
+    for (const auto& name : names)
+    {
+        EXPECT_EQ(name.rfind("data/", 0), std::string::npos) << name;
+    }
 }
 
 TEST(Unit_PackService, PackWritesRegistryArtifacts)
@@ -308,13 +350,13 @@ TEST(Unit_PackService, PackWritesRegistryArtifacts)
     zip_t*           archive = closer.archive;
     ASSERT_NE(archive, nullptr);
 
-    /* The hive travels inside the overlay, where the loader mounts it. */
-    const auto hive = ReadEntry(archive, "data/registry/user.hiv");
+    /* The hive travels in the registry domain of the resources. */
+    const auto hive = ReadEntry(archive, "app/registry/user.hiv");
     ASSERT_GE(hive.size(), 4u);
     EXPECT_EQ(hive.substr(0, 4), "regf");
 
     /* The isolation file carries the mode of every key of the workspace. */
-    const auto text = ReadEntry(archive, "data/registry/isolation.json");
+    const auto text = ReadEntry(archive, "app/registry/isolation.json");
     ASSERT_FALSE(text.empty());
     const auto document = nlohmann::json::parse(text);
     EXPECT_EQ(document["version"].get<int>(), 1);
@@ -362,11 +404,11 @@ TEST(Unit_PackService, PackWritesFilesystemIsolationFile)
     ASSERT_NE(archive, nullptr);
 
     /*
-     * The modes travel in the overlay root, next to the registry folder: the
-     * loader treats every child of `filesystem` as a layer of the view, so the
-     * file must not live below that folder.
+     * The modes travel in the filesystem domain of the resources, next to the
+     * layers they describe: the loader skips the file while it enumerates the
+     * layers of that folder.
      */
-    const auto text = ReadEntry(archive, "data/filesystem-isolation.json");
+    const auto text = ReadEntry(archive, "app/filesystem/isolation.json");
     ASSERT_FALSE(text.empty());
 
     const auto document = nlohmann::json::parse(text);
@@ -408,11 +450,10 @@ TEST(Unit_PackService, PackWritesNetworkIsolationFile)
     ASSERT_NE(archive, nullptr);
 
     /*
-     * The redirections travel in the overlay root, next to the registry folder
-     * and the isolation file of the filesystem, which is where the loader looks
-     * for them.
+     * The redirections travel in the network domain of the resources, which is
+     * where the loader looks for them.
      */
-    const auto text = ReadEntry(archive, "data/network-isolation.json");
+    const auto text = ReadEntry(archive, "app/network/isolation.json");
     ASSERT_FALSE(text.empty());
 
     const auto document = nlohmann::json::parse(text);
@@ -460,7 +501,7 @@ TEST(Unit_PackService, PackWritesTheProxyOfTheNetworkWorkspace)
     zip_t*           archive = closer.archive;
     ASSERT_NE(archive, nullptr);
 
-    const auto text = ReadEntry(archive, "data/network-isolation.json");
+    const auto text = ReadEntry(archive, "app/network/isolation.json");
     ASSERT_FALSE(text.empty());
 
     /*
@@ -523,7 +564,7 @@ TEST(Unit_PackService, LoaderEntryNameDropsTheDirectoryOfTheStartupFile)
     EXPECT_EQ(config.startups[0].executable, "#ProgramFiles#\\MyApp\\bin\\tool.exe");
 
     /* The entry program itself keeps its place below the layer tree. */
-    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/bin/tool.exe"), "EXE");
+    EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/bin/tool.exe"), "EXE");
 }
 
 TEST(Unit_PackService, LoaderEntryNameFollowsTheFirstStartupFile)
@@ -664,11 +705,11 @@ TEST(Unit_PackService, PackWritesImportedFiles)
     ASSERT_NE(archive, nullptr);
 
     /* Imported files share the layer tree of the imported folder. */
-    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/extra.dll"), "EXTRA-CONTENT");
-    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/data/note.txt"), "NOTE-CONTENT");
+    EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/extra.dll"), "EXTRA-CONTENT");
+    EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/data/note.txt"), "NOTE-CONTENT");
 
     /* The imported folder content is untouched. */
-    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE");
+    EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE");
 }
 
 TEST(Unit_PackService, PackCreatesDirectoriesOfImportedFiles)
@@ -698,9 +739,9 @@ TEST(Unit_PackService, PackCreatesDirectoriesOfImportedFiles)
     ASSERT_NE(archive, nullptr);
 
     /* Every missing prefix of the target directory becomes a directory entry. */
-    EXPECT_GE(zip_name_locate(archive, "filesystem/#ProgramFiles#/MyApp/plugins/", 0), 0);
-    EXPECT_GE(zip_name_locate(archive, "filesystem/#ProgramFiles#/MyApp/plugins/deep/", 0), 0);
-    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/plugins/deep/extra.dll"), "EXTRA");
+    EXPECT_GE(zip_name_locate(archive, "app/filesystem/#ProgramFiles#/MyApp/plugins/", 0), 0);
+    EXPECT_GE(zip_name_locate(archive, "app/filesystem/#ProgramFiles#/MyApp/plugins/deep/", 0), 0);
+    EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/plugins/deep/extra.dll"), "EXTRA");
 }
 
 TEST(Unit_PackService, PackCountsImportedFilesInTheProgressTotal)

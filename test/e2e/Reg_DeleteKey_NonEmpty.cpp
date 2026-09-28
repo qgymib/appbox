@@ -27,7 +27,7 @@ TEST_F(E2E_Reg, DeleteKey_NonEmpty)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 

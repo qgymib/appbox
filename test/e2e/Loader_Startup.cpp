@@ -27,8 +27,8 @@ appbox::LoaderConfig BuildConfig(const std::filesystem::path& root)
 {
     /* clang-format off */
     auto tree = FsRoot(root, {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", { FsDir(L"filesystem\\#APPDATA#", {}) })
+        FsDir(L"data", {}),
+        FsDir(L"app", { FsDir(L"filesystem\\#APPDATA#", {}) })
     });
     /* clang-format on */
 

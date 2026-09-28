@@ -24,14 +24,14 @@ TEST_F(E2E_Net, Dns_HostnameIsNormalized)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {})
+        FsDir(L"data", {}),
+        FsDir(L"app", { FsDir(L"network", {}) })
     });
     /* clang-format on */
 
     auto config = tree.Build();
-    ASSERT_TRUE(WriteNetworkIsolationFile(config, {
-                                                      { L"Update.Example.COM.", L"127.0.0.1" }
+    ASSERT_TRUE(WriteNetworkIsolationFile(GetCWD(), {
+                                                        { L"Update.Example.COM.", L"127.0.0.1" }
     }));
 
     const std::vector<std::string> names = { "update.example.com", "UPDATE.EXAMPLE.COM.", "Update.Example.Com" };

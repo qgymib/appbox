@@ -61,8 +61,8 @@ TEST_F(E2E_Fs, MalformedIsolationFile_FallsBack)
 
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {
+        FsDir(L"data", {}),
+        FsDir(L"app", {
             FsDir(L"filesystem\\#APPDATA#", {
                 FsDir(kFolderName, {
                     FsFile(L"packed.txt", "packed")
@@ -79,7 +79,7 @@ TEST_F(E2E_Fs, MalformedIsolationFile_FallsBack)
     const auto packed_file = folder + L"\\packed.txt";
 
     /* A document which is not JSON at all is ignored. */
-    ASSERT_TRUE(WriteRawFsIsolationFile(config, "{ \"version\": 1, \"entries\": ["));
+    ASSERT_TRUE(WriteRawFsIsolationFile(GetCWD(), "{ \"version\": 1, \"entries\": ["));
     {
         const auto rsp = ReadFile(host_file, GetCWD(), config);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -91,7 +91,7 @@ TEST_F(E2E_Fs, MalformedIsolationFile_FallsBack)
         nlohmann::json document;
         document[appbox::filesystem_isolation::kVersionKey] = kUnknownVersion;
         document[appbox::filesystem_isolation::kEntriesKey] = nlohmann::json::array();
-        ASSERT_TRUE(WriteRawFsIsolationFile(config, document.dump(2)));
+        ASSERT_TRUE(WriteRawFsIsolationFile(GetCWD(), document.dump(2)));
     }
     {
         const auto rsp = ReadFile(host_file, GetCWD(), config);
@@ -102,9 +102,9 @@ TEST_F(E2E_Fs, MalformedIsolationFile_FallsBack)
     /* The same entry of a readable document hides the host file, so the two
      * runs above really are the fallback of a refused document. */
     ASSERT_TRUE(WriteFsIsolationFile(
-        config, {
-                    { L"#APPDATA#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
-                     appbox::FilesystemIsolation::Full }
+        GetCWD(), {
+                      { L"#APPDATA#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
+                       appbox::FilesystemIsolation::Full }
     }));
     {
         const auto rsp = ReadFile(host_file, GetCWD(), config);

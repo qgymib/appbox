@@ -128,7 +128,7 @@ TEST_F(E2E_Reg, EnumValue_DefaultValueInHive)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -191,7 +191,7 @@ TEST_F(E2E_Reg, EnumValue_DefaultValueOfRealKey)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -256,7 +256,7 @@ TEST_F(E2E_Reg, EnumValue_DefaultValueShadowed)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 

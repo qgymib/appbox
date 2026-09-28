@@ -5,6 +5,8 @@
 #include <chrono>
 #include <Shlobj.h>
 #include <algorithm>
+#include <filesystem>
+#include <string>
 #include "sandbox/utils/WinAPI.h"
 #include "Random.hpp"
 #include "rpc/__init__.hpp"
@@ -40,9 +42,20 @@ static void ExtractSandboxDll(const std::string& dll32_path, const std::string& 
     ExtractSandboxDll(dll32_path_w, dll64_path_w);
 }
 
-static bool MapOverlayFS(const std::string& fs, std::string& mapped_fs)
+/**
+ * @brief Create the writable upper layer of the sandbox.
+ *
+ * The upper layer is the `filesystem` subdirectory of the state directory,
+ * which the loader creates here: the state directory never travels in the
+ * archive, so deleting it resets the sandbox to the packed application.
+ *
+ * @param[in] state_dir The state directory of the sandbox.
+ * @param[out] mapped_fs The NT path of the created upper layer.
+ * @return true when the layer exists afterwards.
+ */
+static bool MapOverlayFS(const std::wstring& state_dir, std::string& mapped_fs)
 {
-    auto dos_path_w = appbox::UTF8ToWide(fs);
+    auto dos_path_w = state_dir;
     /* Remove trailing slash */
     while (!dos_path_w.empty() && dos_path_w.back() == L'\\')
     {
@@ -51,7 +64,7 @@ static bool MapOverlayFS(const std::string& fs, std::string& mapped_fs)
 
     if (dos_path_w.empty())
     {
-        SPDLOG_ERROR("overlay filesystem path is empty");
+        SPDLOG_ERROR("the state directory of the sandbox is empty");
         return false;
     }
 
@@ -70,113 +83,55 @@ static bool MapOverlayFS(const std::string& fs, std::string& mapped_fs)
 }
 
 /**
- * @brief Derive the registry files of the sandbox from the overlay filesystem.
+ * @brief Seed the hive the sandbox mounts from the packed registry.
  *
- * Both files live in the registry subdirectory of the overlay, next to the
- * filesystem subdirectory which carries the filesystem overlay. The packer
- * writes them into the archive, so a packaged application carries the virtual
- * registry of the workspace; the sandbox mounts the hive as a private
- * application hive, so a missing file is created on the first mount.
+ * The hive below `app` is a read-only resource, while mounting a hive writes
+ * to the file: the copy-up of host keys, the whiteout store and the
+ * transaction log files all land in the mounted file. The loader therefore
+ * copies the packed hive into the state directory of the sandbox on the first
+ * run and the sandbox mounts that copy. A hive which already exists is kept,
+ * so the modifications of an earlier run survive and deleting the state
+ * directory resets the sandbox to the registry of the archive.
  *
- * @param[in] fs The overlay filesystem root.
- * @param[out] hive_path The DOS path of the hive file.
- * @param[out] isolation_path The DOS path of the isolation file.
- * @return true on success.
+ * A missing packed hive is not an error: the sandbox creates an empty hive
+ * when it mounts a file which does not exist yet.
+ *
+ * @param[in] packed_hive Hive inside the resources of the application.
+ * @param[in] state_hive Hive the sandbox mounts.
+ * @return Error description, empty on success.
  */
-static bool MapRegistryFiles(const std::string& fs, std::string& hive_path, std::string& isolation_path)
+static std::string SeedRegistryHive(const std::wstring& packed_hive, const std::wstring& state_hive)
 {
-    auto dos_path_w = appbox::UTF8ToWide(fs);
-    /* Remove trailing slash */
-    while (!dos_path_w.empty() && dos_path_w.back() == L'\\')
-    {
-        dos_path_w.pop_back();
-    }
-
-    if (dos_path_w.empty())
-    {
-        SPDLOG_ERROR("overlay filesystem path is empty");
-        return false;
-    }
-
-    std::filesystem::path dir = std::filesystem::path(dos_path_w) / "registry";
+    const std::filesystem::path target(state_hive);
 
     std::error_code ec;
-    if (!std::filesystem::create_directories(dir, ec) && ec)
+    std::filesystem::create_directories(target.parent_path(), ec);
+    if (ec)
     {
-        SPDLOG_ERROR("failed to create the registry directory: {}", ec.message());
-        return false;
+        return fmt::format("failed to create '{}': {}", appbox::WideToUTF8(target.parent_path().wstring()),
+                           ec.message());
     }
 
-    hive_path = appbox::WideToUTF8((dir / "user.hiv").wstring());
-    isolation_path = appbox::WideToUTF8((dir / "isolation.json").wstring());
-    return true;
-}
-
-/**
- * @brief Derive the filesystem isolation file of the sandbox from the overlay.
- *
- * The file lives in the overlay root, next to the `filesystem` and the
- * `registry` subdirectories, because the loader treats every child of
- * `filesystem` as a layer of the view. The packer writes the file into the
- * archive, so a packaged application carries the isolation modes of the
- * workspace; the file is not created here, because a missing file means that
- * every entry keeps the default mode of its kind.
- *
- * @param[in] fs The overlay filesystem root.
- * @param[out] isolation_path The DOS path of the isolation file.
- * @return true on success.
- */
-static bool MapFilesystemIsolationFile(const std::string& fs, std::string& isolation_path)
-{
-    auto dos_path_w = appbox::UTF8ToWide(fs);
-    /* Remove trailing slash */
-    while (!dos_path_w.empty() && dos_path_w.back() == L'\\')
+    if (std::filesystem::exists(target, ec))
     {
-        dos_path_w.pop_back();
+        /* The hive of an earlier run belongs to the sandbox. */
+        return {};
     }
 
-    if (dos_path_w.empty())
+    if (!std::filesystem::exists(packed_hive, ec))
     {
-        SPDLOG_ERROR("overlay filesystem path is empty");
-        return false;
+        SPDLOG_INFO("the archive carries no registry hive, the sandbox creates an empty one");
+        return {};
     }
 
-    std::filesystem::path file = std::filesystem::path(dos_path_w) / "filesystem-isolation.json";
-    isolation_path = appbox::WideToUTF8(file.wstring());
-    return true;
-}
-
-/**
- * @brief Derive the network isolation file of the sandbox from the overlay.
- *
- * The file lives in the overlay root, next to the `filesystem` and the
- * `registry` subdirectories. The packer writes the file into the archive, so a
- * packaged application carries the DNS redirections of the workspace; the file
- * is not created here, because a missing file means that every name keeps the
- * resolution of the host.
- *
- * @param[in] fs The overlay filesystem root.
- * @param[out] isolation_path The DOS path of the isolation file.
- * @return true on success.
- */
-static bool MapNetworkIsolationFile(const std::string& fs, std::string& isolation_path)
-{
-    auto dos_path_w = appbox::UTF8ToWide(fs);
-    /* Remove trailing slash */
-    while (!dos_path_w.empty() && dos_path_w.back() == L'\\')
+    std::filesystem::copy_file(packed_hive, target, std::filesystem::copy_options::none, ec);
+    if (ec)
     {
-        dos_path_w.pop_back();
+        return fmt::format("failed to seed '{}': {}", appbox::WideToUTF8(state_hive), ec.message());
     }
 
-    if (dos_path_w.empty())
-    {
-        SPDLOG_ERROR("overlay filesystem path is empty");
-        return false;
-    }
-
-    std::filesystem::path file = std::filesystem::path(dos_path_w) / "network-isolation.json";
-    isolation_path = appbox::WideToUTF8(file.wstring());
-    return true;
+    SPDLOG_DEBUG("seeded the registry hive from '{}'", appbox::WideToUTF8(packed_hive));
+    return {};
 }
 
 AppBoxLoaderRuntime::AppBoxLoaderRuntime()
@@ -185,22 +140,37 @@ AppBoxLoaderRuntime::AppBoxLoaderRuntime()
     auto        random_str = appbox::RandomString(16);
     auto        unique_path = fmt::format("appbox-{}-{}", timestamp, random_str);
 
+    const auto& paths = wxGetApp().sandbox_paths;
+
     this->inject_data.pipe_path = fmt::format(R"(\\.\pipe\{})", unique_path);
-    for (const auto& f : wxGetApp().loader_config.base_fs)
-    {
-        appbox::MapBaseFS(f, inject_data.fs_lower);
-    }
-    MapOverlayFS(wxGetApp().loader_config.overlay_fs, inject_data.fs_upper);
-    MapRegistryFiles(wxGetApp().loader_config.overlay_fs, inject_data.registry_hive_dos_path,
-                     inject_data.registry_isolation_dos_path);
-    MapFilesystemIsolationFile(wxGetApp().loader_config.overlay_fs, inject_data.filesystem_isolation_dos_path);
-    MapNetworkIsolationFile(wxGetApp().loader_config.overlay_fs, inject_data.network_isolation_dos_path);
+
+    /*
+     * The resources below `app` are read-only: the layer tree of the packaged
+     * application is mounted as the lower filesystem and the isolation files of
+     * the three domains are handed to the sandbox as they are. The state of the
+     * sandbox lives in `data`, which is created here and carries the writable
+     * upper layer, the hive the sandbox mounts and the injected DLLs.
+     */
+    MapBaseFS(appbox::WideToUTF8(paths.LayerRoot()), inject_data.fs_lower);
+    MapOverlayFS(paths.state, inject_data.fs_upper);
 
     {
-        auto                  w_overlay_path = appbox::UTF8ToWide(wxGetApp().loader_config.overlay_fs);
-        std::filesystem::path overlay_path(w_overlay_path);
-        this->inject_data.sandbox32_dos_path = appbox::WideToUTF8((overlay_path / "sandbox32.dll").wstring());
-        this->inject_data.sandbox64_dos_path = appbox::WideToUTF8((overlay_path / "sandbox64.dll").wstring());
+        const auto error = SeedRegistryHive(paths.RegistryHiveFile(), paths.StateRegistryHiveFile());
+        if (!error.empty())
+        {
+            SPDLOG_ERROR("{}", error);
+        }
+    }
+
+    inject_data.registry_hive_dos_path = appbox::WideToUTF8(paths.StateRegistryHiveFile());
+    inject_data.registry_isolation_dos_path = appbox::WideToUTF8(paths.RegistryIsolationFile());
+    inject_data.filesystem_isolation_dos_path = appbox::WideToUTF8(paths.FilesystemIsolationFile());
+    inject_data.network_isolation_dos_path = appbox::WideToUTF8(paths.NetworkIsolationFile());
+
+    {
+        const std::filesystem::path state(paths.state);
+        this->inject_data.sandbox32_dos_path = appbox::WideToUTF8((state / L"sandbox32.dll").wstring());
+        this->inject_data.sandbox64_dos_path = appbox::WideToUTF8((state / L"sandbox64.dll").wstring());
     }
 
     ExtractSandboxDll(inject_data.sandbox32_dos_path, inject_data.sandbox64_dos_path);

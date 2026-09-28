@@ -21,14 +21,14 @@ TEST_F(E2E_Net, Dns_MissIsResolvedByTheHost)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {})
+        FsDir(L"data", {}),
+        FsDir(L"app", { FsDir(L"network", {}) })
     });
     /* clang-format on */
 
     auto config = tree.Build();
-    ASSERT_TRUE(WriteNetworkIsolationFile(config, {
-                                                      { L"appbox-spike.invalid", L"10.9.9.9" }
+    ASSERT_TRUE(WriteNetworkIsolationFile(GetCWD(), {
+                                                        { L"appbox-spike.invalid", L"10.9.9.9" }
     }));
 
     ProtocolResolveName::Req req;

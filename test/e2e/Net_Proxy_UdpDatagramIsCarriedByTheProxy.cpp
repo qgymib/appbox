@@ -26,8 +26,8 @@ TEST_F(E2E_Net, Proxy_UdpDatagramIsCarriedByTheProxy)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {})
+        FsDir(L"data", {}),
+        FsDir(L"app", { FsDir(L"network", {}) })
     });
     /* clang-format on */
 
@@ -42,7 +42,7 @@ TEST_F(E2E_Net, Proxy_UdpDatagramIsCarriedByTheProxy)
     proxy_config.udp = true;
     proxy_config.server = L"127.0.0.1";
     proxy_config.port = std::to_wstring(proxy.Port());
-    ASSERT_TRUE(WriteNetworkIsolationFile(config, {}, proxy_config));
+    ASSERT_TRUE(WriteNetworkIsolationFile(GetCWD(), {}, proxy_config));
 
     ProtocolSocketTraffic::Step step;
     step.operation = ProtocolSocketTraffic::Operation::UdpEcho;

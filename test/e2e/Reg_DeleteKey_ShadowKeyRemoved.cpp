@@ -43,7 +43,7 @@ TEST_F(E2E_Reg, DeleteKey_ShadowKeyRemoved)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -56,7 +56,7 @@ TEST_F(E2E_Reg, DeleteKey_ShadowKeyRemoved)
     ASSERT_NE(real_key.get(), nullptr);
     ASSERT_TRUE(real_key.SetString(L"HostValue", L"host"));
 
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"SandboxValue", REG_SZ, StringData(L"sandbox"));
 
     std::string error;

@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include "SandboxLayout.hpp"
 #include "WString.hpp"
 #include "NetworkIsolationBuilder.hpp"
 
@@ -9,23 +10,33 @@ namespace
 
 /**
  * @brief Path of the network isolation file of a test sandbox.
- * @param[in] config Loader configuration of the case.
- * @return The path of the file inside the overlay of the configuration.
+ * @param[in] case_root Root directory of the case.
+ * @return The path of the file inside the resources of the case.
  */
-std::filesystem::path IsolationFilePath(const appbox::LoaderConfig& config)
+std::filesystem::path IsolationFilePath(const std::filesystem::path& case_root)
 {
-    return std::filesystem::path(appbox::UTF8ToWide(config.overlay_fs)) / L"network-isolation.json";
+    return case_root / appbox::layout::kAppDirNameW / appbox::layout::kNetworkDirNameW /
+           appbox::layout::kIsolationFileNameW;
 }
 
 /**
  * @brief Write a text as the network isolation file of a test sandbox.
- * @param[in] config Loader configuration of the case.
+ * @param[in] case_root Root directory of the case.
  * @param[in] text Text of the file.
  * @return true on success.
  */
-bool WriteText(const appbox::LoaderConfig& config, const std::string& text)
+bool WriteText(const std::filesystem::path& case_root, const std::string& text)
 {
-    std::ofstream stream(IsolationFilePath(config), std::ios::binary | std::ios::trunc);
+    const auto path = IsolationFilePath(case_root);
+
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    if (ec)
+    {
+        return false;
+    }
+
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
     if (!stream.is_open())
     {
         return false;
@@ -37,13 +48,13 @@ bool WriteText(const appbox::LoaderConfig& config, const std::string& text)
 
 } // namespace
 
-bool appbox::test::WriteNetworkIsolationFile(const appbox::LoaderConfig&               config,
+bool appbox::test::WriteNetworkIsolationFile(const std::filesystem::path&              case_root,
                                              const std::vector<NetworkIsolationEntry>& entries)
 {
-    return WriteNetworkIsolationFile(config, entries, NetworkIsolationProxy{});
+    return WriteNetworkIsolationFile(case_root, entries, NetworkIsolationProxy{});
 }
 
-bool appbox::test::WriteNetworkIsolationFile(const appbox::LoaderConfig&               config,
+bool appbox::test::WriteNetworkIsolationFile(const std::filesystem::path&              case_root,
                                              const std::vector<NetworkIsolationEntry>& entries,
                                              const NetworkIsolationProxy&              proxy)
 {
@@ -72,10 +83,10 @@ bool appbox::test::WriteNetworkIsolationFile(const appbox::LoaderConfig&        
         document[appbox::network_isolation::kProxyKey] = std::move(item);
     }
 
-    return WriteText(config, document.dump(2));
+    return WriteText(case_root, document.dump(2));
 }
 
-bool appbox::test::WriteNetworkIsolationFileText(const appbox::LoaderConfig& config, const std::string& text)
+bool appbox::test::WriteNetworkIsolationFileText(const std::filesystem::path& case_root, const std::string& text)
 {
-    return WriteText(config, text);
+    return WriteText(case_root, text);
 }

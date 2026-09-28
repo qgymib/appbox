@@ -23,16 +23,16 @@ TEST_F(E2E_Net, Dns_FamilyOfTheRedirectIsHonoured)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {})
+        FsDir(L"data", {}),
+        FsDir(L"app", { FsDir(L"network", {}) })
     });
     /* clang-format on */
 
     auto config = tree.Build();
     ASSERT_TRUE(WriteNetworkIsolationFile(
-        config, {
-                    { L"v4.appbox-spike.invalid", L"127.0.0.1" },
-                    { L"v6.appbox-spike.invalid", L"::1"       }
+        GetCWD(), {
+                      { L"v4.appbox-spike.invalid", L"127.0.0.1" },
+                      { L"v6.appbox-spike.invalid", L"::1"       }
     }));
 
     ProtocolResolveName::Req req;

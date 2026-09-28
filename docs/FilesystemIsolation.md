@@ -90,9 +90,10 @@ creation.
 ### The isolation file
 
 The packer writes the modes of the workspace as a JSON document, which `Build`
-stores in the overlay of the archive as `data/filesystem-isolation.json` — next
-to the `registry` folder, not below `filesystem`, because the loader treats
-every child of that folder as a layer of the view:
+stores in the filesystem domain of the resources of the archive as
+`app/filesystem/isolation.json` — next to the layers it describes. The loader
+skips the file while it enumerates the layers of that folder, because every
+other child of the folder is a layer of the view:
 
 ```json
 {
@@ -111,8 +112,8 @@ user set a mode for are listed; an entry which the document does not mention
 follows the closest listed folder above it and falls back to the default of its
 kind.
 
-The loader derives the path of the file from the overlay and passes it to the
-sandbox. A missing file, a missing configuration or a malformed document is not
+The loader derives the path of the file from the resources of the archive and
+passes it to the sandbox. A missing file, a missing configuration or a malformed document is not
 an error: the sandbox then behaves like one without an isolation file, in which
 every entry keeps the default of its kind and the host filesystem stays visible.
 
@@ -121,7 +122,7 @@ every entry keeps the default of its kind and the host filesystem stays visible.
 ### Upper (writable) layer
 
 ```
-<overlay_fs>\filesystem\<DRIVE>\<relative path>
+data\filesystem\<DRIVE>\<relative path>
 ```
 
 The drive component is the drive letter uppercased and without the colon
@@ -131,11 +132,12 @@ components are normalized and escaping the layer root is rejected.
 ### Lower (read-only) layers
 
 ```
-<base_fs>\filesystem\<layer key>\<relative path>
+app\filesystem\<layer key>\<relative path>
 ```
 
-The view path is rebased by replacing the layer's `mapped_nt_path` prefix with
-its `host_nt_path`. The comparison is case insensitive and the prefix must be
+The layer root is the filesystem domain of the resources of the archive; the
+view path is rebased by replacing the layer's `mapped_nt_path` prefix with its
+`host_nt_path`. The comparison is case insensitive and the prefix must be
 followed by a path separator, so `...\AppData\RoamingX` does not match the
 `...\AppData\Roaming` mapping.
 
@@ -162,13 +164,20 @@ filesystem.
 ## Packer archives
 
 `AppBox` produces self-contained archives which double as a base filesystem.
-The layout matches the loader runtime conventions:
+The layout is the fixed convention of `common/SandboxLayout.hpp`: the read-only
+resources of the packaged application travel below `app`, while the state of the
+sandbox does not travel at all — the loader creates the `data` directory at run
+time, next to `app`, so deleting it resets the sandbox to the state the archive
+carries:
 
 ```
 <startup file name>                    embedded loader payload
 <startup file name>.json               startup configuration
-data/filesystem-isolation.json         isolation modes of the filesystem workspace
-filesystem/<layer key>/<import>/...    imported folder content
+app/filesystem/isolation.json          isolation modes of the filesystem workspace
+app/filesystem/<layer key>/<import>/... imported folder content
+app/registry/user.hiv                  virtual registry of the workspace
+app/registry/isolation.json            isolation modes of the registry
+app/network/isolation.json             network configuration of the workspace
 ```
 
 The loader resolves its configuration as `<own file name>.json` in its own

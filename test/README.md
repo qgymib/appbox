@@ -313,50 +313,56 @@ call where the protocol allows it.
 
 ### Filesystem isolation cases
 
-The filesystem cases (`test/e2e/Fs_*.cpp`) run with `Upper` as the overlay and
-`Lower1` / `Lower2` as base filesystems. Each case is documented in its own
-header comment.
+The filesystem cases (`test/e2e/Fs_*.cpp`) run with `data` as the state of the
+sandbox and `app` as the read-only resources of the packaged application, which
+is the layout of a packed archive (see
+[Filesystem Isolation](../docs/FilesystemIsolation.md)). The resources carry
+their content below `app\filesystem\<layer key>`, the state of the sandbox
+below `data\filesystem\<drive>`. Each case is documented in its own header
+comment.
 
-| Case | Upper | Lower1 | Lower2 | Operation | Expected |
-| --- | --- | --- | --- | --- | --- |
-| `DeleteFile_MultiLower_ExistsInLower` | – | `data.txt` | `data.txt` | delete `data.txt` | success, upper whiteout created, no upper file |
-| `DeleteFile_MultiLower_ExistsInLowerUpper` | `data.txt` | `data.txt` | `data.txt` | delete `data.txt` | success, upper file deleted, whiteout created |
-| `DeleteFile_MultiLower_ExistsInUpper` | `data.txt` | – | – | delete `data.txt` | success, no whiteout (nothing to hide) |
-| `DeleteFile_MultiLower_NonExists` | – | `data1.txt` | `data2.txt` | delete `data.txt` | failure, no whiteout |
-| `DeleteFile_WhiteoutInLower_ExistsInUpper` | `data.txt` | `data.txt.$APPBOX_DELETE$` | `data.txt` | delete `data.txt` | success, upper file deleted, no whiteout in upper |
-| `ListDir_MultiLower_ExistsInLower` | – | `F.txt` | `F.txt` | list `#APPDATA#` | `F.txt` appears exactly once, host entries also listed |
-| `ListDir_MultiLower_ExistsInLower_WhiteoutInUpper` | `F.txt.$APPBOX_DELETE$` | `F.txt` | `F2.txt` | list `#APPDATA#` | `F.txt` hidden, `F2.txt` listed once |
-| `NewFile_MultiLower_WhiteoutInLower` | – | `data.txt.$APPBOX_DELETE$` | `data.txt` | create `data.txt` (`CREATE_NEW`) | success, file created in upper |
-| `NewFile_MultiLower_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | `data.txt` | create `data.txt` (`CREATE_NEW`) | success, upper whiteout removed, file created in upper |
-| `ReadFile_MultiLower_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | `data.txt` | read `data.txt` | failure |
+| Case | State (`data`) | Resources (`app`) | Operation | Expected |
+| --- | --- | --- | --- | --- |
+| `DeleteFile_LowerLayer` | – | `data.txt` | delete `data.txt` | success, whiteout created in the state, no file in the state, resources unchanged |
+| `DeleteFile_LowerLayerAndUpper` | `data.txt` | `data.txt` | delete `data.txt` | success, file of the state deleted, whiteout created |
+| `DeleteFile_UpperOnly` | `data.txt` | – | delete `data.txt` | success, no whiteout (nothing to hide) |
+| `DeleteFile_NonExists` | – | `data1.txt` | delete `data.txt` | failure, no whiteout |
+| `DeleteFile_WhiteoutInLower_ExistsInUpper` | `data.txt` | `data.txt.$APPBOX_DELETE$` | delete `data.txt` | success, file of the state deleted, no whiteout in the state |
+| `ListDir_LowerLayer` | – | `F.txt` | list `#APPDATA#` | `F.txt` appears exactly once, host entries also listed |
+| `ListDir_WhiteoutInUpper` | `F.txt.$APPBOX_DELETE$` | `F.txt`, `F2.txt` | list `#APPDATA#` | `F.txt` hidden, `F2.txt` listed once |
+| `NewFile_WhiteoutInLower` | – | `data.txt.$APPBOX_DELETE$` | create `data.txt` (`CREATE_NEW`) | success, file created in the state |
+| `NewFile_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | create `data.txt` (`CREATE_NEW`) | success, whiteout removed, file created in the state |
+| `ReadFile_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | read `data.txt` | failure |
+| `QueryAttributes_LowerLayer` | – | `data.txt` | query the attributes of `data.txt` | success, a regular file is reported |
+| `QueryAttributes_NonExists` | – | `other.txt` | query the attributes of `data.txt` | failure with `File Not Found` |
 
-`test/e2e/Fs_LaunchProcess_FromLower.cpp` and
-`test/e2e/Fs_QueryAttributes_MultiLower.cpp` are the remaining filesystem
-cases; they are not part of the matrix above.
+`test/e2e/Fs_LaunchProcess_FromLower.cpp` is the remaining filesystem case; it
+is not part of the matrix above.
 
 The cases which exercise the isolation modes of the workspace write the
-isolation file of the case into the overlay (`test/utils/FsIsolationBuilder.*`)
-and use a folder below `#APPDATA#` of the host as the entry of the host layer
+isolation file of the case into the filesystem domain of the resources
+(`test/utils/FsIsolationBuilder.*`, `app/filesystem/isolation.json`) and use a
+folder below `#APPDATA#` of the host as the entry of the host layer
 (`test/utils/RealFsFolder.*`, which removes it again when the case ends):
 
 | Case | Isolation | Operation | Expected |
 | --- | --- | --- | --- |
-| `Fs_Full_HidesHostFolder` | folder `Full` | read the packed file and a host file, query a host folder, list the folder, create a file | the packed content is visible, the host entries report `File Not Found` and are not listed, the new file lands in the overlay |
-| `Fs_Full_SubFolderWriteCopy` | folder `Full`, folder below `Write Copy` | read the host files of both folders | the folder below shows the host content again, because the mode of a folder below overrides the folder above |
-| `Fs_Whiteout_FileNotFound` | file `Whiteout` | read, query, delete and list | every call reports `File Not Found`, the host file and the packed file are unchanged |
-| `Fs_Whiteout_CreateInSandbox` | file `Whiteout` | create the file, read it back, query it, list the folder | the create lands in the overlay, the entry is visible afterwards, the host file keeps its content |
-| `Fs_Whiteout_FolderHidesSubtree` | folder `Whiteout` | query and read the folder, create it, read the packed file, create a file inside it | the folder and its packed content are hidden until the sandbox creates the folder, the created file lands in the overlay |
-| `Fs_ListDir_IsolationFiltered` | folder `Full`, file `Whiteout` | enumerate the folder with `std::filesystem`, `FindFirstFile`, `_findfirst` and both NT entry points | every enumeration reports the visible entry of the lower layer only; the hidden file, the host file and the host folder are not listed |
-| `Fs_MalformedIsolationFile_FallsBack` | document which cannot be read | read a host file while the isolation file is not JSON, while it carries an unknown version and while it is the valid document which hides the folder | the host file stays visible for both refused documents and is hidden for the readable one, which is what makes the run a check of the fallback; the content of the lower layer is visible in every one of them |
-| `Fs_WriteLowerLayerFile_CopyUp` | file of a lower layer only | open the file for writing and write another content into it | the open copies the file up into the overlay, the write and the read back report the new content, and the layer it was copied from keeps its own content |
-| `Fs_Directory_CreateAndDelete` | folder of the host only | create a directory below the folder, query it, create a file inside it, remove the directory, remove the file, remove the directory again | the directory is created in the overlay and reported as a directory, the removal of a directory which still holds a visible entry reports `Directory Not Empty`, and the second removal succeeds and leaves neither the view nor the overlay with the entry; the host folder stays empty |
+| `Full_HidesTheHostFolder` | folder `Full` | read the packed file and a host file, query a host folder, list the folder, create a file | the packed content is visible, the host entries report `File Not Found` and are not listed, the new file lands in the overlay |
+| `Full_SubFolderWriteCopyShowsTheHost` | folder `Full`, folder below `Write Copy` | read the host files of both folders | the folder below shows the host content again, because the mode of a folder below overrides the folder above |
+| `Whiteout_FileIsNotFound` | file `Whiteout` | read, query, delete and list | every call reports `File Not Found`, the host file and the packed file are unchanged |
+| `Whiteout_CreateInSandbox` | file `Whiteout` | create the file, read it back, query it, list the folder | the create lands in the overlay, the entry is visible afterwards, the host file keeps its content |
+| `Whiteout_FolderHidesItsSubtree` | folder `Whiteout` | query and read the folder, create it, read the packed file, create a file inside it | the folder and its packed content are hidden until the sandbox creates the folder, the created file lands in the overlay |
+| `ListDir_IsolationFiltersTheEntries` | folder `Full`, file `Whiteout` | enumerate the folder with `std::filesystem`, `FindFirstFile`, `_findfirst` and both NT entry points | every enumeration reports the visible entry of the lower layer only; the hidden file, the host file and the host folder are not listed |
+| `MalformedIsolationFile_FallsBack` | document which cannot be read | read a host file while the isolation file is not JSON, while it carries an unknown version and while it is the valid document which hides the folder | the host file stays visible for both refused documents and is hidden for the readable one, which is what makes the run a check of the fallback; the content of the lower layer is visible in every one of them |
+| `WriteLowerLayerFile_CopyUp` | file of a lower layer only | open the file for writing and write another content into it | the open copies the file up into the overlay, the write and the read back report the new content, and the layer it was copied from keeps its own content |
+| `Directory_CreateAndDelete` | folder of the host only | create a directory below the folder, query it, create a file inside it, remove the directory, remove the file, remove the directory again | the directory is created in the overlay and reported as a directory, the removal of a directory which still holds a visible entry reports `Directory Not Empty`, and the second removal succeeds and leaves neither the view nor the overlay with the entry; the host folder stays empty |
 
 ### Registry isolation cases
 
 * `test/e2e/Reg_WriteValue_NewKey.cpp` — the closed loop: the sandboxed
   probe creates a key, writes a value and reads it back; the test process
   verifies that the real HKCU does **not** contain the key and that the hive
-  file exists in the overlay.
+  file exists in the state directory of the sandbox.
 * `test/e2e/Reg_ReadValue_RealFallback.cpp` — a key and value which only
   exist in the real HKCU (created by the test process with RAII cleanup) are
   readable inside the sandbox, and the key still exists afterwards.
@@ -465,7 +471,9 @@ and use a folder below `#APPDATA#` of the host as the entry of the host layer
 ### Network isolation cases
 
 The network cases (`test/e2e/Net_*.cpp`) write the isolation file of the case
-into the overlay (`test/utils/NetworkIsolationBuilder.*`) and resolve a hostname
+into the network domain of the resources
+(`test/utils/NetworkIsolationBuilder.*`, `app/network/isolation.json`) and
+resolve a hostname
 inside the sandbox with the probe `ResolveName`, which calls the name resolution
 of winsock and the one of the DNS client. The probe answers a list of questions
 in one probe process, so a case pays for the chain of the loader and of the
@@ -514,13 +522,33 @@ documented in its own header comment.
 | `SelectedByTrigger` | `manual` | only `manual` starts, the auto start files do not, the loader exits with zero |
 | `UnknownTrigger` | `missing` | nothing starts, not even the auto start files, and the loader reports a non zero exit code |
 
+### Loader registry state cases
+
+The registry state cases (`test/e2e/Loader_RegistryState*.cpp`) pin what the
+loader does with the hive of the resources. The packed hive is a read-only
+resource, while the sandbox mounts a hive which it modifies (copy-up, whiteouts
+and the transaction log files), so the loader seeds a copy into the state
+directory of the sandbox on the first run and mounts that copy. Every case
+builds the resources with `test/utils/HiveBuilder.*` and reads the value inside
+the sandbox with the probe `RegReadValue`, which is the only way to tell which
+hive the sandbox mounted.
+
+| Case | Steps | Expected |
+| --- | --- | --- |
+| `RegistryStateIsSeeded` | the resources carry the value `packed`, the state directory does not exist at all | the read returns `packed`, the state directory carries the hive the sandbox mounted, and the hive of the resources is byte identical to the one the case built |
+| `RegistryStateIsKept` | the resources carry `packed`, the first run writes `sandbox` into the key | the second run returns `sandbox`, so the state of the first run survives the next one |
+| `RegistryStateIsReset` | the resources carry `packed`, the first run writes `sandbox`, then the state directory is deleted | the second run returns `packed`, so deleting the state directory resets the sandbox to the registry of the archive |
+
 ## Test helpers
 
-* `test/utils/FsBuilder.*` — declarative tree builder. `FsRoot(root, {Upper, Lower1, Lower2})`
-  materializes the directories and returns a `LoaderConfig` whose `overlay_fs` is the
-  first entry and whose `base_fs` holds the rest; the lower layer directories are named
-  after the known folder token (`#APPDATA#`) so that `MapBaseFS` resolves them.
-  `Verify()` re-reads the lower layers and fails if their content changed.
+* `test/utils/FsBuilder.*` — declarative tree builder. `FsRoot(root, {dirs})`
+  materializes the directories of the case and returns the `LoaderConfig` of the case,
+  which carries no path: the loader resolves the state directory `data` and the resource
+  directory `app` against the directory of its configuration file, which is the working
+  directory of the case. The resource directories are named after the known folder token
+  (`app\filesystem\#APPDATA#`) so that `MapBaseFS` resolves them. `Verify()` re-reads
+  everything a case declared and fails if the content changed; the isolation files which
+  the helpers of the suite write are not part of the declared content.
 * `test/utils/CommonFixture.*` — gives every case a private working directory.
 * `test/utils/CWD.*` — the working directory itself: `Create()` makes it,
   `NoCleanup()` keeps it after the case.
@@ -531,12 +559,14 @@ documented in its own header comment.
   for a startup file selection instead: it passes `--X-AppBox-Startup` when a trigger
   is given and reports the markers of the startup files the loader started together
   with its exit code.
-* `test/utils/HiveBuilder.*` — builds the artifacts of a test sandbox, so an
-  end-to-end test owns what the sandbox mounts. The builder writes the hive
-  file and the isolation file of an overlay directly and tracks the content of
-  the hive and the isolation modes apart, so a mode can be listed for a key
-  which the hive does not hold. `WriteRawIsolation()` writes a text which is
-  not the document of the builder, which is what a case about a refused
+* `test/utils/HiveBuilder.*` — builds the registry artifacts of a case, so an
+  end-to-end test owns what the sandbox mounts. The builder writes the hive file and
+  the isolation file into the registry domain of the resources of the case
+  (`app/registry`), which is where the loader looks for them: it seeds the hive into
+  the state directory of the sandbox, so a case exercises the seeding as well. The
+  content of the hive and the isolation modes are tracked apart, so a mode can be
+  listed for a key which the hive does not hold. `WriteRawIsolation()` writes a text
+  which is not the document of the builder, which is what a case about a refused
   document needs.
 * `test/utils/RealHkcuKey.*` — RAII helper which owns a key below the real
   HKCU of the test process, so a case which needs a host entry leaves nothing
@@ -550,11 +580,11 @@ documented in its own header comment.
   folder of the host, so a case which needs an entry of the host filesystem
   leaves nothing behind.
 * `test/utils/FsIsolationBuilder.*` — writes the isolation file of a test
-  sandbox (`<overlay>/filesystem-isolation.json`) from the modes of the case.
+  case (`<case root>/app/filesystem/isolation.json`) from the modes of the case.
   `WriteRawFsIsolationFile()` writes a text which is not the document of the
   builder, which is what a case about a refused document needs.
 * `test/utils/NetworkIsolationBuilder.*` — writes the isolation file of a test
-  sandbox (`<overlay>/network-isolation.json`) from the DNS redirections of the
+  case (`<case root>/app/network/isolation.json`) from the DNS redirections of the
   case.
 * `test/utils/LoaderPath.hpp` — the loader path of a run, which the tests of
   the real loader payload read from the configuration.

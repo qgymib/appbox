@@ -182,45 +182,20 @@ static void MainLoader()
 }
 
 /**
- * @brief Format path as absolute path.
- * @param[in] path Path to format.
- * @param[in] dir Working directory.
- * @return Formatted absolute path.
+ * @brief Resolve the layout of the sandbox.
+ *
+ * The resources of the packed application and the state of the sandbox live in
+ * the fixed directories of `common/SandboxLayout.hpp`, resolved against the
+ * directory of the configuration: the directory of the loader program itself
+ * unless a configuration file was given on the command line.
+ *
+ * @param[in] config_dir Directory which holds the configuration, empty to use
+ *                       the directory of the loader program.
  */
-static std::wstring FormatPathAsAbs(const std::wstring& path, const std::wstring& dir)
+static void ResolveSandboxPaths(const std::wstring& config_dir)
 {
-    std::filesystem::path p(path);
-    if (p.is_absolute())
-    {
-        return path;
-    }
-
-    std::filesystem::path folder(dir);
-    auto                  d = std::filesystem::absolute(folder / path);
-
-    return d.wstring();
-}
-
-/**
- * @brief Format config path as absolute path.
- * @param[in,out] cfg Config to format.
- * @param[in] dir Directory contains this config.
- */
-static void FormatConfigAbsolutePath(appbox::LoaderConfig& cfg, const std::wstring& dir)
-{
-    {
-        std::vector<std::string> abs_base_fs;
-        for (const auto& fs : cfg.base_fs)
-        {
-            auto path = FormatPathAsAbs(appbox::UTF8ToWide(fs), dir);
-            abs_base_fs.push_back(appbox::WideToUTF8(path));
-        }
-        cfg.base_fs = abs_base_fs;
-    }
-    {
-        auto abs_overlay_fs = FormatPathAsAbs(appbox::UTF8ToWide(cfg.overlay_fs), dir);
-        cfg.overlay_fs = appbox::WideToUTF8(abs_overlay_fs);
-    }
+    const auto dir = config_dir.empty() ? appbox::GetExecutableDir() : config_dir;
+    wxGetApp().sandbox_paths = appbox::SandboxPaths::Resolve(dir);
 }
 
 static void LoadConfig()
@@ -242,7 +217,7 @@ static void LoadConfig()
 
     nlohmann::json j_cfg = nlohmann::json::parse(f);
     wxGetApp().loader_config = j_cfg;
-    FormatConfigAbsolutePath(wxGetApp().loader_config, dir);
+    ResolveSandboxPaths(dir);
 }
 
 static void FinializeCommandArgs(const appbox::CommandLineOptions& opt)
@@ -275,7 +250,7 @@ bool AppBoxLoader::OnInit()
         if (!opt.override_config.is_null())
         {
             wxGetApp().loader_config = opt.override_config;
-            FormatConfigAbsolutePath(wxGetApp().loader_config, opt.config_dir);
+            ResolveSandboxPaths(opt.config_dir);
         }
         else
         {

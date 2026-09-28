@@ -16,11 +16,14 @@ namespace appbox::test
 /**
  * @brief Builder of the registry artifacts of a test sandbox.
  *
- * The builder writes the hive file and the isolation file of an overlay
- * directly, so an end-to-end test owns the artifacts the sandbox mounts
- * instead of depending on the packer. The hive holds one sub key per root key
- * of the view, exactly like the hive the packer writes, so the artifacts are
- * interchangeable.
+ * The builder writes the hive file and the isolation file of a case directly,
+ * so an end-to-end test owns the artifacts the sandbox mounts instead of
+ * depending on the packer. Both land in the registry domain of the resources
+ * of the case (`<case root>/app/registry`), which is where the loader looks for
+ * them: the hive is a read-only resource which the loader seeds into the state
+ * directory of the sandbox, the isolation file is handed to the sandbox as it
+ * is. The hive holds one sub key per root key of the view, exactly like the
+ * hive the packer writes, so the artifacts are interchangeable.
  *
  * The content of the hive and the isolation modes are tracked apart: a mode
  * can be listed for a key which the hive does not hold, which is how a test
@@ -30,11 +33,11 @@ class HiveBuilder
 {
 public:
     /**
-     * @brief Create a builder for the overlay directory of a test.
-     * @param[in] overlay_dir The overlay directory of the test, for example
-     *                        `<cwd>\Upper`.
+     * @brief Create a builder for the resources of a case.
+     * @param[in] case_root Root directory of the case, normally the working
+     *                      directory.
      */
-    explicit HiveBuilder(const std::filesystem::path& overlay_dir);
+    explicit HiveBuilder(const std::filesystem::path& case_root);
 
     /**
      * @brief Add a key to the hive, creating its parents.
@@ -70,10 +73,10 @@ public:
                            appbox::RegistryIsolation isolation);
 
     /**
-     * @brief Write the hive and the isolation file into the overlay.
+     * @brief Write the hive and the isolation file into the resources.
      *
-     * Both files land in the registry folder of the overlay, which is where
-     * the loader looks for them. An existing hive is replaced.
+     * Both files land in the registry domain of the case, which is where the
+     * loader looks for them. An existing hive is replaced.
      *
      * @param[out] error Error description on failure.
      * @return true on success.
@@ -81,12 +84,12 @@ public:
     bool Write(std::string& error);
 
     /**
-     * @brief Write the raw text of the isolation file into the overlay.
+     * @brief Write the raw text of the isolation file into the resources.
      *
      * A case which pins how the sandbox treats a document it cannot use writes
      * the text itself with this helper, for example a document which is not
      * valid JSON or one of another version. The hive file is not touched, so
-     * the helper can rewrite the modes of an overlay a case already built.
+     * the helper can rewrite the modes of the resources a case already built.
      *
      * @param[in] text Text to write.
      * @param[out] error Error description on failure.
@@ -118,7 +121,13 @@ private:
         bool                      is_value = false; /* The entry describes a value. */
     };
 
-    std::filesystem::path       overlay_;
+    /**
+     * @brief Registry domain of the resources of the case.
+     * @return The path of the folder which holds the hive and the modes.
+     */
+    std::filesystem::path RegistryDir() const;
+
+    std::filesystem::path       case_root_; /* Root directory of the case. */
     std::vector<Entry>          entries_;
     std::vector<IsolationEntry> isolations_;
 };

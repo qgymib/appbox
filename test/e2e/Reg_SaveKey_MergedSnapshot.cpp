@@ -45,7 +45,7 @@ TEST_F(E2E_Reg, SaveKey_MergedSnapshot)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -59,7 +59,7 @@ TEST_F(E2E_Reg, SaveKey_MergedSnapshot)
     ASSERT_TRUE(real_key.SetString(L"HostValue", L"host"));
     ASSERT_TRUE(real_key.SetString(L"Hidden", L"hidden"));
 
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"SandboxValue", REG_SZ, StringData(L"sandbox"));
     builder.SetValueIsolation(L"HKEY_CURRENT_USER\\" + subkey, L"Hidden", appbox::RegistryIsolation::Full);
     builder.SetValue(L"HKEY_CURRENT_USER\\" + hive_only, L"OnlyValue", REG_SZ, StringData(L"only"));
@@ -135,7 +135,7 @@ TEST_F(E2E_Reg, SaveKeyEx_MergedSnapshot)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -149,7 +149,7 @@ TEST_F(E2E_Reg, SaveKeyEx_MergedSnapshot)
     ASSERT_TRUE(real_key.SetString(L"HostValue", L"host"));
     ASSERT_TRUE(real_key.SetString(L"Hidden", L"hidden"));
 
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"SandboxValue", REG_SZ, StringData(L"sandbox"));
     builder.SetValueIsolation(L"HKEY_CURRENT_USER\\" + subkey, L"Hidden", appbox::RegistryIsolation::Full);
 

@@ -130,18 +130,19 @@ TEST(Unit_ZipReader, ExtractsArchiveWrittenByZipWriter)
         appbox::ZipWriter writer(archive_path.wstring());
         std::string       error;
         ASSERT_TRUE(writer.AddDirectory("filesystem", error)) << error;
-        ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#", error)) << error;
-        ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#/MyApp", error)) << error;
-        ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#/MyApp/emptydir", error)) << error;
-        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/app.exe", "EXE", 3, error)) << error;
-        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/data/config.txt", "CFG", 3, error)) << error;
+        ASSERT_TRUE(writer.AddDirectory("app/filesystem/#ProgramFiles#", error)) << error;
+        ASSERT_TRUE(writer.AddDirectory("app/filesystem/#ProgramFiles#/MyApp", error)) << error;
+        ASSERT_TRUE(writer.AddDirectory("app/filesystem/#ProgramFiles#/MyApp/emptydir", error)) << error;
+        ASSERT_TRUE(writer.AddFileBuffer("app/filesystem/#ProgramFiles#/MyApp/app.exe", "EXE", 3, error)) << error;
+        ASSERT_TRUE(writer.AddFileBuffer("app/filesystem/#ProgramFiles#/MyApp/data/config.txt", "CFG", 3, error))
+            << error;
         ASSERT_TRUE(writer.Close(error)) << error;
     }
 
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring());
     EXPECT_EQ(result, "") << result;
 
-    const auto root = dest / L"filesystem" / L"#ProgramFiles#" / L"MyApp";
+    const auto root = dest / L"app" / L"filesystem" / L"#ProgramFiles#" / L"MyApp";
     EXPECT_EQ(ReadFile(root / L"app.exe"), "EXE");
     EXPECT_EQ(ReadFile(root / L"data" / L"config.txt"), "CFG");
     EXPECT_TRUE(std::filesystem::is_directory(root / L"emptydir"));
@@ -239,13 +240,14 @@ TEST(Unit_ZipReader, ReportsEveryExtractedFile)
         appbox::ZipWriter writer(archive_path.wstring());
         std::string       error;
         ASSERT_TRUE(writer.AddDirectory("filesystem", error)) << error;
-        ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#", error)) << error;
-        ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#/MyApp", error)) << error;
-        ASSERT_TRUE(writer.AddDirectory("filesystem/#ProgramFiles#/MyApp/data", error)) << error;
+        ASSERT_TRUE(writer.AddDirectory("app/filesystem/#ProgramFiles#", error)) << error;
+        ASSERT_TRUE(writer.AddDirectory("app/filesystem/#ProgramFiles#/MyApp", error)) << error;
+        ASSERT_TRUE(writer.AddDirectory("app/filesystem/#ProgramFiles#/MyApp/data", error)) << error;
         ASSERT_TRUE(writer.AddFileBuffer("MyApp.exe", "LOADER", 6, error)) << error;
         ASSERT_TRUE(writer.AddFileBuffer("MyApp.exe.json", "{}", 2, error)) << error;
-        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/app.exe", "EXE", 3, error)) << error;
-        ASSERT_TRUE(writer.AddFileBuffer("filesystem/#ProgramFiles#/MyApp/data/config.txt", "CFG", 3, error)) << error;
+        ASSERT_TRUE(writer.AddFileBuffer("app/filesystem/#ProgramFiles#/MyApp/app.exe", "EXE", 3, error)) << error;
+        ASSERT_TRUE(writer.AddFileBuffer("app/filesystem/#ProgramFiles#/MyApp/data/config.txt", "CFG", 3, error))
+            << error;
         ASSERT_TRUE(writer.Close(error)) << error;
     }
 
@@ -285,7 +287,7 @@ TEST(Unit_ZipReader, ReportsEveryExtractedFile)
         }
     }
 
-    /* The layer prefix is dropped, the entries of the archive root keep theirs. */
+    /* The layer tree prefix is dropped, the entries of the archive root keep theirs. */
     EXPECT_EQ(named.count(L"MyApp.exe"), static_cast<std::size_t>(1));
     EXPECT_EQ(named.count(L"MyApp.exe.json"), static_cast<std::size_t>(1));
     EXPECT_EQ(named.count(L"MyApp\\app.exe"), static_cast<std::size_t>(1));

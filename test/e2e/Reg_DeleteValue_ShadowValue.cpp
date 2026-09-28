@@ -45,7 +45,7 @@ TEST_F(E2E_Reg, DeleteValue_ShadowValue)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -57,7 +57,7 @@ TEST_F(E2E_Reg, DeleteValue_ShadowValue)
     ASSERT_NE(real_key.get(), nullptr);
     ASSERT_TRUE(real_key.SetString(L"Shared", L"host"));
 
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"Shared", REG_SZ, StringData(L"sandbox"));
 
     std::string error;

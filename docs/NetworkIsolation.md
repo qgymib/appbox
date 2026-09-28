@@ -18,8 +18,8 @@ editing rules — is documented in [README.md](../README.md).
 
 ## Schema of the isolation file
 
-The packer writes the network configuration of the workspace into the overlay of
-the archive as `data/network-isolation.json`:
+The packer writes the network configuration of the workspace into the network
+domain of the resources of the archive as `app/network/isolation.json`:
 
 ```json
 {
@@ -40,7 +40,7 @@ and so does a document whose proxy names another protocol, whose server is
 missing or whose port is not a port. The schema version therefore stays `1`, so
 an archive which was written before the member existed is still accepted.
 
-The loader derives the path of the file inside the extracted overlay and hands
+The loader derives the path of the file inside the extracted resources and hands
 it to the sandbox. A missing file, a missing configuration or a malformed
 document is not an error: the sandbox then behaves like one without an
 isolation file, so every name keeps the resolution of the host and every

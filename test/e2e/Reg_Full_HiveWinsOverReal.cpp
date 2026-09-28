@@ -41,7 +41,7 @@ TEST_F(E2E_Reg, Full_HiveWinsOverReal)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -55,7 +55,7 @@ TEST_F(E2E_Reg, Full_HiveWinsOverReal)
     ASSERT_TRUE(real_key.SetString(L"TestValue", L"host"));
 
     /* The hive holds the same key with its own value. */
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"TestValue", REG_SZ, StringData(L"sandbox"));
     builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey, appbox::RegistryIsolation::Full);
 

@@ -88,7 +88,7 @@ TEST_F(E2E_Reg, UsersRoot_MapsToTheCurrentUserHive)
 
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -98,7 +98,7 @@ TEST_F(E2E_Reg, UsersRoot_MapsToTheCurrentUserHive)
 
     RealKeyGuard guard{ subkey };
 
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;
 

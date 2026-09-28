@@ -2,7 +2,7 @@
 #define APPBOX_TEST_UTILS_NETWORK_ISOLATION_BUILDER_HPP
 
 #include "NetworkIsolation.hpp"
-#include "loader/Config.hpp"
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -78,16 +78,18 @@ struct NetworkIsolationProxy
  * @brief Write the network isolation file of a test sandbox.
  *
  * The file describes the DNS redirections of the packaged application and lives
- * in the overlay root of the configuration, which is where the loader looks for
- * it (`<overlay>/network-isolation.json`). The document is built directly
- * instead of through the packer, so a case also pins the schema a hand written
- * file uses.
+ * in the network domain of the resources of the case, which is where the loader
+ * looks for it (`<case root>/app/network/isolation.json`). The document is
+ * built directly instead of through the packer, so a case also pins the schema
+ * a hand written file uses.
  *
- * @param[in] config Loader configuration of the case.
+ * @param[in] case_root Root directory of the case, normally the working
+ *                      directory.
  * @param[in] entries Entries to list.
  * @return true on success.
  */
-bool WriteNetworkIsolationFile(const appbox::LoaderConfig& config, const std::vector<NetworkIsolationEntry>& entries);
+bool WriteNetworkIsolationFile(const std::filesystem::path&              case_root,
+                               const std::vector<NetworkIsolationEntry>& entries);
 
 /**
  * @brief Write the network isolation file of a test sandbox with a proxy.
@@ -96,13 +98,14 @@ bool WriteNetworkIsolationFile(const appbox::LoaderConfig& config, const std::ve
  * which is the way the packer writes it as well: a case which passes an empty
  * configuration pins the document of a session without a proxy.
  *
- * @param[in] config Loader configuration of the case.
+ * @param[in] case_root Root directory of the case, normally the working
+ *                      directory.
  * @param[in] entries Entries to list.
  * @param[in] proxy Proxy of the packaged application.
  * @return true on success.
  */
-bool WriteNetworkIsolationFile(const appbox::LoaderConfig& config, const std::vector<NetworkIsolationEntry>& entries,
-                               const NetworkIsolationProxy& proxy);
+bool WriteNetworkIsolationFile(const std::filesystem::path&              case_root,
+                               const std::vector<NetworkIsolationEntry>& entries, const NetworkIsolationProxy& proxy);
 
 /**
  * @brief Write the text of the network isolation file of a test sandbox.
@@ -111,11 +114,12 @@ bool WriteNetworkIsolationFile(const appbox::LoaderConfig& config, const std::ve
  * with a document which is malformed or which carries members the builder does
  * not know.
  *
- * @param[in] config Loader configuration of the case.
+ * @param[in] case_root Root directory of the case, normally the working
+ *                      directory.
  * @param[in] text Text of the isolation file.
  * @return true on success.
  */
-bool WriteNetworkIsolationFileText(const appbox::LoaderConfig& config, const std::string& text);
+bool WriteNetworkIsolationFileText(const std::filesystem::path& case_root, const std::string& text);
 
 } // namespace appbox::test
 

@@ -22,7 +22,7 @@ TEST_F(E2E_Reg, WriteValue_NewKey)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -55,7 +55,7 @@ TEST_F(E2E_Reg, WriteValue_NewKey)
     }
 
     /* The hive file must exist in the overlay. */
-    auto hive = GetCWD() / L"Upper" / L"registry" / L"user.hiv";
+    auto hive = GetCWD() / L"data" / L"registry" / L"user.hiv";
     ASSERT_TRUE(std::filesystem::exists(hive));
     ASSERT_GT(std::filesystem::file_size(hive), 0u);
 }

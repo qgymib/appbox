@@ -41,7 +41,7 @@ TEST_F(E2E_Reg, ShadowKey_ReadRealValue)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 

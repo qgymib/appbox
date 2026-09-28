@@ -1,4 +1,5 @@
 #include "ZipReader.hpp"
+#include "SandboxLayout.hpp"
 #include "WString.hpp"
 #include <zip.h>
 #include <cerrno>
@@ -110,10 +111,11 @@ bool IsDirectoryEntry(const char* name)
 /**
  * @brief Build the path a progress report shows for one extracted entry.
  *
- * The content of the archive lives below `filesystem\<layer key>\`, a prefix
- * the user never chose; dropping those two segments makes the reported path
- * match the paths the packing stage reports. Entries of the archive root, like
- * the entry program and its configuration, keep their own name.
+ * The content of the archive lives below `app\filesystem\<layer key>\`, a
+ * prefix the user never chose; dropping those three segments makes the
+ * reported path match the paths the packing stage reports. Entries of the
+ * archive root, like the entry program and its configuration, and the
+ * resources of the other domains keep their own name.
  *
  * @param[in] relative Sanitized path of the entry inside the archive.
  * @return The path to show in the progress report.
@@ -121,13 +123,13 @@ bool IsDirectoryEntry(const char* name)
 std::wstring DisplayEntryName(const std::wstring& relative)
 {
     const auto parts = appbox::Split(relative, L"\\");
-    if (parts.size() < 3 || parts.front() != L"filesystem")
+    if (parts.size() < 4 || parts[0] != appbox::layout::kAppDirNameW || parts[1] != appbox::layout::kFilesystemDirNameW)
     {
         return relative;
     }
 
     std::wstring display;
-    for (auto index = static_cast<std::size_t>(2); index < parts.size(); ++index)
+    for (auto index = static_cast<std::size_t>(3); index < parts.size(); ++index)
     {
         if (!display.empty())
         {

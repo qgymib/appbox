@@ -51,27 +51,43 @@ struct FsDir : FsNode
     FsDir(const std::wstring& name, const FsNode::Nodes& children = {});
 };
 
+/**
+ * @brief Root of the directories of a case.
+ *
+ * The builder materializes the directories of the case below the root and
+ * re-reads them afterwards. A case spells the layout of the sandbox itself,
+ * like the archive of the packer does: the state root `data` carries what the
+ * sandbox may modify and the resource root `app` carries what it must not
+ * touch, both with the `filesystem` subdirectory which carries their content.
+ *
+ * The loader configuration carries no path at all: the loader resolves `app`
+ * and `data` against the directory of its configuration file, which is the
+ * working directory of the case.
+ */
 struct FsRoot
 {
     /**
-     * @brief Virtual root that contains one upperfs and multiple lowerfs.
-     * @param[in] root The root directory.
-     * @param[in] fs The filesystem directories. The first is the upper directory, the others are lower directories.
+     * @brief Create a builder for the directories of a case.
+     * @param[in] root The root directory, normally the working directory.
+     * @param[in] fs The directories of the case, in the order they are built.
      */
     FsRoot(const std::filesystem::path& root, const FsDir::Vec& fs);
 
     /**
-     * @brief Build the file system under the root directory.
-     * @param[in] root The root directory.
-     * @return True if the file system is built successfully.
+     * @brief Build the directories of the case under the root directory.
+     * @return The loader configuration of the case, which carries no path.
      */
     appbox::LoaderConfig Build() const;
 
     /**
-     * @brief Verify the file system.
-     * @param[in] index The start index of the fs to verify.
-     * @param[in] n The number of fs to verify.
-     * @return True if the file system is verified successfully.
+     * @brief Verify the directories of the case.
+     *
+     * A case which declares the state root first verifies with the default
+     * arguments that every resource it declared is untouched.
+     *
+     * @param[in] index The start index of the directories to verify.
+     * @param[in] n The number of directories to verify.
+     * @return True if the directories are unchanged.
      */
     bool Verify(size_t index = 1, size_t n = SIZE_MAX) const;
 

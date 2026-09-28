@@ -74,7 +74,7 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -100,7 +100,7 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
     ASSERT_NE(full_key_host.get(), nullptr);
     ASSERT_TRUE(full_key_host.SetString(L"HostValue", appbox::UTF8ToWide(host_text)));
 
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     builder.EnsureKey(L"HKEY_CURRENT_USER\\" + hive_held);
     builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + full_key, appbox::RegistryIsolation::Full);
 

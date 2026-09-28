@@ -61,7 +61,7 @@ TEST_F(E2E_Reg, Full_NonHkcuRoot)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -72,7 +72,7 @@ TEST_F(E2E_Reg, Full_NonHkcuRoot)
     const auto classes_key = L"AppBoxTest\\Full_NonHkcuRoot_" + suffix;
     const auto config_key = L"AppBoxTest\\Full_NonHkcuRoot_" + suffix;
 
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_LOCAL_MACHINE\\" + machine_key, L"TestValue", REG_SZ, StringData(L"machine"));
     builder.SetValue(L"HKEY_CLASSES_ROOT\\" + classes_key, L"TestValue", REG_SZ, StringData(L"classes"));
     builder.SetValue(L"HKEY_CURRENT_CONFIG\\" + config_key, L"TestValue", REG_SZ, StringData(L"config"));

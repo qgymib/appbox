@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <vector>
 #include "utils/ReadFileFull.hpp"
+#include "SandboxLayout.hpp"
 #include "FsBuilder.hpp"
 #include "WString.hpp"
 
@@ -40,27 +41,36 @@ static bool WriteFile(const std::filesystem::path& path, const appbox::test::FsN
     return true;
 }
 
-static std::wstring BuildName(const std::vector<std::wstring> name_vec)
+/**
+ * @brief Whether a directory entry belongs to the fixed layout of a case.
+ *
+ * A case declares the content of its directories, but not the isolation files
+ * which the helpers of the suite write into the domain directories. The
+ * verification skips those entries while it counts the content of a directory,
+ * so a case only has to declare what it really describes.
+ *
+ * @param[in] name Name of the entry.
+ * @return true when the entry is not part of the declared content.
+ */
+static bool IsLayoutEntry(const std::wstring& name)
 {
-    std::wstring name;
-    auto         name_sz = name_vec.size();
-    for (size_t i = 0; i < name_sz; ++i)
-    {
-        if (i != 0)
-        {
-            name += L"\\";
-        }
-        name += name_vec[i];
-    }
-    return name;
+    return name == appbox::layout::kIsolationFileNameW;
 }
 
+/**
+ * @brief Count the entries a case declared below a directory.
+ * @param[in] root Directory to scan.
+ * @return The number of entries which are not part of the fixed layout.
+ */
 static size_t CountFiles(const std::filesystem::path& root)
 {
     size_t count = 0;
     for (const auto& entry : std::filesystem::directory_iterator(root))
     {
-        (void)entry;
+        if (IsLayoutEntry(entry.path().filename().wstring()))
+        {
+            continue;
+        }
         count++;
     }
     return count;
@@ -223,28 +233,21 @@ appbox::test::FsRoot::FsRoot(const std::filesystem::path& root, const FsDir::Vec
 
 appbox::LoaderConfig appbox::test::FsRoot::Build() const
 {
-    appbox::LoaderConfig config;
     std::filesystem::create_directories(data_->root_);
 
-    auto fs_sz = data_->fs_.size();
-    for (size_t i = 0; i < fs_sz; ++i)
+    for (const auto& node : data_->fs_)
     {
-        data_->fs_[i]->Build(data_->root_);
-
-        auto path_w = (data_->root_ / BuildName(data_->fs_[i]->name_)).wstring();
-        auto path_c = appbox::WideToUTF8(path_w);
-
-        if (i == 0)
-        {
-            config.overlay_fs = path_c;
-        }
-        else
-        {
-            config.base_fs.push_back(path_c);
-        }
+        node->Build(data_->root_);
     }
 
-    return config;
+    /*
+     * The layout of the sandbox is a fixed convention which the case spells
+     * out itself, so the loader configuration carries no path at all: the
+     * loader resolves the state root and the resource root against the
+     * directory of its configuration file, which is the working directory of
+     * the case.
+     */
+    return appbox::LoaderConfig{};
 }
 
 bool appbox::test::FsRoot::Verify(size_t index, size_t n) const

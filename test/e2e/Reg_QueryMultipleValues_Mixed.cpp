@@ -46,7 +46,7 @@ TEST_F(E2E_Reg, QueryMultipleValues_Mixed)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -60,7 +60,7 @@ TEST_F(E2E_Reg, QueryMultipleValues_Mixed)
     ASSERT_TRUE(real_key.SetString(L"HostA", L"host-a"));
     ASSERT_TRUE(real_key.SetString(L"HostB", L"host-b"));
 
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"Sandbox", REG_SZ, StringData(L"sandbox"));
     builder.SetValueIsolation(L"HKEY_CURRENT_USER\\" + subkey, L"HostB", appbox::RegistryIsolation::Full);
 

@@ -42,7 +42,7 @@ TEST_F(E2E_Reg, Full_HidesRealValue)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -55,7 +55,7 @@ TEST_F(E2E_Reg, Full_HidesRealValue)
     ASSERT_TRUE(real_key.SetString(L"RealOnly", L"host"));
     ASSERT_TRUE(real_key.SetString(L"Shared", L"host"));
 
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"Shared", REG_SZ, StringData(L"sandbox"));
     builder.SetValueIsolation(L"HKEY_CURRENT_USER\\" + subkey, L"RealOnly", appbox::RegistryIsolation::Full);
 

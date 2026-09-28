@@ -121,7 +121,7 @@ TEST_F(E2E_Reg, IsolationInheritance_KeyModeReachesChildKey)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -134,7 +134,7 @@ TEST_F(E2E_Reg, IsolationInheritance_KeyModeReachesChildKey)
     ASSERT_TRUE(WriteRealValue(subkey, L"HostValue", L"host"));
     ASSERT_TRUE(WriteRealValue(child, L"ChildHost", L"child-host"));
 
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + child, L"ChildSandbox", REG_SZ, StringData(L"child-sandbox"));
     builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey, appbox::RegistryIsolation::Full);
 
@@ -157,7 +157,7 @@ TEST_F(E2E_Reg, IsolationInheritance_KeyModeReachesChildKey)
     }
 
     /* A mode of the child key overrides the mode of the ancestor. */
-    HiveBuilder overriding(GetCWD() / L"Upper");
+    HiveBuilder overriding(GetCWD());
     overriding.SetValue(L"HKEY_CURRENT_USER\\" + child, L"ChildSandbox", REG_SZ, StringData(L"child-sandbox"));
     overriding.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey, appbox::RegistryIsolation::Full);
     overriding.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + child, appbox::RegistryIsolation::WriteCopy);
@@ -192,7 +192,7 @@ TEST_F(E2E_Reg, IsolationInheritance_ValueModeHidesTheValue)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -204,7 +204,7 @@ TEST_F(E2E_Reg, IsolationInheritance_ValueModeHidesTheValue)
     ASSERT_TRUE(WriteRealValue(subkey, L"HiddenByValue", L"hidden"));
     ASSERT_TRUE(WriteRealValue(subkey, L"Visible", L"visible"));
 
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"SandboxValue", REG_SZ, StringData(L"sandbox"));
     builder.SetValueIsolation(L"HKEY_CURRENT_USER\\" + subkey, L"HiddenByValue", appbox::RegistryIsolation::Hide);
 

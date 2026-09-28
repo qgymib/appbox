@@ -9,25 +9,21 @@ using namespace appbox::test;
 
 /**
  * Condition:
- * 1. File exists in lower fs only.
+ * 1. File exists in the lower layer of the resources only.
  * 2. Query the file attributes with GetFileAttributesW (NtQueryAttributesFile).
  *
  * Expected:
  * 1. The query succeeds and reports a regular file.
+ * 2. The resources of the application are untouched.
  */
-TEST_F(E2E_Fs, QueryAttributes_MultiLower_ExistsInLower)
+TEST_F(E2E_Fs, QueryAttributes_LowerLayer)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {
+        FsDir(L"data", {}),
+        FsDir(L"app", {
             FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(L"data.txt", "hello1")
-            })
-        }),
-        FsDir(L"Lower2", {
-            FsDir(L"filesystem\\#APPDATA#", {
-                FsFile(L"data.txt", "hello2")
             })
         })
     });
@@ -36,7 +32,7 @@ TEST_F(E2E_Fs, QueryAttributes_MultiLower_ExistsInLower)
     /* Build filesystem tree. */
     auto config = tree.Build();
 
-    /* Query the file which only exists in the lower layers. */
+    /* Query the file which only exists in the lower layer. */
     {
         ProtocolQueryAttributes::Req req;
         req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#APPDATA#", false) + L"\\data.txt");
@@ -46,7 +42,7 @@ TEST_F(E2E_Fs, QueryAttributes_MultiLower_ExistsInLower)
         EXPECT_NE(rsp.attributes & FILE_ATTRIBUTE_DIRECTORY, static_cast<DWORD>(FILE_ATTRIBUTE_DIRECTORY));
     }
 
-    /* Verify lower filesystem content */
+    /* Verify that the resources of the application are untouched. */
     ASSERT_TRUE(tree.Verify());
 }
 
@@ -58,12 +54,12 @@ TEST_F(E2E_Fs, QueryAttributes_MultiLower_ExistsInLower)
  * Expected:
  * 1. The query fails with ERROR_FILE_NOT_FOUND.
  */
-TEST_F(E2E_Fs, QueryAttributes_MultiLower_NonExists)
+TEST_F(E2E_Fs, QueryAttributes_NonExists)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {
+        FsDir(L"data", {}),
+        FsDir(L"app", {
             FsDir(L"filesystem\\#APPDATA#", {
                 FsFile(L"other.txt", "hello1")
             })
@@ -84,6 +80,6 @@ TEST_F(E2E_Fs, QueryAttributes_MultiLower_NonExists)
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
 
-    /* Verify lower filesystem content */
+    /* Verify that the resources of the application are untouched. */
     ASSERT_TRUE(tree.Verify());
 }

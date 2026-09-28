@@ -91,6 +91,12 @@ wxWidgets-based GUI application for managing sandboxed processes:
 
 - Extracts the packed archive, injects the sandbox DLL and starts the
   sandboxed processes.
+- Keeps the read-only resources of the packed application below `app` and the
+  state of the sandbox below `data`, both beside the loader program: the state
+  directory is created at run time and carries the writable overlay of the
+  filesystem, the registry hive the sandbox mounts (seeded from
+  `app/registry/user.hiv` on the first run) and the injected sandbox DLLs.
+  Deleting it resets the sandbox to the state the archive was packed with.
 - Starts every startup file of its configuration which is marked for auto
   start; `--X-AppBox-Startup <trigger>` starts the single startup file with
   that trigger instead and suppresses the auto start of the other files. An

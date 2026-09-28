@@ -23,8 +23,8 @@ inline constexpr const wchar_t* kFilesystemContainerLabel = L"Sandbox Filesystem
  *
  * A preset directory is a well known host location (such as Program Files)
  * which imported folders become subdirectories of. The layer key is the
- * directory name below `<base_fs>\filesystem` which MapBaseFS translates
- * into the real location at sandbox runtime.
+ * directory name below `app\filesystem` which MapBaseFS translates into the
+ * real location at sandbox runtime.
  */
 struct PresetDirectory
 {

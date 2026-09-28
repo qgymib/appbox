@@ -22,8 +22,8 @@ namespace appbox
  * Every extracted file is reported through the progress callback. Directory
  * entries only recreate the folder structure and are not reported, so the
  * total matches the number of file entries of the archive. The reported path
- * drops the `filesystem/<layer key>` prefix of the archive layout, which makes
- * it match the paths the packing stage reports.
+ * drops the `app/filesystem/<layer key>` prefix of the archive layout, which
+ * makes it match the paths the packing stage reports.
  *
  * @param[in] zip_path Archive to extract.
  * @param[in] dest_dir Destination folder.

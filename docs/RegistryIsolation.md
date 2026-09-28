@@ -120,8 +120,9 @@ including the ones the workspace of the packer does not even know about.
 ## On-disk layout
 
 ```
-<overlay_fs>\registry\user.hiv            the hive of the virtual registry
-<overlay_fs>\registry\isolation.json      the isolation modes
+app\registry\user.hiv                    the hive of the virtual registry
+app\registry\isolation.json              the isolation modes
+data\registry\user.hiv                   the hive the sandbox mounts
 ```
 
 The hive holds the five root keys of the view and, below a reserved key which
@@ -141,12 +142,14 @@ deleted:
                                        empty name for the default value
 ```
 
-The hive is a real registry file. It is created by the first mount when it does
-not exist and grows as the sandboxed process writes keys and values; it
-survives process restarts, so a sandbox can be reused — a delete survives with
-it, because the marker lives in the same file. Deleting the overlay (or just
-these files) discards every registry modification the sandboxed process ever
-made.
+The hive of the resources is a read-only resource: mounting a hive writes to the
+file, so the loader copies it into the state directory of the sandbox on the
+first run and the sandbox mounts that copy. The mounted hive is a real registry
+file: it grows as the sandboxed process writes keys and values and survives
+process restarts, so a sandbox can be reused — a delete survives with it,
+because the marker lives in the same file. Deleting the state directory (or
+just these files) discards every registry modification the sandboxed process
+ever made and brings back the registry of the archive.
 
 The isolation file is UTF-8 JSON:
 
@@ -171,8 +174,8 @@ The isolation file is UTF-8 JSON:
   reported in the log and ignored: the sandbox then treats every entry as
   `WriteCopy` instead of failing to start.
 
-`Build` of the packer writes the two artifacts into the overlay folder of the
-archive, which is where the loader looks for them.
+`Build` of the packer writes the two artifacts into the registry domain of the
+resources of the archive, which is where the loader looks for them.
 
 ## Deletion and whiteouts
 
@@ -216,8 +219,8 @@ queried, so it behaves exactly like the key it shadows.
 
 The admin UI of the loader (`enable_admin_ui`) contains a read-only registry
 browser which mirrors the layout of the Windows registry editor. It mounts
-`<overlay_fs>\registry\user.hiv` itself and reads everything relative to the
-returned root handle — the host registry is never touched, and keys which only
+`data\registry\user.hiv` itself — the hive the loader seeded and the sandbox
+mounts — and reads everything relative to the returned root handle — the host registry is never touched, and keys which only
 exist in the real registry (the read through of the sandbox) are not part of
 the view. The loader never writes to the hive, and the whiteout store stays
 hidden. `Refresh` (F5) releases and remounts the file, picking up everything

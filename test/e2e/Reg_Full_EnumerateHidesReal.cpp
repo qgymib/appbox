@@ -26,7 +26,7 @@ TEST_F(E2E_Reg, Full_EnumerateHidesReal)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper")
+        FsDir(L"data")
     });
     /* clang-format on */
 
@@ -51,7 +51,7 @@ TEST_F(E2E_Reg, Full_EnumerateHidesReal)
         RegCloseKey(visible);
     }
 
-    HiveBuilder builder(GetCWD() / L"Upper");
+    HiveBuilder builder(GetCWD());
     builder.EnsureKey(L"HKEY_CURRENT_USER\\" + subkey + L"\\SandboxKey");
     builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey + L"\\RealHidden", appbox::RegistryIsolation::Full);
 

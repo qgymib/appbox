@@ -55,22 +55,20 @@ struct LoaderEnvironment
     NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderEnvironment, key, value)
 };
 
+/**
+ * @brief Configuration of the loader of one packed application.
+ *
+ * The layout of the archive is a fixed convention (`common/SandboxLayout.hpp`):
+ * `app` carries the read-only resources of the application, `data` carries the
+ * state of the sandbox and is created at run time. Neither of them is named by
+ * the configuration, so the file only describes what the loader starts.
+ */
 struct LoaderConfig
 {
     /**
      * @brief Enable admin UI.
      */
     bool enable_admin_ui = false;
-
-    /**
-     * @brief Base filesystem.
-     */
-    std::vector<std::string> base_fs;
-
-    /**
-     * @brief overlay filesystem.
-     */
-    std::string overlay_fs = "data";
 
     /**
      * @brief Startup files, in the order the loader starts them.
@@ -82,8 +80,7 @@ struct LoaderConfig
      */
     std::vector<LoaderEnvironment> environment;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderConfig, enable_admin_ui, base_fs, overlay_fs, startups,
-                                                environment)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderConfig, enable_admin_ui, startups, environment)
 };
 
 } // namespace appbox

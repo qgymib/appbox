@@ -27,8 +27,8 @@ TEST_F(E2E_Fs, LaunchProcess_FromLower)
 
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
-        FsDir(L"Upper", {}),
-        FsDir(L"Lower1", {
+        FsDir(L"data", {}),
+        FsDir(L"app", {
             FsDir(L"filesystem\\#APPDATA#", {
                 FsNode(L"cmd.exe", cmd_bytes)
             })

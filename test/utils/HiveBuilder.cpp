@@ -1,4 +1,5 @@
 #include <nlohmann/json.hpp>
+#include "SandboxLayout.hpp"
 #include "WString.hpp"
 #include "HiveBuilder.hpp"
 #include <fstream>
@@ -34,7 +35,7 @@ void RemoveHiveFiles(const std::filesystem::path& path)
 
 } // namespace
 
-appbox::test::HiveBuilder::HiveBuilder(const std::filesystem::path& overlay_dir) : overlay_(overlay_dir)
+appbox::test::HiveBuilder::HiveBuilder(const std::filesystem::path& case_root) : case_root_(case_root)
 {
 }
 
@@ -78,19 +79,24 @@ void appbox::test::HiveBuilder::SetValueIsolation(const std::wstring& key_path, 
     isolations_.push_back(std::move(entry));
 }
 
+std::filesystem::path appbox::test::HiveBuilder::RegistryDir() const
+{
+    return case_root_ / appbox::layout::kAppDirNameW / appbox::layout::kRegistryDirNameW;
+}
+
 bool appbox::test::HiveBuilder::Write(std::string& error)
 {
-    const auto registry_dir = overlay_ / L"registry";
+    const auto registry_dir = RegistryDir();
 
     std::error_code ec;
     std::filesystem::create_directories(registry_dir, ec);
     if (ec)
     {
-        error = "failed to create the registry folder of the overlay";
+        error = "failed to create the registry folder of the resources";
         return false;
     }
 
-    const auto hive_path = registry_dir / L"user.hiv";
+    const auto hive_path = registry_dir / appbox::layout::kRegistryHiveFileNameW;
     RemoveHiveFiles(hive_path);
 
     HKEY root = nullptr;
@@ -184,7 +190,7 @@ bool appbox::test::HiveBuilder::Write(std::string& error)
     }
 
     const auto    text = document.dump(2);
-    std::ofstream out(registry_dir / L"isolation.json", std::ios::binary | std::ios::trunc);
+    std::ofstream out(registry_dir / appbox::layout::kIsolationFileNameW, std::ios::binary | std::ios::trunc);
     if (!out.is_open())
     {
         error = "failed to create the isolation file of the test";
@@ -204,17 +210,17 @@ bool appbox::test::HiveBuilder::Write(std::string& error)
 
 bool appbox::test::HiveBuilder::WriteRawIsolation(const std::string& text, std::string& error)
 {
-    const auto registry_dir = overlay_ / L"registry";
+    const auto registry_dir = RegistryDir();
 
     std::error_code ec;
     std::filesystem::create_directories(registry_dir, ec);
     if (ec)
     {
-        error = "failed to create the registry folder of the overlay";
+        error = "failed to create the registry folder of the resources";
         return false;
     }
 
-    std::ofstream out(registry_dir / L"isolation.json", std::ios::binary | std::ios::trunc);
+    std::ofstream out(registry_dir / appbox::layout::kIsolationFileNameW, std::ios::binary | std::ios::trunc);
     if (!out.is_open())
     {
         error = "failed to create the isolation file of the test";

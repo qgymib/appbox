@@ -5,6 +5,7 @@
 #include "PresetDirectory.hpp"
 #include "RegistryHive.hpp"
 #include "RegistryIsolationFile.hpp"
+#include "SandboxLayout.hpp"
 #include "ZipWriter.hpp"
 #include "Config.hpp"
 #include "WString.hpp"
@@ -289,15 +290,14 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         }
 
         /*
-         * Loader configuration: the archive root is the single base
-         * filesystem, the overlay lives beside it, and every executable path
+         * Loader configuration: the layout of the archive is a fixed
+         * convention, so the file only carries the startup files and the
+         * environment of the packaged application. Every executable path
          * starts with the layer key token of its preset, which the loader
          * expands. The config file carries the name of the loader executable,
          * which loads `<own file name>.json` from its own directory.
          */
         LoaderConfig config;
-        config.base_fs.push_back(".");
-        config.overlay_fs = "data";
 
         for (const auto& file : model.StartupFiles())
         {
@@ -327,30 +327,42 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         std::set<std::string> added;
 
         /*
-         * The registry of the workspace travels inside the overlay: the hive
-         * holds the virtual registry the sandbox mounts, the isolation file
-         * holds the modes which decide which host entries stay visible. Both
-         * live in the registry folder of the overlay, which is exactly where
-         * the loader looks for them at run time.
+         * The read-only resources of the packaged application live below
+         * `app`, one directory per isolation domain: the filesystem layers and
+         * their isolation modes, the virtual registry and its isolation modes,
+         * and the network configuration. The `data` directory of the sandbox
+         * never travels in the archive: the loader creates it at run time, so
+         * deleting it resets the sandbox to the state this archive carries.
          */
-        const std::string registry_prefix = config.overlay_fs + "/registry";
-        error = EnsureDirectory(writer, added, config.overlay_fs);
-        if (!error.empty())
+        const std::string app_prefix = layout::kAppDirName;
+        const std::string layer_prefix = layout::kLayerRootRelative;
+        const std::string registry_prefix = app_prefix + "/" + layout::kRegistryDirName;
+        const std::string network_prefix = app_prefix + "/" + layout::kNetworkDirName;
+
+        for (const auto& directory : { app_prefix, layer_prefix, registry_prefix, network_prefix })
         {
-            return error;
-        }
-        error = EnsureDirectory(writer, added, registry_prefix);
-        if (!error.empty())
-        {
-            return error;
+            error = EnsureDirectory(writer, added, directory);
+            if (!error.empty())
+            {
+                return error;
+            }
         }
 
+        /*
+         * The virtual registry of the workspace travels as a hive file next to
+         * its isolation file. The loader seeds the hive into the state
+         * directory of the sandbox on the first run, because mounting a hive
+         * writes to the file and the resources of `app` stay read-only; the
+         * isolation file holds the modes which decide which host entries stay
+         * visible.
+         */
         std::vector<std::uint8_t> hive;
         if (!BuildRegistryHiveBytes(registry, hive, error))
         {
             return error;
         }
-        if (!writer.AddFileBuffer(registry_prefix + "/user.hiv", hive.data(), hive.size(), error))
+        if (!writer.AddFileBuffer(registry_prefix + "/" + layout::kRegistryHiveFileName, hive.data(), hive.size(),
+                                  error))
         {
             return error;
         }
@@ -360,55 +372,49 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         {
             return error;
         }
-        if (!writer.AddFileBuffer(registry_prefix + "/isolation.json", registry_isolation.data(),
+        if (!writer.AddFileBuffer(registry_prefix + "/" + layout::kIsolationFileName, registry_isolation.data(),
                                   registry_isolation.size(), error))
         {
             return error;
         }
 
         /*
-         * The isolation modes of the virtual filesystem travel in the overlay
-         * root, next to the registry folder: the loader hands the file to the
-         * sandbox, which redirects the filesystem of the packaged application
-         * through the modes. The file must not live below `filesystem`,
-         * because the loader treats every child of that folder as a layer of
-         * the view.
+         * The isolation modes of the virtual filesystem travel in the
+         * filesystem domain, next to the layers they describe: the loader hands
+         * the file to the sandbox, which redirects the filesystem of the
+         * packaged application through the modes. The loader skips the file
+         * while it enumerates the layers of that folder.
          */
         std::string filesystem_isolation;
         if (!BuildFilesystemIsolationFile(isolation, filesystem_isolation, error))
         {
             return error;
         }
-        if (!writer.AddFileBuffer(config.overlay_fs + "/filesystem-isolation.json", filesystem_isolation.data(),
+        if (!writer.AddFileBuffer(layout::kFilesystemIsolationRelative, filesystem_isolation.data(),
                                   filesystem_isolation.size(), error))
         {
             return error;
         }
 
         /*
-         * The network configuration of the workspace travels in the overlay
-         * root as well: the loader hands the file to the sandbox, which answers
-         * a name resolution of the packaged application from the DNS
-         * redirections of the file instead of asking the host and sends the
-         * traffic of the application through the proxy of the file.
+         * The network configuration of the workspace travels in the network
+         * domain: the loader hands the file to the sandbox, which answers a
+         * name resolution of the packaged application from the DNS redirections
+         * of the file instead of asking the host and sends the traffic of the
+         * application through the proxy of the file.
          */
         std::string network_isolation;
         if (!BuildNetworkIsolationFile(network, network_isolation, error))
         {
             return error;
         }
-        if (!writer.AddFileBuffer(config.overlay_fs + "/network-isolation.json", network_isolation.data(),
-                                  network_isolation.size(), error))
+        if (!writer.AddFileBuffer(layout::kNetworkIsolationRelative, network_isolation.data(), network_isolation.size(),
+                                  error))
         {
             return error;
         }
 
         /* Imported folders below the lower layer tree of the archive. */
-        error = EnsureDirectory(writer, added, "filesystem");
-        if (!error.empty())
-        {
-            return error;
-        }
 
         std::size_t done = 0;
         for (const auto& entry : PresetDirectories())
@@ -420,7 +426,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
             }
 
             const auto token = WideToUTF8(entry.layer_key);
-            error = EnsureDirectory(writer, added, "filesystem/" + token);
+            error = EnsureDirectory(writer, added, layer_prefix + "/" + token);
             if (!error.empty())
             {
                 return error;
@@ -428,7 +434,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
 
             for (const auto& imported : imports)
             {
-                const auto prefix = "filesystem/" + token + "/" + WideToUTF8(imported.import_name);
+                const auto prefix = layer_prefix + "/" + token + "/" + WideToUTF8(imported.import_name);
                 error = EnsureDirectory(writer, added, prefix);
                 if (!error.empty())
                 {
@@ -455,7 +461,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
                 continue;
             }
 
-            std::string prefix = "filesystem/" + WideToUTF8(owner->layer_key);
+            std::string prefix = layer_prefix + "/" + WideToUTF8(owner->layer_key);
             error = EnsureDirectory(writer, added, prefix);
             if (!error.empty())
             {
