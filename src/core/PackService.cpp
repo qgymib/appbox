@@ -374,10 +374,11 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         }
 
         /*
-         * The DNS redirections of the network workspace travel in the overlay
+         * The network configuration of the workspace travels in the overlay
          * root as well: the loader hands the file to the sandbox, which answers
-         * a name resolution of the packaged application from it instead of
-         * asking the host.
+         * a name resolution of the packaged application from the DNS
+         * redirections of the file instead of asking the host and sends the
+         * traffic of the application through the proxy of the file.
          */
         std::string network_isolation;
         if (!BuildNetworkIsolationFile(network, network_isolation, error))

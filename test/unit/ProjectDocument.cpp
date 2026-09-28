@@ -113,6 +113,16 @@ appbox::ProjectDocument BuildSampleDocument()
     dns.redirect = L"127.0.0.1";
     document.network.push_back(dns);
 
+    appbox::ProjectProxyRecord proxy;
+    proxy.type = appbox::ProxyType::Socks5;
+    proxy.tcp = true;
+    proxy.udp = false;
+    proxy.server = L"127.0.0.1";
+    proxy.port = L"1080";
+    proxy.username = L"user";
+    proxy.password = L"secret";
+    document.proxy = proxy;
+
     return document;
 }
 
@@ -171,6 +181,15 @@ TEST(Unit_ProjectDocument, RoundTripKeepsEveryMember)
     ASSERT_EQ(back.network.size(), 1u);
     EXPECT_EQ(back.network[0].hostname, L"update.example.com");
     EXPECT_EQ(back.network[0].redirect, L"127.0.0.1");
+
+    ASSERT_TRUE(back.proxy.has_value());
+    EXPECT_EQ(back.proxy->type, appbox::ProxyType::Socks5);
+    EXPECT_TRUE(back.proxy->tcp);
+    EXPECT_FALSE(back.proxy->udp);
+    EXPECT_EQ(back.proxy->server, L"127.0.0.1");
+    EXPECT_EQ(back.proxy->port, L"1080");
+    EXPECT_EQ(back.proxy->username, L"user");
+    EXPECT_EQ(back.proxy->password, L"secret");
 }
 
 TEST(Unit_ProjectDocument, RejectsAnIncompleteDnsRecord)
@@ -200,10 +219,20 @@ TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
      * The version comes first and the members follow the order of the schema,
      * so the text of a given document is stable and easy to diff.
      */
-    const std::vector<std::string> expected{ "version",      "output_path", "folders",    "files",
-                                             "main_program", "registry",    "filesystem", "network" };
+    const std::vector<std::string> expected{ "version",  "output_path", "folders", "files", "main_program",
+                                             "registry", "filesystem",  "network", "proxy" };
     EXPECT_EQ(members, expected);
     EXPECT_EQ(json.at("version").get<int>(), appbox::kProjectFileVersion);
+
+    /* The proxy names its protocol, the traffic it carries and the server. */
+    const auto& proxy = json.at("proxy");
+    EXPECT_EQ(proxy.at("type").get<std::string>(), "socks5");
+    EXPECT_EQ(proxy.at("tcp").get<bool>(), true);
+    EXPECT_EQ(proxy.at("udp").get<bool>(), false);
+    EXPECT_EQ(proxy.at("server").get<std::string>(), "127.0.0.1");
+    EXPECT_EQ(proxy.at("port").get<std::string>(), "1080");
+    EXPECT_EQ(proxy.at("username").get<std::string>(), "user");
+    EXPECT_EQ(proxy.at("password").get<std::string>(), "secret");
 
     const auto& root = json.at("registry").at(0);
     EXPECT_EQ(root.at("name").get<std::string>(), "HKEY_CURRENT_USER");
@@ -266,6 +295,63 @@ TEST(Unit_ProjectDocument, OmitsTheMainProgramWhileNoneIsSelected)
     EXPECT_FALSE(back.main_program.has_value());
 }
 
+TEST(Unit_ProjectDocument, OmitsTheProxyWhileNoneIsConfigured)
+{
+    const auto json = nlohmann::ordered_json(appbox::ProjectDocument{});
+    EXPECT_FALSE(json.contains("proxy"));
+
+    /* A hand written document may spell the absent member as a null value. */
+    const auto back = ParseDocument(R"({ "version": 1, "proxy": null })");
+    EXPECT_FALSE(back.proxy.has_value());
+}
+
+TEST(Unit_ProjectDocument, RoundTripsTheProxyOfTheWorkspace)
+{
+    const auto document = ParseDocument(R"({ "version": 1, "proxy": { "type": "SOCKS5", "tcp": false, "udp": true,)"
+                                        R"( "server": "proxy.example.com", "port": "1080",)"
+                                        R"( "username": "", "password": "" } })");
+
+    ASSERT_TRUE(document.proxy.has_value());
+    EXPECT_EQ(document.proxy->type, appbox::ProxyType::Socks5);
+    EXPECT_FALSE(document.proxy->tcp);
+    EXPECT_TRUE(document.proxy->udp);
+    EXPECT_EQ(document.proxy->server, L"proxy.example.com");
+    EXPECT_EQ(document.proxy->port, L"1080");
+    EXPECT_TRUE(document.proxy->username.empty());
+    EXPECT_TRUE(document.proxy->password.empty());
+
+    const auto back = nlohmann::ordered_json(document).get<appbox::ProjectDocument>();
+    ASSERT_TRUE(back.proxy.has_value());
+    EXPECT_EQ(back.proxy->type, appbox::ProxyType::Socks5);
+    EXPECT_TRUE(back.proxy->udp);
+    EXPECT_EQ(back.proxy->server, L"proxy.example.com");
+}
+
+TEST(Unit_ProjectDocument, RejectsAnIncompleteProxyRecord)
+{
+    const auto missing = ParseError(R"({ "version": 1, "proxy": { "type": "socks5", "tcp": true, "udp": false,)"
+                                    R"( "server": "127.0.0.1", "port": "1080", "username": "user" } })");
+    EXPECT_NE(missing.find("proxy"), std::string::npos) << missing;
+    EXPECT_NE(missing.find("'password'"), std::string::npos) << missing;
+
+    const auto mistyped = ParseError(R"({ "version": 1, "proxy": { "type": "socks5", "tcp": "yes", "udp": false,)"
+                                     R"( "server": "127.0.0.1", "port": "1080", "username": "", "password": "" } })");
+    EXPECT_NE(mistyped.find("proxy"), std::string::npos) << mistyped;
+    EXPECT_NE(mistyped.find("'tcp'"), std::string::npos) << mistyped;
+
+    const auto not_an_object = ParseError(R"({ "version": 1, "proxy": 7 })");
+    EXPECT_NE(not_an_object.find("proxy"), std::string::npos) << not_an_object;
+    EXPECT_NE(not_an_object.find("not a JSON object"), std::string::npos) << not_an_object;
+}
+
+TEST(Unit_ProjectDocument, RejectsAnUnknownProxyType)
+{
+    const auto error = ParseError(R"({ "version": 1, "proxy": { "type": "socks4", "tcp": true, "udp": false,)"
+                                  R"( "server": "127.0.0.1", "port": "1080", "username": "", "password": "" } })");
+    EXPECT_NE(error.find("proxy"), std::string::npos) << error;
+    EXPECT_NE(error.find("unknown proxy type 'socks4'"), std::string::npos) << error;
+}
+
 TEST(Unit_ProjectDocument, ReadsMissingMembersAsEmpty)
 {
     const auto document = ParseDocument(R"({ "version": 1 })");
@@ -276,6 +362,8 @@ TEST(Unit_ProjectDocument, ReadsMissingMembersAsEmpty)
     EXPECT_FALSE(document.main_program.has_value());
     EXPECT_TRUE(document.registry.empty());
     EXPECT_TRUE(document.filesystem.empty());
+    EXPECT_TRUE(document.network.empty());
+    EXPECT_FALSE(document.proxy.has_value());
 }
 
 TEST(Unit_ProjectDocument, ReadingReplacesTheWholeDocument)
@@ -291,6 +379,7 @@ TEST(Unit_ProjectDocument, ReadingReplacesTheWholeDocument)
     EXPECT_FALSE(document.main_program.has_value());
     EXPECT_TRUE(document.registry.empty());
     EXPECT_TRUE(document.filesystem.empty());
+    EXPECT_FALSE(document.proxy.has_value());
 }
 
 TEST(Unit_ProjectDocument, ReadingLeavesTheDocumentUntouchedOnFailure)
@@ -303,6 +392,7 @@ TEST(Unit_ProjectDocument, ReadingLeavesTheDocumentUntouchedOnFailure)
     EXPECT_EQ(document.folders.size(), 1u);
     EXPECT_EQ(document.files.size(), 1u);
     EXPECT_TRUE(document.main_program.has_value());
+    EXPECT_TRUE(document.proxy.has_value());
 }
 
 TEST(Unit_ProjectDocument, RejectsADocumentWhichIsNotAnObject)

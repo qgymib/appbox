@@ -198,10 +198,14 @@ TEST(Unit_TracerScope, NameResolutionIsPartOfTheNetworkScope)
 }
 
 /**
- * @brief The default scope is a superset of the name resolution entry points the
- *        sandbox hooks, which is what makes the tracer usable for the DNS
- *        isolation; the sandbox hooks nothing else, and the scope does not
- *        depend on that.
+ * @brief The default scope covers the name resolution entry points the sandbox
+ *        hooks, which is what makes the tracer usable for the DNS isolation.
+ *
+ * The scope does not depend on the hook table of the sandbox, which carries the
+ * other domains and the data plane of the socket API as well: the scope stays
+ * at the lowest landing point of a domain, and the data plane of a socket is
+ * covered by the device control path of ntdll instead of the socket entry
+ * points, which are the level the proxy hooks.
  */
 TEST(Unit_TracerScope, TheNetworkScopeCoversTheHookedEntryPoints)
 {

@@ -1,8 +1,10 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "utils/Winsock.hpp" /* Must be first include file */
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <string>
 #include "utils/Log.hpp"
+#include "network/Proxy.hpp"
 #include "Sandbox.hpp"
 #include "WString.hpp"
 #include "Isolation.hpp"
@@ -39,6 +41,23 @@ NTSTATUS appbox::network::Isolation::Init()
     }
 
     LOG_I("network isolation loaded: {} DNS redirections", appbox::sandbox->dns_table.Count());
+
+    /*
+     * The proxy of the workspace travels in the same document, and the engine
+     * which carries it is created here: the module is initialized before the
+     * hooks are attached, so the file itself is read through the original
+     * entry points of the process.
+     */
+    ProxyConfig config;
+    if (!ParseProxyConfig(text, config))
+    {
+        LOG_W("the proxy of the network isolation file could not be read");
+        return STATUS_SUCCESS;
+    }
+
+    appbox::sandbox->proxy = std::make_shared<Proxy>();
+    appbox::sandbox->proxy->Configure(config);
+
     return STATUS_SUCCESS;
 }
 
@@ -51,4 +70,10 @@ void appbox::network::Isolation::Exit()
 
     /* The table belongs to the sandbox instance, which owns it for the run. */
     appbox::sandbox->dns_table.Clear();
+
+    if (appbox::sandbox->proxy != nullptr)
+    {
+        appbox::sandbox->proxy->Reset();
+        appbox::sandbox->proxy.reset();
+    }
 }

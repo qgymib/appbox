@@ -20,6 +20,17 @@ void AddEntry(appbox::NetworkModel& model, const std::wstring& hostname, const s
 }
 
 /**
+ * @brief Set the proxy of a model and fail the test when it refuses it.
+ * @param[in,out] model Model to update.
+ * @param[in] proxy Proxy configuration to store.
+ */
+void SetProxy(appbox::NetworkModel& model, const appbox::ProxyConfig& proxy)
+{
+    std::string error;
+    ASSERT_TRUE(model.SetProxy(proxy, error)) << error;
+}
+
+/**
  * @brief Build the isolation file of a model and fail the test on failure.
  * @param[in] model Model to describe.
  * @return The text of the isolation file.
@@ -86,4 +97,58 @@ TEST(Unit_NetworkIsolationFile, RejectsAnEntryTheModelWouldRefuse)
     EXPECT_FALSE(model.AddDnsEntry(L"example.com", L"not-an-address", error));
     EXPECT_FALSE(error.empty());
     EXPECT_TRUE(model.IsEmpty());
+}
+
+TEST(Unit_NetworkIsolationFile, WritesTheProxyWhileTheModelHoldsOne)
+{
+    appbox::NetworkModel model;
+    appbox::ProxyConfig  proxy;
+    proxy.tcp = true;
+    proxy.server = L"proxy.example";
+    proxy.port = L"1080";
+    proxy.username = L"user";
+    proxy.password = L"secret";
+    SetProxy(model, proxy);
+
+    const auto document = nlohmann::json::parse(BuildOrFail(model));
+
+    ASSERT_TRUE(document.contains("proxy"));
+    const auto& item = document["proxy"];
+    EXPECT_EQ(item["type"], "socks5");
+    EXPECT_EQ(item["tcp"], true);
+    EXPECT_EQ(item["udp"], false);
+    EXPECT_EQ(item["server"], "proxy.example");
+    EXPECT_EQ(item["port"], "1080");
+    EXPECT_EQ(item["username"], "user");
+    EXPECT_EQ(item["password"], "secret");
+}
+
+TEST(Unit_NetworkIsolationFile, WritesTheProxyWhileOnlyAFieldCarriesAValue)
+{
+    appbox::NetworkModel model;
+    appbox::ProxyConfig  proxy;
+    proxy.server = L"proxy.example";
+    SetProxy(model, proxy);
+
+    const auto document = nlohmann::json::parse(BuildOrFail(model));
+
+    /*
+     * A proxy which is configured but carries no traffic is still part of the
+     * document, so the workspace does not lose it while the user is editing.
+     */
+    ASSERT_TRUE(document.contains("proxy"));
+    EXPECT_EQ(document["proxy"]["tcp"], false);
+    EXPECT_EQ(document["proxy"]["udp"], false);
+    EXPECT_EQ(document["proxy"]["server"], "proxy.example");
+    EXPECT_EQ(document["proxy"]["port"], "");
+}
+
+TEST(Unit_NetworkIsolationFile, LeavesTheProxyOutWhileTheModelHoldsNone)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+
+    const auto document = nlohmann::json::parse(BuildOrFail(model));
+
+    EXPECT_FALSE(document.contains("proxy"));
 }

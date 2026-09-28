@@ -17,9 +17,9 @@ namespace appbox
  * The document describes the current configuration: the imported folders, the
  * imported files, the main program, the virtual registry with the isolation
  * modes of every key and value, the isolation modes of the virtual filesystem,
- * the DNS redirections of the network workspace and the path of the
- * `Output File` box. The structure and the schema of the document are described
- * by ProjectDocument.
+ * the DNS redirections and the proxy of the network workspace and the path of
+ * the `Output File` box. The structure and the schema of the document are
+ * described by ProjectDocument.
  *
  * The imported folders are listed preset directory by preset directory, so the
  * order of the document does not depend on the order the user imported them
@@ -56,8 +56,8 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
  * @param[out] model Model replaced with the configuration of the document.
  * @param[out] registry Registry replaced with the registry of the document.
  * @param[out] isolation Isolation modes replaced with the modes of the document.
- * @param[out] network Network model replaced with the redirections of the
- *                     document.
+ * @param[out] network Network model replaced with the redirections and the
+ *                     proxy of the document.
  * @param[out] output_path Destination archive path of the document.
  * @param[out] error Error description on failure, prefixed with the path of the
  *                   entry which was rejected, for example `folders[1]: ...`.

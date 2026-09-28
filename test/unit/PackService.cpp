@@ -403,6 +403,62 @@ TEST(Unit_PackService, PackWritesNetworkIsolationFile)
     EXPECT_EQ(entries[0]["redirect"].get<std::string>(), "127.0.0.1");
     EXPECT_EQ(entries[1]["hostname"].get<std::string>(), "api.example.com");
     EXPECT_EQ(entries[1]["redirect"].get<std::string>(), "::1");
+
+    /* A session without a proxy keeps the document of the previous schema. */
+    EXPECT_FALSE(document.contains("proxy"));
+}
+
+TEST(Unit_PackService, PackWritesTheProxyOfTheNetworkWorkspace)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    appbox::NetworkModel  network;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.SetMainProgram("program_files", L"MyApp", L"app.exe", error)) << error;
+
+    appbox::ProxyConfig proxy;
+    proxy.tcp = true;
+    proxy.udp = true;
+    proxy.server = L"proxy.example";
+    proxy.port = L"1080";
+    proxy.username = L"user";
+    proxy.password = L"secret";
+    ASSERT_TRUE(network.SetProxy(proxy, error)) << error;
+
+    const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-proxy.zip");
+    const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), network, "FAKE", 4,
+                                     zip_path.wstring(), nullptr);
+    EXPECT_EQ(result, "") << result;
+
+    ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
+    zip_t*           archive = closer.archive;
+    ASSERT_NE(archive, nullptr);
+
+    const auto text = ReadEntry(archive, "data/network-isolation.json");
+    ASSERT_FALSE(text.empty());
+
+    /*
+     * The proxy travels with the network isolation file: the schema version is
+     * the one of a file which does not carry the optional member, so an archive
+     * which was written before the proxy existed is still readable.
+     */
+    const auto document = nlohmann::json::parse(text);
+    EXPECT_EQ(document["version"].get<int>(), 1);
+    ASSERT_TRUE(document.contains("proxy"));
+
+    const auto& item = document["proxy"];
+    EXPECT_EQ(item["type"].get<std::string>(), "socks5");
+    EXPECT_TRUE(item["tcp"].get<bool>());
+    EXPECT_TRUE(item["udp"].get<bool>());
+    EXPECT_EQ(item["server"].get<std::string>(), "proxy.example");
+    EXPECT_EQ(item["port"].get<std::string>(), "1080");
+    EXPECT_EQ(item["username"].get<std::string>(), "user");
+    EXPECT_EQ(item["password"].get<std::string>(), "secret");
 }
 
 TEST(Unit_PackService, LoaderEntryNameIsEmptyWithoutAMainProgram)

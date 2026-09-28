@@ -9,22 +9,35 @@
 #include <vector>
 
 class NetworkTabBar;
+class wxCheckBox;
+class wxChoice;
 class wxSimplebook;
+class wxStaticText;
+class wxTextCtrl;
 
 /**
  * @brief Network workspace of the packer.
  *
  * The workspace opens on a flat tab strip with the pages `Proxy`, `DNS` and
- * `IP Restrictions`. The `DNS` page is implemented: a toolbar row with
- * `Add...` and `Remove` above the table of the DNS redirections of the model,
- * whose two columns - `Hostname or IP Address` and `Redirect` - are edited
- * inside the cell. The other two pages show the empty state of a reserved
- * isolation domain.
+ * `IP Restrictions`. The `DNS` page holds a toolbar row with `Add...` and
+ * `Remove` above the table of the DNS redirections of the model, whose two
+ * columns - `Hostname or IP Address` and `Redirect` - are edited inside the
+ * cell. The table shows one row per stored redirection plus at most one row
+ * which is still being filled in: `Add...` appends such a draft, and the row
+ * reaches the model as soon as both of its fields carry a value. A value the
+ * model refuses is reported and the stored value is put back into the cell.
  *
- * The table shows one row per stored redirection plus at most one row which is
- * still being filled in: `Add...` appends such a draft, and the row reaches
- * the model as soon as both of its fields carry a value. A value the model
- * refuses is reported and the stored value is put back into the cell.
+ * The `Proxy` page holds the SOCKS5 proxy of the model: the protocol of the
+ * proxy, the two check boxes which pick the traffic it carries, the address of
+ * the server, its port and the optional credentials. Every change of a control
+ * is handed to the model at once, and a hint line below the form shows what
+ * the model did with it - the summary of the stored configuration or the
+ * description of the value it refused. A refused value is not reported with a
+ * dialog and is not put back into the control, because the user may be in the
+ * middle of typing it; the model keeps the last configuration it accepted.
+ *
+ * The `IP Restrictions` page shows the empty state of a reserved isolation
+ * domain.
  */
 class NetworkPanel : public wxPanel
 {
@@ -37,11 +50,12 @@ public:
     NetworkPanel(wxWindow* parent, appbox::NetworkModel& model);
 
     /**
-     * @brief Rebuild the table from the model.
+     * @brief Rebuild the table and the proxy form from the model.
      *
      * The model is replaced as a whole when a project file is imported, so the
      * rows of the table - including a draft which is still being filled in -
-     * are dropped and built from the new content of the model.
+     * are dropped and built from the new content of the model, and the proxy
+     * form shows the proxy of the new model.
      */
     void RefreshModel();
 
@@ -78,6 +92,13 @@ private:
     wxWindow* CreateDnsPage(wxWindow* parent);
 
     /**
+     * @brief Create the page of the proxy configuration.
+     * @param[in] parent Parent window of the page.
+     * @return The page.
+     */
+    wxWindow* CreateProxyPage(wxWindow* parent);
+
+    /**
      * @brief Create the toolbar row above the DNS table.
      * @param[in] parent Parent window of the row.
      * @return The toolbar row.
@@ -97,6 +118,34 @@ private:
      * table, so a rebuild never drops a row the user is filling in.
      */
     void RefreshList();
+
+    /**
+     * @brief Show the proxy of the model in the form.
+     *
+     * The controls are filled from the model and the hint line is rebuilt from
+     * it, so the form shows the configuration which was imported with a
+     * project file and the values a refused change left behind.
+     */
+    void RefreshProxy();
+
+    /**
+     * @brief Hand the content of the proxy form to the model.
+     *
+     * The whole form is offered to the model as one configuration, so the
+     * change of a control is either accepted as a whole or refused as a whole.
+     * A refusal is reported by the hint line and leaves the controls as the
+     * user typed them, because the model keeps the last configuration it
+     * accepted.
+     */
+    void CommitProxy();
+
+    /**
+     * @brief Show what the model did with the proxy configuration.
+     *
+     * @param[in] error Error description of the model, empty when the
+     *                  configuration was accepted.
+     */
+    void UpdateProxyHint(const std::string& error);
 
     /**
      * @brief Append one row to the table.
@@ -145,6 +194,17 @@ private:
     void OnTabChanged(wxCommandEvent& event);
 
     /**
+     * @brief Hand the proxy form to the model.
+     *
+     * The handler serves every control of the form: a text field reports a
+     * change of its text, a check box and the choice of the protocol report a
+     * command event, and all of them end in the same commit.
+     *
+     * @param[in] event Command event.
+     */
+    void OnProxyChanged(wxCommandEvent& event);
+
+    /**
      * @brief Append the row of the next DNS redirection.
      * @param[in] event Command event.
      */
@@ -174,10 +234,11 @@ private:
     appbox::NetworkModel& model_;
 
     /**
-     * @brief Whether the table is being rebuilt or a cell is being put back.
+     * @brief Whether the table is being rebuilt, a cell is being put back or
+     *        the proxy form is being filled from the model.
      *
-     * Both suppress the value change events of the control, which would
-     * otherwise be read as a value the user entered.
+     * All of them suppress the events of the controls, which would otherwise
+     * be read as a value the user entered.
      */
     bool updating_ = false;
 
@@ -186,6 +247,15 @@ private:
     wxDataViewListCtrl* list_ = nullptr;
     wxButton*           add_ = nullptr;
     wxButton*           remove_ = nullptr;
+
+    wxChoice*     proxy_type_ = nullptr;
+    wxCheckBox*   proxy_tcp_ = nullptr;
+    wxCheckBox*   proxy_udp_ = nullptr;
+    wxTextCtrl*   proxy_server_ = nullptr;
+    wxTextCtrl*   proxy_port_ = nullptr;
+    wxTextCtrl*   proxy_username_ = nullptr;
+    wxTextCtrl*   proxy_password_ = nullptr;
+    wxStaticText* proxy_hint_ = nullptr;
 
     /**
      * @brief The rows of the table, in table order.

@@ -1022,3 +1022,144 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenNetworkMember)
     EXPECT_EQ(network.DnsEntries()[0].hostname, L"keep.example.com");
     EXPECT_EQ(network.DnsEntries()[0].redirect, L"10.0.0.1");
 }
+
+TEST(Unit_ProjectFile, ProxyTravelsWithTheProjectFile)
+{
+    TempDir temp;
+
+    appbox::ProxyConfig proxy;
+    proxy.type = appbox::ProxyType::Socks5;
+    proxy.tcp = true;
+    proxy.udp = true;
+    proxy.server = L"proxy.example.com";
+    proxy.port = L"1080";
+    proxy.username = L"user";
+    proxy.password = L"secret";
+
+    appbox::NetworkModel network;
+    std::string          error;
+    ASSERT_TRUE(network.SetProxy(proxy, error)) << error;
+    ASSERT_TRUE(network.AddDnsEntry(L"update.example.com", L"127.0.0.1", error)) << error;
+
+    const auto document = appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{},
+                                                      appbox::FilesystemIsolationModel{}, network, L"");
+
+    const auto path = temp.File(L"proxy.json");
+    ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
+
+    appbox::ProjectDocument loaded_document;
+    ASSERT_TRUE(appbox::LoadProject(path.wstring(), loaded_document, error)) << error;
+
+    appbox::PackModel                loaded;
+    appbox::RegistryModel            loaded_registry;
+    appbox::FilesystemIsolationModel loaded_isolation;
+    appbox::NetworkModel             loaded_network;
+    std::wstring                     loaded_output;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
+                                             loaded_output, error))
+        << error;
+
+    ASSERT_TRUE(loaded_network.HasProxy());
+    const auto& loaded_proxy = loaded_network.Proxy();
+    EXPECT_EQ(loaded_proxy.type, appbox::ProxyType::Socks5);
+    EXPECT_TRUE(loaded_proxy.tcp);
+    EXPECT_TRUE(loaded_proxy.udp);
+    EXPECT_EQ(loaded_proxy.server, L"proxy.example.com");
+    EXPECT_EQ(loaded_proxy.port, L"1080");
+    EXPECT_EQ(loaded_proxy.username, L"user");
+    EXPECT_EQ(loaded_proxy.password, L"secret");
+
+    /* The redirections of the same workspace travel as well. */
+    ASSERT_EQ(loaded_network.DnsEntries().size(), 1u);
+    EXPECT_EQ(loaded_network.DnsEntries()[0].hostname, L"update.example.com");
+    EXPECT_EQ(loaded_network.DnsEntries()[0].redirect, L"127.0.0.1");
+}
+
+TEST(Unit_ProjectFile, KeepsAProxyWhichIsTurnedOff)
+{
+    appbox::ProxyConfig proxy;
+    proxy.tcp = false;
+    proxy.udp = false;
+    proxy.server = L"proxy.example.com";
+    proxy.port = L"1080";
+
+    appbox::NetworkModel network;
+    std::string          error;
+    ASSERT_TRUE(network.SetProxy(proxy, error)) << error;
+
+    const auto document = appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{},
+                                                      appbox::FilesystemIsolationModel{}, network, L"");
+
+    /*
+     * A proxy which was typed and then disabled is part of the document, so
+     * turning it off does not lose the server the user entered.
+     */
+    ASSERT_TRUE(document.proxy.has_value());
+    EXPECT_FALSE(document.proxy->tcp);
+    EXPECT_FALSE(document.proxy->udp);
+    EXPECT_EQ(document.proxy->server, L"proxy.example.com");
+    EXPECT_EQ(document.proxy->port, L"1080");
+}
+
+TEST(Unit_ProjectFile, ApplyOfADocumentWithoutAProxyClearsTheProxy)
+{
+    appbox::ProxyConfig proxy;
+    proxy.tcp = true;
+    proxy.server = L"proxy.example.com";
+    proxy.port = L"1080";
+
+    appbox::NetworkModel network;
+    std::string          error;
+    ASSERT_TRUE(network.SetProxy(proxy, error)) << error;
+
+    appbox::ProjectDocument document;
+    document.output_path = L"D:\\out\\MyApp.zip";
+
+    appbox::PackModel                model;
+    appbox::RegistryModel            registry;
+    appbox::FilesystemIsolationModel isolation;
+    std::wstring                     output;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, output, error)) << error;
+
+    /* A session which imports a configuration without a proxy holds none. */
+    EXPECT_FALSE(network.HasProxy());
+    EXPECT_TRUE(network.IsEmpty());
+}
+
+TEST(Unit_ProjectFile, ApplyRejectsAProxyTheModelRefuses)
+{
+    TempDir temp;
+
+    /* The document is complete, but an enabled protocol without a server is a
+     * configuration the model refuses. */
+    const auto path = temp.File(L"proxy-broken.json");
+    WriteBytes(path, "{ \"version\": 1, \"proxy\": { \"type\": \"socks5\", \"tcp\": true, \"udp\": false, "
+                     "\"server\": \"\", \"port\": \"1080\", \"username\": \"\", \"password\": \"\" } }");
+
+    appbox::ProxyConfig stored;
+    stored.tcp = true;
+    stored.server = L"proxy.example.com";
+    stored.port = L"1080";
+
+    appbox::NetworkModel network;
+    std::string          error;
+    ASSERT_TRUE(network.SetProxy(stored, error)) << error;
+    ASSERT_TRUE(network.AddDnsEntry(L"keep.example.com", L"10.0.0.1", error)) << error;
+
+    appbox::ProjectDocument document;
+    ASSERT_TRUE(appbox::LoadProject(path.wstring(), document, error)) << error;
+
+    appbox::PackModel                model;
+    appbox::RegistryModel            registry;
+    appbox::FilesystemIsolationModel isolation;
+    std::wstring                     output;
+    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, output, error));
+    EXPECT_NE(error.find("proxy"), std::string::npos) << error;
+    EXPECT_NE(error.find("must not be empty"), std::string::npos) << error;
+
+    /* A rejected document leaves the network model of the session untouched. */
+    ASSERT_TRUE(network.HasProxy());
+    EXPECT_EQ(network.Proxy().server, L"proxy.example.com");
+    ASSERT_EQ(network.DnsEntries().size(), 1u);
+    EXPECT_EQ(network.DnsEntries()[0].hostname, L"keep.example.com");
+}

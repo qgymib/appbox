@@ -2,6 +2,7 @@
 #define APPBOX_PACKER_CORE_PROJECT_DOCUMENT_HPP
 
 #include "FilesystemIsolation.hpp"
+#include "NetworkModel.hpp"
 #include "RegistryIsolation.hpp"
 #include "RegistryModel.hpp"
 #include <nlohmann/json_fwd.hpp>
@@ -230,13 +231,64 @@ struct ProjectDnsRecord
 };
 
 /**
+ * @brief The proxy of the network part of a project document.
+ *
+ * The record describes the SOCKS5 proxy of the packaged application: which
+ * protocols it carries, where the server listens and which credentials it
+ * expects. It is the counterpart of `NetworkModel::Proxy()` and carries the
+ * configuration even while no protocol is enabled, so a proxy the user turned
+ * off keeps its server and its credentials in the file.
+ */
+struct ProjectProxyRecord
+{
+    /**
+     * @brief Protocol of the proxy.
+     */
+    ProxyType type = ProxyType::Socks5;
+
+    /**
+     * @brief Whether the TCP traffic of the application is proxied.
+     */
+    bool tcp = false;
+
+    /**
+     * @brief Whether the UDP traffic of the application is proxied.
+     */
+    bool udp = false;
+
+    /**
+     * @brief Hostname or address of the proxy server.
+     */
+    std::wstring server;
+
+    /**
+     * @brief Port of the proxy server, stored as text like every other scalar.
+     */
+    std::wstring port;
+
+    /**
+     * @brief Optional user name, empty while no authentication is configured.
+     */
+    std::wstring username;
+
+    /**
+     * @brief Optional password, empty while no authentication is configured.
+     *
+     * The password is stored as plain text: the sandbox has to send it to the
+     * proxy server, so the project file cannot hash it.
+     */
+    std::wstring password;
+};
+
+/**
  * @brief The content of a project file.
  *
  * The structure is the document of the `File -> Export Configuration...` and
  * `File -> Import Configuration...` commands: the imported folders and files,
  * the main program, the virtual registry, the isolation modes of the virtual
- * filesystem and the DNS redirections of the network workspace. It holds no
- * host state and no wxWidgets dependency, so the conversion is unit testable.
+ * filesystem, the DNS redirections of the network workspace and the proxy of
+ * the network workspace. It holds no host state and no wxWidgets dependency,
+ * so the conversion is unit testable.
  *
  * `to_json()` and `from_json()` convert the structure to and from the JSON
  * text of a project file; the file itself is written and read by
@@ -265,13 +317,21 @@ struct ProjectDnsRecord
  *   "filesystem": [ { "path": "#ProgramFiles#\\MyApp", "kind": "directory",
  *                     "isolation": "whiteout" } ],
  *   "network": [ { "hostname": "update.example.com",
- *                  "redirect": "127.0.0.1" } ]
+ *                  "redirect": "127.0.0.1" } ],
+ *   "proxy": { "type": "socks5", "tcp": true, "udp": false,
+ *              "server": "127.0.0.1", "port": "1080",
+ *              "username": "user", "password": "secret" }
  * }
  * ```
  *
  * Every path is stored as the host path it has on the machine which exported
  * the configuration; the file only records the imports, it never copies the
  * imported content itself.
+ *
+ * The `proxy` member is written only while a proxy is configured, like the
+ * `main_program` member is written only while a main program is selected, so a
+ * document of a session without a proxy keeps the text it had before the
+ * member was added to the schema.
  */
 struct ProjectDocument
 {
@@ -309,6 +369,16 @@ struct ProjectDocument
      * @brief The DNS redirections of the network workspace.
      */
     std::vector<ProjectDnsRecord> network;
+
+    /**
+     * @brief The proxy of the network workspace, absent while none is
+     *        configured.
+     *
+     * A proxy counts as configured as soon as one of its protocols is enabled
+     * or one of its fields carries a value, so a configuration which was typed
+     * and then disabled is part of the document as well.
+     */
+    std::optional<ProjectProxyRecord> proxy;
 };
 
 /**
@@ -417,12 +487,27 @@ void to_json(nlohmann::ordered_json& json, const ProjectDnsRecord& record);
 void from_json(const nlohmann::ordered_json& json, ProjectDnsRecord& record);
 
 /**
+ * @brief Store the proxy of a document.
+ * @param[out] json Object which receives the record.
+ * @param[in] record The record to store.
+ */
+void to_json(nlohmann::ordered_json& json, const ProjectProxyRecord& record);
+
+/**
+ * @brief Read the proxy of a document.
+ * @param[in] json Object holding the record.
+ * @param[out] record The record to fill.
+ * @throw ProjectDocumentError The object does not fit the schema.
+ */
+void from_json(const nlohmann::ordered_json& json, ProjectProxyRecord& record);
+
+/**
  * @brief Store the content of a project file as a JSON document.
  *
  * The members are written in the order of ProjectDocument with the schema
  * version first, so the text of a given document is stable and easy to read.
- * Every member is written, except `main_program`, which is omitted while no
- * main program is selected.
+ * Every member is written, except `main_program` and `proxy`, which are
+ * omitted while no main program is selected and while no proxy is configured.
  *
  * @param[out] json Object which receives the document.
  * @param[in] document The document to store.

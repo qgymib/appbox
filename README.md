@@ -249,7 +249,7 @@ icon navigation on the left and the workspace on the right.
   project file stores it as well, so the modes which were picked are the ones
   the packaged application runs with.
 - **Network workspace**: a flat tab strip with the pages `Proxy`, `DNS` and
-  `IP Restrictions`, which opens on `DNS`. The `DNS` page carries the `Add...`
+  `IP Restrictions`, which opens on `Proxy`. The `DNS` page carries the `Add...`
   and `Remove` buttons above the table of the DNS redirections of the packaged
   application, whose columns `Hostname or IP Address` and `Redirect` are edited
   inside the cell: `Add...` appends a row and opens its first cell, and the row
@@ -262,8 +262,18 @@ icon navigation on the left and the workspace on the right.
   redirections travel with the project file and into the archive: `Build`
   writes them as `data/network-isolation.json` into the overlay, and the sandbox
   answers the name resolution of the packaged application from that file
-  (see [Network Isolation](docs/NetworkIsolation.md)). `Proxy` and
-  `IP Restrictions` show the empty state of a reserved isolation domain.
+  (see [Network Isolation](docs/NetworkIsolation.md)). The `Proxy` page holds
+  the SOCKS5 proxy of the packaged application: the protocol, the two check
+  boxes which pick the traffic it carries, the address of the server, its port
+  and the optional credentials (the password is masked). At least one of the
+  two check boxes has to be set for the proxy to be in effect, the server and
+  the port are required as soon as one of them is, and the hint line below the
+  form reports a refused value instead of a dialog. The proxy travels with the
+  project file and with the archive as the optional `proxy` member of the same
+  isolation file, and the sandbox carries the TCP traffic and the UDP traffic of
+  the packaged application through the server it names, at the winsock layer
+  (see [Network Isolation](docs/NetworkIsolation.md)). `IP Restrictions`
+  shows the empty state of a reserved isolation domain.
 - **File list**: the columns `Filename`, `Isolation`, `Read Only`,
   `No Upgrade`, `Size` and `Source Path`. `Filename` shows an icon before the
   name of the row, a folder for a folder and a plain file for a file; the icons

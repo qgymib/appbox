@@ -8,9 +8,23 @@
 #include "network/DnsTable.hpp"
 #include "Config.hpp"
 #include <nlohmann/json.hpp>
+#include <memory>
 
 namespace appbox
 {
+
+namespace network
+{
+
+/*
+ * The proxy of the sandbox owns the socket API and is only reachable through
+ * its own header, so the instance is held through a pointer: the sandbox
+ * header is included by every translation unit of the sandbox, and only the
+ * ones which carry the socket API may include the winsock 2 headers.
+ */
+class Proxy;
+
+} // namespace network
 
 struct Sandbox
 {
@@ -86,6 +100,16 @@ struct Sandbox
      * of its entry instead of being asked at the host.
      */
     network::DnsTable dns_table;
+
+    /**
+     * @brief SOCKS5 proxy of the network isolation.
+     *
+     * The engine is created by the network isolation module from the proxy of
+     * the isolation file and carries the traffic of the application through
+     * the server the file names. A null instance means that the process has no
+     * proxy, so every connection keeps the path of the host.
+     */
+    std::shared_ptr<network::Proxy> proxy;
 
     /**
      * @brief Path to 32-bit sandbox dll path. Encoding in UTF-8.

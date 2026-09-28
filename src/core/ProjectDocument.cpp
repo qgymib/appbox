@@ -45,6 +45,13 @@ constexpr const char* kKindKey = "kind";
 constexpr const char* kNetworkKey = "network";
 constexpr const char* kHostnameKey = "hostname";
 constexpr const char* kRedirectKey = "redirect";
+constexpr const char* kProxyKey = "proxy";
+constexpr const char* kTcpKey = "tcp";
+constexpr const char* kUdpKey = "udp";
+constexpr const char* kServerKey = "server";
+constexpr const char* kPortKey = "port";
+constexpr const char* kUsernameKey = "username";
+constexpr const char* kPasswordKey = "password";
 
 /**
  * @brief Reject a JSON value which is not an object.
@@ -109,6 +116,24 @@ std::wstring ReadOptionalText(const Json& json, const char* key)
     }
 
     return appbox::UTF8ToWide(member->get<std::string>());
+}
+
+/**
+ * @brief Read a required member which holds a boolean.
+ * @param[in] json Object to read from.
+ * @param[in] key Name of the member.
+ * @return The value of the member.
+ * @throw appbox::ProjectDocumentError The member is missing or not a boolean.
+ */
+bool ReadRequiredBool(const Json& json, const char* key)
+{
+    const auto member = json.find(key);
+    if (member == json.end() || !member->is_boolean())
+    {
+        throw appbox::ProjectDocumentError(std::string("the '") + key + "' member is missing or not a boolean");
+    }
+
+    return member->get<bool>();
 }
 
 /**
@@ -210,6 +235,26 @@ appbox::FilesystemEntryKind ReadFilesystemEntryKind(const Json& json, const char
     }
 
     return kind;
+}
+
+/**
+ * @brief Read the protocol of the proxy of a document.
+ * @param[in] json Object to read from.
+ * @param[in] key Name of the member.
+ * @return The protocol of the member.
+ * @throw appbox::ProjectDocumentError The protocol is unknown or not a string.
+ */
+appbox::ProxyType ReadProxyType(const Json& json, const char* key)
+{
+    const auto text = ReadRequiredString(json, key);
+
+    appbox::ProxyType type = appbox::ProxyType::Socks5;
+    if (!appbox::ParseProxyTypeToken(text, type))
+    {
+        throw appbox::ProjectDocumentError("unknown proxy type '" + text + "'");
+    }
+
+    return type;
 }
 
 /**
@@ -430,6 +475,34 @@ void from_json(const nlohmann::ordered_json& json, ProjectDnsRecord& record)
     record = std::move(candidate);
 }
 
+void to_json(nlohmann::ordered_json& json, const ProjectProxyRecord& record)
+{
+    json = nlohmann::ordered_json::object();
+    json[kTypeKey] = ProxyTypeToken(record.type);
+    json[kTcpKey] = record.tcp;
+    json[kUdpKey] = record.udp;
+    json[kServerKey] = WideToUTF8(record.server);
+    json[kPortKey] = WideToUTF8(record.port);
+    json[kUsernameKey] = WideToUTF8(record.username);
+    json[kPasswordKey] = WideToUTF8(record.password);
+}
+
+void from_json(const nlohmann::ordered_json& json, ProjectProxyRecord& record)
+{
+    RequireObject(json);
+
+    ProjectProxyRecord candidate;
+    candidate.type = ReadProxyType(json, kTypeKey);
+    candidate.tcp = ReadRequiredBool(json, kTcpKey);
+    candidate.udp = ReadRequiredBool(json, kUdpKey);
+    candidate.server = ReadRequiredText(json, kServerKey);
+    candidate.port = ReadRequiredText(json, kPortKey);
+    candidate.username = ReadRequiredText(json, kUsernameKey);
+    candidate.password = ReadRequiredText(json, kPasswordKey);
+
+    record = std::move(candidate);
+}
+
 void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
 {
     json = nlohmann::ordered_json::object();
@@ -447,6 +520,12 @@ void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
     json[kRegistryKey] = document.registry;
     json[kFilesystemKey] = document.filesystem;
     json[kNetworkKey] = document.network;
+
+    /* A document without a proxy does not name the member at all. */
+    if (document.proxy.has_value())
+    {
+        json[kProxyKey] = *document.proxy;
+    }
 }
 
 void from_json(const nlohmann::ordered_json& json, ProjectDocument& document)
@@ -482,6 +561,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectDocument& document)
     ReadRecordArray(json, kRegistryKey, candidate.registry);
     ReadRecordArray(json, kFilesystemKey, candidate.filesystem);
     ReadRecordArray(json, kNetworkKey, candidate.network);
+    ReadOptionalRecord(json, kProxyKey, candidate.proxy);
 
     document = std::move(candidate);
 }

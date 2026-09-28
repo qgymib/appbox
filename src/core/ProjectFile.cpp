@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -343,6 +344,43 @@ bool ApplyNetworkRecords(const std::vector<appbox::ProjectDnsRecord>& records, a
     return true;
 }
 
+/**
+ * @brief Restore the proxy of the network workspace of a document.
+ *
+ * A document which holds no proxy clears the proxy of the model, so a session
+ * which imports a configuration without one does not keep the proxy of the
+ * session before it.
+ *
+ * @param[in] record Proxy of the document, absent while none is configured.
+ * @param[in,out] model Model which receives the proxy.
+ * @param[out] error Error description on failure.
+ * @return true when the proxy was restored.
+ */
+bool ApplyProxyRecord(const std::optional<appbox::ProjectProxyRecord>& record, appbox::NetworkModel& model,
+                      std::string& error)
+{
+    appbox::ProxyConfig config;
+    if (record.has_value())
+    {
+        config.type = record->type;
+        config.tcp = record->tcp;
+        config.udp = record->udp;
+        config.server = record->server;
+        config.port = record->port;
+        config.username = record->username;
+        config.password = record->password;
+    }
+
+    std::string detail;
+    if (!model.SetProxy(config, detail))
+    {
+        error = Scoped("proxy", detail);
+        return false;
+    }
+
+    return true;
+}
+
 } // namespace
 
 namespace appbox
@@ -408,6 +446,21 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
         document.network.push_back(std::move(record));
     }
 
+    if (network.HasProxy())
+    {
+        const auto& proxy = network.Proxy();
+
+        ProjectProxyRecord record;
+        record.type = proxy.type;
+        record.tcp = proxy.tcp;
+        record.udp = proxy.udp;
+        record.server = proxy.server;
+        record.port = proxy.port;
+        record.username = proxy.username;
+        record.password = proxy.password;
+        document.proxy = std::move(record);
+    }
+
     return document;
 }
 
@@ -471,6 +524,11 @@ bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, Reg
     }
 
     if (!ApplyNetworkRecords(document.network, candidate_network, error))
+    {
+        return false;
+    }
+
+    if (!ApplyProxyRecord(document.proxy, candidate_network, error))
     {
         return false;
     }

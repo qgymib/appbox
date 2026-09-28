@@ -62,7 +62,7 @@ std::wstring LoaderEntryName(const PackModel& model);
  * data/registry/user.hiv                 virtual registry of the workspace
  * data/registry/isolation.json           isolation modes of the registry
  * data/filesystem-isolation.json         isolation modes of the filesystem
- * data/network-isolation.json            DNS redirections of the network
+ * data/network-isolation.json            network configuration of the workspace
  * filesystem/<layer key>/<import>/...    imported folder content
  * filesystem/<layer key>/<target>/<file> imported file content
  * ```
@@ -102,10 +102,11 @@ std::wstring LoaderEntryName(const PackModel& model);
  * which redirects the filesystem of the packaged application through the modes
  * (see `common/FilesystemIsolation.hpp`).
  *
- * The DNS redirections of the network workspace land in the overlay as
+ * The network configuration of the workspace lands in the overlay as
  * `data/network-isolation.json`: the loader hands the file to the sandbox,
- * which answers a name resolution of the packaged application from it
- * (see `common/NetworkIsolation.hpp`).
+ * which answers a name resolution of the packaged application from its DNS
+ * redirections and sends its traffic through its proxy (see
+ * `common/NetworkIsolation.hpp`).
  *
  * @param[in] model The pack model.
  * @param[in] registry Virtual registry of the workspace, which is written into

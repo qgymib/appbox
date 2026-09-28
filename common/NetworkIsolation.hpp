@@ -11,20 +11,22 @@ namespace appbox
 {
 
 /**
- * @brief Isolation of the name resolution of a sandboxed application.
+ * @brief Isolation of the network traffic of a sandboxed application.
  *
- * The packer collects the DNS redirections of the packaged application in the
- * `DNS` page of the `Network` workspace: every entry pairs a hostname with the
- * address the name has to resolve to inside the sandbox. The packer writes the
- * entries into the network isolation file of the archive (see the schema
- * below), the loader hands the path of the file to the sandbox, and the
- * sandbox answers a matching name resolution with the configured address
- * instead of asking the host: the resolution is served from the isolation file
- * and never leaves the process.
+ * The packer collects the network configuration of the packaged application in
+ * the `Network` workspace: the DNS redirections of its `DNS` page pair a
+ * hostname with the address the name has to resolve to inside the sandbox, and
+ * its `Proxy` page holds the SOCKS5 proxy which carries the TCP traffic, the
+ * UDP traffic or both. The packer writes both into the network isolation file
+ * of the archive (see the schema below), the loader hands the path of the file
+ * to the sandbox, and the sandbox answers a matching name resolution with the
+ * configured address instead of asking the host and sends the traffic of the
+ * application through the configured proxy.
  *
- * The vocabulary lives in `common/` because the packer validates the entries
- * with it and the sandbox resolves them with it, so both sides agree on what a
- * valid redirect address and the same hostname are.
+ * The vocabulary lives in `common/` because the packer validates the
+ * configuration with it and the sandbox applies it with it, so both sides
+ * agree on what a valid redirect address, the same hostname and a valid port
+ * are.
  */
 namespace network_isolation
 {
@@ -32,14 +34,18 @@ namespace network_isolation
 /**
  * @brief Schema of the network isolation file.
  *
- * The file is the JSON document which carries the DNS redirections from the
- * packer to the sandbox. The packer writes it into the overlay of the archive
- * and the sandbox answers a name resolution from it.
+ * The file is the JSON document which carries the network configuration from
+ * the packer to the sandbox. The packer writes it into the overlay of the
+ * archive, the sandbox answers a name resolution from its entries and sends
+ * the traffic of the application through its proxy.
  *
  * ```
  * {
  *   "version": 1,
- *   "entries": [ { "hostname": "update.example.com", "redirect": "127.0.0.1" } ]
+ *   "entries": [ { "hostname": "update.example.com", "redirect": "127.0.0.1" } ],
+ *   "proxy": { "type": "socks5", "tcp": true, "udp": false,
+ *              "server": "127.0.0.1", "port": "1080",
+ *              "username": "user", "password": "secret" }
  * }
  * ```
  *
@@ -47,6 +53,11 @@ namespace network_isolation
  * the `Hostname or IP Address` column of the workspace shows; the redirect is
  * the address the name resolves to inside the sandbox, which has to be an IPv4
  * or an IPv6 address literal.
+ *
+ * The `proxy` member is optional: it is written while the workspace holds a
+ * proxy configuration and a file which does not carry it describes a session
+ * without a proxy. The schema version therefore stays `1`, so a file which was
+ * written before the member existed is still accepted.
  */
 
 /**
@@ -68,6 +79,138 @@ inline constexpr const char* kHostnameKey = "hostname";
 
 /** Member name of the redirect address of an entry. */
 inline constexpr const char* kRedirectKey = "redirect";
+
+/** Member name of the optional proxy configuration. */
+inline constexpr const char* kProxyKey = "proxy";
+
+/** Member name of the protocol of the proxy. */
+inline constexpr const char* kProxyTypeKey = "type";
+
+/** Member name of the flag which proxies the TCP traffic. */
+inline constexpr const char* kProxyTcpKey = "tcp";
+
+/** Member name of the flag which proxies the UDP traffic. */
+inline constexpr const char* kProxyUdpKey = "udp";
+
+/** Member name of the server of the proxy. */
+inline constexpr const char* kProxyServerKey = "server";
+
+/** Member name of the port of the proxy. */
+inline constexpr const char* kProxyPortKey = "port";
+
+/** Member name of the optional user name of the proxy. */
+inline constexpr const char* kProxyUsernameKey = "username";
+
+/** Member name of the optional password of the proxy. */
+inline constexpr const char* kProxyPasswordKey = "password";
+
+/**
+ * @brief Token of the SOCKS5 protocol.
+ *
+ * The token is the one the `type` member of the proxy configuration carries
+ * and the one the project file stores, so both documents name the protocol the
+ * same way.
+ */
+inline constexpr const char* kSocks5Token = "socks5";
+
+/**
+ * @brief Whether a token names the SOCKS5 protocol.
+ *
+ * The comparison ignores the case and accepts a space or a dash in place of
+ * the underscore of the canonical token, like the tokens of the isolation
+ * modes do. The tokens are ASCII, so they are handled as narrow text like the
+ * JSON documents which carry them.
+ *
+ * @param[in] token The token to read.
+ * @return true when the token names SOCKS5.
+ */
+inline bool IsSocks5Token(std::string_view token)
+{
+    std::string normalized;
+    normalized.reserve(token.size());
+
+    for (const char character : token)
+    {
+        char lower = character;
+        if (lower >= 'A' && lower <= 'Z')
+        {
+            lower = static_cast<char>(lower - 'A' + 'a');
+        }
+        if (lower == ' ' || lower == '-')
+        {
+            lower = '_';
+        }
+        normalized.push_back(lower);
+    }
+
+    return normalized == kSocks5Token;
+}
+
+/**
+ * @brief Outcome of reading the text of a proxy port.
+ *
+ * The port is stored as the text the user entered, so both the packer and the
+ * sandbox have to agree on what a valid port is. The outcome names the rule
+ * which failed instead of a single flag, so the packer can report the value
+ * with its own wording while the sandbox only asks whether the text is a port.
+ */
+enum class PortText
+{
+    Ok,          ///< The text is a port.
+    Empty,       ///< The text is empty, which is the port which was not entered.
+    NotDecimal,  ///< The text holds a character which is not a decimal digit.
+    LeadingZero, ///< The text carries more than one digit and starts with a zero.
+    OutOfRange   ///< The text is not between 1 and 65535.
+};
+
+/**
+ * @brief Read the text of a proxy port.
+ *
+ * A port is a decimal number between 1 and 65535 without a leading zero, so
+ * the text the user entered is never silently read as another port.
+ *
+ * @param[in] text The text to read.
+ * @param[out] port The port of the text, untouched unless the text is a port.
+ * @return The outcome of the reading.
+ */
+inline PortText ReadPortText(std::string_view text, std::uint16_t& port)
+{
+    if (text.empty())
+    {
+        return PortText::Empty;
+    }
+
+    for (const char character : text)
+    {
+        if (character < '0' || character > '9')
+        {
+            return PortText::NotDecimal;
+        }
+    }
+
+    if (text.size() > 1 && text.front() == '0')
+    {
+        return PortText::LeadingZero;
+    }
+    if (text.size() > 5)
+    {
+        /* The largest port has five digits, so a longer text is out of range. */
+        return PortText::OutOfRange;
+    }
+
+    unsigned int value = 0;
+    for (const char character : text)
+    {
+        value = value * 10 + static_cast<unsigned int>(character - '0');
+    }
+    if (value < 1 || value > 65535)
+    {
+        return PortText::OutOfRange;
+    }
+
+    port = static_cast<std::uint16_t>(value);
+    return PortText::Ok;
+}
 
 /**
  * @brief Address family of a redirect address.

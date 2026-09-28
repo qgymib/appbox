@@ -2,9 +2,13 @@
 #include "NetworkTabBar.hpp"
 #include "PlaceholderPanel.hpp"
 #include <wx/button.h>
+#include <wx/checkbox.h>
+#include <wx/choice.h>
 #include <wx/msgdlg.h>
 #include <wx/simplebook.h>
 #include <wx/sizer.h>
+#include <wx/stattext.h>
+#include <wx/textctrl.h>
 #include <utility>
 
 namespace
@@ -17,13 +21,13 @@ namespace
  */
 enum class NetworkPage
 {
-    Proxy = 0,         ///< Proxy configuration, not implemented yet.
+    Proxy = 0,         ///< Proxy configuration of the packaged application.
     Dns = 1,           ///< DNS redirections.
     IpRestrictions = 2 ///< Address restrictions, not implemented yet.
 };
 
 /** Page the workspace opens on. */
-constexpr NetworkPage kStartPage = NetworkPage::Dns;
+constexpr NetworkPage kStartPage = NetworkPage::Proxy;
 
 /** Model column of the hostname. */
 constexpr unsigned int kHostnameColumn = 0;
@@ -40,6 +44,27 @@ constexpr int kRedirectWidth = 300;
 /** Background of the toolbar row above the DNS table. */
 const wxColour kToolBarBackground(0xF2, 0xF3, 0xF5);
 
+/** Border of the proxy form. */
+constexpr int kFormBorder = 12;
+
+/** Gap between two rows and between a label and its control. */
+constexpr int kFieldGap = 8;
+
+/** Width of the text fields of the proxy form. */
+constexpr int kFieldWidth = 260;
+
+/** Width of the port field of the proxy form. */
+constexpr int kPortWidth = 80;
+
+/** Number of digits the port field accepts. */
+constexpr int kPortLength = 5;
+
+/** Colour of the hint which describes the stored proxy configuration. */
+const wxColour kMutedTextColour(0x5A, 0x5A, 0x5A);
+
+/** Colour of the hint which reports a refused proxy configuration. */
+const wxColour kWarningTextColour(0xB4, 0x23, 0x18);
+
 } // namespace
 
 NetworkPanel::NetworkPanel(wxWindow* parent, appbox::NetworkModel& model) : wxPanel(parent, wxID_ANY), model_(model)
@@ -51,7 +76,7 @@ NetworkPanel::NetworkPanel(wxWindow* parent, appbox::NetworkModel& model) : wxPa
     tab_bar_->SetSelection(static_cast<int>(kStartPage));
 
     pages_ = new wxSimplebook(this, wxID_ANY);
-    pages_->AddPage(new PlaceholderPanel(pages_, "Proxy", "Proxy configuration of the packaged application."), "Proxy");
+    pages_->AddPage(CreateProxyPage(pages_), "Proxy");
     pages_->AddPage(CreateDnsPage(pages_), "DNS");
     pages_->AddPage(
         new PlaceholderPanel(pages_, "IP Restrictions", "Address restrictions of the packaged application."),
@@ -66,6 +91,77 @@ NetworkPanel::NetworkPanel(wxWindow* parent, appbox::NetworkModel& model) : wxPa
     Bind(APPBOX_NETWORK_TAB, &NetworkPanel::OnTabChanged, this);
 
     RefreshList();
+    RefreshProxy();
+}
+
+wxWindow* NetworkPanel::CreateProxyPage(wxWindow* parent)
+{
+    auto* page = new wxPanel(parent, wxID_ANY);
+
+    proxy_type_ = new wxChoice(page, wxID_ANY, wxDefaultPosition, wxSize(kFieldWidth, -1));
+    proxy_type_->Append("SOCKS5");
+    proxy_type_->SetSelection(0);
+    proxy_type_->SetToolTip("Protocol of the proxy the packaged application uses");
+
+    proxy_tcp_ = new wxCheckBox(page, wxID_ANY, "TCP");
+    proxy_tcp_->SetToolTip("Send the TCP traffic of the packaged application through the proxy");
+
+    proxy_udp_ = new wxCheckBox(page, wxID_ANY, "UDP");
+    proxy_udp_->SetToolTip("Send the UDP traffic of the packaged application through the proxy");
+
+    proxy_server_ = new wxTextCtrl(page, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(kFieldWidth, -1));
+    proxy_server_->SetToolTip("Hostname or IP address of the SOCKS5 server");
+
+    proxy_port_ = new wxTextCtrl(page, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(kPortWidth, -1));
+    proxy_port_->SetMaxLength(kPortLength);
+    proxy_port_->SetToolTip("Port of the SOCKS5 server, 1 to 65535");
+
+    proxy_username_ = new wxTextCtrl(page, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(kFieldWidth, -1));
+    proxy_username_->SetToolTip("User name of the SOCKS5 server; leave it empty while the server asks for none");
+
+    proxy_password_ =
+        new wxTextCtrl(page, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(kFieldWidth, -1), wxTE_PASSWORD);
+    proxy_password_->SetToolTip("Password of the SOCKS5 server; leave it empty while the server asks for none");
+
+    auto* protocols = new wxBoxSizer(wxHORIZONTAL);
+    protocols->Add(proxy_tcp_, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, kFieldGap);
+    protocols->Add(proxy_udp_, 0, wxALIGN_CENTER_VERTICAL);
+
+    auto* grid = new wxFlexGridSizer(2, kFieldGap, kFieldGap);
+    grid->Add(new wxStaticText(page, wxID_ANY, "Proxy type:"), 0, wxALIGN_CENTER_VERTICAL);
+    grid->Add(proxy_type_, 0);
+    grid->Add(new wxStaticText(page, wxID_ANY, "Protocols:"), 0, wxALIGN_CENTER_VERTICAL);
+    grid->Add(protocols, 0, wxALIGN_CENTER_VERTICAL);
+    grid->Add(new wxStaticText(page, wxID_ANY, "Server:"), 0, wxALIGN_CENTER_VERTICAL);
+    grid->Add(proxy_server_, 0);
+    grid->Add(new wxStaticText(page, wxID_ANY, "Port:"), 0, wxALIGN_CENTER_VERTICAL);
+    grid->Add(proxy_port_, 0);
+    grid->Add(new wxStaticText(page, wxID_ANY, "User name:"), 0, wxALIGN_CENTER_VERTICAL);
+    grid->Add(proxy_username_, 0);
+    grid->Add(new wxStaticText(page, wxID_ANY, "Password:"), 0, wxALIGN_CENTER_VERTICAL);
+    grid->Add(proxy_password_, 0);
+
+    proxy_hint_ = new wxStaticText(page, wxID_ANY, wxEmptyString);
+    proxy_hint_->SetForegroundColour(kMutedTextColour);
+
+    auto* sizer = new wxBoxSizer(wxVERTICAL);
+    sizer->Add(grid, 0, wxALL, kFormBorder);
+    sizer->Add(proxy_hint_, 0, wxLEFT | wxRIGHT | wxBOTTOM, kFormBorder);
+    page->SetSizer(sizer);
+
+    /*
+     * Every control reports its change to the same handler, which offers the
+     * whole form to the model.
+     */
+    proxy_server_->Bind(wxEVT_TEXT, &NetworkPanel::OnProxyChanged, this);
+    proxy_port_->Bind(wxEVT_TEXT, &NetworkPanel::OnProxyChanged, this);
+    proxy_username_->Bind(wxEVT_TEXT, &NetworkPanel::OnProxyChanged, this);
+    proxy_password_->Bind(wxEVT_TEXT, &NetworkPanel::OnProxyChanged, this);
+    proxy_tcp_->Bind(wxEVT_CHECKBOX, &NetworkPanel::OnProxyChanged, this);
+    proxy_udp_->Bind(wxEVT_CHECKBOX, &NetworkPanel::OnProxyChanged, this);
+    proxy_type_->Bind(wxEVT_CHOICE, &NetworkPanel::OnProxyChanged, this);
+
+    return page;
 }
 
 wxWindow* NetworkPanel::CreateDnsPage(wxWindow* parent)
@@ -131,6 +227,7 @@ void NetworkPanel::RefreshModel()
      */
     rows_.clear();
     RefreshList();
+    RefreshProxy();
 }
 
 void NetworkPanel::RefreshList()
@@ -167,6 +264,104 @@ void NetworkPanel::RefreshList()
 
     updating_ = false;
     UpdateToolBarState();
+}
+
+void NetworkPanel::RefreshProxy()
+{
+    if (proxy_type_ == nullptr)
+    {
+        return;
+    }
+
+    const auto& proxy = model_.Proxy();
+
+    /*
+     * Filling a control reports a change of its own, which would be read as a
+     * change of the user, so the events are suppressed while the form is
+     * filled.
+     */
+    updating_ = true;
+    proxy_type_->SetSelection(0);
+    proxy_tcp_->SetValue(proxy.tcp);
+    proxy_udp_->SetValue(proxy.udp);
+    proxy_server_->ChangeValue(wxString(proxy.server));
+    proxy_port_->ChangeValue(wxString(proxy.port));
+    proxy_username_->ChangeValue(wxString(proxy.username));
+    proxy_password_->ChangeValue(wxString(proxy.password));
+    updating_ = false;
+
+    UpdateProxyHint(std::string());
+}
+
+void NetworkPanel::CommitProxy()
+{
+    if (updating_ || proxy_type_ == nullptr)
+    {
+        return;
+    }
+
+    appbox::ProxyConfig config;
+
+    /* The choice holds the one protocol the workspace offers. */
+    config.type = appbox::ProxyType::Socks5;
+    config.tcp = proxy_tcp_->GetValue();
+    config.udp = proxy_udp_->GetValue();
+    config.server = proxy_server_->GetValue().ToStdWstring();
+    config.port = proxy_port_->GetValue().ToStdWstring();
+    config.username = proxy_username_->GetValue().ToStdWstring();
+    config.password = proxy_password_->GetValue().ToStdWstring();
+
+    std::string error;
+    if (!model_.SetProxy(config, error))
+    {
+        /*
+         * The controls keep what the user typed: the value may be incomplete
+         * because it is still being typed, and the model keeps the last
+         * configuration it accepted until the form holds a usable one.
+         */
+        UpdateProxyHint(error);
+        return;
+    }
+
+    UpdateProxyHint(std::string());
+}
+
+void NetworkPanel::UpdateProxyHint(const std::string& error)
+{
+    if (proxy_hint_ == nullptr)
+    {
+        return;
+    }
+
+    if (!error.empty())
+    {
+        proxy_hint_->SetForegroundColour(kWarningTextColour);
+        proxy_hint_->SetLabel(wxString::FromUTF8(error));
+    }
+    else
+    {
+        const auto& proxy = model_.Proxy();
+
+        proxy_hint_->SetForegroundColour(kMutedTextColour);
+
+        if (!proxy.tcp && !proxy.udp)
+        {
+            proxy_hint_->SetLabel("No proxy: the packaged application connects directly.");
+        }
+        else
+        {
+            /*
+             * The summary never names the credentials, so a password cannot
+             * end up on the screen of a shoulder surfer.
+             */
+            const wxString traffic = proxy.tcp && proxy.udp ? "The TCP and UDP traffic"
+                                                            : (proxy.tcp ? "The TCP traffic" : "The UDP traffic");
+            proxy_hint_->SetLabel(traffic + " of the packaged application is sent through the SOCKS5 proxy " +
+                                  wxString(proxy.server) + ":" + wxString(proxy.port) + ".");
+        }
+    }
+
+    proxy_hint_->GetParent()->Layout();
 }
 
 void NetworkPanel::AppendRow(const RowInfo& row)
@@ -220,6 +415,12 @@ void NetworkPanel::OnTabChanged(wxCommandEvent& event)
     {
         pages_->SetSelection(static_cast<std::size_t>(index));
     }
+    event.Skip();
+}
+
+void NetworkPanel::OnProxyChanged(wxCommandEvent& event)
+{
+    CommitProxy();
     event.Skip();
 }
 

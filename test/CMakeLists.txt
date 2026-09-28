@@ -39,11 +39,13 @@ add_executable(AppBoxTests
     "unit/ProcessJob.cpp"
     "unit/ProjectDocument.cpp"
     "unit/ProjectFile.cpp"
+    "unit/ProxyConfig.cpp"
     "unit/RegFile.cpp"
     "unit/RegistryHive.cpp"
     "unit/RegistryModel.cpp"
     "unit/RemoteClient.cpp"
     "unit/RpcCodec.cpp"
+    "unit/Socks5.cpp"
     "unit/StartupTree.cpp"
     "unit/TestTimeout.cpp"
     "unit/TracerArmPlan.cpp"
@@ -86,6 +88,13 @@ add_executable(AppBoxTests
     "e2e/Net_Dns_HostnameIsNormalized.cpp"
     "e2e/Net_Dns_MissIsResolvedByTheHost.cpp"
     "e2e/Net_Dns_RedirectIsReturned.cpp"
+    "e2e/Net_Proxy_CredentialsAreSent.cpp"
+    "e2e/Net_Proxy_DisabledTrafficKeepsTheDirectPath.cpp"
+    "e2e/Net_Proxy_MalformedConfigurationFallsBack.cpp"
+    "e2e/Net_Proxy_NonBlockingSocketIsProxied.cpp"
+    "e2e/Net_Proxy_TcpConnectIsCarriedByTheProxy.cpp"
+    "e2e/Net_Proxy_UdpDatagramIsCarriedByTheProxy.cpp"
+    "e2e/Net_Proxy_UnreachableServerFailsTheConnect.cpp"
     "e2e/Reg_DeleteKey_NonEmpty.cpp"
     "e2e/Reg_DeleteKey_ReadHandle.cpp"
     "e2e/Reg_DeleteKey_ShadowKeyRemoved.cpp"
@@ -139,12 +148,14 @@ add_executable(AppBoxTests
     "probe/RegWriteValue.cpp"
     "probe/WriteFile.cpp"
     "probe/ResolveName.cpp"
+    "probe/SocketTraffic.cpp"
 
     # Test helpers.
     "utils/CommandLine.cpp"
     "utils/CommonFixture.cpp"
     "utils/Coredump.cpp"
     "utils/CWD.cpp"
+    "utils/EchoServer.cpp"
     "utils/FsBuilder.cpp"
     "utils/FsIsolationBuilder.cpp"
     "utils/HiveBuilder.cpp"
@@ -156,6 +167,7 @@ add_executable(AppBoxTests
     "utils/RealHkcuKey.cpp"
     "utils/RegistryRootKey.cpp"
     "utils/Semaphore.cpp"
+    "utils/Socks5Server.cpp"
     "utils/TestKnownFolder.cpp"
     "utils/TestTimeout.cpp"
     "utils/WriteFileFull.cpp"
@@ -196,6 +208,8 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/ModuleTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/IsolationTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/network/DnsTable.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/network/ProxyConfig.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/network/Socks5.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/EnumMerge.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/IsolationTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/KeyPath.cpp

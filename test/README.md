@@ -219,13 +219,17 @@ The unit tests of the packer:
 * `test/unit/ProjectDocument.cpp` — the document of a project file: the
   round trip of every member of the schema, the version and the order of the
   written members, the paths as UTF-8 bytes, the members an entry needs, the
-  path of a rejected entry, the unknown isolation, kind and value type tokens,
-  malformed value data and the atomic read.
+  path of a rejected entry, the unknown isolation, kind, value type and proxy
+  tokens, malformed value data, the optional `main_program` and `proxy`
+  members which are omitted while they are absent and read back as absent, and
+  the atomic read.
 * `test/unit/ProjectFile.cpp` — the file layer of a project file: the
-  round trip of the configuration, of the virtual registry and of the
-  filesystem isolation modes, the strict UTF-8 encoding, the failures of a
-  malformed document and the atomicity of applying a document to the models,
-  including a mode which a file cannot hold and a path which is listed twice.
+  round trip of the configuration, of the virtual registry, of the
+  filesystem isolation modes and of the proxy of the network workspace, the
+  strict UTF-8 encoding, the failures of a malformed document and the
+  atomicity of applying a document to the models, including a mode which a
+  file cannot hold, a path which is listed twice and a proxy the model
+  refuses.
 * `test/unit/PackService.cpp` — the archive carries the hive, the isolation
   file of the registry, the isolation file of the filesystem workspace and the
   isolation file of the network workspace.
@@ -242,7 +246,13 @@ The unit tests of the packer:
   field which carries a whitespace character, of a redirect which is not an
   IPv4 or an IPv6 address literal and of an index outside the model, the in
   place replacement of an entry, and the fact that a refused call leaves the
-  model untouched.
+  model untouched. The proxy of the workspace is pinned as well: the two
+  protocols are the switch of the configuration while the server, the port and
+  the credentials stay in the model either way, the port has to be a decimal
+  number between 1 and 65535 without a leading zero, a protocol may be enabled
+  only with a server and a port, the credentials are free text, the type token
+  round trips, and a refused configuration leaves the proxy and the
+  redirections of the model untouched.
 * `test/unit/NetworkIsolationFile.cpp` — the isolation file the packer
   writes for the network workspace: the schema of an empty model, the order and
   the content of the entries and the hostname as UTF-8 bytes.
@@ -458,6 +468,25 @@ inside the sandbox with the probe `ResolveName`, which calls the name resolution
 of winsock and the one of the DNS client. The probe answers a list of questions
 in one probe process, so a case pays for the chain of the loader and of the
 sandbox once.
+
+The proxy cases use the probe `SocketTraffic`, which performs the socket calls
+of a case inside the sandbox, and two helpers of the test process:
+`test/utils/Socks5Server.*` is a minimal SOCKS5 server which answers the
+handshake, establishes a connection and relays datagrams, and keeps every
+request it received, while `test/utils/EchoServer.*` echoes a connection and a
+datagram back and keeps the address the last datagram came from. Both listen on
+the loopback address with an ephemeral port, which the case writes into the
+isolation file as the server of the proxy.
+
+| Case | Proxy | Steps | Expected |
+| --- | --- | --- | --- |
+| `Net_Proxy_TcpConnectIsCarriedByTheProxy` | TCP on | connect to the echo server and echo a payload | the payload comes back, and the server of the proxy received a `CONNECT` request which names the echo server |
+| `Net_Proxy_UdpDatagramIsCarriedByTheProxy` | UDP on | send a datagram to the echo server and read the answer | the answer reports the echo server as its source, while the echo server saw the datagram come from the relay of the association |
+| `Net_Proxy_CredentialsAreSent` | TCP on, with credentials | connect to the echo server | the connection succeeds and the server saw the credential exchange |
+| `Net_Proxy_DisabledTrafficKeepsTheDirectPath` | both protocols off | connect and send a datagram to the echo server | both reach the echo server and the server of the proxy received nothing |
+| `Net_Proxy_UnreachableServerFailsTheConnect` | TCP on, pointing at a free port | connect to the echo server | the call fails and the echo server never accepted a connection, so the sandbox does not fall back to the direct path |
+| `Net_Proxy_NonBlockingSocketIsProxied` | TCP on | connect on a non-blocking socket | the call succeeds and the socket is still non-blocking afterwards |
+| `Net_Proxy_MalformedConfigurationFallsBack` | a `proxy` member whose port carries a leading zero | connect to the echo server | the call reaches the echo server and the server of the proxy received nothing |
 
 | Case | Redirections | Question | Expected |
 | --- | --- | --- | --- |

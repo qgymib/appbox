@@ -1,7 +1,8 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "utils/Winsock.hpp" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "utils/GetPEB.hpp"
 #include "utils/NameResolution.hpp"
+#include "utils/ProxyHook.hpp"
 #include "hook/CreateProcessInternalW.hpp"
 #include "hook/LdrQueryImageFileExecutionOptionsEx.hpp"
 #include "hook/NtClose.hpp"
@@ -41,9 +42,16 @@
 #include "hook/GetAddrInfoW.hpp"
 #include "hook/getaddrinfo.hpp"
 #include "hook/gethostbyname.hpp"
+#include "hook/closesocket.hpp"
+#include "hook/connect.hpp"
+#include "hook/recvfrom.hpp"
 #include "hook/RtlCompareUnicodeString.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
+#include "hook/sendto.hpp"
 #include "hook/SetProcessMitigationPolicy.hpp"
+#include "hook/WSAConnect.hpp"
+#include "hook/WSARecvFrom.hpp"
+#include "hook/WSASendTo.hpp"
 #include "__init__.hpp"
 #include "utils/HookTransaction.hpp"
 #include "Sandbox.hpp"
@@ -52,6 +60,8 @@
 #include <detours.h>
 
 static const appbox::HookRecord* s_hooks[] = {
+    &appbox::HookCloseSocket,
+    &appbox::HookConnect,
     &appbox::HookCreateProcessInternalW,
     &appbox::HookDnsQueryA,
     &appbox::HookDnsQueryUTF8,
@@ -91,9 +101,14 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtSaveKeyEx,
     &appbox::HookNtSetInformationFile,
     &appbox::HookNtWriteFile,
+    &appbox::HookRecvFrom,
     &appbox::HookRtlCompareUnicodeString,
     &appbox::HookRtlInitUnicodeString,
+    &appbox::HookSendTo,
     &appbox::HookSetProcessMitigationPolicy,
+    &appbox::HookWSAConnect,
+    &appbox::HookWSARecvFrom,
+    &appbox::HookWSASendTo,
 };
 
 appbox::Sys appbox::sys;
@@ -166,6 +181,14 @@ NTSTATUS appbox::InitHook()
               result.status);
         return STATUS_UNSUCCESSFUL;
     }
+
+    /*
+     * The entry points of the proxy are installed after the hooks are
+     * attached: the saved pointers carry the trampoline to the original code
+     * from that moment on, so the proxy reaches its server without passing the
+     * hooks again.
+     */
+    appbox::network::InstallRawSocketApi();
 
     for (const auto& hook : s_hooks)
     {

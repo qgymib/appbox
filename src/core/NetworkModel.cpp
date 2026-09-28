@@ -87,19 +87,105 @@ bool ValidateRedirect(const std::wstring& value, std::string& error)
     return true;
 }
 
+/**
+ * @brief Validate the server of a proxy configuration.
+ *
+ * An empty server means the server was not entered yet; a server which carries
+ * a value has to be free of whitespace characters, because a whitespace
+ * character can neither be part of a hostname nor of an address literal.
+ *
+ * @param[in] value The value to check.
+ * @param[out] error Error description on failure.
+ * @return true when the value may be stored.
+ */
+bool ValidateProxyServer(const std::wstring& value, std::string& error)
+{
+    if (value.empty())
+    {
+        return true;
+    }
+    if (HasWhitespace(value))
+    {
+        error = "the proxy server " + Quote(value) + " contains a whitespace character";
+        return false;
+    }
+    return true;
+}
+
+/**
+ * @brief Validate the port of a proxy configuration.
+ *
+ * An empty port means the port was not entered yet; a port which carries a
+ * value has to be a decimal number between 1 and 65535 without a leading zero,
+ * so the text the user entered is never silently read as another port. The
+ * rules are the ones of `network_isolation::ReadPortText`, which the sandbox
+ * reads the port of the isolation file with, so the two sides cannot drift
+ * apart; only the wording of the report is local to the workspace.
+ *
+ * @param[in] value The value to check.
+ * @param[out] error Error description on failure.
+ * @return true when the value may be stored.
+ */
+bool ValidateProxyPort(const std::wstring& value, std::string& error)
+{
+    std::uint16_t                             port = 0;
+    const appbox::network_isolation::PortText outcome =
+        appbox::network_isolation::ReadPortText(appbox::WideToUTF8(value), port);
+
+    if (outcome == appbox::network_isolation::PortText::Ok || outcome == appbox::network_isolation::PortText::Empty)
+    {
+        return true;
+    }
+    if (outcome == appbox::network_isolation::PortText::NotDecimal)
+    {
+        error = "the proxy port " + Quote(value) + " is not a decimal number";
+        return false;
+    }
+    if (outcome == appbox::network_isolation::PortText::LeadingZero)
+    {
+        error = "the proxy port " + Quote(value) + " has a leading zero";
+        return false;
+    }
+
+    error = "the proxy port " + Quote(value) + " is not between 1 and 65535";
+    return false;
+}
+
 } // namespace
 
 namespace appbox
 {
 
+const char* ProxyTypeToken(ProxyType type)
+{
+    switch (type)
+    {
+    case ProxyType::Socks5:
+        return "socks5";
+    }
+    return "socks5";
+}
+
+bool ParseProxyTypeToken(std::string_view token, ProxyType& out)
+{
+    if (!network_isolation::IsSocks5Token(token))
+    {
+        return false;
+    }
+
+    out = ProxyType::Socks5;
+    return true;
+}
+
 void NetworkModel::Reset()
 {
     dns_entries_.clear();
+    proxy_ = ProxyConfig{};
 }
 
 bool NetworkModel::IsEmpty() const
 {
-    return dns_entries_.empty();
+    return dns_entries_.empty() && !HasProxy();
 }
 
 const std::vector<DnsRedirectEntry>& NetworkModel::DnsEntries() const
@@ -173,6 +259,42 @@ std::ptrdiff_t NetworkModel::IndexOfHostname(const std::wstring& hostname) const
         }
     }
     return -1;
+}
+
+const ProxyConfig& NetworkModel::Proxy() const
+{
+    return proxy_;
+}
+
+bool NetworkModel::HasProxy() const
+{
+    return proxy_.tcp || proxy_.udp || !proxy_.server.empty() || !proxy_.port.empty() || !proxy_.username.empty() ||
+           !proxy_.password.empty();
+}
+
+bool NetworkModel::SetProxy(const ProxyConfig& config, std::string& error)
+{
+    if (!ValidateProxyServer(config.server, error) || !ValidateProxyPort(config.port, error))
+    {
+        return false;
+    }
+
+    if (config.tcp || config.udp)
+    {
+        if (config.server.empty())
+        {
+            error = "the proxy server must not be empty while TCP or UDP traffic is proxied";
+            return false;
+        }
+        if (config.port.empty())
+        {
+            error = "the proxy port must not be empty while TCP or UDP traffic is proxied";
+            return false;
+        }
+    }
+
+    proxy_ = config;
+    return true;
 }
 
 } // namespace appbox
