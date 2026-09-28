@@ -201,3 +201,33 @@ bool appbox::test::HiveBuilder::Write(std::string& error)
 
     return true;
 }
+
+bool appbox::test::HiveBuilder::WriteRawIsolation(const std::string& text, std::string& error)
+{
+    const auto registry_dir = overlay_ / L"registry";
+
+    std::error_code ec;
+    std::filesystem::create_directories(registry_dir, ec);
+    if (ec)
+    {
+        error = "failed to create the registry folder of the overlay";
+        return false;
+    }
+
+    std::ofstream out(registry_dir / L"isolation.json", std::ios::binary | std::ios::trunc);
+    if (!out.is_open())
+    {
+        error = "failed to create the isolation file of the test";
+        return false;
+    }
+
+    out.write(text.data(), static_cast<std::streamsize>(text.size()));
+    out.flush();
+    if (!out.good())
+    {
+        error = "failed to write the isolation file of the test";
+        return false;
+    }
+
+    return true;
+}

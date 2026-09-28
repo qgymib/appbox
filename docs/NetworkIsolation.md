@@ -33,7 +33,7 @@ to resolve to inside the sandbox. The rows are edited inside the table:
   cell.
 
 The rules live in `src/core/NetworkModel.*`, which holds no wxWidgets
-dependency and is unit tested by `test/unit/Unit_NetworkModel.cpp`; the
+dependency and is unit tested by `test/unit/NetworkModel.cpp`; the
 workspace itself is `src/widget/NetworkPanel.*` with the tab strip in
 `src/widget/NetworkTabBar.*`. The address literals and the hostname
 normalization are shared with the sandbox through

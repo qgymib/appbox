@@ -116,7 +116,9 @@ static nlohmann::json ProbeRegSaveKey_Entry(const nlohmann::json& data)
     /* An earlier run may have left the file behind; the save expects a fresh one. */
     DeleteFileW(path.c_str());
 
-    rsp.save_code = RegSaveKeyW(key, path.c_str(), nullptr);
+    /* The extended entry point saves the same snapshot through `NtSaveKeyEx`. */
+    rsp.save_code = req.use_save_ex ? RegSaveKeyExW(key, path.c_str(), nullptr, REG_LATEST_FORMAT)
+                                    : RegSaveKeyW(key, path.c_str(), nullptr);
     RegCloseKey(key);
 
     if (rsp.save_code == ERROR_SUCCESS)

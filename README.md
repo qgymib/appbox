@@ -95,8 +95,7 @@ subdirectory (`Debug` or `Release`):
 | `AppBox.exe` (main product) | `build/<config>/<config>/AppBox.exe` |
 | `AppBoxLoader.exe` | `build/<config>/loader/<config>/AppBoxLoader.exe` |
 | `AppBoxTracer.exe` (API tracer) | `build/<config>/tracer/<config>/AppBoxTracer.exe` |
-| `AppBoxUnitTests.exe` | `build/<config>/test/<config>/AppBoxUnitTests.exe` |
-| `AppBoxTests.exe` (end-to-end) | `build/<config>/test/<config>/AppBoxTests.exe` |
+| `AppBoxTests.exe` (unit and end-to-end tests) | `build/<config>/test/<config>/AppBoxTests.exe` |
 
 `AppBox.exe` is described directly in the top level `CMakeLists.txt`, so its
 target directory is the top of the build tree; the loader, the tracer and the
@@ -432,7 +431,6 @@ Windows DLL providing runtime isolation:
 - [Network Isolation](docs/NetworkIsolation.md) - Network isolation architecture
 - [Tracer](docs/Tracer.md) - API tracer: usage, mechanism and measured cost
 - [Tests](test/README.md) - Unit tests and end-to-end tests of the sandbox
-
 ## License
 
 See [LICENSE](LICENSE) file for details.

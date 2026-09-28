@@ -4,6 +4,25 @@
 #include "WString.hpp"
 #include "FsIsolationBuilder.hpp"
 
+/**
+ * @brief Write the text of the filesystem isolation file of an overlay.
+ * @param[in] config Loader configuration of the case.
+ * @param[in] text Text to write.
+ * @return true on success.
+ */
+static bool WriteIsolationText(const appbox::LoaderConfig& config, const std::string& text)
+{
+    const auto    path = std::filesystem::path(appbox::UTF8ToWide(config.overlay_fs)) / L"filesystem-isolation.json";
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    if (!stream.is_open())
+    {
+        return false;
+    }
+
+    stream.write(text.data(), static_cast<std::streamsize>(text.size()));
+    return stream.good();
+}
+
 bool appbox::test::WriteFsIsolationFile(const appbox::LoaderConfig&          config,
                                         const std::vector<FsIsolationEntry>& entries)
 {
@@ -21,14 +40,10 @@ bool appbox::test::WriteFsIsolationFile(const appbox::LoaderConfig&          con
         document[appbox::filesystem_isolation::kEntriesKey].push_back(std::move(item));
     }
 
-    const auto    path = std::filesystem::path(appbox::UTF8ToWide(config.overlay_fs)) / L"filesystem-isolation.json";
-    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
-    if (!stream.is_open())
-    {
-        return false;
-    }
+    return WriteIsolationText(config, document.dump(2));
+}
 
-    const auto text = document.dump(2);
-    stream.write(text.data(), static_cast<std::streamsize>(text.size()));
-    return stream.good();
+bool appbox::test::WriteRawFsIsolationFile(const appbox::LoaderConfig& config, const std::string& text)
+{
+    return WriteIsolationText(config, text);
 }

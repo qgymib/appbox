@@ -20,10 +20,6 @@ constexpr int kTestTimeoutExitCode = 124;
 /** Seconds the watchdog waits for the coredump writer before it gives up. */
 constexpr int kCoredumpWriterTimeoutSeconds = 120;
 
-/** Option which overrides the timeout of one test case, in seconds. */
-constexpr const wchar_t* kTestTimeoutOption = L"test-timeout";
-/** Option which names the directory of the coredumps. */
-constexpr const wchar_t* kTestDumpDirOption = L"test-dump-dir";
 /** Environment variable of the timeout of one test case. */
 constexpr const wchar_t* kTestTimeoutEnv = L"APPBOX_TEST_TIMEOUT";
 /** Environment variable of the directory of the coredumps. */
@@ -43,17 +39,6 @@ struct TestTimeoutConfig
  * @param[in,out] config The configuration to update.
  */
 void LoadTestTimeoutFromEnvironment(TestTimeoutConfig& config);
-
-/**
- * @brief Take the timeout options out of the command line of the process.
- *
- * The wide command line of the process is read, so the helper works for a test
- * executable which parses its arguments with CLI11 as well as for one which
- * hands them to GoogleTest.
- *
- * @param[in,out] config The configuration to update.
- */
-void LoadTestTimeoutFromCommandLine(TestTimeoutConfig& config);
 
 /**
  * @brief Resolve the directory the coredumps of a run are written to.

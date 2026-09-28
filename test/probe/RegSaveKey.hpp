@@ -20,19 +20,20 @@ struct ProtocolRegSaveKey
 {
     struct Req
     {
-        std::string              Root;   /* Root key name, empty means HKEY_CURRENT_USER. */
-        std::string              Key;    /* Key path relative to the root key. Encoding in UTF-8. */
-        std::string              Path;   /* Absolute DOS path of the file to write. Encoding in UTF-8. */
-        std::vector<std::string> Expect; /* Texts the saved hive has to hold. Encoding in UTF-8. */
-        std::vector<std::string> Reject; /* Texts the saved hive must not hold. Encoding in UTF-8. */
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, Root, Key, Path, Expect, Reject)
+        std::string              Root;                /* Root key name, empty means HKEY_CURRENT_USER. */
+        std::string              Key;                 /* Key path relative to the root key. Encoding in UTF-8. */
+        std::string              Path;                /* Absolute DOS path of the file to write. Encoding in UTF-8. */
+        bool                     use_save_ex = false; /* Save with RegSaveKeyExW instead of RegSaveKeyW. */
+        std::vector<std::string> Expect;              /* Texts the saved hive has to hold. Encoding in UTF-8. */
+        std::vector<std::string> Reject;              /* Texts the saved hive must not hold. Encoding in UTF-8. */
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, Root, Key, Path, use_save_ex, Expect, Reject)
     };
 
     struct Rsp
     {
         DWORD                    privilege_code = static_cast<DWORD>(-1); /* Enable of SeBackupPrivilege. */
         DWORD                    open_code = static_cast<DWORD>(-1);      /* Open of the key. */
-        DWORD                    save_code = static_cast<DWORD>(-1);      /* RegSaveKeyW(). */
+        DWORD                    save_code = static_cast<DWORD>(-1);      /* RegSaveKeyW() or RegSaveKeyExW(). */
         DWORD                    size = 0;                                /* Size of the written file. */
         bool                     hive_signature = false;                  /* The file starts with `regf`. */
         std::vector<std::string> missing;                                 /* Expected texts which are absent. */

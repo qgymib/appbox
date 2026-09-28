@@ -13,10 +13,11 @@ struct ProtocolRegWriteValue
 
     struct Req
     {
-        std::string Key;   /* Key path relative to HKCU. Encoding in UTF-8. */
+        std::string Root;  /* Root key name, empty means HKEY_CURRENT_USER. */
+        std::string Key;   /* Key path relative to the root key. Encoding in UTF-8. */
         std::string Value; /* Value name. Encoding in UTF-8. */
         std::string Data;  /* Value data (REG_SZ). Encoding in UTF-8. */
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, Key, Value, Data)
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, Root, Key, Value, Data)
     };
 
     struct Rsp

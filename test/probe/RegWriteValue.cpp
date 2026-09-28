@@ -1,9 +1,10 @@
 #include "sandbox/utils/WinAPI.h" /* Must be first include file */
 #include "RegWriteValue.hpp"
+#include "utils/RegistryRootKey.hpp"
 #include "WString.hpp"
 
 /**
- * @brief Create a key below HKCU, write a REG_SZ value and read it back.
+ * @brief Create a key below a root key, write a REG_SZ value and read it back.
  *
  * All three operations run inside the sandbox, so the closed loop
  * write -> read is verified with the redirection active.
@@ -14,9 +15,16 @@ static nlohmann::json ProbeRegWriteValue_Entry(const nlohmann::json& data)
 
     appbox::test::ProtocolRegWriteValue::Rsp rsp;
 
+    const auto root = appbox::test::RegistryRootHandle(req.Root);
+    if (root == nullptr)
+    {
+        rsp.create_code = ERROR_INVALID_PARAMETER;
+        return rsp;
+    }
+
     HKEY key = nullptr;
-    rsp.create_code = RegCreateKeyExW(HKEY_CURRENT_USER, appbox::UTF8ToWide(req.Key).c_str(), 0, nullptr, 0,
-                                      KEY_ALL_ACCESS, nullptr, &key, &rsp.disposition);
+    rsp.create_code = RegCreateKeyExW(root, appbox::UTF8ToWide(req.Key).c_str(), 0, nullptr, 0, KEY_ALL_ACCESS, nullptr,
+                                      &key, &rsp.disposition);
     if (rsp.create_code == ERROR_SUCCESS)
     {
         auto wdata = appbox::UTF8ToWide(req.Data);

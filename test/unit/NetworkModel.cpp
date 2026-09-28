@@ -1,0 +1,341 @@
+#include <gtest/gtest.h>
+#include "src/core/NetworkModel.hpp"
+#include <string>
+#include <vector>
+
+namespace
+{
+
+/**
+ * @brief Add a DNS redirection and fail the test when the model refuses it.
+ * @param[in,out] model Model to update.
+ * @param[in] hostname Hostname of the entry.
+ * @param[in] redirect Redirect target of the entry.
+ */
+void AddEntry(appbox::NetworkModel& model, const std::wstring& hostname, const std::wstring& redirect)
+{
+    std::string error;
+    ASSERT_TRUE(model.AddDnsEntry(hostname, redirect, error)) << error;
+}
+
+/**
+ * @brief Take a copy of the entries of a model.
+ * @param[in] model Model to read.
+ * @return The entries of the model.
+ */
+std::vector<appbox::DnsRedirectEntry> Snapshot(const appbox::NetworkModel& model)
+{
+    return model.DnsEntries();
+}
+
+/**
+ * @brief Compare the entries of a model with a snapshot.
+ * @param[in] model Model to read.
+ * @param[in] expected Entries the model is expected to hold.
+ */
+void ExpectEntries(const appbox::NetworkModel& model, const std::vector<appbox::DnsRedirectEntry>& expected)
+{
+    const auto& entries = model.DnsEntries();
+    ASSERT_EQ(entries.size(), expected.size());
+    for (std::size_t index = 0; index < expected.size(); ++index)
+    {
+        EXPECT_EQ(entries[index].hostname, expected[index].hostname) << "entry " << index;
+        EXPECT_EQ(entries[index].redirect, expected[index].redirect) << "entry " << index;
+    }
+}
+
+} // namespace
+
+TEST(Unit_NetworkModel, StartsEmpty)
+{
+    appbox::NetworkModel model;
+
+    EXPECT_TRUE(model.IsEmpty());
+    EXPECT_TRUE(model.DnsEntries().empty());
+    EXPECT_EQ(model.IndexOfHostname(L"example.com"), -1);
+}
+
+TEST(Unit_NetworkModel, AddsEntriesInInsertionOrder)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+    AddEntry(model, L"api.example.com", L"10.0.0.1");
+    AddEntry(model, L"192.168.0.1", L"192.168.0.2");
+
+    EXPECT_FALSE(model.IsEmpty());
+    ExpectEntries(model, {
+                             { L"example.com",     L"127.0.0.1"   },
+                             { L"api.example.com", L"10.0.0.1"    },
+                             { L"192.168.0.1",     L"192.168.0.2" }
+    });
+}
+
+TEST(Unit_NetworkModel, IndexOfHostnameIgnoresTheCase)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"Example.COM", L"127.0.0.1");
+
+    EXPECT_EQ(model.IndexOfHostname(L"example.com"), 0);
+    EXPECT_EQ(model.IndexOfHostname(L"EXAMPLE.COM"), 0);
+    EXPECT_EQ(model.IndexOfHostname(L"other.example.com"), -1);
+}
+
+TEST(Unit_NetworkModel, RefusesEmptyFields)
+{
+    appbox::NetworkModel model;
+    std::string          error;
+
+    EXPECT_FALSE(model.AddDnsEntry(L"", L"127.0.0.1", error));
+    EXPECT_FALSE(error.empty());
+
+    error.clear();
+    EXPECT_FALSE(model.AddDnsEntry(L"example.com", L"", error));
+    EXPECT_FALSE(error.empty());
+
+    EXPECT_TRUE(model.IsEmpty());
+}
+
+TEST(Unit_NetworkModel, RefusesWhitespaceInFields)
+{
+    appbox::NetworkModel model;
+    std::string          error;
+
+    EXPECT_FALSE(model.AddDnsEntry(L"   ", L"127.0.0.1", error));
+    EXPECT_FALSE(error.empty());
+
+    error.clear();
+    EXPECT_FALSE(model.AddDnsEntry(L"example.com", L"\t", error));
+    EXPECT_FALSE(error.empty());
+
+    error.clear();
+    EXPECT_FALSE(model.AddDnsEntry(L"example .com", L"127.0.0.1", error));
+    EXPECT_FALSE(error.empty());
+
+    error.clear();
+    EXPECT_FALSE(model.AddDnsEntry(L"example.com", L"127.0.0.1 ", error));
+    EXPECT_FALSE(error.empty());
+
+    EXPECT_TRUE(model.IsEmpty());
+}
+
+TEST(Unit_NetworkModel, RefusesADuplicateHostnameIgnoringTheCase)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+
+    std::string error;
+    EXPECT_FALSE(model.AddDnsEntry(L"EXAMPLE.COM", L"127.0.0.2", error));
+    EXPECT_FALSE(error.empty());
+    ExpectEntries(model, {
+                             { L"example.com", L"127.0.0.1" }
+    });
+}
+
+TEST(Unit_NetworkModel, ARefusedAddLeavesTheModelUntouched)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+    const auto before = Snapshot(model);
+
+    std::string error;
+    EXPECT_FALSE(model.AddDnsEntry(L"", L"10.0.0.1", error));
+    EXPECT_FALSE(model.AddDnsEntry(L"api.example.com", L" ", error));
+    EXPECT_FALSE(model.AddDnsEntry(L"example.com", L"10.0.0.1", error));
+
+    ExpectEntries(model, before);
+}
+
+TEST(Unit_NetworkModel, SetReplacesTheEntryInPlace)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+    AddEntry(model, L"api.example.com", L"10.0.0.1");
+
+    std::string error;
+    ASSERT_TRUE(model.SetDnsEntry(0, L"www.example.com", L"127.0.0.9", error)) << error;
+
+    ExpectEntries(model, {
+                             { L"www.example.com", L"127.0.0.9" },
+                             { L"api.example.com", L"10.0.0.1"  }
+    });
+}
+
+TEST(Unit_NetworkModel, SetAllowsRecasingItsOwnHostname)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+
+    std::string error;
+    ASSERT_TRUE(model.SetDnsEntry(0, L"EXAMPLE.COM", L"127.0.0.1", error)) << error;
+    ExpectEntries(model, {
+                             { L"EXAMPLE.COM", L"127.0.0.1" }
+    });
+}
+
+TEST(Unit_NetworkModel, SetRefusesTheHostnameOfAnotherEntry)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+    AddEntry(model, L"api.example.com", L"10.0.0.1");
+
+    std::string error;
+    EXPECT_FALSE(model.SetDnsEntry(1, L"Example.com", L"10.0.0.1", error));
+    EXPECT_FALSE(error.empty());
+
+    error.clear();
+    EXPECT_FALSE(model.SetDnsEntry(0, L"API.EXAMPLE.COM", L"127.0.0.1", error));
+    EXPECT_FALSE(error.empty());
+
+    ExpectEntries(model, {
+                             { L"example.com",     L"127.0.0.1" },
+                             { L"api.example.com", L"10.0.0.1"  }
+    });
+}
+
+TEST(Unit_NetworkModel, SetRefusesEmptyAndWhitespaceFields)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+
+    std::string error;
+    EXPECT_FALSE(model.SetDnsEntry(0, L"", L"127.0.0.1", error));
+    EXPECT_FALSE(error.empty());
+
+    error.clear();
+    EXPECT_FALSE(model.SetDnsEntry(0, L"example.com", L"", error));
+    EXPECT_FALSE(error.empty());
+
+    error.clear();
+    EXPECT_FALSE(model.SetDnsEntry(0, L"exam ple.com", L"127.0.0.1", error));
+    EXPECT_FALSE(error.empty());
+
+    error.clear();
+    EXPECT_FALSE(model.SetDnsEntry(0, L"example.com", L"127.0.0.1\n", error));
+    EXPECT_FALSE(error.empty());
+
+    ExpectEntries(model, {
+                             { L"example.com", L"127.0.0.1" }
+    });
+}
+
+TEST(Unit_NetworkModel, SetRefusesAnIndexOutsideTheModel)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+
+    std::string error;
+    EXPECT_FALSE(model.SetDnsEntry(1, L"api.example.com", L"10.0.0.1", error));
+    EXPECT_FALSE(error.empty());
+
+    ExpectEntries(model, {
+                             { L"example.com", L"127.0.0.1" }
+    });
+}
+
+TEST(Unit_NetworkModel, RemoveDropsTheEntryAtTheIndex)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+    AddEntry(model, L"api.example.com", L"10.0.0.1");
+    AddEntry(model, L"192.168.0.1", L"192.168.0.2");
+
+    ASSERT_TRUE(model.RemoveDnsEntry(1));
+
+    ExpectEntries(model, {
+                             { L"example.com", L"127.0.0.1"   },
+                             { L"192.168.0.1", L"192.168.0.2" }
+    });
+}
+
+TEST(Unit_NetworkModel, RemoveRefusesAnIndexOutsideTheModel)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+
+    EXPECT_FALSE(model.RemoveDnsEntry(1));
+    ExpectEntries(model, {
+                             { L"example.com", L"127.0.0.1" }
+    });
+}
+
+TEST(Unit_NetworkModel, ResetDropsEveryEntry)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+    AddEntry(model, L"api.example.com", L"10.0.0.1");
+
+    model.Reset();
+
+    EXPECT_TRUE(model.IsEmpty());
+    EXPECT_TRUE(model.DnsEntries().empty());
+}
+
+TEST(Unit_NetworkModel, AcceptsAnIpv4AndAnIpv6Redirect)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"v4.example.com", L"127.0.0.1");
+    AddEntry(model, L"v6.example.com", L"::1");
+    AddEntry(model, L"full.example.com", L"2001:db8::1");
+
+    ExpectEntries(model, {
+                             { L"v4.example.com",   L"127.0.0.1"   },
+                             { L"v6.example.com",   L"::1"         },
+                             { L"full.example.com", L"2001:db8::1" }
+    });
+}
+
+TEST(Unit_NetworkModel, RefusesARedirectWhichIsNotAnAddress)
+{
+    appbox::NetworkModel model;
+    std::string          error;
+
+    EXPECT_FALSE(model.AddDnsEntry(L"example.com", L"host.example.com", error));
+    EXPECT_FALSE(error.empty());
+
+    error.clear();
+    EXPECT_FALSE(model.AddDnsEntry(L"example.com", L"127.0.0", error));
+    EXPECT_FALSE(error.empty());
+
+    error.clear();
+    EXPECT_FALSE(model.AddDnsEntry(L"example.com", L"256.0.0.1", error));
+    EXPECT_FALSE(error.empty());
+
+    error.clear();
+    EXPECT_FALSE(model.AddDnsEntry(L"example.com", L"010.0.0.1", error));
+    EXPECT_FALSE(error.empty());
+
+    error.clear();
+    EXPECT_FALSE(model.AddDnsEntry(L"example.com", L"fe80::1%12", error));
+    EXPECT_FALSE(error.empty());
+
+    EXPECT_TRUE(model.IsEmpty());
+}
+
+TEST(Unit_NetworkModel, SetRefusesARedirectWhichIsNotAnAddress)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+
+    std::string error;
+    EXPECT_FALSE(model.SetDnsEntry(0, L"example.com", L"not-an-address", error));
+    EXPECT_FALSE(error.empty());
+
+    ExpectEntries(model, {
+                             { L"example.com", L"127.0.0.1" }
+    });
+}
+
+TEST(Unit_NetworkModel, RefusesADuplicateHostnameWithATrailingDot)
+{
+    appbox::NetworkModel model;
+    AddEntry(model, L"example.com", L"127.0.0.1");
+
+    std::string error;
+    EXPECT_FALSE(model.AddDnsEntry(L"example.com.", L"127.0.0.2", error));
+    EXPECT_FALSE(error.empty());
+    EXPECT_EQ(model.IndexOfHostname(L"example.com."), 0);
+
+    ExpectEntries(model, {
+                             { L"example.com", L"127.0.0.1" }
+    });
+}

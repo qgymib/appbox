@@ -300,31 +300,6 @@ void appbox::test::LoadTestTimeoutFromEnvironment(TestTimeoutConfig& config)
     }
 }
 
-void appbox::test::LoadTestTimeoutFromCommandLine(TestTimeoutConfig& config)
-{
-    const std::wstring command_line = GetOwnCommandLine();
-    std::wstring       value;
-
-    if (FindCommandLineOption(command_line, kTestTimeoutOption, value))
-    {
-        int seconds = 0;
-        if (ParseTimeoutSeconds(value, seconds))
-        {
-            config.test_timeout_seconds = seconds;
-        }
-        else
-        {
-            ReportToStderr(fmt::format("--{} is not a timeout in seconds: {}", appbox::WideToUTF8(kTestTimeoutOption),
-                                       appbox::WideToUTF8(value)));
-        }
-    }
-
-    if (FindCommandLineOption(command_line, kTestDumpDirOption, value) && !value.empty())
-    {
-        config.test_dump_dir = value;
-    }
-}
-
 std::filesystem::path appbox::test::ResolveTestDumpDir(const TestTimeoutConfig& config)
 {
     if (!config.test_dump_dir.empty())

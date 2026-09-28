@@ -1,53 +1,121 @@
-
+###############################################################################
+# The test executable
+#
+# One executable runs both sides of the test suite of the project: the
+# in-process unit tests below `test/unit` and the end-to-end cases below
+# `test/e2e`, which start the real loader and let it inject the sandbox DLL
+# into this executable started as the probe process of the case.
+#
+# The `--mode` option selects the side of a run; CTest registers one entry per
+# mode, so the unit tests still run on their own in a second.
+#
+# The source files are an explicit list, not a glob, so a new test file has to
+# be registered here.
+#
+# The include directories put the project directories first: `test/utils` holds
+# headers with the same name as the loader ones and the loader headers have to
+# win. The known folder helper of the cases is named `TestKnownFolder` for that
+# reason.
+###############################################################################
 add_executable(AppBoxTests
-    "cases/ArugmentsPassthrough.cpp"
-    "cases/Fs_DeleteFile_MultiLower_ExistsInLower.cpp"
-    "cases/Fs_DeleteFile_MultiLower_ExistsInLowerUpper.cpp"
-    "cases/Fs_DeleteFile_MultiLower_ExistsInUpper.cpp"
-    "cases/Fs_DeleteFile_MultiLower_NonExists.cpp"
-    "cases/Fs_DeleteFile_WhiteoutInLower_ExistsInUpper.cpp"
-    "cases/Fs_Full_HidesHostFolder.cpp"
-    "cases/Fs_Full_SubFolderWriteCopy.cpp"
-    "cases/Fs_LaunchProcess_FromLower.cpp"
-    "cases/Fs_ListDir_IsolationFiltered.cpp"
-    "cases/Fs_ListDir_MultiLower_ExistsInLower_WhiteoutInUpper.cpp"
-    "cases/Fs_ListDir_MultiLower_ExistsInLower.cpp"
-    "cases/Fs_NewFile_MultiLower_WhiteoutInLower.cpp"
-    "cases/Fs_NewFile_MultiLower_WhiteoutInUpper.cpp"
-    "cases/Fs_QueryAttributes_MultiLower.cpp"
-    "cases/Fs_ReadFile_MultiLower_WhiteoutInUpper.cpp"
-    "cases/Fs_Whiteout_CreateInSandbox.cpp"
-    "cases/Fs_Whiteout_FileNotFound.cpp"
-    "cases/Fs_Whiteout_FolderHidesSubtree.cpp"
-    "cases/Net_Dns_FamilyOfTheRedirectIsHonoured.cpp"
-    "cases/Net_Dns_HostnameIsNormalized.cpp"
-    "cases/Net_Dns_MissIsResolvedByTheHost.cpp"
-    "cases/Net_Dns_RedirectIsReturned.cpp"
-    "cases/Reg_DeleteKey_NonEmpty.cpp"
-    "cases/Reg_DeleteKey_ReadHandle.cpp"
-    "cases/Reg_DeleteKey_ShadowKeyRemoved.cpp"
-    "cases/Reg_DeleteKey_WhiteoutHostKey.cpp"
-    "cases/Reg_DeleteValue_ShadowValue.cpp"
-    "cases/Reg_DeleteValue_WhiteoutHostValue.cpp"
-    "cases/Reg_EnumerateKey_Merged.cpp"
-    "cases/Reg_EnumerateValue_DefaultValue.cpp"
-    "cases/Reg_EnumerateValue_Merged.cpp"
-    "cases/Reg_Full_EnumerateHidesReal.cpp"
-    "cases/Reg_Full_HidesRealKey.cpp"
-    "cases/Reg_Full_HidesRealValue.cpp"
-    "cases/Reg_Full_HiveWinsOverReal.cpp"
-    "cases/Reg_Full_NonHkcuRoot.cpp"
-    "cases/Reg_Hide_CreateInSandbox.cpp"
-    "cases/Reg_QueryKeyName_ViewPath.cpp"
-    "cases/Reg_QueryMultipleValues_Mixed.cpp"
-    "cases/Reg_ReadValue_RealFallback.cpp"
-    "cases/Reg_SaveKey_MergedSnapshot.cpp"
-    "cases/Reg_ShadowKey_HidesRealEntriesOfSameName.cpp"
-    "cases/Reg_ShadowKey_ReadRealValue.cpp"
-    "cases/Reg_WriteCopy_CreateDisposition.cpp"
-    "cases/Reg_WriteCopy_WriteOpen_CopyUp.cpp"
-    "cases/Reg_WriteValue_NewKey.cpp"
-    "cases/RPC.cpp"
+    # Unit tests. They run in the process of the test executable and do not
+    # start the loader, so they are listed first and run first.
+    "unit/AboutInfo.cpp"
+    "unit/ApplicationIcon.cpp"
+    "unit/BuildReport.cpp"
+    "unit/ExpandKnownFolder.cpp"
+    "unit/FilesystemIsolation.cpp"
+    "unit/GetExecutableDir.cpp"
+    "unit/HiveReader.cpp"
+    "unit/HookTransaction.cpp"
+    "unit/Log.cpp"
+    "unit/MiniLauncher.cpp"
+    "unit/ModuleTable.cpp"
+    "unit/NetworkIsolationFile.cpp"
+    "unit/NetworkModel.cpp"
+    "unit/PackModel.cpp"
+    "unit/PackService.cpp"
+    "unit/PipeClient.cpp"
+    "unit/ProcessJob.cpp"
+    "unit/ProjectDocument.cpp"
+    "unit/ProjectFile.cpp"
+    "unit/RegFile.cpp"
+    "unit/RegistryHive.cpp"
+    "unit/RegistryModel.cpp"
+    "unit/RemoteClient.cpp"
+    "unit/RpcCodec.cpp"
+    "unit/StartupTree.cpp"
+    "unit/TestTimeout.cpp"
+    "unit/TracerArmPlan.cpp"
+    "unit/TracerCdbLocator.cpp"
+    "unit/TracerCdbOutput.cpp"
+    "unit/TracerIntegration.cpp"
+    "unit/TracerOptions.cpp"
+    "unit/TracerPeImage.cpp"
+    "unit/TracerReport.cpp"
+    "unit/TracerScope.cpp"
+    "unit/TracerTargetProgram.cpp"
+    "unit/WString.cpp"
+    "unit/ZipReader.cpp"
+    "unit/ZipWriter.cpp"
+
+    # End-to-end cases.
+    "e2e/Fs_DeleteFile_MultiLower_ExistsInLower.cpp"
+    "e2e/Fs_DeleteFile_MultiLower_ExistsInLowerUpper.cpp"
+    "e2e/Fs_DeleteFile_MultiLower_ExistsInUpper.cpp"
+    "e2e/Fs_DeleteFile_MultiLower_NonExists.cpp"
+    "e2e/Fs_DeleteFile_WhiteoutInLower_ExistsInUpper.cpp"
+    "e2e/Fs_DirectoryOperations.cpp"
+    "e2e/Fs_Full_HidesHostFolder.cpp"
+    "e2e/Fs_Full_SubFolderWriteCopy.cpp"
+    "e2e/Fs_LaunchProcess_FromLower.cpp"
+    "e2e/Fs_ListDir_IsolationFiltered.cpp"
+    "e2e/Fs_ListDir_MultiLower_ExistsInLower_WhiteoutInUpper.cpp"
+    "e2e/Fs_ListDir_MultiLower_ExistsInLower.cpp"
+    "e2e/Fs_MalformedIsolationFile_FallsBack.cpp"
+    "e2e/Fs_NewFile_MultiLower_WhiteoutInLower.cpp"
+    "e2e/Fs_NewFile_MultiLower_WhiteoutInUpper.cpp"
+    "e2e/Fs_QueryAttributes_MultiLower.cpp"
+    "e2e/Fs_ReadFile_MultiLower_WhiteoutInUpper.cpp"
+    "e2e/Fs_Whiteout_CreateInSandbox.cpp"
+    "e2e/Fs_Whiteout_FileNotFound.cpp"
+    "e2e/Fs_Whiteout_FolderHidesSubtree.cpp"
+    "e2e/Fs_WriteLowerLayerFile_CopyUp.cpp"
+    "e2e/Net_Dns_EveryResolutionApiIsRedirected.cpp"
+    "e2e/Net_Dns_FamilyOfTheRedirectIsHonoured.cpp"
+    "e2e/Net_Dns_HostnameIsNormalized.cpp"
+    "e2e/Net_Dns_MissIsResolvedByTheHost.cpp"
+    "e2e/Net_Dns_RedirectIsReturned.cpp"
+    "e2e/Reg_DeleteKey_NonEmpty.cpp"
+    "e2e/Reg_DeleteKey_ReadHandle.cpp"
+    "e2e/Reg_DeleteKey_ShadowKeyRemoved.cpp"
+    "e2e/Reg_DeleteKey_WhiteoutHostKey.cpp"
+    "e2e/Reg_DeleteValue_ShadowValue.cpp"
+    "e2e/Reg_DeleteValue_WhiteoutHostValue.cpp"
+    "e2e/Reg_EnumerateKey_Merged.cpp"
+    "e2e/Reg_EnumerateValue_DefaultValue.cpp"
+    "e2e/Reg_EnumerateValue_Merged.cpp"
+    "e2e/Reg_Full_EnumerateHidesReal.cpp"
+    "e2e/Reg_Full_HidesRealKey.cpp"
+    "e2e/Reg_Full_HidesRealValue.cpp"
+    "e2e/Reg_Full_HiveWinsOverReal.cpp"
+    "e2e/Reg_Full_NonHkcuRoot.cpp"
+    "e2e/Reg_IsolationInheritance.cpp"
+    "e2e/Reg_MalformedIsolationFile_FallsBack.cpp"
+    "e2e/Reg_Hide_CreateInSandbox.cpp"
+    "e2e/Reg_QueryKeyName_ViewPath.cpp"
+    "e2e/Reg_QueryMultipleValues_Mixed.cpp"
+    "e2e/Reg_ReadValue_RealFallback.cpp"
+    "e2e/Reg_SaveKey_MergedSnapshot.cpp"
+    "e2e/Reg_ShadowKey_HidesRealEntriesOfSameName.cpp"
+    "e2e/Reg_ShadowKey_ReadRealValue.cpp"
+    "e2e/Reg_UsersRoot_MapsToTheCurrentUserHive.cpp"
+    "e2e/Reg_WriteCopy_CreateDisposition.cpp"
+    "e2e/Reg_WriteCopy_WriteOpen_CopyUp.cpp"
+    "e2e/Reg_WriteValue_NewKey.cpp"
+
+    # The operations which are executed inside the sandbox. The loader starts
+    # this executable as the probe process of a case.
     "probe/__init__.cpp"
     "probe/CreateDirectoryW.cpp"
     "probe/CreateFileW.cpp"
@@ -56,6 +124,7 @@ add_executable(AppBoxTests
     "probe/ListDir.cpp"
     "probe/ListDirNt.cpp"
     "probe/QueryAttributes.cpp"
+    "probe/RemoveDirectory.cpp"
     "probe/ReadFileFull.cpp"
     "probe/RegDeleteKey.cpp"
     "probe/RegDeleteValue.cpp"
@@ -68,7 +137,10 @@ add_executable(AppBoxTests
     "probe/RegSaveKey.cpp"
     "probe/RegShadowRead.cpp"
     "probe/RegWriteValue.cpp"
+    "probe/WriteFile.cpp"
     "probe/ResolveName.cpp"
+
+    # Test helpers.
     "utils/CommandLine.cpp"
     "utils/CommonFixture.cpp"
     "utils/Coredump.cpp"
@@ -76,7 +148,7 @@ add_executable(AppBoxTests
     "utils/FsBuilder.cpp"
     "utils/FsIsolationBuilder.cpp"
     "utils/HiveBuilder.cpp"
-    "utils/KnownFolder.cpp"
+    "utils/NameResolutionProbe.cpp"
     "utils/NetworkIsolationBuilder.cpp"
     "utils/ProbeCall.cpp"
     "utils/ReadFileFull.cpp"
@@ -84,115 +156,16 @@ add_executable(AppBoxTests
     "utils/RealHkcuKey.cpp"
     "utils/RegistryRootKey.cpp"
     "utils/Semaphore.cpp"
+    "utils/TestKnownFolder.cpp"
     "utils/TestTimeout.cpp"
     "utils/WriteFileFull.cpp"
+
+    # Configuration and entry point.
     "Test.cpp"
     "main.cpp"
-)
-appbox_setup_target_wall(AppBoxTests)
 
-target_include_directories(AppBoxTests
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/..
-)
-
-###############################################################################
-# Dependency
-###############################################################################
-target_link_libraries(AppBoxTests PRIVATE AppBoxCommon)
-
-find_package(base64 REQUIRED)
-target_link_libraries(AppBoxTests PRIVATE base64)
-
-# The probe of the name resolution calls the DNS client of the system.
-target_link_libraries(AppBoxTests PRIVATE dnsapi)
-
-find_package(CLI11 REQUIRED)
-target_link_libraries(AppBoxTests PRIVATE CLI11::CLI11)
-
-find_package(googletest REQUIRED)
-target_link_libraries(AppBoxTests PRIVATE googletest::gtest)
-
-find_package(nlohmann_json REQUIRED)
-target_link_libraries(AppBoxTests PRIVATE nlohmann_json::nlohmann_json)
-
-find_package(spdlog REQUIRED)
-target_link_libraries(AppBoxTests PRIVATE spdlog::spdlog)
-target_compile_options(AppBoxTests PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
-
-# The coredump of a timed out test case is written with MiniDumpWriteDump.
-target_link_libraries(AppBoxTests PRIVATE dbghelp)
-
-###############################################################################
-# Export test
-###############################################################################
-add_test(NAME AppBoxTests
-    COMMAND AppBoxTests
-        --loader=$<TARGET_FILE:AppBoxLoader>
-)
-
-###############################################################################
-# Unit tests
-#
-# Pure in-process tests. They do not start the loader nor inject the sandbox
-# DLL, so they can run without the end-to-end probe chain of AppBoxTests.
-###############################################################################
-add_executable(AppBoxUnitTests
-    "unit/main.cpp"
-    "unit/Unit_AboutInfo.cpp"
-    "unit/Unit_ApplicationIcon.cpp"
-    "unit/Unit_BuildReport.cpp"
-    "unit/Unit_DnsTable.cpp"
-    "unit/Unit_HiveReader.cpp"
-    "unit/Unit_HookTransaction.cpp"
-    "unit/Unit_ExpandKnownFolder.cpp"
-    "unit/Unit_FilesystemIsolation.cpp"
-    "unit/Unit_FilesystemIsolationPolicy.cpp"
-    "unit/Unit_FilesystemIsolationTable.cpp"
-    "unit/Unit_GetExecutableDir.cpp"
-    "unit/Unit_LoaderPath.cpp"
-    "unit/Unit_Log.cpp"
-    "unit/Unit_MiniLauncher.cpp"
-    "unit/Unit_ModuleTable.cpp"
-    "unit/Unit_NetworkIsolation.cpp"
-    "unit/Unit_NetworkIsolationFile.cpp"
-    "unit/Unit_NetworkModel.cpp"
-    "unit/Unit_PackModel.cpp"
-    "unit/Unit_PackService.cpp"
-    "unit/Unit_PipeClient.cpp"
-    "unit/Unit_ProjectDocument.cpp"
-    "unit/Unit_ProjectFile.cpp"
-    "unit/Unit_ProcessJob.cpp"
-    "unit/Unit_RegFile.cpp"
-    "unit/Unit_RegistryModel.cpp"
-    "unit/Unit_RegistryEnumMerge.cpp"
-    "unit/Unit_RegistryHive.cpp"
-    "unit/Unit_RegistryIsolation.cpp"
-    "unit/Unit_RegistryIsolationPolicy.cpp"
-    "unit/Unit_RegistryKeyPath.cpp"
-    "unit/Unit_RegistryRootMap.cpp"
-    "unit/Unit_RegistryWhiteout.cpp"
-    "unit/Unit_RemoteClient.cpp"
-    "unit/Unit_RpcCodec.cpp"
-    "unit/Unit_StartupTree.cpp"
-    "unit/Unit_TestTimeout.cpp"
-    "unit/Unit_TracerArmPlan.cpp"
-    "unit/Unit_TracerCdbLocator.cpp"
-    "unit/Unit_TracerCdbOutput.cpp"
-    "unit/Unit_TracerIntegration.cpp"
-    "unit/Unit_TracerOptions.cpp"
-    "unit/Unit_TracerPeImage.cpp"
-    "unit/Unit_TracerReport.cpp"
-    "unit/Unit_TracerScope.cpp"
-    "unit/Unit_TracerTargetProgram.cpp"
-    "unit/Unit_WString.cpp"
-    "unit/Unit_ZipReader.cpp"
-    "unit/Unit_ZipWriter.cpp"
-    "utils/CommandLine.cpp"
-    "utils/Coredump.cpp"
-    "utils/NameResolutionProbe.cpp"
-    "utils/TestTimeout.cpp"
+    # Code under test. The unit tests work on the modules directly, so they are
+    # compiled into the test executable instead of being linked from a library.
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/registry/HiveReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ConvertDosPathToNtPath.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/GetExecutableDir.cpp
@@ -244,11 +217,9 @@ add_executable(AppBoxUnitTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/TraceReport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/TracedModules.cpp
 )
-appbox_setup_target_wall(AppBoxUnitTests)
+appbox_setup_target_wall(AppBoxTests)
 
-# The project directories come first: test/utils holds headers with the same
-# name as the loader ones, and the loader headers have to win.
-target_include_directories(AppBoxUnitTests
+target_include_directories(AppBoxTests
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/..
         ${CMAKE_CURRENT_SOURCE_DIR}/../loader
@@ -257,46 +228,69 @@ target_include_directories(AppBoxUnitTests
         ${APPBOX_GENERATED_DIR}
 )
 
-# The build information header has to exist before the sources are compiled.
-add_dependencies(AppBoxUnitTests appbox_build_info)
+# The build information header has to exist before the sources are compiled,
+# and the loader has to be built: the end-to-end cases start it.
+add_dependencies(AppBoxTests appbox_build_info)
+add_dependencies(AppBoxTests AppBoxLoader)
 
-target_link_libraries(AppBoxUnitTests PRIVATE AppBoxCommon)
+###############################################################################
+# Dependency
+###############################################################################
+target_link_libraries(AppBoxTests PRIVATE AppBoxCommon)
+
+find_package(base64 REQUIRED)
+target_link_libraries(AppBoxTests PRIVATE base64)
+
+# The probe of the name resolution calls the DNS client of the system.
+target_link_libraries(AppBoxTests PRIVATE dnsapi)
 
 find_package(CLI11 REQUIRED)
-target_link_libraries(AppBoxUnitTests PRIVATE CLI11::CLI11)
+target_link_libraries(AppBoxTests PRIVATE CLI11::CLI11)
 
 find_package(googletest REQUIRED)
-target_link_libraries(AppBoxUnitTests PRIVATE googletest::gtest)
+target_link_libraries(AppBoxTests PRIVATE googletest::gtest)
 
 find_package(nlohmann_json REQUIRED)
-target_link_libraries(AppBoxUnitTests PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(AppBoxTests PRIVATE nlohmann_json::nlohmann_json)
 
 find_package(spdlog REQUIRED)
-target_link_libraries(AppBoxUnitTests PRIVATE spdlog::spdlog)
+target_link_libraries(AppBoxTests PRIVATE spdlog::spdlog)
+target_compile_options(AppBoxTests PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
 
+# The unit tests work on the hooks of the sandbox, which are attached with the
+# transaction helpers of Detours.
 find_package(Detours REQUIRED)
-target_link_libraries(AppBoxUnitTests PRIVATE Detours)
+target_link_libraries(AppBoxTests PRIVATE Detours)
 
 # Used by the known folder helper of the loader.
-target_link_libraries(AppBoxUnitTests PRIVATE shell32 ole32)
+target_link_libraries(AppBoxTests PRIVATE shell32 ole32)
 
 # Registry access of the sandbox hive reader (RegLoadAppKeyW and friends).
-target_link_libraries(AppBoxUnitTests PRIVATE advapi32)
+target_link_libraries(AppBoxTests PRIVATE advapi32)
 
 # The coredump of a timed out test case is written with MiniDumpWriteDump.
-target_link_libraries(AppBoxUnitTests PRIVATE dbghelp)
+target_link_libraries(AppBoxTests PRIVATE dbghelp)
 
 # Zip archive creation of the packer core (zlib must be found first so the
 # libzip build reuses the already configured target).
 find_package(ZLIB REQUIRED)
 find_package(libzip REQUIRED)
-target_link_libraries(AppBoxUnitTests PRIVATE libzip::zip)
+target_link_libraries(AppBoxTests PRIVATE libzip::zip)
 
-# The unit tests which work on the real loader payload are given the path of
-# the loader executable; the remaining tests do not need it.
-add_dependencies(AppBoxUnitTests AppBoxLoader)
-
+###############################################################################
+# Test entries
+#
+# Both entries run the same executable with a different mode, so the unit tests
+# stay a run of their own which does not start the loader.
+###############################################################################
 add_test(NAME AppBoxUnitTests
-    COMMAND AppBoxUnitTests
+    COMMAND AppBoxTests
         --loader=$<TARGET_FILE:AppBoxLoader>
+        --mode=unit
+)
+
+add_test(NAME AppBoxTests
+    COMMAND AppBoxTests
+        --loader=$<TARGET_FILE:AppBoxLoader>
+        --mode=e2e
 )

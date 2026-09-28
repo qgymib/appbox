@@ -4,9 +4,23 @@
 #include <base64.hpp>
 #include "probe/__init__.hpp"
 #include "utils/Coredump.hpp"
+#include "utils/NameResolutionProbe.hpp"
 #include "utils/TestTimeout.hpp"
 #include "Test.hpp"
 
+/**
+ * @brief Entry point of the AppBox test executable.
+ *
+ * The executable runs both sides of the test suite of the project: the
+ * in-process unit tests below `test/unit` and the end-to-end cases below
+ * `test/e2e`. The `--mode` option selects the side; the end-to-end cases
+ * start the real loader, which injects the sandbox DLL and starts this
+ * executable again as the probe process of the case.
+ *
+ * @param[in] argc Number of command line arguments.
+ * @param[in] argv Command line arguments.
+ * @return The result of the test run.
+ */
 int wmain(int argc, wchar_t* argv[])
 {
     /*
@@ -19,12 +33,32 @@ int wmain(int argc, wchar_t* argv[])
         return 0;
     }
 
-    CLI::App app("AppBox unit tests");
+    /*
+     * The name resolution probe is the target of the integration test of the
+     * tracer; like the coredump writer it returns before GoogleTest looks at
+     * the command line.
+     */
+    if (appbox::test::RunNameResolutionProbeIfRequested())
+    {
+        return 0;
+    }
+
+    CLI::App app("AppBox tests");
     appbox::test::SetupTestConfig(app);
     appbox::test::ProbeInit(app);
 
     testing::InitGoogleTest(&argc, argv);
     CLI11_PARSE(app, argc, argv);
+
+    /*
+     * The mode is applied after GoogleTest read its own flags, so the range of
+     * the mode is combined with the filter of the command line: the filter only
+     * narrows the range of the mode.
+     */
+    if (appbox::test::ApplyTestModeFilter(appbox::test::config.mode) != 0)
+    {
+        return 1;
+    }
 
     appbox::test::InstallTestTimeoutHook(appbox::test::config.test_timeout);
 

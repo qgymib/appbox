@@ -575,7 +575,7 @@ unit tests listed in [test/README.md](../test/README.md):
    the same rule, `appbox::PipeClient::Call` reports a malformed response through its
    boolean result. `appbox::LoggerF::Log` keeps a hard `abort()` as an unreachable
    sentinel: reaching it means that a parser regressed, which the death test
-   `UnitLog.LoggerAbortsWhenAParameterParserThrows` pins down. An exception which leaves
+   `Unit_Log.LoggerAbortsWhenAParameterParserThrows` pins down. An exception which leaves
    a hook unwinds through the hooked call and terminates the application, which is how a
    packaged application can fail before it shows a window.
 

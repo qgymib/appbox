@@ -48,6 +48,19 @@ struct FsIsolationEntry
  */
 bool WriteFsIsolationFile(const appbox::LoaderConfig& config, const std::vector<FsIsolationEntry>& entries);
 
+/**
+ * @brief Write the raw text of the filesystem isolation file of a test sandbox.
+ *
+ * A case which pins how the sandbox treats a document it cannot use writes the
+ * text itself with this helper, for example a document which is not valid JSON
+ * or one of another version.
+ *
+ * @param[in] config Loader configuration of the case.
+ * @param[in] text Text to write.
+ * @return true on success.
+ */
+bool WriteRawFsIsolationFile(const appbox::LoaderConfig& config, const std::string& text);
+
 } // namespace appbox::test
 
 #endif // APPBOX_TEST_UTILS_FS_ISOLATION_BUILDER_HPP

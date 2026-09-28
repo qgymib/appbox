@@ -80,6 +80,20 @@ public:
      */
     bool Write(std::string& error);
 
+    /**
+     * @brief Write the raw text of the isolation file into the overlay.
+     *
+     * A case which pins how the sandbox treats a document it cannot use writes
+     * the text itself with this helper, for example a document which is not
+     * valid JSON or one of another version. The hive file is not touched, so
+     * the helper can rewrite the modes of an overlay a case already built.
+     *
+     * @param[in] text Text to write.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool WriteRawIsolation(const std::string& text, std::string& error);
+
 private:
     /**
      * @brief One key or value of the hive which is being built.

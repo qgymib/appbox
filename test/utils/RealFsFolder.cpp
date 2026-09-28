@@ -1,6 +1,6 @@
 #include <fstream>
 #include <system_error>
-#include "KnownFolder.hpp"
+#include "TestKnownFolder.hpp"
 #include "RealFsFolder.hpp"
 
 appbox::test::RealFsFolder::RealFsFolder(const std::wstring& known_folder, const std::wstring& name)
