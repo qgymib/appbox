@@ -95,6 +95,52 @@ struct StartupRun
  */
 StartupRun ProbeStartupRun(const std::wstring& cwd, const LoaderConfig& loader_config, const std::string& trigger);
 
+/**
+ * @brief Startup files the loader started during one run of the shell.
+ */
+struct ShellRun
+{
+    /**
+     * @brief Markers of the probe processes which reported during the run, in
+     *        name order.
+     *
+     * A run of the shell starts no startup file, so a marker proves that the
+     * loader started a startup file it was asked to ignore.
+     */
+    std::vector<std::string> reported;
+
+    /**
+     * @brief Exit code of the loader.
+     */
+    std::uint32_t exit_code = 0;
+};
+
+/**
+ * @brief Run the loader of a configuration with the shell of the host.
+ *
+ * The command is handed over as the remaining command line of the loader,
+ * which the loader turns into `cmd /c <command>` and runs inside the sandbox
+ * of the configuration.
+ *
+ * The startup files of the configuration are pointed at the probe process of
+ * this executable, like ProbeStartupRun() does, so a report of a probe proves
+ * that the loader started a startup file although the shell replaces the
+ * application of the configuration. The call does not wait for a report: the
+ * shell runs the command of the case instead of the probe, and the markers
+ * which arrived until the loader left are collected afterwards.
+ *
+ * @param[in] cwd The current working directory.
+ * @param[in] loader_config The loader configuration.
+ * @param[in] shell_command Command the shell runs, in UTF-8; empty to run the
+ *                          shell itself, which is not usable in a case because
+ *                          an interactive shell waits for input.
+ * @param[in] trigger Trigger passed with `--X-AppBox-Startup`, empty to omit
+ *                    the option.
+ * @return The markers the probes reported and the exit code of the loader.
+ */
+ShellRun ProbeShellRun(const std::wstring& cwd, const LoaderConfig& loader_config,
+                       const std::vector<std::string>& shell_command, const std::string& trigger = "");
+
 } // namespace appbox::test
 
 #endif

@@ -328,8 +328,12 @@ executable carries itself:
   key without its `#` delimiters, with the real path of the folder of this
   machine.
 * `test/unit/GetExecutableDir.cpp`, `test/unit/MiniLauncher.cpp`,
-  `test/unit/ProcessJob.cpp` — the loader helpers which locate the
-  executable, start it and own the job of a started process.
+  `test/unit/ProcessJob.cpp`, `test/unit/Shell.cpp` — the loader helpers which
+  locate the executable, start it, own the job of a started process and resolve
+  the shell of the host together with the arguments of the command it runs. The
+  resolver falls back from `%COMSPEC%` to the command processor of the system
+  root and refuses a value which names a folder; the command is run through
+  `/c` unless it is empty, which runs the shell interactively.
 * `test/unit/Md5.cpp` — the digest of a patch package: the digest of an empty
   file, of the text `abc` and of one million characters, which crosses the
   blocks the file is read in, plus the failure of a missing file. The digest of
@@ -662,6 +666,26 @@ documented in its own header comment.
 | `SelectedByTrigger` | `manual` | only `manual` starts, the auto start files do not, the loader exits with zero |
 | `UnknownTrigger` | `missing` | nothing starts, not even the auto start files, and the loader reports a non zero exit code |
 
+### Loader shell cases
+
+The shell cases (`test/e2e/Loader_Shell.cpp`) run the loader with
+`--X-AppBox-Shell`, which starts the `cmd.exe` of the host inside the sandbox
+instead of the application of the configuration: without a command the shell
+runs interactively, with a command it runs `cmd /c <command>`. The cases use
+`ProbeShellRun()` of `test/utils/ProbeCall.*`, which points the startup files of
+the configuration at the probe process and collects the markers of the probes
+which reported until the loader left, so a marker proves that the loader started
+a startup file although the run had to ignore it. The command of a case has to
+return on its own, because the call waits for the loader: the run without a
+command waits for the input of a user, so it has no automated coverage and is
+verified by hand. Each case is documented in its own header comment.
+
+| Case | Command | Expected |
+| --- | --- | --- |
+| `CommandRunsAndStartupsAreIgnored` | `exit 42` | the shell runs the command and the loader exits with `42`; no startup file is started, not even an auto start one |
+| `CommandRunsInsideTheSandbox` | `echo hello> <known folder>\AppBoxTest_Shell\shell.txt` | the file is written into the overlay of the sandbox and never into the folder of the host, so the command ran inside the isolation, and the resources of the application are untouched |
+| `ShellAndStartupAreMutuallyExclusive` | `exit 0` together with `--X-AppBox-Startup manual` | nothing runs, because the two options name different programs, and the loader reports a non zero exit code |
+
 ### Loader console case
 
 The loader is a GUI program without a console, so a console program it starts
@@ -748,7 +772,10 @@ header comment.
   window (see [Loader console case](#loader-console-case)). `ProbeStartupRun()` runs the
   loader for a startup file selection instead: it passes `--X-AppBox-Startup` when a
   trigger is given and reports the markers of the startup files the loader started
-  together with its exit code.
+  together with its exit code. `ProbeShellRun()` passes `--X-AppBox-Shell` with the
+  command of the case and collects the markers which arrived until the loader left; it
+  does not wait for a probe, because the shell runs the command of the case instead of
+  the probe (see [Loader shell cases](#loader-shell-cases)).
 * `test/utils/HiveBuilder.*` — builds the registry artifacts of a case, so an
   end-to-end test owns what the sandbox mounts. The builder writes the hive file and
   the isolation file into the registry domain of the resources of the case

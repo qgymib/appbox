@@ -251,15 +251,18 @@ static appbox::LoaderConfig OverrideConfig(const appbox::LoaderConfig& config)
 
 /**
  * @brief Run the loader of a configuration and wait for it.
- * @param[in] key Probe key passed to the probe processes.
+ *
+ * The configuration is written beside the working directory of the case, which
+ * is also the directory the loader resolves its sandbox layout against.
+ *
  * @param[in] cwd The current working directory.
  * @param[in] config The loader configuration.
- * @param[in] trigger Trigger for `--X-AppBox-Startup`, empty to omit the
- *                    option so the loader starts the auto start files.
+ * @param[in] args Arguments of the loader, without the options which select
+ *                 and log the configuration.
  * @return The exit code of the loader.
  */
-static DWORD RunLoader(const std::string& key, const std::wstring& cwd, const appbox::LoaderConfig& config,
-                       const std::string& trigger)
+static DWORD RunLoader(const std::wstring& cwd, const appbox::LoaderConfig& config,
+                       const std::vector<std::wstring>& args)
 {
     std::filesystem::path cfg_path;
     {
@@ -273,23 +276,13 @@ static DWORD RunLoader(const std::string& key, const std::wstring& cwd, const ap
 
     auto log_path = std::filesystem::path(cwd) / "log.txt";
 
-    std::vector<std::wstring> args = {
+    std::vector<std::wstring> full_args = {
         L"--X-AppBox-ConfigFile",       cfg_path.wstring(),    L"--X-AppBox-LogLevel",
         appbox::test::config.log_level, L"--X-AppBox-LogFile", log_path.wstring(),
     };
-    if (!trigger.empty())
-    {
-        args.push_back(L"--X-AppBox-Startup");
-        args.push_back(CLI::widen(trigger));
-    }
+    full_args.insert(full_args.end(), args.begin(), args.end());
 
-    args.push_back(L"probe");
-    args.push_back(L"--probe_pipe");
-    args.push_back(CLI::widen(s_probe_srv->pipe_path));
-    args.push_back(L"--probe_key");
-    args.push_back(CLI::widen(key));
-
-    auto cmd = appbox::BuildCommandLine(appbox::test::config.loader_path, args);
+    auto cmd = appbox::BuildCommandLine(appbox::test::config.loader_path, full_args);
 
     STARTUPINFOW startup_info;
     ZeroMemory(&startup_info, sizeof(startup_info));
@@ -327,9 +320,37 @@ static DWORD RunLoader(const std::string& key, const std::wstring& cwd, const ap
     return exit_code;
 }
 
+/**
+ * @brief Run the loader so it starts the probe process of a case.
+ * @param[in] key Probe key passed to the probe processes.
+ * @param[in] cwd The current working directory.
+ * @param[in] config The loader configuration.
+ * @param[in] trigger Trigger for `--X-AppBox-Startup`, empty to omit the
+ *                    option so the loader starts the auto start files.
+ * @return The exit code of the loader.
+ */
+static DWORD RunLoaderForProbe(const std::string& key, const std::wstring& cwd, const appbox::LoaderConfig& config,
+                               const std::string& trigger)
+{
+    std::vector<std::wstring> args;
+    if (!trigger.empty())
+    {
+        args.push_back(L"--X-AppBox-Startup");
+        args.push_back(CLI::widen(trigger));
+    }
+
+    args.push_back(L"probe");
+    args.push_back(L"--probe_pipe");
+    args.push_back(CLI::widen(s_probe_srv->pipe_path));
+    args.push_back(L"--probe_key");
+    args.push_back(CLI::widen(key));
+
+    return RunLoader(cwd, config, args);
+}
+
 static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, const appbox::LoaderConfig& config)
 {
-    const auto exit_code = RunLoader(key, cwd, config, std::string());
+    const auto exit_code = RunLoaderForProbe(key, cwd, config, std::string());
     if (exit_code != 0)
     {
         auto msg = fmt::format("Probe exited with code {}", exit_code);
@@ -364,7 +385,7 @@ appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, 
     ProbeKey key("StartupStarted", nlohmann::json::object());
 
     StartupRun run;
-    run.exit_code = static_cast<std::uint32_t>(RunLoader(key.key, cwd, copy_config, trigger));
+    run.exit_code = static_cast<std::uint32_t>(RunLoaderForProbe(key.key, cwd, copy_config, trigger));
 
     {
         std::lock_guard<std::mutex> lock(key.ctx->result_mutex);
@@ -379,5 +400,57 @@ appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, 
     }
 
     std::sort(run.started.begin(), run.started.end());
+    return run;
+}
+
+appbox::test::ShellRun appbox::test::ProbeShellRun(const std::wstring& cwd, const LoaderConfig& loader_config,
+                                                   const std::vector<std::string>& shell_command,
+                                                   const std::string&              trigger)
+{
+    static std::once_flag once;
+    std::call_once(once, InitProbeServer);
+
+    auto copy_config = OverrideConfig(loader_config);
+
+    ProbeKey key("StartupStarted", nlohmann::json::object());
+
+    std::vector<std::wstring> args;
+    if (!trigger.empty())
+    {
+        args.push_back(L"--X-AppBox-Startup");
+        args.push_back(CLI::widen(trigger));
+    }
+
+    /*
+     * The shell takes the remaining arguments of the loader as its command, so
+     * the command follows the option itself and no probe process is added.
+     */
+    args.push_back(L"--X-AppBox-Shell");
+    for (const auto& token : shell_command)
+    {
+        args.push_back(CLI::widen(token));
+    }
+
+    ShellRun run;
+    run.exit_code = static_cast<std::uint32_t>(RunLoader(cwd, copy_config, args));
+
+    /*
+     * The command of the case is run by the shell instead of the probe, so no
+     * report is waited for: a report which arrived before the loader left was
+     * sent by a startup file the loader started although it had to ignore it.
+     */
+    {
+        std::lock_guard<std::mutex> lock(key.ctx->result_mutex);
+        for (const auto& result : key.ctx->results)
+        {
+            const auto marker = result.find("marker");
+            if (marker != result.end() && marker->is_string())
+            {
+                run.reported.push_back(marker->get<std::string>());
+            }
+        }
+    }
+
+    std::sort(run.reported.begin(), run.reported.end());
     return run;
 }

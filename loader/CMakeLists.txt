@@ -16,6 +16,7 @@ add_executable(${PROJECT_NAME} WIN32
     "utils/MiniLauncher.cpp"
     "utils/PatchLayer.cpp"
     "utils/ProcessJob.cpp"
+    "utils/Shell.cpp"
     "utils/WinCall.cpp"
     "widget/MainFrame.cpp"
     "widget/RegistryBrowser.cpp"

@@ -61,6 +61,7 @@ appbox::CommandLineOptions::CommandLineOptions()
     is_launcher = false;
     hide_console = false;
     has_startup_trigger = false;
+    shell = false;
 }
 
 appbox::CommandLineOptions::~CommandLineOptions()
@@ -79,6 +80,12 @@ bool appbox::CommandLineOptions::ParseOptions()
         "Use config file instead of loading builtin config file");
     app.add_option("--X-AppBox-Launcher", is_launcher, "Run as minilauncher");
     app.add_option("--X-AppBox-HideConsole", hide_console, "Start the target without a console window");
+    /*
+     * The shell takes the command it runs from the remaining arguments, so the
+     * option itself carries no value and every option of the loader has to
+     * precede it on the command line.
+     */
+    app.add_flag("--X-AppBox-Shell", shell, "Run the shell of the host inside the sandbox");
     app.add_option_function<std::wstring>(
         "--X-AppBox-Startup",
         [this](const std::wstring& arg) {

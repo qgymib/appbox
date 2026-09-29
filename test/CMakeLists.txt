@@ -53,6 +53,7 @@ add_executable(AppBoxTests
     "unit/RegistryModel.cpp"
     "unit/RemoteClient.cpp"
     "unit/RpcCodec.cpp"
+    "unit/Shell.cpp"
     "unit/Socks5.cpp"
     "unit/StartupTree.cpp"
     "unit/TestTimeout.cpp"
@@ -108,6 +109,7 @@ add_executable(AppBoxTests
     "e2e/Loader_RegistryStateIsKept.cpp"
     "e2e/Loader_RegistryStateIsReset.cpp"
     "e2e/Loader_RegistryStateIsSeeded.cpp"
+    "e2e/Loader_Shell.cpp"
     "e2e/Loader_Startup.cpp"
     "e2e/Net_Dns_EveryResolutionApiIsRedirected.cpp"
     "e2e/Net_Dns_FamilyOfTheRedirectIsHonoured.cpp"
@@ -239,6 +241,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/Md5.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/MiniLauncher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ProcessJob.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/Shell.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/WinCall.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/AboutInfo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationIcon.cpp

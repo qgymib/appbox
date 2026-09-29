@@ -16,6 +16,7 @@
 #include "utils/Defer.hpp"
 #include "utils/GetExecutableDir.hpp"
 #include "utils/ProcessJob.hpp"
+#include "utils/Shell.hpp"
 #include "utils/KnownFolder.hpp"
 #include "utils/WinCall.hpp"
 #include "widget/MainFrame.hpp"
@@ -117,6 +118,111 @@ static bool SelectStartups(const appbox::LoaderConfig& config, const std::string
     return true;
 }
 
+/**
+ * @brief Resolve the shell of the host which the sandbox runs.
+ *
+ * The shell is the `cmd.exe` of the machine which runs the sandbox, resolved
+ * outside of the isolation; the command it runs is the remaining command line
+ * of the loader, which `BuildShellArguments()` turns into the arguments of the
+ * shell.
+ *
+ * @param[in] params Command of the shell, in UTF-8; empty to run an
+ *                   interactive shell.
+ * @return true when the shell was resolved, false when the machine offers no
+ *         shell to run.
+ */
+static bool PrepareShell(const std::vector<std::string>& params)
+{
+    wxGetApp().shell = true;
+
+    wxGetApp().shell_path = appbox::ResolveShellPath();
+    if (wxGetApp().shell_path.empty())
+    {
+        return false;
+    }
+
+    wxGetApp().shell_args = appbox::BuildShellArguments(params);
+    SPDLOG_INFO("Run the shell '{}' of the host in the sandbox", appbox::WideToUTF8(wxGetApp().shell_path));
+    return true;
+}
+
+/**
+ * @brief Select the startup files the loader runs.
+ *
+ * The selection happens on the main thread, so a rejected trigger is reported
+ * before the working thread starts.
+ *
+ * A run of the shell selects no startup file at all: the sandbox of the run is
+ * described by the configuration, while the shell replaces the application the
+ * configuration starts. A configuration without a startup file is therefore
+ * not an error for such a run.
+ *
+ * @param[in] opt The command line options of the loader.
+ */
+static void SelectStartupsForRun(const appbox::CommandLineOptions& opt)
+{
+    if (opt.shell)
+    {
+        return;
+    }
+
+    SelectStartups(wxGetApp().loader_config, opt.startup_trigger, opt.has_startup_trigger, wxGetApp().startups,
+                   wxGetApp().startup_error);
+}
+
+/**
+ * @brief One process the loader starts inside the sandbox.
+ */
+struct LaunchTarget
+{
+    std::string               name;         /* Name of the target, for the log. */
+    std::wstring              exe_path;     /* Executable to run. */
+    std::vector<std::wstring> args;         /* Arguments of the executable. */
+    bool                      hide_console; /* Start the process without a console window. */
+};
+
+/**
+ * @brief Build the processes the loader starts.
+ *
+ * A run of the shell starts the shell of the host alone, which makes the run
+ * ignore the startup files of the configuration completely. The console window
+ * of the shell is always shown, because the shell is meant to be used
+ * interactively: the `hide_console` flag of the configuration keeps describing
+ * the startup files only.
+ *
+ * Every other run starts the startup files which `SelectStartupsForRun()`
+ * selected, in configuration order.
+ *
+ * @return The processes to start, in the order they are started in.
+ */
+static std::vector<LaunchTarget> BuildLaunchTargets()
+{
+    std::vector<LaunchTarget> targets;
+
+    if (wxGetApp().shell)
+    {
+        LaunchTarget target;
+        target.name = "shell";
+        target.exe_path = wxGetApp().shell_path;
+        target.args = wxGetApp().shell_args;
+        target.hide_console = false;
+        targets.push_back(std::move(target));
+        return targets;
+    }
+
+    for (const auto* startup : wxGetApp().startups)
+    {
+        LaunchTarget target;
+        target.name = startup->trigger;
+        target.exe_path = appbox::ExpandKnownFolder(appbox::UTF8ToWide(startup->executable.c_str()));
+        target.args = BuildCmdArg(*startup);
+        target.hide_console = wxGetApp().loader_config.hide_console;
+        targets.push_back(std::move(target));
+    }
+
+    return targets;
+}
+
 static void MainLoader()
 {
     appbox::Defer defer([]() { wxGetApp().QueueEvent(new wxCommandEvent(APPBOX_EXIT_APPLICATION_IF_NO_GUI)); });
@@ -127,25 +233,23 @@ static void MainLoader()
         return;
     }
 
+    const auto targets = BuildLaunchTargets();
+
     /*
-     * Every selected file is started before the first one is waited for, so
-     * the startup files of the application run side by side instead of one
-     * after the other.
+     * Every target is started before the first one is waited for, so the
+     * targets of the run side by side instead of one after the other.
      */
     std::vector<std::unique_ptr<appbox::ProcessJob>> jobs;
     DWORD                                            exit_code = 0;
 
-    for (const auto* startup : wxGetApp().startups)
+    for (const auto& target : targets)
     {
-        auto exe_path = appbox::UTF8ToWide(startup->executable.c_str());
-        exe_path = appbox::ExpandKnownFolder(exe_path);
-
-        auto job = std::make_unique<appbox::ProcessJob>(
-            exe_path, BuildCmdArg(*startup), wxGetApp().runtime->inject_data, wxGetApp().loader_config.hide_console);
+        auto job = std::make_unique<appbox::ProcessJob>(target.exe_path, target.args, wxGetApp().runtime->inject_data,
+                                                        target.hide_console);
         const auto ret = job->Start();
         if (ret != 0)
         {
-            SPDLOG_ERROR("Failed to start the startup file '{}': {}", startup->trigger, ret);
+            SPDLOG_ERROR("Failed to start '{}': {}", target.name, ret);
             if (exit_code == 0)
             {
                 exit_code = ret;
@@ -235,6 +339,42 @@ static void FinializeCommandArgs(const appbox::CommandLineOptions& opt)
     }
 }
 
+/**
+ * @brief Prepare the run of the shell of the host.
+ *
+ * The shell replaces the application of the configuration, so the remaining
+ * arguments of the loader are the command of the shell instead of the
+ * arguments of a startup file, and the startup files of the configuration are
+ * ignored by the run.
+ *
+ * @param[in] opt The command line options of the loader.
+ * @return true when the run may continue, false when the options contradict
+ *         each other or the machine offers no shell to run.
+ */
+static bool PrepareShellRun(const appbox::CommandLineOptions& opt)
+{
+    if (!opt.shell)
+    {
+        FinializeCommandArgs(opt);
+        return true;
+    }
+
+    if (opt.has_startup_trigger)
+    {
+        /* The two options name different programs to run. */
+        wxGetApp().startup_error = "the options --X-AppBox-Shell and --X-AppBox-Startup cannot be used together";
+        return false;
+    }
+
+    if (!PrepareShell(opt.extra_args))
+    {
+        wxGetApp().startup_error = "the shell of the host could not be resolved";
+        return false;
+    }
+
+    return true;
+}
+
 bool AppBoxLoader::OnInit()
 {
     appbox::WinCallInit();
@@ -256,7 +396,7 @@ bool AppBoxLoader::OnInit()
         {
             LoadConfig();
         }
-        FinializeCommandArgs(opt);
+        PrepareShellRun(opt);
         SPDLOG_INFO("Load config: {}", nlohmann::json(wxGetApp().loader_config).dump());
 
         wxGetApp().runtime = std::make_shared<AppBoxLoaderRuntime>();
@@ -275,8 +415,9 @@ bool AppBoxLoader::OnInit()
      * always logged and turns into a non zero exit code; the dialog is shown
      * with the admin UI only, so an unattended run cannot wait for a click.
      */
-    if (!SelectStartups(wxGetApp().loader_config, opt.startup_trigger, opt.has_startup_trigger, wxGetApp().startups,
-                        wxGetApp().startup_error))
+    SelectStartupsForRun(opt);
+
+    if (!wxGetApp().startup_error.empty())
     {
         SPDLOG_ERROR("{}", wxGetApp().startup_error);
         this->exit_code = 1;

@@ -16,16 +16,17 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 
 ## Requirements
 
-- CMake 3.15+
+- CMake 3.25+
 - C++17 compatible compiler
-- wxWidgets 3.x (for AppBox and the loader)
 - Windows SDK
 
 ## Build
 
 ### Prerequisites
 
-1. Install CMake 3.15 or later
+1. Install CMake 3.25 or later — the first release which accepts the schema
+   version 6 of `CMakePresets.json`. The `cmake_minimum_required` of
+   `CMakeLists.txt` is a separate bound and stays at 3.15.
 2. Install a C++17 compatible compiler (MSVC, GCC, or Clang)
 3. Clone the repository with submodules:
    ```bash
@@ -34,25 +35,33 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 
 ### Build Steps
 
+Every configuration is built through the presets of `CMakePresets.json`. The
+`Release` preset configures the tree below `build/Release` and builds the
+release products:
+
 ```bash
-# Create build directory
-mkdir build && cd build
+# Configure and build the Release configuration
+cmake --preset Release
+cmake --build --preset Release
+```
 
-# Configure with CMake
-cmake .. -G "Visual Studio 17 2022" -A x64
-# Or for Ninja:
-# cmake .. -G Ninja
+`cmake --workflow --preset Release` runs the configure, build, test and package
+steps of the configuration in one go, and `ctest --preset Release` runs its
+tests alone. The `Debug` preset wraps the same steps for development:
 
-# Build
-cmake --build . --config Release
+```bash
+cmake --preset Debug
+cmake --build --preset Debug
+ctest --preset Debug
 ```
 
 See [test/README.md](test/README.md) for the test suites and the way to run them.
 
 ### Build Artifacts
 
-Every product is written below the build directory, inside a configuration
-subdirectory (`Debug` or `Release`):
+Every product is written below the build directory the preset names
+(`build/Debug` or `build/Release`), inside the configuration subdirectory the
+generator adds below it:
 
 | Product | Path |
 | --- | --- |
@@ -156,6 +165,19 @@ wxWidgets-based GUI application for managing sandboxed processes:
   unattended run needs; the program keeps its console and therefore its
   standard streams. The switch is off by default and does not affect a GUI
   program, which never owns a console window.
+- Runs the `cmd.exe` of the machine which runs the sandbox inside the isolation
+  when `--X-AppBox-Shell` is given: without a command the shell runs
+  interactively, with a command it runs `cmd /c <command>`, so
+  `--X-AppBox-Shell start powershell` runs `cmd /c start powershell`. The shell
+  replaces the application of the configuration, so no startup file is started
+  and a configuration without one is not an error; the option cannot be
+  combined with `--X-AppBox-Startup`, which names another program to run. The
+  shell always opens a console window of its own, because it is meant to be
+  used interactively — `hide_console` keeps describing the startup files only.
+  The loader exits with the exit code of the shell. The shell is resolved
+  outside of the isolation from `%COMSPEC%`, with
+  `%SystemRoot%\System32\cmd.exe` as the fallback, and the command is the
+  remaining command line, so the options of the loader have to precede it.
 - Offers a read-only sandbox registry browser in its admin UI, which mounts
   the hive of the overlay directly and never touches the host registry
   (see [Registry Isolation](docs/RegistryIsolation.md)).
