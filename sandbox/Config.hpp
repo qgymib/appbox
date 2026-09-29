@@ -77,17 +77,72 @@ struct SandboxConfig
     std::string                  fs_upper;  /* Overlay filesystem path, no trailing slash. Encoding in UTF-8. */
     std::vector<SandboxLowerFS>  fs_lower;  /* Sandbox read-only filesystem layers. */
     std::vector<SandboxVariable> variables; /* Variables the sandbox expands in the values of the workspace. */
-    std::string                  registry_hive_dos_path;        /* Registry hive file path. Encoding in UTF-8. */
-    std::string                  registry_isolation_dos_path;   /* Registry isolation file path. Encoding in UTF-8. */
-    std::string                  filesystem_isolation_dos_path; /* Filesystem isolation file path. Encoding in UTF-8. */
-    std::string                  network_isolation_dos_path;    /* Network isolation file path. Encoding in UTF-8. */
-    std::string environment_isolation_dos_path; /* Environment isolation file path. Encoding in UTF-8. */
-    std::string environment_state_dos_path;     /* Environment state file path. Encoding in UTF-8. */
+    std::string                  registry_hive_dos_path; /* Registry hive file path. Encoding in UTF-8. */
+
+    /**
+     * @brief Registry isolation file paths, in the order of the layers.
+     *
+     * Every file carries the isolation modes of one layer of the run: the file
+     * of the resources of the archive comes first and the file of every patch
+     * package follows in the order the packages take effect in. A mode a later
+     * file sets for a key or a value overrides the mode the files below it set
+     * for the same entry, which is what makes the last layer the one the
+     * sandboxed process observes.
+     *
+     * @note encoding in UTF-8
+     */
+    std::vector<std::string> registry_isolation_dos_paths;
+
+    /**
+     * @brief Filesystem isolation file paths, in the order of the layers.
+     *
+     * Every file carries the isolation modes of one layer of the run: the
+     * file of the resources of the archive comes first and the file of every
+     * patch package follows in the order the packages take effect in. A mode
+     * a later file sets for a path overrides the mode the files below it set
+     * for the same path, which is what makes the last layer the one the
+     * sandboxed process observes.
+     *
+     * @note encoding in UTF-8
+     */
+    std::vector<std::string> filesystem_isolation_dos_paths;
+
+    /**
+     * @brief Network isolation file paths, in the order of the layers.
+     *
+     * Every file carries the network configuration of one layer of the run:
+     * the file of the resources of the archive comes first and the file of
+     * every patch package follows in the order the packages take effect in. A
+     * redirection a later file lists for a hostname overrides the redirection
+     * of the same hostname of the files below it, while a hostname no later
+     * file lists keeps the redirection below it; the proxy of the last file
+     * which names a usable one is the proxy of the run.
+     *
+     * @note encoding in UTF-8
+     */
+    std::vector<std::string> network_isolation_dos_paths;
+
+    /**
+     * @brief Environment isolation file paths, in the order of the layers.
+     *
+     * Every file carries the environment variables of one layer of the run:
+     * the file of the resources of the archive comes first and the file of
+     * every patch package follows in the order the packages take effect in.
+     * Every layer applies its own isolation and merge mode to the value the
+     * layers below it composed, so the composition starts at the value of the
+     * host and the last layer which names a variable decides how the variable
+     * of the run is built from the value below it.
+     *
+     * @note encoding in UTF-8
+     */
+    std::vector<std::string> environment_isolation_dos_paths;
+
+    std::string environment_state_dos_path; /* Environment state file path. Encoding in UTF-8. */
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(SandboxConfig, environment_is_composed, pipe_path, sandbox32_dos_path,
                                    sandbox64_dos_path, fs_upper, fs_lower, variables, registry_hive_dos_path,
-                                   registry_isolation_dos_path, filesystem_isolation_dos_path,
-                                   network_isolation_dos_path, environment_isolation_dos_path,
+                                   registry_isolation_dos_paths, filesystem_isolation_dos_paths,
+                                   network_isolation_dos_paths, environment_isolation_dos_paths,
                                    environment_state_dos_path)
 };
 

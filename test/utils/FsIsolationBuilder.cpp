@@ -46,6 +46,11 @@ static bool WriteIsolationText(const std::filesystem::path& case_root, const std
 bool appbox::test::WriteFsIsolationFile(const std::filesystem::path&         case_root,
                                         const std::vector<FsIsolationEntry>& entries)
 {
+    return WriteIsolationText(case_root, BuildFsIsolationText(entries));
+}
+
+std::string appbox::test::BuildFsIsolationText(const std::vector<FsIsolationEntry>& entries)
+{
     /*
      * The document is filled as the structure of the schema of the file, so a
      * case writes the same document the workspace writes.
@@ -61,7 +66,7 @@ bool appbox::test::WriteFsIsolationFile(const std::filesystem::path&         cas
         document.entries.push_back(std::move(item));
     }
 
-    return WriteIsolationText(case_root, nlohmann::json(document).dump(2));
+    return nlohmann::json(document).dump(2);
 }
 
 bool appbox::test::WriteRawFsIsolationFile(const std::filesystem::path& case_root, const std::string& text)

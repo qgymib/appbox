@@ -58,6 +58,12 @@ bool appbox::test::WriteNetworkIsolationFile(const std::filesystem::path&       
                                              const std::vector<NetworkIsolationEntry>& entries,
                                              const NetworkIsolationProxy&              proxy)
 {
+    return WriteText(case_root, BuildNetworkIsolationText(entries, proxy));
+}
+
+std::string appbox::test::BuildNetworkIsolationText(const std::vector<NetworkIsolationEntry>& entries,
+                                                    const NetworkIsolationProxy&              proxy)
+{
     /*
      * The document is filled as the structure of the schema of the file, so a
      * case writes the same document the workspace writes.
@@ -85,7 +91,7 @@ bool appbox::test::WriteNetworkIsolationFile(const std::filesystem::path&       
         document.proxy = std::move(item);
     }
 
-    return WriteText(case_root, nlohmann::json(document).dump(2));
+    return nlohmann::json(document).dump(2);
 }
 
 bool appbox::test::WriteNetworkIsolationFileText(const std::filesystem::path& case_root, const std::string& text)

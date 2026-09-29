@@ -119,8 +119,23 @@ bool appbox::registry::IsolationTable::Parse(const std::string& text, std::strin
         return false;
     }
 
-    keys_ = std::move(keys);
-    values_ = std::move(values);
+    /*
+     * The document is applied as the layer it describes: the modes it lists
+     * replace the modes of the same entry which the layers below it set, while
+     * the entries it does not list stay untouched. The document was collected
+     * into local tables, so a document which cannot be used leaves the table
+     * as it was.
+     */
+    for (auto& entry : keys)
+    {
+        keys_[entry.first] = entry.second;
+    }
+
+    for (auto& entry : values)
+    {
+        values_[entry.first] = entry.second;
+    }
+
     return true;
 }
 

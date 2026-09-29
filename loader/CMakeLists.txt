@@ -9,9 +9,12 @@ add_executable(${PROJECT_NAME} WIN32
     "utils/CommandLineOptions.cpp"
     "utils/ConvertDosPathToNtPath.cpp"
     "utils/GetExecutableDir.cpp"
+    "utils/HiveMerge.cpp"
     "utils/KnownFolder.cpp"
     "utils/MapBaseFS.cpp"
+    "utils/Md5.cpp"
     "utils/MiniLauncher.cpp"
+    "utils/PatchLayer.cpp"
     "utils/ProcessJob.cpp"
     "utils/WinCall.cpp"
     "widget/MainFrame.cpp"
@@ -19,6 +22,12 @@ add_executable(${PROJECT_NAME} WIN32
     "Loader.cpp"
     "main.cpp"
     "resource.rc"
+
+    # The reader half of the archive layout of the packer. The loader reads
+    # the patch packages of the user with it, so a package is extracted with
+    # the very same rules the packer writes it with, including the rejection
+    # of entry names which would escape the destination folder.
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipReader.cpp"
 )
 appbox_setup_target_wall(${PROJECT_NAME})
 
@@ -75,6 +84,16 @@ target_link_libraries(${PROJECT_NAME} PRIVATE wx::core wx::base)
 
 # Registry access of the sandbox hive browser (RegLoadAppKeyW and friends).
 target_link_libraries(${PROJECT_NAME} PRIVATE advapi32)
+
+# Digest of a patch package (BCryptOpenAlgorithmProvider and friends).
+target_link_libraries(${PROJECT_NAME} PRIVATE bcrypt)
+
+# Extraction of a patch package. zlib must be configured before libzip: the
+# libzip build performs its own find_package(ZLIB 1.1.2 REQUIRED) which reuses
+# the already configured target.
+find_package(ZLIB REQUIRED)
+find_package(libzip REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE libzip::zip)
 
 ###############################################################################
 # Embed Sandbox

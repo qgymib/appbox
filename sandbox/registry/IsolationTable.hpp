@@ -62,15 +62,20 @@ struct IsolationValueKeyLess
 /**
  * @brief The isolation modes of the virtual registry inside the sandbox.
  *
- * The table is the sandbox side of the isolation file the packer writes next
- * to the hive. It holds the entries the file lists, which is every key and
- * every value of the packer workspace; the mode of every other entry — a key
- * the sandboxed process creates while it runs, or an entry of a hand written
- * file — is derived by walking the path upwards, so a key which was set to
- * `Full` also covers the keys and values below it which the file does not
- * list. An entry without any listed ancestor follows the default mode
- * `WriteCopy`, which is the behaviour of a sandbox without an isolation
- * file.
+ * The table is the sandbox side of the isolation files of the layers of a
+ * run. It holds the entries those files list, which is every key and every
+ * value of the packer workspace; the mode of every other entry — a key the
+ * sandboxed process creates while it runs, or an entry of a hand written file
+ * — is derived by walking the path upwards, so a key which was set to `Full`
+ * also covers the keys and values below it which no file lists. An entry
+ * without any listed ancestor follows the default mode `WriteCopy`, which is
+ * the behaviour of a sandbox without an isolation file.
+ *
+ * The files are applied one after the other, the file of the resources of the
+ * archive first and the file of every patch package after it, so a mode a
+ * later file sets for a key or a value overrides the mode the files below it
+ * set for the same entry while an entry no later file lists keeps the mode of
+ * the layers below it.
  *
  * The class holds no dependency on the Windows registry API, so the lookup
  * rules are unit testable.
@@ -79,11 +84,14 @@ class IsolationTable
 {
 public:
     /**
-     * @brief Load the table from the text of an isolation file.
+     * @brief Apply the text of an isolation file as the layer it describes.
      *
-     * The call is atomic: the parsed modes are collected into a local table
-     * first and replace the current content only when the whole document was
-     * accepted. A failure therefore leaves the table unchanged.
+     * The modes the document lists replace the modes of the same entry of the
+     * layers below it, while the entries the document does not list stay in
+     * place. The call is atomic per document: the parsed modes are collected
+     * into local tables first and are written into the table only when the
+     * whole document was accepted, so a document which cannot be used leaves
+     * the table as it was.
      *
      * @param[in] text The UTF-8 text of the isolation file.
      * @param[out] error Error description on failure.

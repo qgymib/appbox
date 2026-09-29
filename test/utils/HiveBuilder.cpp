@@ -35,6 +35,31 @@ void RemoveHiveFiles(const std::filesystem::path& path)
 
 } // namespace
 
+std::string appbox::test::BuildRegistryIsolationText(const std::vector<RegistryIsolationEntry>& entries)
+{
+    appbox::registry_isolation::Document document;
+
+    for (const auto& entry : entries)
+    {
+        if (entry.is_value)
+        {
+            appbox::registry_isolation::ValueEntry item;
+            item.path = appbox::WideToUTF8(entry.key_path);
+            item.name = appbox::WideToUTF8(entry.value_name);
+            item.isolation = entry.isolation;
+            document.values.push_back(std::move(item));
+            continue;
+        }
+
+        appbox::registry_isolation::KeyEntry item;
+        item.path = appbox::WideToUTF8(entry.key_path);
+        item.isolation = entry.isolation;
+        document.keys.push_back(std::move(item));
+    }
+
+    return nlohmann::json(document).dump(2);
+}
+
 appbox::test::HiveBuilder::HiveBuilder(const std::filesystem::path& case_root) : case_root_(case_root)
 {
 }
@@ -61,7 +86,7 @@ void appbox::test::HiveBuilder::SetValue(const std::wstring& key_path, const std
 
 void appbox::test::HiveBuilder::SetKeyIsolation(const std::wstring& key_path, appbox::RegistryIsolation isolation)
 {
-    IsolationEntry entry;
+    RegistryIsolationEntry entry;
     entry.key_path = key_path;
     entry.isolation = isolation;
     entry.is_value = false;
@@ -71,7 +96,7 @@ void appbox::test::HiveBuilder::SetKeyIsolation(const std::wstring& key_path, ap
 void appbox::test::HiveBuilder::SetValueIsolation(const std::wstring& key_path, const std::wstring& value_name,
                                                   appbox::RegistryIsolation isolation)
 {
-    IsolationEntry entry;
+    RegistryIsolationEntry entry;
     entry.key_path = key_path;
     entry.value_name = value_name;
     entry.isolation = isolation;
@@ -168,27 +193,7 @@ bool appbox::test::HiveBuilder::Write(std::string& error)
     }
 
     /* The isolation file lists the modes which were set by the test. */
-    appbox::registry_isolation::Document document;
-
-    for (const auto& entry : isolations_)
-    {
-        if (entry.is_value)
-        {
-            appbox::registry_isolation::ValueEntry item;
-            item.path = appbox::WideToUTF8(entry.key_path);
-            item.name = appbox::WideToUTF8(entry.value_name);
-            item.isolation = entry.isolation;
-            document.values.push_back(std::move(item));
-            continue;
-        }
-
-        appbox::registry_isolation::KeyEntry item;
-        item.path = appbox::WideToUTF8(entry.key_path);
-        item.isolation = entry.isolation;
-        document.keys.push_back(std::move(item));
-    }
-
-    const auto    text = nlohmann::json(document).dump(2);
+    const auto    text = appbox::test::BuildRegistryIsolationText(isolations_);
     std::ofstream out(registry_dir / appbox::layout::kIsolationFileNameW, std::ios::binary | std::ios::trunc);
     if (!out.is_open())
     {

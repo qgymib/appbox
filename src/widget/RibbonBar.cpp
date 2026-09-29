@@ -5,12 +5,14 @@
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 #include <wx/textctrl.h>
+#include <cstddef>
 
 extern const int kRibbonStartupFiles = wxNewId();
 extern const int kRibbonBuild = wxNewId();
 extern const int kRibbonBuildAndRun = wxNewId();
 extern const int kRibbonBrowseOutput = wxNewId();
 extern const int kRibbonOutputPath = wxNewId();
+extern const int kRibbonProjectType = wxNewId();
 
 namespace
 {
@@ -57,6 +59,41 @@ void RibbonBar::SetOutputPath(const wxString& path)
     }
 }
 
+appbox::ProjectType RibbonBar::GetProjectType() const
+{
+    if (project_type_ == nullptr)
+    {
+        return appbox::ProjectType::Standalone;
+    }
+
+    const auto selection = project_type_->GetSelection();
+    if (selection < 0)
+    {
+        return appbox::ProjectType::Standalone;
+    }
+
+    return appbox::ProjectTypeAt(static_cast<std::size_t>(selection));
+}
+
+void RibbonBar::SetProjectType(appbox::ProjectType type)
+{
+    if (project_type_ == nullptr)
+    {
+        return;
+    }
+
+    /* SetSelection() does not raise a command event, so this is not a re-entry. */
+    project_type_->SetSelection(static_cast<int>(appbox::ProjectTypeIndexOf(type)));
+}
+
+void RibbonBar::SetBuildAndRunEnabled(bool enabled)
+{
+    if (build_bar_ != nullptr)
+    {
+        build_bar_->EnableButton(kRibbonBuildAndRun, enabled);
+    }
+}
+
 wxRibbonPage* RibbonBar::AppendRibbonPage(const wxString& label)
 {
     return new wxRibbonPage(this, wxID_ANY, label);
@@ -99,12 +136,23 @@ void RibbonBar::AppendOutputGroup(wxRibbonPage* page)
     auto* type_row = new wxBoxSizer(wxHORIZONTAL);
     type_row->Add(new wxStaticText(panel, wxID_ANY, "Project Type:"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
 
+    /*
+     * The box lists the project types in the order of the core enumeration, so
+     * the selection is the index of the type it shows.
+     */
     wxArrayString project_types;
-    project_types.Add("Standalone (ZIP)");
-    auto* project_type = new wxComboBox(panel, wxID_ANY, "Standalone (ZIP)", wxDefaultPosition, wxDefaultSize,
-                                        project_types, wxCB_READONLY);
-    project_type->SetToolTip("The packer always writes a standalone zip archive");
-    type_row->Add(project_type, 1, wxALIGN_CENTER_VERTICAL);
+    for (std::size_t index = 0; index < appbox::ProjectTypeCount(); ++index)
+    {
+        project_types.Add(appbox::ProjectTypeDisplayName(appbox::ProjectTypeAt(index)));
+    }
+
+    project_type_ =
+        new wxComboBox(panel, kRibbonProjectType, appbox::ProjectTypeDisplayName(appbox::ProjectType::Standalone),
+                       wxDefaultPosition, wxDefaultSize, project_types, wxCB_READONLY);
+    project_type_->SetSelection(static_cast<int>(appbox::ProjectTypeIndexOf(appbox::ProjectType::Standalone)));
+    project_type_->SetToolTip("Standalone writes a self-contained archive with the loader; Patch writes the resources "
+                              "of the app directory without a loader, for the patch directory next to it");
+    type_row->Add(project_type_, 1, wxALIGN_CENTER_VERTICAL);
 
     auto* options = new wxButton(panel, wxID_ANY, "Options");
     options->Enable(false);
@@ -131,12 +179,12 @@ void RibbonBar::CreateHomePage()
     AddSmallButton(snapshot, wxNewId(), "Merge Snapshot", wxART_REDO, "Merge a stored snapshot into the project",
                    false);
 
-    auto* build = AppendButtonGroup(page, "Build");
-    AddLargeButton(build, kRibbonBuild, "Build", wxART_FILE_SAVE,
+    build_bar_ = AppendButtonGroup(page, "Build");
+    AddLargeButton(build_bar_, kRibbonBuild, "Build", wxART_FILE_SAVE,
                    "Pack the imported folders and the loader into a zip archive", true);
-    AddSmallButton(build, kRibbonBuildAndRun, "Build and Run", wxART_EXECUTABLE_FILE,
+    AddSmallButton(build_bar_, kRibbonBuildAndRun, "Build and Run", wxART_EXECUTABLE_FILE,
                    "Pack the archive, extract it to a temporary folder and start the loader", true);
-    AddSmallButton(build, wxNewId(), "Run and Merge", wxART_REDO,
+    AddSmallButton(build_bar_, wxNewId(), "Run and Merge", wxART_REDO,
                    "Run the packaged application and merge the overlay back", false);
 
     auto* startup = AppendButtonGroup(page, "Startup");

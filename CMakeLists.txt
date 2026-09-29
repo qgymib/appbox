@@ -158,6 +158,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/PresetDirectory.cpp"
     "${APPBOX_SOURCE_DIR}/core/ProjectDocument.cpp"
     "${APPBOX_SOURCE_DIR}/core/ProjectFile.cpp"
+    "${APPBOX_SOURCE_DIR}/core/ProjectType.cpp"
     "${APPBOX_SOURCE_DIR}/core/RegFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/RegistryHive.cpp"
     "${APPBOX_SOURCE_DIR}/core/RegistryIsolationFile.cpp"

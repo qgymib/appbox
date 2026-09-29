@@ -24,6 +24,11 @@ namespace appbox
  *   the user entered, and the way the two are merged is picked by
  *   EnvironmentMergeMode. This is the default mode of the workspace.
  *
+ * A run composes the environment of its layers in order (see
+ * ComposeEnvironmentValue()), so the "value of the host" of a layer is the
+ * value the layers below it composed: `Full` drops the value of the host and
+ * the value of every layer below the layer which carries the mode.
+ *
  * The enumeration lives in `common/` because the packer and the sandbox share
  * it: the packer stores the modes of the workspace and the sandbox applies them
  * while it composes the environment of the packaged application.
@@ -399,13 +404,15 @@ struct ComposedValue
 };
 
 /**
- * @brief Whether the value of the host is part of the answer of a mode.
+ * @brief Whether the value below a layer is part of the answer of a mode.
  *
- * Only `Write Copy` lets the packaged application see the value of the host;
- * `Full` hides it and reports the stored value alone.
+ * Only `Write Copy` lets the packaged application see the value which was
+ * composed below the layer; `Full` hides it and reports the stored value
+ * alone, so a layer whose isolation mode is `Full` drops the value of the host
+ * and the value of every layer below it.
  *
  * @param[in] isolation The isolation mode.
- * @return true when the host value is visible.
+ * @return true when the value below the layer is visible.
  */
 inline bool HostValueIsVisible(EnvironmentIsolation isolation)
 {
@@ -415,25 +422,32 @@ inline bool HostValueIsVisible(EnvironmentIsolation isolation)
 /**
  * @brief Compose the value the sandbox reports for one variable.
  *
- * The rules are the ones of the workspace of the packer:
+ * The rules are the ones of the workspace of the packer. The value of the host
+ * is the value below the first layer of a run, and the value a layer composed
+ * is the value below the layer which follows it, so the same rules describe a
+ * single layer and a chain of layers:
  *
  * - `Full` reports the stored value and ignores the merge mode, because the
- *   value of the host is invisible.
- * - `Write Copy` reports the stored value for `Replace`, the value of the host
- *   for `Host`, and the two values joined by the merge string for `Prepend`
- *   and `Append`.
- * - A host value which is absent contributes nothing, so `Prepend` and
- *   `Append` report the stored value alone: the merge string joins two values
- *   and is therefore not written while there is only one. The same holds for a
- *   host value which is present but empty, because an empty entry of a list
- *   like the search path names the current directory and a stray separator
- *   would add one.
- * - `Host` with a host value which is absent reports no variable at all: the
- *   stored value is ignored by the mode, so there is nothing to report.
+ *   value below the layer is invisible.
+ * - `Write Copy` reports the stored value for `Replace`, the value below the
+ *   layer for `Host`, and the two values joined by the merge string for
+ *   `Prepend` and `Append`.
+ * - A value below the layer which is absent contributes nothing, so `Prepend`
+ *   and `Append` report the stored value alone: the merge string joins two
+ *   values and is therefore not written while there is only one. The same
+ *   holds for a value which is present but empty, because an empty entry of a
+ *   list like the search path names the current directory and a stray
+ *   separator would add one.
+ * - `Host` with a value below the layer which is absent reports no variable at
+ *   all: the stored value is ignored by the mode, so there is nothing to
+ *   report.
  *
- * @param[in] host_present Whether the host holds the variable.
- * @param[in] host_value Value of the host, empty while the host does not hold
- *                       the variable.
+ * A chain of layers therefore composes from the value of the host outwards: a
+ * host `PATH` of `vx`, a layer which prepends `v0` and a layer which appends
+ * `v1` report `v0;vx;v1`.
+ *
+ * @param[in] host_present Whether the layers below the layer hold the variable.
+ * @param[in] host_value Value below the layer, empty while it is absent.
  * @param[in] value Value the user entered in the workspace.
  * @param[in] isolation Isolation mode of the variable.
  * @param[in] merge Merge mode of the variable.

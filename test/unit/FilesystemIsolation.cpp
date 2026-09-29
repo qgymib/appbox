@@ -513,3 +513,106 @@ TEST(Unit_FilesystemIsolation, FullTellsAFolderAndAFileApart)
     EXPECT_NE(file.find(L"host file stays readable"), std::wstring::npos) << file;
     EXPECT_NE(folder, file);
 }
+
+/**
+ * @brief Build the text of an isolation file which lists one entry.
+ * @param[in] path Path of the entry in the virtual filesystem.
+ * @param[in] isolation Mode of the entry.
+ * @return The UTF-8 text of the document.
+ */
+static std::string IsolationFileOf(const std::string& path, appbox::FilesystemIsolation isolation)
+{
+    appbox::filesystem_isolation::Entry entry;
+    entry.path = path;
+    entry.kind = appbox::FilesystemEntryKind::Directory;
+    entry.isolation = isolation;
+
+    appbox::filesystem_isolation::Document document;
+    document.entries.push_back(std::move(entry));
+    return nlohmann::json(document).dump(2);
+}
+
+/**
+ * @brief The isolation files of the layers of a run are applied in layer order.
+ *
+ * A patch package overrides the resources it carries and not the resources of
+ * the layers below it, so the mode of a path a later file names is the mode of
+ * that file while a path it does not name keeps the mode of the file below it.
+ */
+TEST(Unit_FilesystemIsolation, TheFileOfALaterLayerOverridesThePathItNames)
+{
+    const std::vector<appbox::filesystem::IsolationLayer> layers = {
+        { L"#ProgramFiles#", L"\\??\\C:\\Program Files" },
+    };
+
+    appbox::filesystem::IsolationTable table;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
+
+    /* The resources of the archive. */
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Full), layers,
+                            unmapped, error))
+        << error;
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp\\keep", appbox::FilesystemIsolation::Whiteout),
+                            layers, unmapped, error))
+        << error;
+
+    /* The isolation file of a patch package. */
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::WriteCopy), layers,
+                            unmapped, error))
+        << error;
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp\\add", appbox::FilesystemIsolation::Whiteout),
+                            layers, unmapped, error))
+        << error;
+    EXPECT_EQ(table.Count(), 3u);
+
+    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::Full;
+    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
+
+    /* The mode of the path the patch names is the mode of the patch. */
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::WriteCopy);
+    EXPECT_EQ(kind, appbox::FilesystemEntryKind::Directory);
+
+    /* The mode of a path the patch does not name stays the mode below it. */
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\keep", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::Whiteout);
+
+    /* The mode of a path only the patch names is the mode of the patch. */
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\add", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::Whiteout);
+
+    /* A path which no file lists follows the closest entry above it. */
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\other\\file.txt", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::WriteCopy);
+}
+
+/**
+ * @brief A document which cannot be used leaves the layers below it alone.
+ *
+ * The isolation file of a patch package is written by the user of the
+ * application, so a file which is not a document of the schema must not drop
+ * the modes of the archive it is applied on top of.
+ */
+TEST(Unit_FilesystemIsolation, ABrokenFileKeepsTheLayersBelowIt)
+{
+    const std::vector<appbox::filesystem::IsolationLayer> layers = {
+        { L"#ProgramFiles#", L"\\??\\C:\\Program Files" },
+    };
+
+    appbox::filesystem::IsolationTable table;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Full), layers,
+                            unmapped, error))
+        << error;
+
+    EXPECT_FALSE(table.Parse("{ not a document", layers, unmapped, error));
+    EXPECT_FALSE(error.empty());
+    EXPECT_EQ(table.Count(), 1u);
+
+    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::WriteCopy;
+    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::Full);
+}

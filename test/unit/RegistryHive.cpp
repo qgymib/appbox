@@ -408,3 +408,85 @@ TEST(Unit_RegistryHive, IsolationFileOfADefaultModel)
     ASSERT_EQ(keys[0]["isolation"].get<std::string>(), "write_copy");
     ASSERT_TRUE(document["values"].empty());
 }
+
+/**
+ * @brief Build the text of an isolation file which lists one key mode.
+ * @param[in] path Path of the key in the hive.
+ * @param[in] isolation Mode of the key.
+ * @return The UTF-8 text of the document.
+ */
+static std::string IsolationFileOf(const std::string& path, appbox::RegistryIsolation isolation)
+{
+    appbox::registry_isolation::KeyEntry entry;
+    entry.path = path;
+    entry.isolation = isolation;
+
+    appbox::registry_isolation::Document document;
+    document.keys.push_back(std::move(entry));
+    return nlohmann::json(document).dump(2);
+}
+
+/**
+ * @brief The isolation files of the layers of a run are applied in layer order.
+ *
+ * A patch package overrides the entries it names and not the entries of the
+ * layers below it, so the mode of an entry a later file names is the mode of
+ * that file while an entry it does not name keeps the mode of the file below
+ * it.
+ */
+TEST(Unit_RegistryHive, TheIsolationFileOfALaterLayerOverridesTheEntryItNames)
+{
+    appbox::registry::IsolationTable table;
+    std::string                      error;
+
+    /* The resources of the archive. */
+    ASSERT_TRUE(table.Parse(
+        IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::WriteCopy), error))
+        << error;
+    ASSERT_TRUE(table.Parse(
+        IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor\\Keep", appbox::RegistryIsolation::Hide), error))
+        << error;
+
+    /* The isolation file of a patch package. */
+    ASSERT_TRUE(
+        table.Parse(IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::Full), error))
+        << error;
+    ASSERT_TRUE(table.Parse(
+        IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor\\Add", appbox::RegistryIsolation::Hide), error))
+        << error;
+
+    EXPECT_EQ(table.KeyCount(), 3u);
+
+    /* The mode of the entry the package names is the mode of the package. */
+    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor"), appbox::RegistryIsolation::Full);
+
+    /* The mode of an entry the package does not name stays the mode below it. */
+    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor\\Keep"), appbox::RegistryIsolation::Hide);
+
+    /* The mode of an entry only the package names is the mode of the package. */
+    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor\\Add"), appbox::RegistryIsolation::Hide);
+
+    /* An entry which no file lists follows the closest entry above it. */
+    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor\\Other\\Leaf"), appbox::RegistryIsolation::Full);
+}
+
+/**
+ * @brief A document which cannot be used leaves the layers below it alone.
+ *
+ * The isolation file of a patch package is written by the user of the
+ * application, so a file which is not a document of the schema must not drop
+ * the modes of the archive it is applied on top of.
+ */
+TEST(Unit_RegistryHive, ABrokenIsolationFileKeepsTheLayersBelowIt)
+{
+    appbox::registry::IsolationTable table;
+    std::string                      error;
+    ASSERT_TRUE(
+        table.Parse(IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::Full), error))
+        << error;
+
+    EXPECT_FALSE(table.Parse("{ not a document", error));
+    EXPECT_FALSE(error.empty());
+    EXPECT_EQ(table.KeyCount(), 1u);
+    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor"), appbox::RegistryIsolation::Full);
+}

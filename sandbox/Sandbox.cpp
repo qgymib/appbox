@@ -55,10 +55,22 @@ static void ParseInjectData(const std::string& data)
     }
 
     appbox::sandbox->wRegistryHiveDOSPath = appbox::UTF8ToWide(inject_data.registry_hive_dos_path);
-    appbox::sandbox->wRegistryIsolationDOSPath = appbox::UTF8ToWide(inject_data.registry_isolation_dos_path);
-    appbox::sandbox->wFilesystemIsolationDOSPath = appbox::UTF8ToWide(inject_data.filesystem_isolation_dos_path);
-    appbox::sandbox->wNetworkIsolationDOSPath = appbox::UTF8ToWide(inject_data.network_isolation_dos_path);
-    appbox::sandbox->wEnvironmentIsolationDOSPath = appbox::UTF8ToWide(inject_data.environment_isolation_dos_path);
+    for (const auto& path : inject_data.registry_isolation_dos_paths)
+    {
+        appbox::sandbox->wRegistryIsolationDOSPaths.push_back(appbox::UTF8ToWide(path));
+    }
+    for (const auto& path : inject_data.filesystem_isolation_dos_paths)
+    {
+        appbox::sandbox->wFilesystemIsolationDOSPaths.push_back(appbox::UTF8ToWide(path));
+    }
+    for (const auto& path : inject_data.network_isolation_dos_paths)
+    {
+        appbox::sandbox->wNetworkIsolationDOSPaths.push_back(appbox::UTF8ToWide(path));
+    }
+    for (const auto& path : inject_data.environment_isolation_dos_paths)
+    {
+        appbox::sandbox->wEnvironmentIsolationDOSPaths.push_back(appbox::UTF8ToWide(path));
+    }
     appbox::sandbox->wEnvironmentStateDOSPath = appbox::UTF8ToWide(inject_data.environment_state_dos_path);
     appbox::sandbox->bEnvironmentComposed = inject_data.environment_is_composed;
 
@@ -246,12 +258,12 @@ void appbox::to_json(nlohmann::json& j, const Sandbox& r)
     j["sandbox32_dos_path"] = r.sandbox32_dos_path;
     j["sandbox64_dos_path"] = r.sandbox64_dos_path;
     j["registry_hive_dos_path"] = appbox::WideToUTF8(r.wRegistryHiveDOSPath);
-    j["registry_isolation_dos_path"] = appbox::WideToUTF8(r.wRegistryIsolationDOSPath);
-    j["filesystem_isolation_dos_path"] = appbox::WideToUTF8(r.wFilesystemIsolationDOSPath);
+    j["registry_isolation_dos_paths"] = r.wRegistryIsolationDOSPaths.size();
+    j["filesystem_isolation_dos_paths"] = r.wFilesystemIsolationDOSPaths.size();
     j["fs_isolation_entries"] = r.fs_isolation.Count();
-    j["network_isolation_dos_path"] = appbox::WideToUTF8(r.wNetworkIsolationDOSPath);
+    j["network_isolation_dos_paths"] = r.wNetworkIsolationDOSPaths.size();
     j["dns_entries"] = r.dns_table.Count();
-    j["environment_isolation_dos_path"] = appbox::WideToUTF8(r.wEnvironmentIsolationDOSPath);
+    j["environment_isolation_dos_paths"] = r.wEnvironmentIsolationDOSPaths.size();
     j["environment_state_dos_path"] = appbox::WideToUTF8(r.wEnvironmentStateDOSPath);
     j["environment_variables"] = r.env_table.Count();
     j["environment_modifications"] = r.env_state.Count();

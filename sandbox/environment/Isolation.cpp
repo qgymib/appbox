@@ -41,59 +41,42 @@ bool ReadTextFile(const std::wstring& path, std::string& text)
 }
 
 /**
- * @brief Read the value the host holds for a variable.
+ * @brief Apply the variables of one environment isolation file.
  *
- * @param[in] host The environment of the host.
- * @param[in] name Name to look for, compared ignoring the case.
- * @param[out] value Value of the host.
- * @return true when the host holds the variable.
- */
-bool HostValue(const std::vector<appbox::environment::Variable>& host, const std::wstring& name, std::wstring& value)
-{
-    for (const auto& variable : host)
-    {
-        if (appbox::environment::NamesEqual(variable.name, name))
-        {
-            value = variable.value;
-            return true;
-        }
-    }
-    return false;
-}
-
-/**
- * @brief Apply the variables of the environment isolation file.
+ * The value a layer composes is the value the layers below it composed, which
+ * is the value the table holds for the variable: the table carries the block
+ * of this process before the first layer is applied, so the first layer merges
+ * with the value of the host. A variable the table does not hold is absent,
+ * exactly like a variable the host does not hold.
  *
- * The values of the host are the ones the block of this process holds, so the
- * composition of a variable does not depend on the variables which were
- * composed before it.
+ * The composition of a variable reads and writes the table entry of that
+ * variable alone, so it does not depend on the variables which were composed
+ * before it.
  *
  * The value of a row may reference a known folder of the machine with
  * `%APPBOX:<NAME>%`; the reference is replaced before the value is composed
- * with the value of the host. A value the application stored at run time is
- * not expanded: it is part of the state and is applied as it is.
+ * with the value below the layer. A value the application stored at run time
+ * is not expanded: it is part of the state and is applied as it is.
  *
- * @param[in] host The environment of the host.
- * @param[in] variables The variables of the isolation file.
+ * @param[in] variables The variables of one isolation file.
  */
-void ApplyConfiguration(const std::vector<appbox::environment::Variable>&           host,
-                        const std::vector<appbox::environment::ConfiguredVariable>& variables)
+void ApplyLayer(const std::vector<appbox::environment::ConfiguredVariable>& variables)
 {
     for (const auto& variable : variables)
     {
-        std::wstring host_value;
-        const bool   host_present = HostValue(host, variable.name, host_value);
+        std::wstring below;
+        const bool   below_present = appbox::sandbox->env_table.Get(variable.name, below);
 
         /*
          * The value the user entered may reference a known folder of this
          * machine with `%APPBOX:<NAME>%`. The reference is replaced before the
-         * value is composed with the value of the host, so the merge joins the
-         * expanded text.
+         * value is composed with the value below the layer, so the merge joins
+         * the expanded text.
          */
         const std::wstring value = appbox::ExpandVariables(variable.value, appbox::sandbox->variables);
 
         const appbox::environment_isolation::ComposedValue composed =
-            appbox::environment_isolation::ComposeEnvironmentValue(host_present, host_value, value, variable.isolation,
+            appbox::environment_isolation::ComposeEnvironmentValue(below_present, below, value, variable.isolation,
                                                                    variable.merge, variable.merge_string);
 
         if (!composed.visible)
@@ -195,31 +178,41 @@ NTSTATUS appbox::environment::Isolation::Init()
      */
     if (!appbox::sandbox->bEnvironmentComposed)
     {
-        /* The composition reads the values of the host, so they are kept apart. */
-        const std::vector<Variable> host = appbox::sandbox->env_table.Entries();
-
-        const std::wstring& isolation_path = appbox::sandbox->wEnvironmentIsolationDOSPath;
-        if (!isolation_path.empty())
+        /*
+         * The environment of the run is composed layer by layer: the file of
+         * the resources of the archive comes first and the file of every patch
+         * package follows in the order the packages take effect in, and every
+         * layer applies its own isolation and merge mode to the value the
+         * layers below it composed.
+         */
+        for (const auto& isolation_path : appbox::sandbox->wEnvironmentIsolationDOSPaths)
         {
-            std::string text;
-            if (ReadTextFile(isolation_path, text))
+            if (isolation_path.empty())
             {
-                std::vector<ConfiguredVariable> variables;
-                std::string                     error;
-                if (ParseIsolationDocument(text, variables, error))
-                {
-                    ApplyConfiguration(host, variables);
-                    configured = variables.size();
-                }
-                else
-                {
-                    LOG_W("the environment isolation file is ignored: {}", error);
-                }
+                continue;
             }
-            else
+
+            std::string text;
+            if (!ReadTextFile(isolation_path, text))
             {
                 LOG_D("the environment isolation file does not exist: {}", appbox::WideToUTF8(isolation_path));
+                continue;
             }
+
+            std::vector<ConfiguredVariable> variables;
+            std::string                     error;
+            if (!ParseIsolationDocument(text, variables, error))
+            {
+                /*
+                 * A layer which cannot be read configures no variable, so the
+                 * layers below it stay in place.
+                 */
+                LOG_W("the environment isolation file '{}' is ignored: {}", appbox::WideToUTF8(isolation_path), error);
+                continue;
+            }
+
+            ApplyLayer(variables);
+            configured += variables.size();
         }
     }
 

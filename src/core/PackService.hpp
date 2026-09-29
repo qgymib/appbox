@@ -26,6 +26,20 @@ namespace appbox
 inline constexpr std::size_t kNonContentArchiveEntries = 7;
 
 /**
+ * @brief Number of patch archive entries which do not come from an import.
+ *
+ * A patch package carries the resources of a standalone archive without the
+ * loader: the loader payload and the loader configuration do not travel, so
+ * the count is two below kNonContentArchiveEntries. What remains is the two
+ * registry artifacts (the hive and the isolation file) and the isolation file
+ * of the filesystem, of the network and of the environment workspace. The
+ * patch run and the extraction of a `Build and Run` run of a standalone
+ * archive report the same total for their own kind, so both count a constant
+ * instead of a literal.
+ */
+inline constexpr std::size_t kNonContentPatchEntries = 5;
+
+/**
  * @brief Count the regular files below a folder.
  *
  * Symlinks and reparse points are not followed; their targets are not
@@ -35,6 +49,19 @@ inline constexpr std::size_t kNonContentArchiveEntries = 7;
  * @return The number of regular files in the whole subtree.
  */
 std::size_t CountFilesBelow(const std::wstring& folder);
+
+/**
+ * @brief Count the files a pack run writes from the imports of the model.
+ *
+ * The count covers the regular files of every imported folder plus the
+ * individually imported files. A pack run adds the non content entries of its
+ * product on top of it, so both the run and the caller which prepares the
+ * progress dialog derive the same total from the same number.
+ *
+ * @param[in] model The pack model.
+ * @return The number of files which come from an import.
+ */
+std::size_t ContentFileCount(const PackModel& model);
 
 /**
  * @brief Get the archive entry name of the loader program.
@@ -148,6 +175,56 @@ std::wstring LoaderEntryName(const PackModel& model);
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
                  const NetworkModel& network, const EnvironmentModel& environment, const void* loader_bytes,
                  std::size_t loader_size, const std::wstring& zip_path, const BuildProgressCallback& progress);
+
+/**
+ * @brief Pack the resources of the model into a patch package.
+ *
+ * The archive holds the very same resource tree a standalone archive keeps
+ * below `app`, rooted at the archive root instead: the loader program, its
+ * configuration and the `app` directory itself do not travel. The package is
+ * meant to be dropped into the `patch` directory next to the loader of a
+ * standalone archive, which merges every patch of that directory in ascending
+ * name order on top of the resources of `app`, so a later package overrides an
+ * earlier one and both of them override `app`.
+ *
+ * ```
+ * filesystem/isolation.json            isolation modes of the filesystem
+ * filesystem/<layer key>/<import>/...  imported folder content
+ * filesystem/<layer key>/<target>/...  imported file content
+ * registry/user.hiv                    virtual registry of the workspace
+ * registry/isolation.json              isolation modes of the registry
+ * network/isolation.json               network configuration of the workspace
+ * environment/isolation.json           environment variables of the workspace
+ * ```
+ *
+ * The startup files of the model are neither required nor used: a patch
+ * package carries no loader which could start them, so the model of a patch
+ * project may be empty of startup files.
+ *
+ * The progress total covers the files of the imported folders plus the
+ * individually imported files and kNonContentPatchEntries, so the callback
+ * receives a stable upper bound for the whole run. The run opens with the
+ * preparing stage like a standalone pack run does.
+ *
+ * @param[in] model The pack model.
+ * @param[in] registry Virtual registry of the workspace, which is written into
+ *                     the registry domain of the package as a hive file and an
+ *                     isolation file.
+ * @param[in] isolation Isolation modes of the virtual filesystem, which are
+ *                      written into the filesystem domain of the package.
+ * @param[in] network DNS redirections of the network workspace, which are
+ *                    written into the network domain of the package.
+ * @param[in] environment Environment variables of the workspace, which are
+ *                        written into the environment domain of the package.
+ * @param[in] zip_path Destination zip path (truncated when it exists).
+ * @param[in] progress Called once per packed file; returning false aborts the
+ *                     pack with kBuildCancelledError. May be empty to disable
+ *                     progress reporting.
+ * @return Error description, empty on success.
+ */
+std::string PackPatch(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
+                      const NetworkModel& network, const EnvironmentModel& environment, const std::wstring& zip_path,
+                      const BuildProgressCallback& progress);
 
 } // namespace appbox
 

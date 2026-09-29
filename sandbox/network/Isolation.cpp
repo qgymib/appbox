@@ -17,41 +17,67 @@ NTSTATUS appbox::network::Isolation::Init()
         return STATUS_SUCCESS;
     }
 
-    const std::wstring& path = appbox::sandbox->wNetworkIsolationDOSPath;
-    if (path.empty())
-    {
-        LOG_D("no network isolation file is configured");
-        return STATUS_SUCCESS;
-    }
+    /*
+     * The configuration of the run is the configuration of its layers: the
+     * file of the resources of the archive comes first and the file of every
+     * patch package follows in the order the packages take effect in. The
+     * redirections of every file are merged into the table and the proxy of a
+     * layer overrides the proxy of the layers below it, so the file of the
+     * last layer which names a usable proxy decides how the traffic of the
+     * application is carried.
+     *
+     * The module is initialized before the hooks are attached, so the files
+     * are read through the original entry points of the process.
+     */
+    ProxyConfig config;
+    bool        configured = false;
 
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream.is_open())
+    for (const auto& path : appbox::sandbox->wNetworkIsolationDOSPaths)
     {
-        LOG_D("the network isolation file does not exist: {}", appbox::WideToUTF8(path));
-        return STATUS_SUCCESS;
-    }
+        if (path.empty())
+        {
+            continue;
+        }
 
-    const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+        std::ifstream stream(path, std::ios::binary);
+        if (!stream.is_open())
+        {
+            LOG_D("the network isolation file does not exist: {}", appbox::WideToUTF8(path));
+            continue;
+        }
 
-    std::string error;
-    if (!appbox::sandbox->dns_table.Parse(text, error))
-    {
-        LOG_W("the network isolation file is ignored: {}", error);
-        return STATUS_SUCCESS;
+        const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+
+        std::string error;
+        if (!appbox::sandbox->dns_table.Parse(text, error))
+        {
+            /*
+             * The document is not a network isolation file, so neither its
+             * redirections nor its proxy take part in the run: the layers
+             * below it stay in place.
+             */
+            LOG_W("the network isolation file '{}' is ignored: {}", appbox::WideToUTF8(path), error);
+            continue;
+        }
+
+        /*
+         * A layer which carries no proxy or whose proxy cannot be used keeps
+         * the proxy of the layers below it, so the configuration which is
+         * applied at the end is the one of the last layer which names a proxy.
+         */
+        ProxyConfig layer;
+        if (ParseProxyConfig(text, layer) && layer.IsEnabled())
+        {
+            config = layer;
+            configured = true;
+        }
     }
 
     LOG_I("network isolation loaded: {} DNS redirections", appbox::sandbox->dns_table.Count());
 
-    /*
-     * The proxy of the workspace travels in the same document, and the engine
-     * which carries it is created here: the module is initialized before the
-     * hooks are attached, so the file itself is read through the original
-     * entry points of the process.
-     */
-    ProxyConfig config;
-    if (!ParseProxyConfig(text, config))
+    if (!configured)
     {
-        LOG_W("the proxy of the network isolation file could not be read");
+        LOG_D("no layer configures a proxy");
         return STATUS_SUCCESS;
     }
 

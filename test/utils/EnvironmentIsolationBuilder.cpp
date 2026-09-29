@@ -60,6 +60,11 @@ std::filesystem::path StateFilePath(const std::filesystem::path& case_root)
 bool appbox::test::WriteEnvironmentIsolationFile(const std::filesystem::path&                  case_root,
                                                  const std::vector<EnvironmentIsolationEntry>& entries)
 {
+    return WriteText(IsolationFilePath(case_root), BuildEnvironmentIsolationText(entries));
+}
+
+std::string appbox::test::BuildEnvironmentIsolationText(const std::vector<EnvironmentIsolationEntry>& entries)
+{
     /*
      * The document is filled as the structure of the schema of the file, so a
      * case writes the same document the workspace writes.
@@ -77,7 +82,7 @@ bool appbox::test::WriteEnvironmentIsolationFile(const std::filesystem::path&   
         document.entries.push_back(std::move(item));
     }
 
-    return WriteText(IsolationFilePath(case_root), nlohmann::json(document).dump(2));
+    return nlohmann::json(document).dump(2);
 }
 
 bool appbox::test::WriteEnvironmentIsolationFileText(const std::filesystem::path& case_root, const std::string& text)

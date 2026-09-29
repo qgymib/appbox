@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "src/core/PackService.hpp"
+#include "SandboxLayout.hpp"
 #include "WString.hpp"
 #include "Config.hpp"
 #include <nlohmann/json.hpp>
@@ -849,4 +850,254 @@ TEST(Unit_PackService, PackCountsImportedFilesInTheProgressTotal)
         }
     }
     EXPECT_EQ(named.count(L"MyApp\\extra.dll"), static_cast<std::size_t>(1));
+}
+
+TEST(Unit_PackService, ContentFileCountCountsTheImports)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE");
+    MakeFile(my_app, L"sub\\data.txt", "DATA");
+    const auto extra = MakeFile(temp.Get(), L"extra.dll", "EXTRA");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp", { extra.wstring() }, error)) << error;
+
+    /* The folders contribute their regular files, the imports one each. */
+    EXPECT_EQ(appbox::ContentFileCount(model), static_cast<std::size_t>(3));
+
+    /* The total of a pack run adds the non content entries of its product. */
+    std::vector<appbox::BuildProgress> reports;
+    const auto                         progress = [&reports](const appbox::BuildProgress& report) {
+        reports.emplace_back(report);
+        return true;
+    };
+
+    const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-count.zip");
+    ASSERT_EQ(appbox::PackPatch(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                                appbox::EnvironmentModel(), zip_path.wstring(), progress),
+              "");
+    ASSERT_FALSE(reports.empty());
+    EXPECT_EQ(reports.front().total, appbox::kNonContentPatchEntries + appbox::ContentFileCount(model));
+}
+
+TEST(Unit_PackService, PatchDoesNotRequireAStartupFileOrTheLoader)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+
+    /*
+     * The very same model fails the standalone pack run, which needs a startup
+     * file and the embedded loader payload.
+     */
+    const auto standalone =
+        appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                     appbox::EnvironmentModel(), "FAKE", 4, (temp.Get() / L"standalone.zip").wstring(), nullptr);
+    EXPECT_NE(standalone.find("startup file"), std::string::npos);
+
+    /* A patch package carries no loader, so neither of them is needed. */
+    const auto zip_path = temp.Get() / L"patch.zip";
+    EXPECT_EQ(appbox::PackPatch(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                                appbox::EnvironmentModel(), zip_path.wstring(), nullptr),
+              "");
+
+    ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
+    zip_t*           archive = closer.archive;
+    ASSERT_NE(archive, nullptr);
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE");
+}
+
+TEST(Unit_PackService, PatchRootsTheResourceTreeAtTheArchiveRoot)
+{
+    TempDir    program_files;
+    TempDir    user_profile;
+    const auto my_app = program_files.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE-CONTENT");
+    MakeFile(my_app, L"data\\config.txt", "CFG-CONTENT");
+    std::filesystem::create_directories(my_app / L"emptydir");
+    MakeFile(user_profile.Get(), L"MyUser\\settings.ini", "INI-CONTENT");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.ImportFolder("user_profile", (user_profile.Get() / L"MyUser").wstring(), error)) << error;
+
+    /*
+     * A patch project may hold startup files, a patch package simply ignores
+     * them: they name the programs a loader would start, and the package
+     * carries no loader.
+     */
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
+
+    const auto zip_path =
+        program_files.Get().parent_path() / (program_files.Get().filename().wstring() + L"-patch.zip");
+    EXPECT_EQ(appbox::PackPatch(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                                appbox::EnvironmentModel(), zip_path.wstring(), nullptr),
+              "");
+
+    ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
+    zip_t*           archive = closer.archive;
+    ASSERT_NE(archive, nullptr);
+
+    /* The domain directories are rooted at the archive root. */
+    const auto names = EntryNames(archive);
+    EXPECT_EQ(names.count("filesystem/"), static_cast<std::size_t>(1));
+    EXPECT_EQ(names.count("registry/"), static_cast<std::size_t>(1));
+    EXPECT_EQ(names.count("network/"), static_cast<std::size_t>(1));
+    EXPECT_EQ(names.count("environment/"), static_cast<std::size_t>(1));
+
+    /* The imported folders become layers of the same layer tree. */
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE-CONTENT");
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/data/config.txt"), "CFG-CONTENT");
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#USERPROFILE#/MyUser/settings.ini"), "INI-CONTENT");
+    EXPECT_GE(zip_name_locate(archive, "filesystem/#ProgramFiles#/MyApp/emptydir/", 0), 0);
+
+    /* The registry travels as a hive file next to its isolation file. */
+    const auto hive = ReadEntry(archive, "registry/user.hiv");
+    ASSERT_GE(hive.size(), 4u);
+    EXPECT_EQ(hive.substr(0, 4), "regf");
+
+    /* Every isolation file of the workspace is part of the package. */
+    EXPECT_FALSE(ReadEntry(archive, "filesystem/isolation.json").empty());
+    EXPECT_FALSE(ReadEntry(archive, "registry/isolation.json").empty());
+    EXPECT_FALSE(ReadEntry(archive, "network/isolation.json").empty());
+    EXPECT_FALSE(ReadEntry(archive, "environment/isolation.json").empty());
+
+    /*
+     * Neither the loader nor the resource directory of a standalone archive
+     * travels in a patch package, and the state of the sandbox never travels in
+     * either product.
+     */
+    EXPECT_EQ(zip_name_locate(archive, "app.exe", 0), -1);
+    EXPECT_EQ(zip_name_locate(archive, "app.exe.json", 0), -1);
+    for (const auto& name : names)
+    {
+        EXPECT_NE(name.rfind("app/", 0), 0) << name;
+        EXPECT_EQ(name.rfind("data/", 0), std::string::npos) << name;
+    }
+}
+
+TEST(Unit_PackService, PatchWritesImportedFilesBelowTheLayerTree)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE");
+    const auto extra = MakeFile(temp.Get(), L"extra.dll", "EXTRA-CONTENT");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp\\plugins", { extra.wstring() }, error)) << error;
+
+    const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-patch-files.zip");
+    EXPECT_EQ(appbox::PackPatch(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                                appbox::EnvironmentModel(), zip_path.wstring(), nullptr),
+              "");
+
+    ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
+    zip_t*           archive = closer.archive;
+    ASSERT_NE(archive, nullptr);
+
+    /* Imported files share the layer tree of the imported folder. */
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/plugins/extra.dll"), "EXTRA-CONTENT");
+
+    /* Every missing prefix of the target directory becomes a directory entry. */
+    EXPECT_GE(zip_name_locate(archive, "filesystem/#ProgramFiles#/MyApp/plugins/", 0), 0);
+}
+
+TEST(Unit_PackService, PatchReportsTheProgressOfTheResourceTree)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE");
+    MakeFile(my_app, L"data.txt", "DATA");
+    const auto extra = MakeFile(temp.Get(), L"extra.dll", "EXTRA");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp", { extra.wstring() }, error)) << error;
+
+    std::vector<appbox::BuildProgress> reports;
+    const auto                         progress = [&reports](const appbox::BuildProgress& report) {
+        reports.emplace_back(report);
+        return true;
+    };
+
+    const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-patch-progress.zip");
+    EXPECT_EQ(appbox::PackPatch(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                                appbox::EnvironmentModel(), zip_path.wstring(), progress),
+              "");
+
+    ASSERT_FALSE(reports.empty());
+
+    /* Two files of the imported folder plus one imported file. */
+    const auto expected = appbox::kNonContentPatchEntries + 3;
+
+    EXPECT_EQ(reports.front().stage, appbox::BuildStage::Preparing);
+    EXPECT_EQ(reports.front().done, static_cast<std::size_t>(0));
+    EXPECT_EQ(reports.front().total, expected);
+    EXPECT_TRUE(reports.front().current.empty());
+
+    EXPECT_EQ(reports.back().stage, appbox::BuildStage::Packing);
+    EXPECT_EQ(reports.back().done, expected);
+    EXPECT_EQ(reports.back().total, expected);
+
+    std::set<std::wstring> named;
+    for (const auto& report : reports)
+    {
+        if (report.stage == appbox::BuildStage::Packing && !report.current.empty())
+        {
+            named.insert(report.current);
+        }
+    }
+    EXPECT_EQ(named.count(L"MyApp\\app.exe"), static_cast<std::size_t>(1));
+    EXPECT_EQ(named.count(L"MyApp\\extra.dll"), static_cast<std::size_t>(1));
+}
+
+TEST(Unit_PackService, PatchCanBeCancelled)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+
+    const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-patch-cancel.zip");
+    EXPECT_EQ(appbox::PackPatch(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                                appbox::EnvironmentModel(), zip_path.wstring(),
+                                [](const appbox::BuildProgress&) { return false; }),
+              appbox::kBuildCancelledError);
+}
+
+TEST(Unit_PackService, PatchLayoutMirrorsTheArchiveLayout)
+{
+    /*
+     * A patch package roots the resources at the archive root while a
+     * standalone archive keeps them below `app`, so the two spellings of an
+     * entry have to describe the very same file.
+     */
+    const auto prefix = std::string(appbox::layout::kAppDirName) + "/";
+
+    EXPECT_EQ(prefix + appbox::layout::kFilesystemDirName, appbox::layout::kLayerRootRelative);
+    EXPECT_EQ(prefix + appbox::layout::kFilesystemIsolationAppRelative, appbox::layout::kFilesystemIsolationRelative);
+    EXPECT_EQ(prefix + appbox::layout::kRegistryHiveAppRelative, appbox::layout::kRegistryHiveRelative);
+    EXPECT_EQ(prefix + appbox::layout::kRegistryIsolationAppRelative, appbox::layout::kRegistryIsolationRelative);
+    EXPECT_EQ(prefix + appbox::layout::kNetworkIsolationAppRelative, appbox::layout::kNetworkIsolationRelative);
+    EXPECT_EQ(prefix + appbox::layout::kEnvironmentIsolationAppRelative, appbox::layout::kEnvironmentIsolationRelative);
 }

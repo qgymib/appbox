@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "src/core/ProjectDocument.hpp"
 #include <nlohmann/json.hpp>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <string>
@@ -57,6 +58,7 @@ appbox::ProjectDocument BuildSampleDocument()
 {
     appbox::ProjectDocument document;
     document.output_path = L"D:\\out\\MyApp.zip";
+    document.project_type = appbox::ProjectType::Patch;
 
     appbox::ProjectFolderRecord folder;
     folder.preset_id = "program_files";
@@ -144,6 +146,7 @@ TEST(Unit_ProjectDocument, RoundTripKeepsEveryMember)
     const auto back = nlohmann::ordered_json(document).get<appbox::ProjectDocument>();
 
     EXPECT_EQ(back.output_path, document.output_path);
+    EXPECT_EQ(back.project_type, document.project_type);
 
     ASSERT_EQ(back.folders.size(), 1u);
     EXPECT_EQ(back.folders[0].preset_id, "program_files");
@@ -238,10 +241,14 @@ TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
      * The version comes first and the members follow the order of the schema,
      * so the text of a given document is stable and easy to diff.
      */
-    const std::vector<std::string> expected{ "version",  "output_path", "folders", "files", "startup_files",
-                                             "registry", "filesystem",  "network", "proxy", "environment" };
+    const std::vector<std::string> expected{ "version", "output_path",   "project_type", "folders",
+                                             "files",   "startup_files", "registry",     "filesystem",
+                                             "network", "proxy",         "environment" };
     EXPECT_EQ(members, expected);
     EXPECT_EQ(json.at("version").get<int>(), appbox::kProjectFileVersion);
+
+    /* The kind of product is stored as the token of the project type. */
+    EXPECT_EQ(json.at("project_type").get<std::string>(), "patch");
 
     /* The proxy names its protocol, the traffic it carries and the server. */
     const auto& proxy = json.at("proxy");
@@ -400,6 +407,10 @@ TEST(Unit_ProjectDocument, ReadsMissingMembersAsEmpty)
     const auto document = ParseDocument(R"({ "version": 1 })");
 
     EXPECT_TRUE(document.output_path.empty());
+
+    /* A file written before the member existed describes a standalone project. */
+    EXPECT_EQ(document.project_type, appbox::ProjectType::Standalone);
+
     EXPECT_TRUE(document.folders.empty());
     EXPECT_TRUE(document.files.empty());
     EXPECT_TRUE(document.startup_files.empty());
@@ -429,6 +440,7 @@ TEST(Unit_ProjectDocument, ReadingReplacesTheWholeDocument)
 
     /* Reading must not append to the document which was already there. */
     EXPECT_EQ(document.output_path, L"D:\\out\\a.zip");
+    EXPECT_EQ(document.project_type, appbox::ProjectType::Standalone);
     EXPECT_TRUE(document.folders.empty());
     EXPECT_TRUE(document.files.empty());
     EXPECT_TRUE(document.startup_files.empty());
@@ -445,6 +457,7 @@ TEST(Unit_ProjectDocument, ReadingLeavesTheDocumentUntouchedOnFailure)
     const auto broken = nlohmann::ordered_json::parse(R"({ "version": 1, "folders": {} })");
     EXPECT_THROW(broken.get_to(document), appbox::ProjectDocumentError);
 
+    EXPECT_EQ(document.project_type, appbox::ProjectType::Patch);
     EXPECT_EQ(document.folders.size(), 1u);
     EXPECT_EQ(document.files.size(), 1u);
     EXPECT_EQ(document.startup_files.size(), 1u);
@@ -471,6 +484,8 @@ TEST(Unit_ProjectDocument, RejectsAVersionItDoesNotSupport)
 TEST(Unit_ProjectDocument, RejectsMalformedMembers)
 {
     EXPECT_NE(ParseError(R"({ "version": 1, "output_path": 7 })").find("the 'output_path' member is not a string"),
+              std::string::npos);
+    EXPECT_NE(ParseError(R"({ "version": 1, "project_type": 7 })").find("the 'project_type' member is not a string"),
               std::string::npos);
     EXPECT_NE(ParseError(R"({ "version": 1, "folders": {} })").find("the 'folders' member is not an array"),
               std::string::npos);
@@ -582,6 +597,8 @@ TEST(Unit_ProjectDocument, RejectsUnknownTokens)
                          R"( "isolation": "write_copy", "merge": "merge", "merge_string": ";" } ] })")
                   .find("unknown merge mode 'merge'"),
               std::string::npos);
+    EXPECT_NE(ParseError(R"({ "version": 1, "project_type": "installer" })").find("unknown project type 'installer'"),
+              std::string::npos);
 }
 
 TEST(Unit_ProjectDocument, RejectsMalformedValueData)
@@ -605,12 +622,15 @@ TEST(Unit_ProjectDocument, AcceptsTheTokensOfTheModels)
      * which is written from a model is read back unchanged.
      */
     const auto document =
-        ParseDocument(R"({ "version": 1, "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "write copy",)"
+        ParseDocument(R"({ "version": 1, "project_type": "PATCH",)"
+                      R"( "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "write copy",)"
                       R"( "values": [ { "name": "Server", "type": "reg_dword", "data": "2A 00 00 00",)"
                       R"( "isolation": "FULL" } ] } ],)"
                       R"( "filesystem": [ { "path": "#Windows#", "kind": "folder", "isolation": "write-copy" } ],)"
                       R"( "environment": [ { "name": "PATH", "value": "C:\\MyApp", "isolation": "Write Copy",)"
                       R"( "merge": "PREPEND", "merge_string": ";" } ] })");
+
+    EXPECT_EQ(document.project_type, appbox::ProjectType::Patch);
 
     ASSERT_EQ(document.registry.size(), 1u);
     EXPECT_EQ(document.registry[0].isolation, appbox::RegistryIsolation::WriteCopy);
@@ -626,4 +646,21 @@ TEST(Unit_ProjectDocument, AcceptsTheTokensOfTheModels)
     ASSERT_EQ(document.environment.size(), 1u);
     EXPECT_EQ(document.environment[0].isolation, appbox::EnvironmentIsolation::WriteCopy);
     EXPECT_EQ(document.environment[0].merge, appbox::EnvironmentMergeMode::Prepend);
+}
+
+TEST(Unit_ProjectDocument, RoundTripsEveryProjectType)
+{
+    /* Every type of the box is written as its token and read back. */
+    for (std::size_t index = 0; index < appbox::ProjectTypeCount(); ++index)
+    {
+        appbox::ProjectDocument document;
+        document.project_type = appbox::ProjectTypeAt(index);
+
+        const auto json = nlohmann::ordered_json(document);
+        ASSERT_TRUE(json.contains("project_type")) << appbox::ProjectTypeToken(document.project_type);
+        EXPECT_EQ(json.at("project_type").get<std::string>(), appbox::ProjectTypeToken(document.project_type));
+
+        const auto back = json.get<appbox::ProjectDocument>();
+        EXPECT_EQ(back.project_type, document.project_type);
+    }
 }

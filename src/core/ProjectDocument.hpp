@@ -4,6 +4,7 @@
 #include "EnvironmentIsolation.hpp"
 #include "FilesystemIsolation.hpp"
 #include "NetworkModel.hpp"
+#include "ProjectType.hpp"
 #include "RegistryIsolation.hpp"
 #include "RegistryModel.hpp"
 #include <nlohmann/json_fwd.hpp>
@@ -343,8 +344,9 @@ struct ProjectEnvironmentRecord
  * `File -> Import Configuration...` commands: the imported folders and files,
  * the startup files, the virtual registry, the isolation modes of the virtual
  * filesystem, the DNS redirections of the network workspace, the proxy of the
- * network workspace and the environment variables of the environment
- * workspace. It holds no host state and no wxWidgets dependency, so the
+ * network workspace, the environment variables of the environment workspace,
+ * the kind of product the `Build` command writes and the path of the
+ * `Output File` box. It holds no host state and no wxWidgets dependency, so the
  * conversion is unit testable.
  *
  * `to_json()` and `from_json()` convert the structure to and from the JSON
@@ -360,6 +362,7 @@ struct ProjectEnvironmentRecord
  * {
  *   "version": 1,
  *   "output_path": "D:\\out\\MyApp.zip",
+ *   "project_type": "standalone",
  *   "folders": [ { "preset": "program_files", "name": "MyApp",
  *                  "source": "C:\\Program Files\\MyApp" } ],
  *   "files": [ { "preset": "user_profile", "target_dir": "MyApp\\data",
@@ -392,6 +395,10 @@ struct ProjectEnvironmentRecord
  * The `proxy` member is written only while a proxy is configured, so a
  * document of a session without a proxy keeps the text it had before the
  * member was added to the schema.
+ *
+ * The `project_type` member is optional as well: a file which does not name it
+ * describes a standalone project, which is what every file written before the
+ * member existed describes.
  */
 struct ProjectDocument
 {
@@ -399,6 +406,14 @@ struct ProjectDocument
      * @brief Path of the `Output File` box, empty when none was chosen.
      */
     std::wstring output_path;
+
+    /**
+     * @brief Kind of product the `Build` command writes.
+     *
+     * A document which does not name the member describes a standalone project,
+     * which is what a file written before the member existed describes.
+     */
+    ProjectType project_type = ProjectType::Standalone;
 
     /**
      * @brief Imported folders, in the order the document stores them.

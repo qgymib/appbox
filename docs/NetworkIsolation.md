@@ -41,8 +41,9 @@ missing or whose port is not a port. The schema version therefore stays `1`, so
 an archive which was written before the member existed is still accepted.
 
 The loader derives the path of the file inside the extracted resources and hands
-it to the sandbox. A missing file, a missing configuration or a malformed
-document is not an error: the sandbox then behaves like one without an
+it to the sandbox, together with the file of every patch package of the run (see
+[Patch layers](#patch-layers)). A missing file, a missing configuration or a
+malformed document is not an error: the sandbox then behaves like one without an
 isolation file, so every name keeps the resolution of the host and every
 connection keeps the path of the host.
 
@@ -132,6 +133,29 @@ Key constraints of the design:
 The engine reaches its own server through the entry points the hooks saved, so
 the traffic of the proxy never passes the hooks again.
 
+## Patch layers
+
+A run composes its network configuration from the layers of the run: the file of
+the resources of the archive comes first and the file of every patch package of
+the `patch` directory follows in ascending name order. The sandbox applies the
+files in that order and merges them, so a package overrides the configuration it
+names and keeps the configuration it does not name:
+
+| Member | Merge |
+| --- | --- |
+| `entries` | Per hostname. A file which lists a hostname overrides the entry of the same hostname of the files below it, while a hostname no later file lists keeps the entry below it. A file which lists no redirection therefore keeps every redirection below it. |
+| `proxy` | Per file. The proxy of the last file which names a proxy that can be used is the proxy of the run, and a file which names none — or whose proxy names another protocol, whose server is missing or whose port is not a port — keeps the proxy below it. |
+
+A file which is not a network isolation file of the supported version is
+skipped with everything it carries: neither its redirections nor its proxy take
+part in the run, and the files below and above it are applied as if it were not
+there. The merge of the redirections is atomic per file, so a malformed document
+never changes a redirection of the layers below it.
+
+The proxy of a run is therefore the proxy of the **last layer which configures
+one**, and not the proxy of the last layer: a patch package whose `Network`
+workspace holds no proxy leaves the proxy of the archive in place.
+
 ## Why the hooks are not on an `Nt` function
 
 The isolation of the filesystem and of the registry hooks the `Nt` functions of
@@ -143,6 +167,24 @@ while the DNS question itself leaves the process as a UDP datagram over
 the NSI device, so there is no kernel level entry point which carries the
 queried name; the user mode entry points of the two libraries are the closest
 layer which does.
+
+## Tests
+
+The end-to-end cases of the domain run the real loader with a probe process
+inside the sandbox. The cases of the layers of a run which applies patch
+packages are:
+
+- `test/e2e/Patch_NetworkDnsOfTheLastLayerWins.cpp` — a redirection of a
+  package overrides the redirection of the archive, the later package overrides
+  the earlier one, and a hostname no later file lists keeps the entry below it.
+- `test/e2e/Patch_NetworkProxyOfTheLastLayerWins.cpp` — the proxy of the last
+  package which names one carries the traffic, and the proxy below it is not
+  used in parallel.
+- `test/e2e/Patch_NetworkProxyBelowIsKept.cpp` — a package whose document names
+  no proxy keeps the proxy of the archive.
+- `test/e2e/Patch_BrokenNetworkResourcesAreSkipped.cpp` — a package which
+  carries a malformed network document is skipped, so the layers below and above
+  it stay in place.
 
 ## Known gaps
 

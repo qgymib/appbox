@@ -119,6 +119,9 @@ MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox", wxDefaultPosition,
     ribbon_->SetOutputPath(DefaultOutputPath());
     UpdateTitle();
 
+    /* The controls follow the project type of the session. */
+    ApplyProjectType(project_type_);
+
     Bind(wxEVT_MENU, &MainFrame::OnExit, this, wxID_EXIT);
     Bind(wxEVT_MENU, &MainFrame::OnAbout, this, wxID_ABOUT);
     Bind(wxEVT_MENU, &MainFrame::OnImportConfiguration, this, kMenuImportConfiguration);
@@ -130,6 +133,7 @@ MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox", wxDefaultPosition,
     Bind(wxEVT_RIBBONBUTTONBAR_CLICKED, &MainFrame::OnBuildAndRun, this, kRibbonBuildAndRun);
     Bind(wxEVT_BUTTON, &MainFrame::OnBrowseOutput, this, kRibbonBrowseOutput);
     Bind(wxEVT_TEXT, &MainFrame::OnOutputPathEdited, this, kRibbonOutputPath);
+    Bind(wxEVT_COMBOBOX, &MainFrame::OnProjectTypeChanged, this, kRibbonProjectType);
     Bind(APPBOX_PACK_PROGRESS, &MainFrame::OnPackProgress, this);
     Bind(APPBOX_PACK_FINISHED, &MainFrame::OnPackFinished, this);
 }
@@ -237,6 +241,14 @@ void MainFrame::ApplyWindowIcon()
 
 void MainFrame::UpdateStatusBar()
 {
+    if (project_type_ == appbox::ProjectType::Patch)
+    {
+        /* A patch package carries no loader, so it needs no startup file. */
+        const auto files = appbox::ContentFileCount(model_);
+        SetStatusText(wxString::Format("Patch project: %llu files", static_cast<unsigned long long>(files)));
+        return;
+    }
+
     if (!model_.HasStartupFiles())
     {
         SetStatusText("No startup file selected");
@@ -305,6 +317,38 @@ void MainFrame::OnSideNavChanged(wxCommandEvent& event)
     event.Skip();
 }
 
+void MainFrame::OnProjectTypeChanged(wxCommandEvent& event)
+{
+    ApplyProjectType(ribbon_->GetProjectType());
+    event.Skip();
+}
+
+void MainFrame::ApplyProjectType(appbox::ProjectType type)
+{
+    project_type_ = type;
+
+    /*
+     * The box is written back as well: the type of an imported configuration
+     * has to be shown, and a value the session refused must not stay visible.
+     */
+    ribbon_->SetProjectType(type);
+
+    /*
+     * A patch package carries no loader, so there is no program to extract and
+     * start: the run command is offered for a standalone project only.
+     */
+    ribbon_->SetBuildAndRunEnabled(type == appbox::ProjectType::Standalone);
+
+    /* Keep following the startup files until the user edits the path. */
+    if (!output_path_edited_)
+    {
+        ribbon_->SetOutputPath(DefaultOutputPath());
+    }
+
+    UpdateStatusBar();
+    UpdateTitle();
+}
+
 void MainFrame::OnExit(wxCommandEvent&)
 {
     Close(true);
@@ -358,12 +402,13 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     appbox::FilesystemIsolationModel loaded_isolation;
     appbox::NetworkModel             loaded_network;
     appbox::EnvironmentModel         loaded_environment;
+    appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
     std::wstring                     output_path;
     std::string                      error;
 
     if (!appbox::LoadProject(dialog.GetPath().ToStdWstring(), document, error) ||
         !appbox::ApplyProjectDocument(document, loaded, loaded_registry, loaded_isolation, loaded_network,
-                                      loaded_environment, output_path, error))
+                                      loaded_environment, loaded_project_type, output_path, error))
     {
         spdlog::error("importing the configuration failed: {}", error);
         wxMessageBox("The configuration could not be imported:\n\n" + wxString::FromUTF8(error), "Import Configuration",
@@ -396,8 +441,9 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
         ribbon_->SetOutputPath(DefaultOutputPath());
     }
 
-    UpdateStatusBar();
-    UpdateTitle();
+    /* The type of the document decides which product the next Build writes. */
+    ApplyProjectType(loaded_project_type);
+
     SetStatusText("Configuration imported from " + dialog.GetPath());
 }
 
@@ -419,7 +465,7 @@ void MainFrame::OnExportConfiguration(wxCommandEvent&)
 
     std::string error;
     const auto  document = appbox::MakeProjectDocument(model_, registry_model_, filesystem_isolation_, network_,
-                                                       environment_, OutputPath().ToStdWstring());
+                                                       environment_, project_type_, OutputPath().ToStdWstring());
     if (!appbox::SaveProject(document, dialog.GetPath().ToStdWstring(), error))
     {
         spdlog::error("exporting the configuration failed: {}", error);
@@ -527,7 +573,20 @@ void MainFrame::StartPack(bool run_after)
         return;
     }
 
-    if (!model_.HasStartupFiles())
+    /*
+     * A patch package carries no loader, so there is nothing to extract and
+     * start. The command is not offered for a patch project; a caller which
+     * asks for it anyway is refused here.
+     */
+    if (project_type_ == appbox::ProjectType::Patch && run_after)
+    {
+        return;
+    }
+
+    const bool standalone = project_type_ == appbox::ProjectType::Standalone;
+
+    /* Only a standalone archive carries a loader which starts a startup file. */
+    if (standalone && !model_.HasStartupFiles())
     {
         wxMessageBox("Select at least one startup file before building.", "Build", wxOK | wxICON_INFORMATION, this);
         return;
@@ -540,28 +599,26 @@ void MainFrame::StartPack(bool run_after)
         return;
     }
 
-    std::string error;
-    const auto  loader = appbox::LoadEmbeddedLoader(error);
-    if (!error.empty() || loader.empty())
+    std::string loader;
+    if (standalone)
     {
-        wxMessageBox("The embedded loader is unavailable: " + error, "Build", wxOK | wxICON_ERROR, this);
-        return;
+        std::string error;
+        loader = appbox::LoadEmbeddedLoader(error);
+        if (!error.empty() || loader.empty())
+        {
+            wxMessageBox("The embedded loader is unavailable: " + error, "Build", wxOK | wxICON_ERROR, this);
+            return;
+        }
     }
 
     /*
-     * Count the files once so the progress callback has a stable total. The
-     * loader payload and its configuration are archive entries of their own,
-     * so the packing stage reports this count and the extracting stage of a
-     * `Build and Run` run reports the very same number of file entries.
+     * Count the files once so the progress callback has a stable total. The non
+     * content entries of the product are added to the files which come from an
+     * import, so the packing stage reports this count and the extracting stage
+     * of a `Build and Run` run reports the very same number of file entries.
      */
-    std::size_t total = appbox::kNonContentArchiveEntries + model_.AllImportedFiles().size();
-    for (const auto& entry : appbox::PresetDirectories())
-    {
-        for (const auto& imported : model_.ImportsOf(entry.id))
-        {
-            total += appbox::CountFilesBelow(imported.source_path);
-        }
-    }
+    const auto non_content = standalone ? appbox::kNonContentArchiveEntries : appbox::kNonContentPatchEntries;
+    const auto total = non_content + appbox::ContentFileCount(model_);
     const auto planned = run_after ? total * 2 : total;
     const auto range = static_cast<int>(std::min<std::size_t>(planned, std::numeric_limits<int>::max()));
 
@@ -620,9 +677,10 @@ void MainFrame::StartPack(bool run_after)
     const auto environment_snapshot = environment_;
     const auto loader_bytes = std::string(loader);
     const auto zip_wide = zip_path.ToStdWstring();
+    const auto project_type = project_type_;
 
     pack_thread_ = std::thread([this, snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
-                                environment_snapshot, loader_bytes, zip_wide, run_after]() {
+                                environment_snapshot, loader_bytes, zip_wide, run_after, project_type]() {
         const auto report_progress = [this](const appbox::BuildProgress& report) {
             auto* event = new wxThreadEvent(APPBOX_PACK_PROGRESS);
             event->SetPayload(report);
@@ -631,14 +689,29 @@ void MainFrame::StartPack(bool run_after)
         };
 
         PackOutcome outcome;
-        outcome.error =
-            appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, network_snapshot, environment_snapshot,
-                         loader_bytes.data(), loader_bytes.size(), zip_wide, report_progress);
+        if (project_type == appbox::ProjectType::Patch)
+        {
+            /* A patch package holds the resources without a loader. */
+            outcome.error = appbox::PackPatch(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
+                                              environment_snapshot, zip_wide, report_progress);
+        }
+        else
+        {
+            outcome.error =
+                appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, network_snapshot, environment_snapshot,
+                             loader_bytes.data(), loader_bytes.size(), zip_wide, report_progress);
+        }
 
         if (outcome.error.empty())
         {
-            /* The loader is named after the main program of the snapshot. */
-            outcome.loader_entry = appbox::LoaderEntryName(snapshot);
+            /*
+             * The loader is named after the main program of the snapshot; a
+             * patch package has none, because it is not started on its own.
+             */
+            if (project_type == appbox::ProjectType::Standalone)
+            {
+                outcome.loader_entry = appbox::LoaderEntryName(snapshot);
+            }
             outcome.archive_path = zip_wide;
         }
 

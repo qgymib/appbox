@@ -1,11 +1,18 @@
 #ifndef APPBOX_PACKER_WIDGET_RIBBON_BAR_HPP
 #define APPBOX_PACKER_WIDGET_RIBBON_BAR_HPP
 
+/*
+ * wx/wx.h comes first on purpose: including the wxWidgets headers in another
+ * order makes MSVC report the deprecated CRT calls of wx/wxcrt.h (C4996),
+ * which the project builds as an error.
+ */
 #include <wx/wx.h>
+#include <wx/combobox.h>
 #include <wx/ribbon/bar.h>
 #include <wx/ribbon/buttonbar.h>
 #include <wx/ribbon/page.h>
 #include <wx/ribbon/panel.h>
+#include "core/ProjectType.hpp"
 
 /** Command id of the "Startup Files" ribbon button. */
 extern const int kRibbonStartupFiles;
@@ -21,6 +28,9 @@ extern const int kRibbonBrowseOutput;
 
 /** Command id of the archive path box of the Output group. */
 extern const int kRibbonOutputPath;
+
+/** Command id of the project type box of the Output group. */
+extern const int kRibbonProjectType;
 
 /**
  * @brief Ribbon toolbar of the packer.
@@ -53,6 +63,33 @@ public:
      * @param[in] path Archive path.
      */
     void SetOutputPath(const wxString& path);
+
+    /**
+     * @brief Get the project type the Output group shows.
+     * @return The selected project type, `Standalone` when the box shows no
+     *         selection.
+     */
+    appbox::ProjectType GetProjectType() const;
+
+    /**
+     * @brief Select a project type in the Output group.
+     *
+     * The box is changed without raising a command event, so a caller which
+     * restores a configuration does not re-enter its own handler.
+     *
+     * @param[in] type Project type to show.
+     */
+    void SetProjectType(appbox::ProjectType type);
+
+    /**
+     * @brief Enable or disable the "Build and Run" button.
+     *
+     * A patch package carries no loader, so the run command is only offered for
+     * a standalone project.
+     *
+     * @param[in] enabled Whether the button accepts input.
+     */
+    void SetBuildAndRunEnabled(bool enabled);
 
 private:
     /**
@@ -111,6 +148,22 @@ private:
     void CreateAdvancedPage();
 
     wxTextCtrl* output_path_ = nullptr;
+
+    /**
+     * @brief The `Project Type` box of the Output group.
+     *
+     * The box lists the project types in the order of ProjectTypeAt(), so the
+     * selection is the index of the type it shows.
+     */
+    wxComboBox* project_type_ = nullptr;
+
+    /**
+     * @brief The button bar of the Build group.
+     *
+     * The bar is kept because the "Build and Run" button is enabled and
+     * disabled while the session runs.
+     */
+    wxRibbonButtonBar* build_bar_ = nullptr;
 };
 
 #endif // APPBOX_PACKER_WIDGET_RIBBON_BAR_HPP

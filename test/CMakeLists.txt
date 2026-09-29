@@ -30,10 +30,12 @@ add_executable(AppBoxTests
     "unit/ExpandKnownFolder.cpp"
     "unit/FilesystemIsolation.cpp"
     "unit/GetExecutableDir.cpp"
+    "unit/HiveMerge.cpp"
     "unit/HiveReader.cpp"
     "unit/HookTransaction.cpp"
     "unit/IsolationDocument.cpp"
     "unit/Log.cpp"
+    "unit/Md5.cpp"
     "unit/MiniLauncher.cpp"
     "unit/ModuleTable.cpp"
     "unit/NetworkIsolationFile.cpp"
@@ -44,6 +46,7 @@ add_executable(AppBoxTests
     "unit/ProcessJob.cpp"
     "unit/ProjectDocument.cpp"
     "unit/ProjectFile.cpp"
+    "unit/ProjectType.cpp"
     "unit/ProxyConfig.cpp"
     "unit/RegFile.cpp"
     "unit/RegistryHive.cpp"
@@ -118,6 +121,24 @@ add_executable(AppBoxTests
     "e2e/Net_Proxy_TcpConnectIsCarriedByTheProxy.cpp"
     "e2e/Net_Proxy_UdpDatagramIsCarriedByTheProxy.cpp"
     "e2e/Net_Proxy_UnreachableServerFailsTheConnect.cpp"
+    "e2e/Patch_BrokenEnvironmentResourcesAreSkipped.cpp"
+    "e2e/Patch_BrokenNetworkResourcesAreSkipped.cpp"
+    "e2e/Patch_BrokenPackageIsSkipped.cpp"
+    "e2e/Patch_BrokenRegistryResourcesAreSkipped.cpp"
+    "e2e/Patch_CacheIsReusedAndRefreshed.cpp"
+    "e2e/Patch_ContentOverridesTheApp.cpp"
+    "e2e/Patch_EnvironmentFullDropsTheLayersBelow.cpp"
+    "e2e/Patch_EnvironmentHostPassesBelowThrough.cpp"
+    "e2e/Patch_EnvironmentLayersComposeInOrder.cpp"
+    "e2e/Patch_IsolationModeOfTheLastLayerWins.cpp"
+    "e2e/Patch_NetworkDnsOfTheLastLayerWins.cpp"
+    "e2e/Patch_NetworkProxyBelowIsKept.cpp"
+    "e2e/Patch_NetworkProxyOfTheLastLayerWins.cpp"
+    "e2e/Patch_NoPackageKeepsTheCacheEmpty.cpp"
+    "e2e/Patch_RegistryHiveOfTheLastLayerWins.cpp"
+    "e2e/Patch_RegistryIsolationModeOfTheLastLayerWins.cpp"
+    "e2e/Patch_RegistryStateBelowThePatchIsKept.cpp"
+    "e2e/Patch_RegistryWithoutResourcesKeepsTheApp.cpp"
     "e2e/Reg_DeleteKey_NonEmpty.cpp"
     "e2e/Reg_DeleteKey_ReadHandle.cpp"
     "e2e/Reg_DeleteKey_ShadowKeyRemoved.cpp"
@@ -191,6 +212,7 @@ add_executable(AppBoxTests
     "utils/HiveBuilder.cpp"
     "utils/NameResolutionProbe.cpp"
     "utils/NetworkIsolationBuilder.cpp"
+    "utils/PatchBuilder.cpp"
     "utils/ProbeCall.cpp"
     "utils/ReadFileFull.cpp"
     "utils/RealFsFolder.cpp"
@@ -211,8 +233,10 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/registry/HiveReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ConvertDosPathToNtPath.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/GetExecutableDir.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/HiveMerge.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/KnownFolder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/MapBaseFS.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/Md5.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/MiniLauncher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ProcessJob.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/WinCall.cpp
@@ -230,6 +254,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PresetDirectory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ProjectDocument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ProjectFile.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ProjectType.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryHive.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryIsolationFile.cpp
@@ -316,6 +341,9 @@ target_link_libraries(AppBoxTests PRIVATE shell32 ole32)
 
 # Registry access of the sandbox hive reader (RegLoadAppKeyW and friends).
 target_link_libraries(AppBoxTests PRIVATE advapi32)
+
+# Digest of a patch package (BCryptOpenAlgorithmProvider and friends).
+target_link_libraries(AppBoxTests PRIVATE bcrypt)
 
 # The coredump of a timed out test case is written with MiniDumpWriteDump.
 target_link_libraries(AppBoxTests PRIVATE dbghelp)

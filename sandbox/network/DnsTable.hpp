@@ -65,11 +65,14 @@ class DnsTable
 {
 public:
     /**
-     * @brief Read the DNS redirections of an isolation file.
+     * @brief Read the DNS redirections of an isolation file into the table.
      *
-     * The call is atomic: the entries are collected in a local table which
-     * replaces the content of this table only when the whole document was
-     * accepted, so a malformed file leaves the table untouched.
+     * The call merges the document into the table instead of replacing it: the
+     * table holds the redirections of the layers below the file, a hostname
+     * the document lists overrides the entry of the same hostname of those
+     * layers, and a hostname it does not list keeps the entry below it. The
+     * merge is applied after the whole document was accepted, so a malformed
+     * file leaves the table untouched.
      *
      * A document is rejected when it is not a JSON object, when its version is
      * not the version of the schema, when the entry list is not an array, or

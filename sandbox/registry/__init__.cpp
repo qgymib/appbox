@@ -108,7 +108,6 @@ struct appbox::registry::Hive::Data
     std::wstring   hive_mount_name;     /* Object name of the mount, for example \REGISTRY\A\{GUID}. */
     std::wstring   hkcu_prefix;         /* NT path of the real HKCU root, \REGISTRY\USER\<SID>. */
     std::wstring   hive_path;           /* DOS path of the hive file. */
-    std::wstring   isolation_path;      /* DOS path of the isolation file. */
     IsolationTable isolation;           /* Isolation modes of the virtual registry. */
 
     /**
@@ -368,7 +367,13 @@ static NTSTATUS CreateRootKeys(HANDLE hive_root)
 /**
  * @brief Load the isolation modes of the virtual registry.
  *
- * A missing file is the normal case of an archive which carries no modes and a
+ * The files are read in the order of the layers of the run: the file of the
+ * resources of the archive first, then the file of every patch package in
+ * ascending order. Every file overrides the modes the files below it set for
+ * the same key or value, so the sandboxed process observes the mode of the
+ * last layer which names an entry.
+ *
+ * A missing file is the normal case of a layer which carries no modes and a
  * malformed file is reported and ignored. Neither of them may fail the start
  * of the sandbox, because a sandbox without modes is exactly the read through
  * behaviour of a sandbox without an isolation file.
@@ -377,25 +382,28 @@ static NTSTATUS CreateRootKeys(HANDLE hive_root)
  */
 static void LoadIsolationTable(appbox::registry::Hive::Data& data)
 {
-    if (data.isolation_path.empty())
+    if (appbox::sandbox->wRegistryIsolationDOSPaths.empty())
     {
         LOG_D("no registry isolation file is configured");
         return;
     }
 
-    std::ifstream stream(data.isolation_path, std::ios::binary);
-    if (!stream.is_open())
+    for (const auto& path : appbox::sandbox->wRegistryIsolationDOSPaths)
     {
-        LOG_D("the registry isolation file does not exist: {}", appbox::WideToUTF8(data.isolation_path));
-        return;
-    }
+        std::ifstream stream(path, std::ios::binary);
+        if (!stream.is_open())
+        {
+            LOG_D("the registry isolation file does not exist: {}", appbox::WideToUTF8(path));
+            continue;
+        }
 
-    const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-    std::string       error;
-    if (!data.isolation.Parse(text, error))
-    {
-        LOG_W("the registry isolation file is ignored: {}", error);
-        return;
+        const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+        std::string       error;
+        if (!data.isolation.Parse(text, error))
+        {
+            LOG_W("the registry isolation file '{}' is ignored: {}", appbox::WideToUTF8(path), error);
+            continue;
+        }
     }
 
     LOG_I("registry isolation modes loaded: {} keys, {} values", data.isolation.KeyCount(),
@@ -1279,7 +1287,6 @@ NTSTATUS appbox::registry::Hive::Init()
 
     /* The modes of the virtual registry, which decide which host entries stay
      * invisible. A missing file keeps the default mode of every entry. */
-    data->isolation_path = appbox::sandbox->wRegistryIsolationDOSPath;
     LoadIsolationTable(*data);
 
     s_hive_data = data;

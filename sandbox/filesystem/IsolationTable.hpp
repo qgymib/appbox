@@ -97,10 +97,18 @@ class IsolationTable
 {
 public:
     /**
-     * @brief Load the table from the text of an isolation file.
+     * @brief Apply the text of one isolation file to the table.
+     *
+     * The document is the isolation file of one layer of the run, so it is
+     * applied on top of the modes the table already holds: an entry it lists
+     * replaces the mode of the same view path and the entries of the paths it
+     * does not list stay untouched. A run reads the file of its resources
+     * first and the file of every patch package after it, which is what makes
+     * the mode of the last layer which names a path the mode the sandboxed
+     * process observes.
      *
      * The call is atomic: the parsed entries are collected into a local table
-     * first and replace the current content only when the whole document was
+     * first and are applied to the table only when the whole document was
      * accepted. A failure therefore leaves the table unchanged.
      *
      * An entry whose layer key is not part of the layer mapping cannot be
@@ -113,7 +121,7 @@ public:
      * @param[in] layers The layers of the view, in mapping order.
      * @param[out] unmapped Virtual paths of the entries which were skipped.
      * @param[out] error Error description on failure.
-     * @return true when the document was parsed.
+     * @return true when the document was applied.
      */
     bool Parse(const std::string& text, const std::vector<IsolationLayer>& layers, std::vector<std::wstring>& unmapped,
                std::string& error);

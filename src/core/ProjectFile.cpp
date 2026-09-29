@@ -428,10 +428,12 @@ namespace appbox
 
 ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel& registry,
                                     const FilesystemIsolationModel& isolation, const NetworkModel& network,
-                                    const EnvironmentModel& environment, const std::wstring& output_path)
+                                    const EnvironmentModel& environment, ProjectType project_type,
+                                    const std::wstring& output_path)
 {
     ProjectDocument document;
     document.output_path = output_path;
+    document.project_type = project_type;
 
     for (const auto& preset : PresetDirectories())
     {
@@ -519,7 +521,7 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
 
 bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, RegistryModel& registry,
                           FilesystemIsolationModel& isolation, NetworkModel& network, EnvironmentModel& environment,
-                          std::wstring& output_path, std::string& error)
+                          ProjectType& project_type, std::wstring& output_path, std::string& error)
 {
     PackModel                candidate;
     RegistryModel            candidate_registry;
@@ -601,6 +603,7 @@ bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, Reg
     isolation = std::move(candidate_isolation);
     network = std::move(candidate_network);
     environment = std::move(candidate_environment);
+    project_type = document.project_type;
     output_path = document.output_path;
     return true;
 }

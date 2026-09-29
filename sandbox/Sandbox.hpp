@@ -90,43 +90,53 @@ struct Sandbox
     std::wstring wRegistryHiveDOSPath;
 
     /**
-     * @brief Registry isolation file path (DOS style).
+     * @brief Registry isolation file paths (DOS style), in layer order.
      *
-     * The file carries the isolation modes of the virtual registry. An empty
-     * path or a missing file means that no entry was configured, so every
-     * entry keeps the default mode `Write Copy` and the host registry stays
-     * visible.
+     * Every file carries the isolation modes of one layer of the run, the
+     * resources of the archive first and the patch packages after them. An
+     * empty list or a missing file means that the layer sets no mode, so an
+     * entry which no file lists keeps the default mode `Write Copy` and the
+     * host registry stays visible. A mode a later file sets for a key or a
+     * value overrides the mode of the same entry of the files below it.
      */
-    std::wstring wRegistryIsolationDOSPath;
+    std::vector<std::wstring> wRegistryIsolationDOSPaths;
 
     /**
-     * @brief Filesystem isolation file path (DOS style).
+     * @brief Filesystem isolation file paths (DOS style), in layer order.
      *
-     * The file carries the isolation modes of the virtual filesystem. An empty
-     * path or a missing file means that no entry was configured, so every
-     * entry keeps the default mode of its kind (`Write Copy` for a folder,
-     * `Full` for a file) and the host filesystem stays visible.
+     * Every file carries the isolation modes of one layer of the run, the
+     * resources of the archive first and the patch packages after them. An
+     * empty list or a missing file means that the layer sets no mode, so an
+     * entry which no file lists keeps the default mode of its kind
+     * (`Write Copy` for a folder, `Full` for a file) and the host filesystem
+     * stays visible. A mode a later file sets for a path overrides the mode
+     * of the same path of the files below it.
      */
-    std::wstring wFilesystemIsolationDOSPath;
+    std::vector<std::wstring> wFilesystemIsolationDOSPaths;
 
     /**
-     * @brief Network isolation file path (DOS style).
+     * @brief Network isolation file paths (DOS style), in layer order.
      *
-     * The file carries the DNS redirections of the network workspace. An empty
-     * path or a missing file means that no name was redirected, so every name
-     * is resolved by the host.
+     * Every file carries the network configuration of one layer of the run,
+     * the resources of the archive first and the patch packages after them. An
+     * empty list or a missing file means that the layer sets no redirection
+     * and no proxy, so the configuration of the layers below it stays in
+     * place. A redirection a later file lists for a hostname overrides the
+     * entry of the same hostname of the files below it, while the proxy of the
+     * last file which names a usable one is the proxy of the run.
      */
-    std::wstring wNetworkIsolationDOSPath;
+    std::vector<std::wstring> wNetworkIsolationDOSPaths;
 
     /**
-     * @brief Environment isolation file path (DOS style).
+     * @brief Environment isolation file paths (DOS style), in layer order.
      *
-     * The file carries the environment variables of the workspace with their
-     * isolation and merge modes. An empty path or a missing file means that no
-     * variable was configured, so the environment of the sandbox is the
-     * environment of the host.
+     * Every file carries the environment variables of one layer of the run,
+     * the resources of the archive first and the patch packages after them. An
+     * empty list or a missing file means that the layer configures no
+     * variable, so the environment of the sandbox is composed from the layers
+     * below it and from the environment of the host.
      */
-    std::wstring wEnvironmentIsolationDOSPath;
+    std::vector<std::wstring> wEnvironmentIsolationDOSPaths;
 
     /**
      * @brief Environment state file path (DOS style).

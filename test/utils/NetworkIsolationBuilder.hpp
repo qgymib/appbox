@@ -122,6 +122,21 @@ bool WriteNetworkIsolationFile(const std::filesystem::path&              case_ro
  */
 bool WriteNetworkIsolationFileText(const std::filesystem::path& case_root, const std::string& text);
 
+/**
+ * @brief Build the text of a network isolation file.
+ *
+ * The call is the document builder of the write helpers: it returns the text
+ * the file carries without writing a file, so a case which writes the document
+ * somewhere else (a patch package, for example) shares the very same document.
+ *
+ * @param[in] entries Entries to list.
+ * @param[in] proxy Proxy of the packaged application, written only while the
+ *                  configuration carries a value.
+ * @return The text of the document.
+ */
+std::string BuildNetworkIsolationText(const std::vector<NetworkIsolationEntry>& entries,
+                                      const NetworkIsolationProxy&              proxy = {});
+
 } // namespace appbox::test
 
 #endif // APPBOX_TEST_UTILS_NETWORK_ISOLATION_BUILDER_HPP

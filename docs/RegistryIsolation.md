@@ -152,12 +152,14 @@ deleted:
 
 The hive of the resources is a read-only resource: mounting a hive writes to the
 file, so the loader copies it into the state directory of the sandbox on the
-first run and the sandbox mounts that copy. The mounted hive is a real registry
-file: it grows as the sandboxed process writes keys and values and survives
-process restarts, so a sandbox can be reused — a delete survives with it,
-because the marker lives in the same file. Deleting the state directory (or
-just these files) discards every registry modification the sandboxed process
-ever made and brings back the registry of the archive.
+first run and the sandbox mounts that copy. A patch package carries a hive of
+its own, which the loader merges into that copy before the sandbox mounts it
+(see [Patch layers](#patch-layers)). The mounted hive is a real registry file:
+it grows as the sandboxed process writes keys and values and survives process
+restarts, so a sandbox can be reused — a delete survives with it, because the
+marker lives in the same file. Deleting the state directory (or just these
+files) discards every registry modification the sandboxed process ever made and
+brings back the registry of the archive.
 
 The isolation file is UTF-8 JSON:
 
@@ -184,6 +186,32 @@ The isolation file is UTF-8 JSON:
 
 `Build` of the packer writes the two artifacts into the registry domain of the
 resources of the archive, which is where the loader looks for them.
+
+## Patch layers
+
+The `patch` directory next to the loader of a standalone archive carries patch
+packages, and the registry domain of a package takes effect at every start (see
+[PatchLayer.md](PatchLayer.md)):
+
+* The hive of a package (`registry/user.hiv`) is **merged into the hive the
+  sandbox mounts**: the keys and the values of the package replace the entries
+  of the same name of the layers below it, and an entry no package names keeps
+  the content of the archive and of the earlier runs. The merge is per key and
+  per value, so a package which lists a single value keeps every other entry of
+  the layers below it.
+* The isolation modes of a package (`registry/isolation.json`) are applied on
+  top of the modes of the archive: the sandbox reads the isolation files of the
+  run in layer order, so the mode of the last file which names a key or a value
+  is the mode the sandboxed process observes, while an entry no later file names
+  keeps the mode of the layers below it. A file which cannot be parsed is
+  logged and skipped, which keeps the modes below it in place.
+* A package which carries no resource of the registry domain changes nothing
+  here, and a hive which cannot be mounted is skipped with the registry of that
+  package: a broken package never fails the run.
+
+The merge writes into the hive of the state directory, so a modification or a
+deletion the sandboxed application made to an entry a package names is reset by
+the next start, while an entry no package names keeps the state of the sandbox.
 
 ## Variable references
 
@@ -299,3 +327,14 @@ listed in [test/README.md](../test/README.md).
    the two registry artifacts of the packer still redirects every write into
    the hive, but every entry keeps the default `WriteCopy`, so the host
    registry stays visible.
+7. **A value mode needs a key of the hive.** The value modes of an isolation
+   file are applied by the merged view of a key the hive holds. A value of a
+   key which only the host holds is read through the real key, whose handle is
+   forwarded unchanged, so a `Full` or `Hide` mode of such a value has no
+   effect. A key the archive holds — the normal case of a workspace which lists
+   modes for the values of its keys — is opened inside the hive, which is what
+   makes the modes apply. The rule is the same for the isolation file of a patch
+   package: the mode of a package which names a value of a key only the host
+   holds has no effect, because a package adds further files which name modes
+   and does not change how a mode is read. The end-to-end cases of the patch
+   layers pin that by listing the modes of a key the hive of the archive holds.

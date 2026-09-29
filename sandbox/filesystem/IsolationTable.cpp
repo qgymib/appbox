@@ -195,7 +195,18 @@ bool appbox::filesystem::IsolationTable::Parse(const std::string& text, const st
         return false;
     }
 
-    entries_ = std::move(entries);
+    /*
+     * The document is applied as the layer it describes: the modes it lists
+     * replace the modes of the same path which the layers below it set, while
+     * the entries of the paths it does not list stay untouched. The document
+     * was collected into a local table, so a document which cannot be used
+     * leaves the table as it was.
+     */
+    for (auto& entry : entries)
+    {
+        entries_[entry.first] = std::move(entry.second);
+    }
+
     unmapped.swap(skipped);
     return true;
 }

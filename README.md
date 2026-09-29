@@ -12,6 +12,7 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 - **Registry Isolation**: Redirects all five root keys onto a private hive file inside the overlay and enforces three isolation modes (`Full`, `WriteCopy`, `Hide`); the host registry is never modified (see [Registry Isolation](docs/RegistryIsolation.md)).
 - **Network Isolation**: Answers the name resolution of the packaged application from the redirections of the workspace, and optionally carries its TCP and UDP traffic through a SOCKS5 proxy (see [Network Isolation](docs/NetworkIsolation.md)).
 - **Environment Isolation**: Collects the environment variables the packaged application sees inside the sandbox with the isolation mode and the merge mode of every variable; the composed environment lives in a private table of the sandbox, so the environment of the host is never modified and the modifications of the application survive in the state directory of the sandbox (see [Environment Isolation](docs/EnvironmentIsolation.md)).
+- **Patch Packages**: The `Project Type` box of the packer writes either a self-contained archive or a patch package which holds the resources of the packaged application without the loader; the packages of the `patch` directory next to a standalone archive are merged into its resources in ascending name order — the filesystem layers, the virtual registry, the network configuration and the environment variables of a package included (see [Patch Layers](docs/PatchLayer.md)).
 
 ## Requirements
 
@@ -97,12 +98,40 @@ preset directory shows its real host directory, an imported folder shows the
 folder it was imported from, and a folder below an import shows that folder
 extended by the relative path of the folder. The Home page of the ribbon builds
 the archive to the path of the `Output File` box; the configuration of a
-session — imported folders, startup files and the three workspaces — travels
-with the JSON project file of `File -> Export Configuration...` and is restored
-by `File -> Import Configuration...`, which replaces the whole configuration
-after a confirmation. Imported folders and files do not have to exist on the
-machine which imports the project, so a project can be exchanged before the
-packaged application is installed.
+session — imported folders, startup files, the project type and the three
+workspaces — travels with the JSON project file of `File -> Export
+Configuration...` and is restored by `File -> Import Configuration...`, which
+replaces the whole configuration after a confirmation. Imported folders and
+files do not have to exist on the machine which imports the project, so a
+project can be exchanged before the packaged application is installed.
+
+The `Project Type` box of the Output group selects the product of the `Build`
+command. `Standalone (ZIP)` writes the self-contained archive described above:
+the loader named after the first startup file, its configuration and the
+resources of the application below `app`. `Patch (ZIP)` writes a patch package
+instead, which holds the very same resources rooted at the archive root: the
+loader, its configuration and the `app` directory itself do not travel, so the
+package can be dropped into the `patch` directory next to a standalone archive,
+where the loader of that archive merges it on top of the resources of `app`.
+A patch project needs no startup file, and `Build and Run` is offered for a
+standalone project only, because a patch package carries no loader which could
+start a program (see [Patch Layers](docs/PatchLayer.md)).
+
+The loader applies the packages of that directory in ascending name order, so a
+later package overrides an earlier one and every package overrides the resources
+of `app`, per resource: a package which carries a single file keeps every other
+file of the layers below it, and a package which carries a single registry value
+keeps every other entry of the virtual registry below it. Every domain is merged
+this way: the filesystem layers and the isolation modes of the filesystem and of
+the registry, the DNS redirections of the network — a package which names no
+proxy keeps the proxy below it — and the environment variables, which every
+layer composes with the value the layers below it composed. To speed up the
+start of the next run, the loader extracts a package into the `cache` directory
+beside the `patch` directory and reuses the extraction while the digest recorded
+in `cache/<name>/md5.txt` matches the package, so a package which the user
+replaced is extracted again. Neither directory travels in the archive: the user
+creates `patch`, the loader creates `cache` as soon as that directory holds a
+package, and deleting `cache` only costs the extraction of the next run.
 
 ### Loader
 
@@ -212,6 +241,7 @@ pure function `appbox::ExpandVariables()` of
 - [Registry Isolation](docs/RegistryIsolation.md) - Registry isolation architecture
 - [Network Isolation](docs/NetworkIsolation.md) - Network isolation architecture
 - [Environment Isolation](docs/EnvironmentIsolation.md) - Environment isolation architecture
+- [Patch Layers](docs/PatchLayer.md) - Patch packages: layout, merge rules and the loader side
 - [Tracer](docs/Tracer.md) - API tracer: usage, mechanism and measured cost
 - [Tests](test/README.md) - Unit tests and end-to-end tests of the sandbox
 

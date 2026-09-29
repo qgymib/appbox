@@ -183,7 +183,10 @@ headers have to win; the known folder helper of the cases is called
 The unit tests cover the modules the end-to-end cases cannot reach: the packer
 (`src/core`), the loader helpers, the modules of the sandbox which run in the
 process of the test executable and the tracer. No case includes a header of
-`src/core`, so the packer has no end-to-end coverage at all.
+`src/core`, so the packer has no end-to-end coverage of its own; the only
+contact of the end-to-end suite with it is the helper
+`test/utils/PatchBuilder.*`, which builds a patch package with the `ZipWriter`
+the packer writes its archives with.
 
 A module whose execution path an end-to-end case already drives keeps no unit
 test of its own. The suites which were dropped for that reason are the
@@ -215,26 +218,44 @@ The unit tests of the packer:
   folder above an entry, the removal of a subtree and the order of the entries.
   It also pins the isolation file the packer writes, including the round trip
   through the table of the sandbox, so the two sides of the schema cannot drift
-  apart.
+  apart. The table itself is pinned as well: the files of the layers of a run
+  are applied in order, so the file of a later layer overrides the mode of the
+  path it names while a path it does not name keeps the mode of the layers below
+  it, and a document which cannot be used leaves the layers below it alone.
 * `test/unit/ProjectDocument.cpp` — the document of a project file: the
   round trip of every member of the schema, the version and the order of the
   written members, the paths as UTF-8 bytes, the members an entry needs, the
-  path of a rejected entry, the unknown isolation, kind, value type, proxy and
-  environment tokens, malformed value data, the `startup_files` array of the
-  startup files, the `environment` array of the environment variables, which is
-  always written, the optional `proxy` member, which is omitted while it is
-  absent and read back as absent, and the atomic read.
+  path of a rejected entry, the unknown isolation, kind, value type, proxy,
+  project type and environment tokens, malformed value data, the
+  `startup_files` array of the startup files, the `environment` array of the
+  environment variables, which is always written, the optional `proxy` member,
+  which is omitted while it is absent and read back as absent, the optional
+  `project_type` member, which is written for every project type and read as
+  `standalone` while it is absent, and the atomic read.
 * `test/unit/ProjectFile.cpp` — the file layer of a project file: the
   round trip of the configuration, of the virtual registry, of the
-  filesystem isolation modes, of the proxy of the network workspace and of the
-  environment variables of the environment workspace, the strict UTF-8
-  encoding, the failures of a malformed document and the atomicity of applying
-  a document to the models, including a mode which a file cannot hold, a path
-  which is listed twice, a proxy the model refuses and a variable the model
-  refuses.
+  filesystem isolation modes, of the proxy of the network workspace, of the
+  environment variables of the environment workspace and of the project type,
+  the strict UTF-8 encoding, the failures of a malformed document and the
+  atomicity of applying a document to the models, including a mode which a file
+  cannot hold, a path which is listed twice, a proxy the model refuses, a
+  variable the model refuses and an unknown project type.
+* `test/unit/ProjectType.cpp` — the vocabulary of the `Project Type` box: the
+  token of every project type, which is the text form the project file stores,
+  the token which is parsed whatever the case it was written with, the tokens
+  which are refused, the label of every entry of the box, and the mapping
+  between the entries of the box and the enumeration, including the fallback of
+  an index which is outside of the box.
 * `test/unit/PackService.cpp` — the archive carries the hive, the isolation
-  file of the registry, the isolation file of the filesystem workspace and the
-  isolation file of the network workspace.
+  file of the registry, the isolation file of the filesystem workspace, the
+  isolation file of the network workspace and the isolation file of the
+  environment workspace; the patch package carries the very same resources
+  rooted at the archive root, without the loader and without an `app`
+  directory, and needs neither a startup file nor the embedded payload, which is
+  what the patch cases of the suite pin: the root layout, the layer tree, the
+  registry artifacts, the imported files, the progress total, the cancellation
+  and the fact that the archive relative spelling of an entry is the `app`
+  prefix plus its resource relative spelling.
 * `test/unit/PackModel.cpp` — the editable model of a packer session: the
   import of a host folder and of individual files, the rules of the import
   names and of the executables, the startup file list with its triggers, the
@@ -244,8 +265,11 @@ The unit tests of the packer:
 * `test/unit/RegistryModel.cpp` — the model of the packer, including the
   mode of a single row and the explicit recursion of the isolation dialog.
 * `test/unit/RegistryHive.cpp` — the hive writer (all seven value types,
-  several roots, nested keys, replacement of an existing hive, failure) and
-  the isolation file writer.
+  several roots, nested keys, replacement of an existing hive, failure), the
+  isolation file writer and the layer order of the isolation files of a run: a
+  later file overrides the entry it names while an entry it does not name keeps
+  the mode of the layers below it, and a document which cannot be parsed leaves
+  those layers alone.
 * `test/unit/RegFile.cpp` — the `.reg` parser and the merge of a file into
   the model.
 * `test/unit/NetworkModel.cpp` — the model of the network workspace: the
@@ -288,6 +312,13 @@ executable carries itself:
 * `test/unit/HiveReader.cpp` — the mounting, the enumeration and the
   formatting of the loader registry browser, including the root of the hive
   which hides the whiteout store of the sandbox.
+* `test/unit/HiveMerge.cpp` — the merge of a hive into another, which is the
+  loader side of the registry domain of a patch layer: a target which does not
+  exist yet is created, the entries of the source override the entries of the
+  same name while the other entries of the target stay, every value type and
+  the default value of a key are copied, nested keys are merged, an empty
+  source keeps the target, a source which does not exist is refused without
+  creating a file, and the whiteout store of the target survives the merge.
 * `test/unit/ExpandKnownFolder.cpp` — the expansion of a `#Name#` layer
   key of a path, including a path which carries no key, the rejection of the
   historical `%Name%` delimiter and the set of known layer keys: only the keys
@@ -299,6 +330,12 @@ executable carries itself:
 * `test/unit/GetExecutableDir.cpp`, `test/unit/MiniLauncher.cpp`,
   `test/unit/ProcessJob.cpp` — the loader helpers which locate the
   executable, start it and own the job of a started process.
+* `test/unit/Md5.cpp` — the digest of a patch package: the digest of an empty
+  file, of the text `abc` and of one million characters, which crosses the
+  blocks the file is read in, plus the failure of a missing file. The digest of
+  a package decides whether the cache entry of the package is still usable,
+  which the end-to-end cases drive but cannot pin to a known digest, because
+  the bytes of a zip archive are not stable.
 * `test/unit/ModuleTable.cpp`, `test/unit/HookTransaction.cpp` — the
   module table of the sandbox and the transaction which attaches and detaches
   its hooks.
@@ -653,6 +690,43 @@ hive the sandbox mounted.
 | `RegistryStateIsKept` | the resources carry `packed`, the first run writes `sandbox` into the key | the second run returns `sandbox`, so the state of the first run survives the next one |
 | `RegistryStateIsReset` | the resources carry `packed`, the first run writes `sandbox`, then the state directory is deleted | the second run returns `packed`, so deleting the state directory resets the sandbox to the registry of the archive |
 
+### Patch layer cases
+
+The patch cases (`test/e2e/Patch_*.cpp`) run the layout of the filesystem cases
+and add a `patch` directory which carries the packages of the case;
+`test/utils/PatchBuilder.*` writes a package with the resources a case
+describes. The loader validates a package against the `cache` directory of the
+case, mounts its filesystem layers on top of the layers of `app`, merges its
+hive into the hive the sandbox mounts and hands the isolation files of the four
+domains to the sandbox, which merges them in layer order, which is the contract
+of [PatchLayer.md](../docs/PatchLayer.md): the layers, the hives and the
+isolation files of a run are consumed by the loader and by the sandbox only, so
+the cases of this suite are the coverage of `loader/utils/PatchLayer.cpp`, of
+`loader/utils/HiveMerge.cpp` and of the layer handling of the four modules of
+`sandbox/` which apply an isolation file. Each case is documented in its own
+header comment.
+
+| Case | Steps | Expected |
+| --- | --- | --- |
+| `ContentOverridesTheApp` | `app` carries a file both packages carry as well and a file of its own; `00-foo.zip` carries the shared file with a content of its own and a file of its own; `01-bar.zip` carries the shared file with a third content | the shared file holds the content of `01-bar.zip`, the listing of the folder holds the file of `app` and the file of `00-foo.zip`, both packages were extracted into `cache`, and the resources of `app` are untouched |
+| `IsolationModeOfTheLastLayerWins` | two folders of the host exist; the archive keeps the first visible and hides the second; `01-bar.zip` hides the first | both reads report `File Not Found`, because the mode of the folder the package names is the mode of the package while the mode of the folder it does not name stays the mode of the archive, and the host folders are untouched |
+| `CacheIsReusedAndRefreshed` | four runs: with the package as it is, with a file placed inside its cache entry, after the package was replaced and after the cache directory was deleted | the first run reads `one` and records the digest of the package, the second run reads `one` and keeps the placed file, so the extraction was reused, the third run reads `two` and drops the placed file, so a package whose digest changed is extracted again, and the fourth run reads `two` as well and extracts the package again, so deleting the cache only costs the extraction |
+| `BrokenPackageIsSkipped` | `00-bad.zip` is not an archive and `01-good.zip` carries the file of the case | the read returns the content of the good package, the run succeeds, and the package which cannot be read left no cache entry behind |
+| `NoPackageKeepsTheCacheEmpty` | the user created the `patch` directory, but it holds a file which is not a package | the read returns the content of the archive, and the `cache` directory was not created |
+| `RegistryHiveOfTheLastLayerWins` | the hive of `app` carries the values `Value` and `Kept` of a key; `00-foo.zip` overrides `Value` and adds `Added`, `01-bar.zip` overrides `Value` and adds `AddedByBar` | `Value` is the value of `01-bar.zip`, because the hives of the packages are applied in ascending order, `Added` is the value of `00-foo.zip`, `Kept` is the value of the archive, and the hive of the resources is byte identical to the one the case built |
+| `RegistryIsolationModeOfTheLastLayerWins` | the hive of `app` holds the key, the real HKCU holds its three values; the archive keeps `ByThePackage` visible and hides `OfTheArchive` and `ByTheArchive`, `01-bar.zip` hides `ByThePackage` and keeps `ByTheArchive` visible | `ByThePackage` and `OfTheArchive` do not exist, because the mode of the package wins over the mode of the archive while a value no package names keeps the mode of the layers below it, `ByTheArchive` is the value of the host again, and the real key is untouched |
+| `RegistryWithoutResourcesKeepsTheApp` | `00-foo.zip` carries a file of the filesystem domain and no resource of the registry domain at all | the value and the mode of the archive stay the value and the mode of the run, and the hive of the resources is byte identical to the one the case built |
+| `BrokenRegistryResourcesAreSkipped` | `01-bar.zip` carries a file which is not a hive as `registry/user.hiv` and a document which is not an isolation file as `registry/isolation.json` | the run succeeds, the value of the archive stays the value of the run, and the mode of the archive keeps hiding the value of the host |
+| `RegistryStateBelowThePatchIsKept` | `01-bar.zip` overrides `Value` of the key, the first run writes `Runtime` into the same key, which no package names | the second run returns `package` for `Value`, because the hives of the packages are applied at every start, and `written` for `Runtime`, because an entry no package names keeps the state of the sandbox |
+| `NetworkDnsOfTheLastLayerWins` | the archive redirects a shared hostname and a hostname of its own; `00-foo.zip` redirects the shared hostname and adds a hostname of its own, `01-bar.zip` redirects the shared hostname a third time | the shared hostname resolves to the address of `01-bar.zip`, the hostname only the archive redirects keeps the address of the archive, and the hostname only the first package redirects is answered as well |
+| `NetworkProxyOfTheLastLayerWins` | two SOCKS5 servers of the case are listening; `00-foo.zip` configures the first one as its proxy and `01-bar.zip` the second one | the connection is carried by the server of `01-bar.zip` and the server of `00-foo.zip` received no request at all, so the proxy of a package replaces the proxy below it |
+| `NetworkProxyBelowIsKept` | the archive configures a SOCKS5 server of the case as its proxy; `00-foo.zip` carries the network document of a workspace which lists nothing | the connection is carried by the proxy of the archive, so a layer which names no proxy keeps the proxy below it |
+| `BrokenNetworkResourcesAreSkipped` | the archive redirects a hostname of its own; `00-foo.zip` carries a network document which is not valid JSON; `01-bar.zip` redirects a hostname of its own | both hostnames are answered, so the layers below and above the broken package stay in place |
+| `EnvironmentLayersComposeInOrder` | the host holds `APPBOX_PATCH_ENV=vx`; `00-foo.zip` prepends `v0` and replaces a variable of its own, `01-bar.zip` appends `v1` | the variable reports `v0;vx;v1`, so every layer composes with the value below it, and the variable only the first package names reports its value |
+| `EnvironmentFullDropsTheLayersBelow` | the host holds both variables; `00-foo.zip` prepends `v0` to the first one; `01-bar.zip` isolates both as `Full` | both report the value of `01-bar.zip` alone, so `Full` drops the value of the layer below it as well as the value of the host |
+| `EnvironmentHostPassesBelowThrough` | the host holds the first variable and not the second one; `00-foo.zip` replaces the first one with `v0`; `01-bar.zip` lists both with the merge mode `Host` | the first reports `v0`, so the mode passes the value below the layer through, and the second is not part of the environment at all |
+| `BrokenEnvironmentResourcesAreSkipped` | `00-foo.zip` configures a variable, `01-bar.zip` carries an environment document which is not valid JSON, `02-baz.zip` configures another variable | both variables report their value, so the layers below and above the broken package stay in place |
+
 ## Test helpers
 
 * `test/utils/FsBuilder.*` — declarative tree builder. `FsRoot(root, {dirs})`
@@ -683,7 +757,9 @@ hive the sandbox mounted.
   content of the hive and the isolation modes are tracked apart, so a mode can be
   listed for a key which the hive does not hold. `WriteRawIsolation()` writes a text
   which is not the document of the builder, which is what a case about a refused
-  document needs.
+  document needs, and `BuildRegistryIsolationText()` returns the document of a
+  list of modes without writing it, which is what the builder of a patch package
+  needs.
 * `test/utils/RealHkcuKey.*` — RAII helper which owns a key below the real
   HKCU of the test process, so a case which needs a host entry leaves nothing
   behind.
@@ -698,10 +774,36 @@ hive the sandbox mounted.
 * `test/utils/FsIsolationBuilder.*` — writes the isolation file of a test
   case (`<case root>/app/filesystem/isolation.json`) from the modes of the case.
   `WriteRawFsIsolationFile()` writes a text which is not the document of the
-  builder, which is what a case about a refused document needs.
+  builder, which is what a case about a refused document needs, and
+  `BuildFsIsolationText()` returns the text without writing it, which is what
+  the builder of a patch package needs.
+* `test/utils/PatchBuilder.*` — writes a patch package
+  (`<case root>/patch/00-foo.zip`) from the files, the filesystem isolation
+  modes and the four domains of a case. The package holds the resource tree of a
+  filesystem, a registry, a network and an environment workspace rooted at the
+  archive root, which is the layout the packer writes; a domain is written only
+  when the case describes it, so a case about a package which carries no
+  resource of a domain gets a package without that domain, and a case about a
+  broken package writes the bytes of the hive and the text of an isolation file
+  itself. The helper builds the archive below the temporary directory of the
+  machine and copies it into the destination, because a process which watches the
+  working directory of a case holds a package which exists for a while open long
+  enough to break the temporary file rename libzip writes an archive with.
 * `test/utils/NetworkIsolationBuilder.*` — writes the isolation file of a test
-  case (`<case root>/app/network/isolation.json`) from the DNS redirections of the
-  case.
+  case (`<case root>/app/network/isolation.json`) from the DNS redirections and
+  the proxy of the case. `BuildNetworkIsolationText()` returns the text of the
+  document without writing it, which is what the builder of a patch package
+  needs, and `WriteNetworkIsolationFileText()` writes a text which is not the
+  document of the builder, which is what a case about a refused document needs.
+* `test/utils/EnvironmentIsolationBuilder.*` — writes the isolation file of a
+  test case (`<case root>/app/environment/isolation.json`) from the variables of
+  the case, the state file of the sandbox
+  (`<case root>/data/environment/state.json`) from the modifications of the
+  case, and `BuildEnvironmentIsolationText()` returns the text of the document
+  without writing it, like the builder of the network domain. The class
+  `HostEnvironmentVariable` stores a variable in the environment of the test
+  process for the length of a case, which is the environment of the host of the
+  run.
 * `test/utils/LoaderPath.hpp` — the loader path of a run, which the tests of
   the real loader payload read from the configuration.
 * `test/utils/ReadFileFull.*` / `test/utils/WriteFileFull.*` — file I/O
@@ -764,6 +866,17 @@ hive the sandbox mounted.
 * **The timeout and the coredumps of a run are verified by hand.** The test
   suite does not test itself (see
   [Timeouts and coredumps](#timeouts-and-coredumps)).
+* **Two packages which share a cache entry are not covered.** Two package names
+  can only name one cache entry when they differ in the case of their extension
+  (`00-foo.zip` and `00-foo.ZIP`), and a directory of a case-insensitive
+  filesystem cannot hold both, so the rule of `loader/utils/PatchLayer.cpp`
+  which logs and skips the second one is defensive and has no case.
+* **A value mode needs a key of the hive.** A value mode of an isolation file
+  only reaches the merged view of a key the hive holds; the values of a key
+  which only the host holds are read through a real handle, which the hooks
+  forward unchanged. The registry cases of the patch suite pin the supported
+  path, in which the hive holds the key (see the known gaps of
+  [RegistryIsolation.md](../docs/RegistryIsolation.md)).
 
 ## Related documentation
 
@@ -776,5 +889,7 @@ hive the sandbox mounted.
   architecture.
 * [EnvironmentIsolation.md](../docs/EnvironmentIsolation.md) — environment
   isolation architecture.
+* [PatchLayer.md](../docs/PatchLayer.md) — patch packages: layout, merge rules
+  and the loader side.
 * [Tracer.md](../docs/Tracer.md) — API tracer: usage, mechanism and measured
   cost.

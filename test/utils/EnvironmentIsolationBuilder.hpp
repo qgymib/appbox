@@ -94,6 +94,18 @@ bool WriteEnvironmentIsolationFile(const std::filesystem::path&                 
 bool WriteEnvironmentIsolationFileText(const std::filesystem::path& case_root, const std::string& text);
 
 /**
+ * @brief Build the text of an environment isolation file.
+ *
+ * The call is the document builder of the write helpers: it returns the text
+ * the file carries without writing a file, so a case which writes the document
+ * somewhere else (a patch package, for example) shares the very same document.
+ *
+ * @param[in] entries Entries to list.
+ * @return The text of the document.
+ */
+std::string BuildEnvironmentIsolationText(const std::vector<EnvironmentIsolationEntry>& entries);
+
+/**
  * @brief Write the environment state file of a test sandbox.
  *
  * The file describes the modifications an earlier run made and lives in the

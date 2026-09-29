@@ -14,6 +14,49 @@ namespace appbox::test
 {
 
 /**
+ * @brief One isolation mode of a registry isolation file.
+ *
+ * The entry describes a key when `is_value` is false and a value of the key
+ * when it is true, which is the shape the document of
+ * `common/RegistryIsolation.hpp` uses.
+ */
+struct RegistryIsolationEntry
+{
+    /**
+     * @brief Path of the key from the hive root, for example
+     *        `L"HKEY_CURRENT_USER\\Software\\AppBox"`.
+     */
+    std::wstring key_path;
+
+    /**
+     * @brief Name of the value, empty for a key entry.
+     */
+    std::wstring value_name;
+
+    /**
+     * @brief Whether the entry describes a value instead of a key.
+     */
+    bool is_value = false;
+
+    /**
+     * @brief The mode the file lists for the entry.
+     */
+    appbox::RegistryIsolation isolation = appbox::RegistryIsolation::WriteCopy;
+};
+
+/**
+ * @brief Build the text of a registry isolation file.
+ *
+ * The document is the one the packer writes and the sandbox reads, so a test
+ * can hand the modes of a layer to the resources of a case or to a patch
+ * package without the packer.
+ *
+ * @param[in] entries The modes the document lists.
+ * @return The UTF-8 text of the document.
+ */
+std::string BuildRegistryIsolationText(const std::vector<RegistryIsolationEntry>& entries);
+
+/**
  * @brief Builder of the registry artifacts of a test sandbox.
  *
  * The builder writes the hive file and the isolation file of a case directly,
@@ -111,25 +154,14 @@ private:
     };
 
     /**
-     * @brief One isolation mode which is listed in the isolation file.
-     */
-    struct IsolationEntry
-    {
-        std::wstring              key_path;   /* Path of the key from the hive root. */
-        std::wstring              value_name; /* Name of the value, empty for a key entry. */
-        appbox::RegistryIsolation isolation = appbox::RegistryIsolation::WriteCopy;
-        bool                      is_value = false; /* The entry describes a value. */
-    };
-
-    /**
      * @brief Registry domain of the resources of the case.
      * @return The path of the folder which holds the hive and the modes.
      */
     std::filesystem::path RegistryDir() const;
 
-    std::filesystem::path       case_root_; /* Root directory of the case. */
-    std::vector<Entry>          entries_;
-    std::vector<IsolationEntry> isolations_;
+    std::filesystem::path               case_root_; /* Root directory of the case. */
+    std::vector<Entry>                  entries_;
+    std::vector<RegistryIsolationEntry> isolations_;
 };
 
 } // namespace appbox::test

@@ -92,7 +92,32 @@ bool appbox::network::DnsTable::Parse(const std::string& text, std::string& erro
         return false;
     }
 
-    entries_ = std::move(entries);
+    /*
+     * The document is merged into the table and not written over it: the table
+     * holds the redirections of the layers below this file, so a hostname the
+     * document lists overrides the entry of the same hostname while a hostname
+     * it does not list keeps the entry below it. The merge runs here and not
+     * while the entries are read, so a malformed document leaves the table
+     * untouched.
+     */
+    for (auto& entry : entries)
+    {
+        bool replaced = false;
+        for (auto& existing : entries_)
+        {
+            if (existing.hostname == entry.hostname)
+            {
+                existing = entry;
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced)
+        {
+            entries_.push_back(std::move(entry));
+        }
+    }
+
     return true;
 }
 

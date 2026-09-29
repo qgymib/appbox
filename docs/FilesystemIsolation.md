@@ -125,6 +125,15 @@ passes it to the sandbox. A missing file, a missing configuration or a malformed
 an error: the sandbox then behaves like one without an isolation file, in which
 every entry keeps the default of its kind and the host filesystem stays visible.
 
+A run has one isolation file per layer: the file of the resources of the archive
+comes first and the file of every patch package follows in the order the
+packages take effect in (see [Patch Layers](PatchLayer.md)). The sandbox reads
+them in that order and applies every document on top of the modes it already
+holds, so the mode of a path a later file names is the mode the sandboxed
+process observes while a path no later file names keeps the mode of the layer
+below it. A file which cannot be used is logged and skipped, which is what keeps
+a broken package from failing the run.
+
 ## On-disk layout
 
 ### Upper (writable) layer
@@ -160,6 +169,13 @@ are matched before their parents. An archive which was packed with the former
 `%Name%` form has to be packed again: the loader rejects the unknown layer
 name.
 
+A layer key can be held by several layers of one run, because a patch package
+carries layers of its own: the loader mounts the layers of the packages before
+the layers of `app`, the last package of the ascending name order first, and the
+resolution prefers the layer which is mounted first. A file which exists in a
+package and in `app` is therefore the file of the package, and a file only `app`
+holds stays readable.
+
 ### Host layer
 
 The view path is used as-is, i.e. the object is looked up in the real
@@ -191,6 +207,11 @@ app/registry/user.hiv                  virtual registry of the workspace
 app/registry/isolation.json            isolation modes of the registry
 app/network/isolation.json             network configuration of the workspace
 ```
+
+A patch package carries the same resource tree rooted at the archive root and is
+applied on top of the archive: the layers and the isolation modes of a package
+override the resources it carries and keep the resources it does not carry (see
+[Patch Layers](PatchLayer.md)).
 
 The loader resolves its configuration as `<own file name>.json` in its own
 directory, so renaming the extracted loader program requires renaming the

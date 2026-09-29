@@ -53,21 +53,25 @@ columns the meaning of the mode the hovered row holds.
 
 | Mode | Behaviour |
 | --- | --- |
-| `Full` | The value of the host is invisible for the packaged application; it sees the value of the row. |
-| `Write Copy` | The value of the host is visible and is merged with the value of the row, see the merge mode. This is the default mode of a row. |
+| `Full` | The value below the row is invisible for the packaged application; it sees the value of the row. |
+| `Write Copy` | The value below the row is visible and is merged with the value of the row, see the merge mode. This is the default mode of a row. |
+
+The "value below the row" is the value of the host of a run without patches, and
+the value the layers below the layer composed in a run which applies patch
+packages (see [Patch layers](#patch-layers)).
 
 ## Merge modes
 
 The merge mode decides how the two values are composed while the isolation mode
-is `Write Copy`. The examples below assume a host value of `foo` and a row which
-stores `bar` with the merge string `;`.
+is `Write Copy`. The examples below assume a value of `foo` below the row and a
+row which stores `bar` with the merge string `;`.
 
 | Mode | Behaviour | Result |
 | --- | --- | --- |
-| `Replace` | The application sees the value of the row; the value of the host is hidden. | `bar` |
-| `Host` | The application sees the value of the host; the value of the row is ignored. | `foo` |
-| `Prepend` | The value of the row is put in front of the value of the host, joined with the merge string. | `bar;foo` |
-| `Append` | The value of the row is put behind the value of the host, joined with the merge string. | `foo;bar` |
+| `Replace` | The application sees the value of the row; the value below it is hidden. | `bar` |
+| `Host` | The application sees the value below the row; the value of the row is ignored. | `foo` |
+| `Prepend` | The value of the row is put in front of the value below it, joined with the merge string. | `bar;foo` |
+| `Append` | The value of the row is put behind the value below it, joined with the merge string. | `foo;bar` |
 
 `Replace` is the default of a row, which is what a variable of a packaged
 application normally does. The merge string is used by `Prepend` and `Append`
@@ -158,6 +162,13 @@ with the other domain directories.
 (`<root>/data/environment/state.json`). `Loader.cpp` hands both paths to the
 sandbox through the injected `SandboxConfig` and creates the state directory.
 
+The path of the archive is the first entry of
+`SandboxConfig::environment_isolation_dos_paths`, which carries one path per
+layer of the run: the file of the archive first and the file of every patch
+package of the `patch` directory after it in ascending name order. A package
+which carries no `environment/isolation.json` contributes no entry, so it keeps
+the environment of the layers below it.
+
 The state directory belongs to the loader, which is the owner of `data/`: the
 sandbox never writes it itself, it sends the document of its modifications over
 the RPC pipe (`MsgEnvironment`, see `loader/rpc/Environment.cpp`) and the loader
@@ -170,15 +181,18 @@ the process which made it.
 The `environment` module of the sandbox DLL composes the environment of the
 packaged application while the DLL is injected, which is before the hooks are
 attached, so the environment of the host is read through the original entry
-points of the process. The composition has three sources, in this order:
+points of the process. The composition has four sources, in this order:
 
 1. The environment block of the process itself, which is the environment of the
    host.
 2. The variables of the isolation file of the archive, composed with the value
    of the host by the isolation mode and the merge mode of the row. A variable
    which the isolation file does not list keeps the value of the host.
-3. The modifications of the state file, which an earlier run of the application
-   made and which win over the two sources above.
+3. The variables of the isolation file of every patch package, applied in
+   ascending name order, each of them composing the value the layers below it
+   composed (see [Patch layers](#patch-layers)).
+4. The modifications of the state file, which an earlier run of the application
+   made and which win over the three sources above.
 
 The environment block of the process is **never** modified. The composed
 environment lives in a private table of the sandbox (`sandbox/environment/`),
@@ -205,13 +219,39 @@ reports the size a buffer has to provide through the length of the value, and
 `RtlExpandEnvironmentStrings_U` reports the size of its answer with its
 terminator.
 
+### Patch layers
+
+A run composes the environment of its layers in order: the file of the resources
+of the archive comes first and the file of every patch package of the `patch`
+directory follows in ascending name order. Every layer applies the isolation and
+merge mode of its own row to the value the layers below it composed, so the same
+four rules describe a single file and a chain of files, and the value of the host
+is what the first layer composes with:
+
+| Mode of a row | Composition |
+| --- | --- |
+| `Full` | The value of the host and the value of every layer below the layer are dropped; the layer reports its own value. |
+| `Write Copy` / `Replace` | The layer drops the value below it and reports its own value. |
+| `Write Copy` / `Host` | The layer passes the value below it through and ignores its own value. A layer whose value below is absent and whose host holds no value reports no variable at all. |
+| `Write Copy` / `Prepend`, `Append` | The layer joins its own value with the value below it through the merge string of its row. The merge string is not written while the value below is absent or empty. |
+
+A host `PATH` of `vx`, a `00-foo.zip` which sets `PATH` to `v0` with `Prepend`
+and a `01-bar.zip` which sets `PATH` to `v1` with `Append` therefore compose to
+`v0;vx;v1` for the sandboxed process. A variable no later layer names keeps the
+value below it, so a package overrides the variables it names and not the
+environment of the layers below it.
+
+The state file is applied after the last layer, so a value the application
+stored wins over every layer. The layers are therefore the top of the
+environment of a run which the application did not change itself.
+
 ### Variable references
 
 The value of a row may reference a known folder of the machine which runs the
 sandbox with `%APPBOX:<NAME>%` instead of spelling its path out, so an archive
 stays correct on a machine whose folders are somewhere else. The reference is
 replaced by `appbox::ExpandVariables()` (`sandbox/utils/VariableExpansion.*`)
-**before** the value is composed with the value of the host, so `Prepend` and
+**before** the value is composed with the value below the layer, so `Prepend` and
 `Append` join the expanded text; the list of the names is the known folder
 table of the loader, which is handed to the sandbox through the injected
 configuration.
@@ -305,6 +345,16 @@ The runtime side is covered by:
   which falls back to the environment of the host, and the references of a
   value (the canonical and another spelling of a name, a merged row, a name the
   sandbox does not know and a `%NAME%` reference of the shell).
+- `test/e2e/Patch_EnvironmentLayersComposeInOrder.cpp`,
+  `Patch_EnvironmentFullDropsTheLayersBelow.cpp` and
+  `Patch_EnvironmentHostPassesBelowThrough.cpp` — the composition of the layers
+  of a run which applies patch packages: a chain of `Prepend` and `Append`, a
+  variable no later package names, `Full` which drops the layers below the layer
+  as well as the value of the host, and `Host` which passes the value below the
+  layer through.
+- `test/e2e/Patch_BrokenEnvironmentResourcesAreSkipped.cpp` — a package which
+  carries a malformed environment document is skipped, so the layers below and
+  above it stay in place.
 
 ## Related documentation
 

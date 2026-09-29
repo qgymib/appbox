@@ -12,6 +12,7 @@
 #include "core/FilesystemIsolationModel.hpp"
 #include "core/NetworkModel.hpp"
 #include "core/PackModel.hpp"
+#include "core/ProjectType.hpp"
 #include "core/RegistryModel.hpp"
 
 class EnvironmentPanel;
@@ -132,6 +133,23 @@ private:
      * @param[in] event Command event carrying the item index.
      */
     void OnSideNavChanged(wxCommandEvent& event);
+
+    /**
+     * @brief Adopt the project type the Output group shows.
+     * @param[in] event Command event of the project type box.
+     */
+    void OnProjectTypeChanged(wxCommandEvent& event);
+
+    /**
+     * @brief Apply a project type to the session.
+     *
+     * The type decides which product the `Build` command writes and whether
+     * the `Build and Run` command is offered, so the box, the buttons and the
+     * status bar are refreshed from a single place.
+     *
+     * @param[in] type Project type to adopt.
+     */
+    void ApplyProjectType(appbox::ProjectType type);
 
     /**
      * @brief Handle the application exit command.
@@ -303,6 +321,16 @@ private:
      * composes the environment of the packaged application from it.
      */
     appbox::EnvironmentModel environment_;
+
+    /**
+     * @brief Kind of product the `Build` command writes.
+     *
+     * The type is picked in the `Project Type` box of the ribbon and travels
+     * with the project file: a standalone project is packed into a
+     * self-contained archive, a patch project into a package of the resources
+     * without a loader.
+     */
+    appbox::ProjectType project_type_ = appbox::ProjectType::Standalone;
 
     RibbonBar*        ribbon_ = nullptr;
     SideNav*          side_nav_ = nullptr;

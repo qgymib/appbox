@@ -11,9 +11,11 @@
 #include "Random.hpp"
 #include "rpc/__init__.hpp"
 #include "utils/GetExecutableDir.hpp"
+#include "utils/HiveMerge.hpp"
 #include "utils/ConvertDosPathToNtPath.hpp"
 #include "utils/KnownFolder.hpp"
 #include "utils/MapBaseFS.hpp"
+#include "utils/PatchLayer.hpp"
 #include "WString.hpp"
 #include "Loader.hpp"
 
@@ -84,6 +86,31 @@ static bool MapOverlayFS(const std::wstring& state_dir, std::string& mapped_fs)
 }
 
 /**
+ * @brief Mount the filesystem layers of one resource root into the view.
+ *
+ * The layers are appended to the layers of the run, so the root which is
+ * mounted first holds the layers the resolution prefers. A root which holds no
+ * usable layer is logged and skipped: the resources of the archive are the
+ * base image of the run, so a patch package which cannot be used must not fail
+ * the run.
+ *
+ * @param[in] layer_root Root which holds one directory per layer key.
+ * @param[in,out] mapped_fs Layers of the view, in mapping order.
+ * @return true when the layers of the root were mounted.
+ */
+static bool MountLowerFS(const std::wstring& layer_root, std::vector<appbox::SandboxLowerFS>& mapped_fs)
+{
+    const auto ret = appbox::MapBaseFS(appbox::WideToUTF8(layer_root), mapped_fs);
+    if (ret != 0)
+    {
+        SPDLOG_WARN("the filesystem layers of '{}' are skipped: {}", appbox::WideToUTF8(layer_root), ret);
+        return false;
+    }
+
+    return true;
+}
+
+/**
  * @brief Seed the hive the sandbox mounts from the packed registry.
  *
  * The hive below `app` is a read-only resource, while mounting a hive writes
@@ -135,6 +162,44 @@ static std::string SeedRegistryHive(const std::wstring& packed_hive, const std::
     return {};
 }
 
+/**
+ * @brief Apply the registry of the patch packages to the hive of the sandbox.
+ *
+ * The hive the sandbox mounts is the base image of the virtual registry: it
+ * was seeded from the hive of the archive and it carries the modifications of
+ * the earlier runs. The hive of every package which carries one is merged on
+ * top of it in the order the packages take effect in, so the keys and the
+ * values of the last package which names an entry are the ones the sandboxed
+ * process observes, while an entry no package names keeps the content below it.
+ *
+ * A package whose hive cannot be merged is logged and skipped, exactly like a
+ * package which cannot be extracted is: a broken package must not fail the
+ * run, and the entries of the layers below it stay in place.
+ *
+ * @param[in] state_hive Hive the sandbox mounts.
+ * @param[in] layers The accepted packages in ascending name order.
+ */
+static void ApplyPatchHives(const std::wstring& state_hive, const std::vector<appbox::PatchLayer>& layers)
+{
+    for (const auto& layer : layers)
+    {
+        if (layer.registry_hive.empty())
+        {
+            continue;
+        }
+
+        std::string error;
+        if (!appbox::MergeHiveInto(state_hive, layer.registry_hive, error))
+        {
+            SPDLOG_ERROR("the registry of the patch package '{}' is skipped: {}", appbox::WideToUTF8(layer.name),
+                         error);
+            continue;
+        }
+
+        SPDLOG_DEBUG("applied the registry of the patch package '{}'", appbox::WideToUTF8(layer.name));
+    }
+}
+
 AppBoxLoaderRuntime::AppBoxLoaderRuntime()
 {
     std::time_t timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
@@ -151,8 +216,31 @@ AppBoxLoaderRuntime::AppBoxLoaderRuntime()
      * the three domains are handed to the sandbox as they are. The state of the
      * sandbox lives in `data`, which is created here and carries the writable
      * upper layer, the hive the sandbox mounts and the injected DLLs.
+     *
+     * The patch packages of the user are the layers above the resources of the
+     * archive: the resolution of the view prefers the layer which was mounted
+     * first, so the packages are mounted before `app` and the last package of
+     * the ascending name order is mounted first. A package which carries no
+     * filesystem resource is not mounted at all, which keeps the layers below
+     * it in place for that resource.
+     *
+     * The virtual registry of a package is merged into the hive the sandbox
+     * mounts instead of being mounted as a layer of its own, because the
+     * sandbox mounts exactly one hive: the keys and the values of the packages
+     * are applied to that hive in ascending order, so the last package which
+     * names an entry wins while an entry no package names keeps the content of
+     * the archive and of the earlier runs.
      */
-    MapBaseFS(appbox::WideToUTF8(paths.LayerRoot()), inject_data.fs_lower);
+    const auto patch_layers = appbox::LoadPatchLayers(paths);
+    for (auto layer = patch_layers.rbegin(); layer != patch_layers.rend(); ++layer)
+    {
+        if (!layer->layer_root.empty())
+        {
+            MountLowerFS(layer->layer_root, inject_data.fs_lower);
+        }
+    }
+
+    MountLowerFS(paths.LayerRoot(), inject_data.fs_lower);
     MapOverlayFS(paths.state, inject_data.fs_upper);
 
     /*
@@ -175,11 +263,49 @@ AppBoxLoaderRuntime::AppBoxLoaderRuntime()
         }
     }
 
+    /*
+     * The registry of the packages is applied to the hive the sandbox mounts,
+     * so a package overrides the entries of the archive and of the earlier
+     * packages while an entry no package names keeps the content below it.
+     */
+    ApplyPatchHives(paths.StateRegistryHiveFile(), patch_layers);
+
     inject_data.registry_hive_dos_path = appbox::WideToUTF8(paths.StateRegistryHiveFile());
-    inject_data.registry_isolation_dos_path = appbox::WideToUTF8(paths.RegistryIsolationFile());
-    inject_data.filesystem_isolation_dos_path = appbox::WideToUTF8(paths.FilesystemIsolationFile());
-    inject_data.network_isolation_dos_path = appbox::WideToUTF8(paths.NetworkIsolationFile());
-    inject_data.environment_isolation_dos_path = appbox::WideToUTF8(paths.EnvironmentIsolationFile());
+
+    /*
+     * The isolation modes of the run are the modes of its layers: the file of
+     * the resources of the archive comes first and the file of every patch
+     * package follows in the order the packages take effect in, so the mode of
+     * the last layer which names an entry is the mode the sandboxed process
+     * observes. The four domains follow the same rule, and the network
+     * configuration and the environment variables are composed the same way:
+     * the file of a package which carries no resource of a domain is not
+     * listed, so that domain keeps the configuration of the layers below it.
+     */
+    inject_data.filesystem_isolation_dos_paths.push_back(appbox::WideToUTF8(paths.FilesystemIsolationFile()));
+    inject_data.registry_isolation_dos_paths.push_back(appbox::WideToUTF8(paths.RegistryIsolationFile()));
+    inject_data.network_isolation_dos_paths.push_back(appbox::WideToUTF8(paths.NetworkIsolationFile()));
+    inject_data.environment_isolation_dos_paths.push_back(appbox::WideToUTF8(paths.EnvironmentIsolationFile()));
+    for (const auto& layer : patch_layers)
+    {
+        if (!layer.isolation_file.empty())
+        {
+            inject_data.filesystem_isolation_dos_paths.push_back(appbox::WideToUTF8(layer.isolation_file));
+        }
+        if (!layer.registry_isolation_file.empty())
+        {
+            inject_data.registry_isolation_dos_paths.push_back(appbox::WideToUTF8(layer.registry_isolation_file));
+        }
+        if (!layer.network_isolation_file.empty())
+        {
+            inject_data.network_isolation_dos_paths.push_back(appbox::WideToUTF8(layer.network_isolation_file));
+        }
+        if (!layer.environment_isolation_file.empty())
+        {
+            inject_data.environment_isolation_dos_paths.push_back(appbox::WideToUTF8(layer.environment_isolation_file));
+        }
+    }
+
     inject_data.environment_state_dos_path = appbox::WideToUTF8(paths.StateEnvironmentFile());
 
     /*

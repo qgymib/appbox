@@ -34,6 +34,19 @@ struct FsIsolationEntry
 };
 
 /**
+ * @brief Build the text of a filesystem isolation file.
+ *
+ * The document is built from the schema structure of
+ * `common/FilesystemIsolation.hpp` instead of through the packer, so a case
+ * also pins that the sandbox accepts a document which the workspace did not
+ * write.
+ *
+ * @param[in] entries Entries to list.
+ * @return The UTF-8 text of the document.
+ */
+std::string BuildFsIsolationText(const std::vector<FsIsolationEntry>& entries);
+
+/**
  * @brief Write the filesystem isolation file of a test sandbox.
  *
  * The file describes the modes of the virtual filesystem and lives in the

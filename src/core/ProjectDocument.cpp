@@ -19,6 +19,7 @@ using Json = nlohmann::ordered_json;
 /* Member names of the document schema. */
 constexpr const char* kVersionKey = "version";
 constexpr const char* kOutputPathKey = "output_path";
+constexpr const char* kProjectTypeKey = "project_type";
 constexpr const char* kFoldersKey = "folders";
 constexpr const char* kFilesKey = "files";
 constexpr const char* kStartupFilesKey = "startup_files";
@@ -142,6 +143,39 @@ bool ReadRequiredBool(const Json& json, const char* key)
     }
 
     return member->get<bool>();
+}
+
+/**
+ * @brief Read the project type of a document.
+ *
+ * A document which does not name the member describes a standalone project,
+ * which is what a file written before the member existed describes.
+ *
+ * @param[in] json Object to read from.
+ * @return The project type of the member.
+ * @throw appbox::ProjectDocumentError The member is present but not a known
+ *        project type.
+ */
+appbox::ProjectType ReadProjectType(const Json& json)
+{
+    const auto member = json.find(kProjectTypeKey);
+    if (member == json.end())
+    {
+        return appbox::ProjectType::Standalone;
+    }
+    if (!member->is_string())
+    {
+        throw appbox::ProjectDocumentError(std::string("the '") + kProjectTypeKey + "' member is not a string");
+    }
+
+    const auto          text = member->get<std::string>();
+    appbox::ProjectType type = appbox::ProjectType::Standalone;
+    if (!appbox::ParseProjectTypeToken(text, type))
+    {
+        throw appbox::ProjectDocumentError("unknown project type '" + text + "'");
+    }
+
+    return type;
 }
 
 /**
@@ -584,6 +618,7 @@ void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
     json = nlohmann::ordered_json::object();
     json[kVersionKey] = kProjectFileVersion;
     json[kOutputPathKey] = WideToUTF8(document.output_path);
+    json[kProjectTypeKey] = ProjectTypeToken(document.project_type);
     json[kFoldersKey] = document.folders;
     json[kFilesKey] = document.files;
     json[kStartupFilesKey] = document.startup_files;
@@ -627,6 +662,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectDocument& document)
      */
     ProjectDocument candidate;
     candidate.output_path = ReadOptionalText(json, kOutputPathKey);
+    candidate.project_type = ReadProjectType(json);
     ReadRecordArray(json, kFoldersKey, candidate.folders);
     ReadRecordArray(json, kFilesKey, candidate.files);
     ReadRecordArray(json, kStartupFilesKey, candidate.startup_files);
