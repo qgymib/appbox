@@ -125,6 +125,14 @@ appbox::ProjectDocument BuildSampleDocument()
     proxy.password = L"secret";
     document.proxy = proxy;
 
+    appbox::ProjectEnvironmentRecord environment;
+    environment.name = L"PATH";
+    environment.value = L"C:\\MyApp\\bin";
+    environment.isolation = appbox::EnvironmentIsolation::WriteCopy;
+    environment.merge = appbox::EnvironmentMergeMode::Prepend;
+    environment.merge_string = L";";
+    document.environment.push_back(environment);
+
     return document;
 }
 
@@ -194,6 +202,13 @@ TEST(Unit_ProjectDocument, RoundTripKeepsEveryMember)
     EXPECT_EQ(back.proxy->port, L"1080");
     EXPECT_EQ(back.proxy->username, L"user");
     EXPECT_EQ(back.proxy->password, L"secret");
+
+    ASSERT_EQ(back.environment.size(), 1u);
+    EXPECT_EQ(back.environment[0].name, L"PATH");
+    EXPECT_EQ(back.environment[0].value, L"C:\\MyApp\\bin");
+    EXPECT_EQ(back.environment[0].isolation, appbox::EnvironmentIsolation::WriteCopy);
+    EXPECT_EQ(back.environment[0].merge, appbox::EnvironmentMergeMode::Prepend);
+    EXPECT_EQ(back.environment[0].merge_string, L";");
 }
 
 TEST(Unit_ProjectDocument, RejectsAnIncompleteDnsRecord)
@@ -224,7 +239,7 @@ TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
      * so the text of a given document is stable and easy to diff.
      */
     const std::vector<std::string> expected{ "version",  "output_path", "folders", "files", "startup_files",
-                                             "registry", "filesystem",  "network", "proxy" };
+                                             "registry", "filesystem",  "network", "proxy", "environment" };
     EXPECT_EQ(members, expected);
     EXPECT_EQ(json.at("version").get<int>(), appbox::kProjectFileVersion);
 
@@ -252,6 +267,14 @@ TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
 
     EXPECT_EQ(json.at("filesystem").at(0).at("kind").get<std::string>(), "file");
     EXPECT_EQ(json.at("filesystem").at(0).at("isolation").get<std::string>(), "whiteout");
+
+    /* An environment variable names its isolation and its merge mode. */
+    const auto& environment = json.at("environment").at(0);
+    EXPECT_EQ(environment.at("name").get<std::string>(), "PATH");
+    EXPECT_EQ(environment.at("value").get<std::string>(), "C:\\MyApp\\bin");
+    EXPECT_EQ(environment.at("isolation").get<std::string>(), "write_copy");
+    EXPECT_EQ(environment.at("merge").get<std::string>(), "prepend");
+    EXPECT_EQ(environment.at("merge_string").get<std::string>(), ";");
 }
 
 TEST(Unit_ProjectDocument, WritesPathsAsUtf8Bytes)
@@ -384,6 +407,18 @@ TEST(Unit_ProjectDocument, ReadsMissingMembersAsEmpty)
     EXPECT_TRUE(document.filesystem.empty());
     EXPECT_TRUE(document.network.empty());
     EXPECT_FALSE(document.proxy.has_value());
+    EXPECT_TRUE(document.environment.empty());
+}
+
+TEST(Unit_ProjectDocument, WritesAnEmptyEnvironmentArray)
+{
+    const auto json = nlohmann::ordered_json(appbox::ProjectDocument{});
+    ASSERT_TRUE(json.contains("environment"));
+    EXPECT_TRUE(json.at("environment").empty());
+
+    /* A document without variables is read back as an empty list. */
+    const auto back = ParseDocument(R"({ "version": 1, "environment": [] })");
+    EXPECT_TRUE(back.environment.empty());
 }
 
 TEST(Unit_ProjectDocument, ReadingReplacesTheWholeDocument)
@@ -400,6 +435,7 @@ TEST(Unit_ProjectDocument, ReadingReplacesTheWholeDocument)
     EXPECT_TRUE(document.registry.empty());
     EXPECT_TRUE(document.filesystem.empty());
     EXPECT_FALSE(document.proxy.has_value());
+    EXPECT_TRUE(document.environment.empty());
 }
 
 TEST(Unit_ProjectDocument, ReadingLeavesTheDocumentUntouchedOnFailure)
@@ -413,6 +449,7 @@ TEST(Unit_ProjectDocument, ReadingLeavesTheDocumentUntouchedOnFailure)
     EXPECT_EQ(document.files.size(), 1u);
     EXPECT_EQ(document.startup_files.size(), 1u);
     EXPECT_TRUE(document.proxy.has_value());
+    EXPECT_EQ(document.environment.size(), 1u);
 }
 
 TEST(Unit_ProjectDocument, RejectsADocumentWhichIsNotAnObject)
@@ -454,6 +491,16 @@ TEST(Unit_ProjectDocument, RejectsMalformedMembers)
                   .find("the 'target_dir' member is missing or not a string"),
               std::string::npos);
     EXPECT_NE(ParseError(R"({ "version": 1, "startup_files": 7 })").find("startup_files"), std::string::npos);
+    EXPECT_NE(ParseError(R"({ "version": 1, "environment": {} })").find("the 'environment' member is not an array"),
+              std::string::npos);
+    EXPECT_NE(ParseError(R"({ "version": 1, "environment": [ { "name": "PATH", "value": "C:\\MyApp",)"
+                         R"( "isolation": "write_copy", "merge": "prepend" } ] })")
+                  .find("the 'merge_string' member is missing or not a string"),
+              std::string::npos);
+    EXPECT_NE(ParseError(R"({ "version": 1, "environment": [ { "name": "PATH", "value": 7,)"
+                         R"( "isolation": "write_copy", "merge": "prepend", "merge_string": ";" } ] })")
+                  .find("the 'value' member is missing or not a string"),
+              std::string::npos);
     EXPECT_NE(ParseError(R"({ "version": 1, "startup_files": [ { "preset": "program_files", "folder": "MyApp", )"
                          R"("path": "app.exe", "trigger": "app" } ] })")
                   .find("the 'auto_start' member is missing or not a boolean"),
@@ -494,6 +541,13 @@ TEST(Unit_ProjectDocument, ReportsThePathOfTheRejectedEntry)
                                   R"( "values": [ { "name": "Server" } ] } ] })");
     EXPECT_NE(value.find("registry[0]"), std::string::npos);
     EXPECT_NE(value.find("values[0]"), std::string::npos);
+
+    const auto environment = ParseError(R"({ "version": 1, "environment": [)"
+                                        R"( { "name": "TEMP", "value": "C:\\temp", "isolation": "write_copy",)"
+                                        R"( "merge": "replace", "merge_string": "" },)"
+                                        R"( { "name": "COUNT" } ] })");
+    EXPECT_NE(environment.find("environment[1]"), std::string::npos);
+    EXPECT_NE(environment.find("'value'"), std::string::npos);
 }
 
 TEST(Unit_ProjectDocument, RejectsUnknownTokens)
@@ -520,6 +574,14 @@ TEST(Unit_ProjectDocument, RejectsUnknownTokens)
             R"({ "version": 1, "filesystem": [ { "path": "#Windows#", "kind": "directory", "isolation": "hide" } ] })")
             .find("unknown isolation mode 'hide'"),
         std::string::npos);
+    EXPECT_NE(ParseError(R"({ "version": 1, "environment": [ { "name": "PATH", "value": "C:\\MyApp",)"
+                         R"( "isolation": "hide", "merge": "prepend", "merge_string": ";" } ] })")
+                  .find("unknown isolation mode 'hide'"),
+              std::string::npos);
+    EXPECT_NE(ParseError(R"({ "version": 1, "environment": [ { "name": "PATH", "value": "C:\\MyApp",)"
+                         R"( "isolation": "write_copy", "merge": "merge", "merge_string": ";" } ] })")
+                  .find("unknown merge mode 'merge'"),
+              std::string::npos);
 }
 
 TEST(Unit_ProjectDocument, RejectsMalformedValueData)
@@ -546,7 +608,9 @@ TEST(Unit_ProjectDocument, AcceptsTheTokensOfTheModels)
         ParseDocument(R"({ "version": 1, "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "write copy",)"
                       R"( "values": [ { "name": "Server", "type": "reg_dword", "data": "2A 00 00 00",)"
                       R"( "isolation": "FULL" } ] } ],)"
-                      R"( "filesystem": [ { "path": "#Windows#", "kind": "folder", "isolation": "write-copy" } ] })");
+                      R"( "filesystem": [ { "path": "#Windows#", "kind": "folder", "isolation": "write-copy" } ],)"
+                      R"( "environment": [ { "name": "PATH", "value": "C:\\MyApp", "isolation": "Write Copy",)"
+                      R"( "merge": "PREPEND", "merge_string": ";" } ] })");
 
     ASSERT_EQ(document.registry.size(), 1u);
     EXPECT_EQ(document.registry[0].isolation, appbox::RegistryIsolation::WriteCopy);
@@ -558,4 +622,8 @@ TEST(Unit_ProjectDocument, AcceptsTheTokensOfTheModels)
     ASSERT_EQ(document.filesystem.size(), 1u);
     EXPECT_EQ(document.filesystem[0].kind, appbox::FilesystemEntryKind::Directory);
     EXPECT_EQ(document.filesystem[0].isolation, appbox::FilesystemIsolation::WriteCopy);
+
+    ASSERT_EQ(document.environment.size(), 1u);
+    EXPECT_EQ(document.environment[0].isolation, appbox::EnvironmentIsolation::WriteCopy);
+    EXPECT_EQ(document.environment[0].merge, appbox::EnvironmentMergeMode::Prepend);
 }

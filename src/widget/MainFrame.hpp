@@ -8,11 +8,13 @@
 #include <string>
 #include <thread>
 #include "core/BuildReport.hpp"
+#include "core/EnvironmentModel.hpp"
 #include "core/FilesystemIsolationModel.hpp"
 #include "core/NetworkModel.hpp"
 #include "core/PackModel.hpp"
 #include "core/RegistryModel.hpp"
 
+class EnvironmentPanel;
 class FilesystemPanel;
 class NetworkPanel;
 class RegistryPanel;
@@ -293,12 +295,22 @@ private:
      */
     appbox::NetworkModel network_;
 
-    RibbonBar*       ribbon_ = nullptr;
-    SideNav*         side_nav_ = nullptr;
-    wxSimplebook*    workspace_ = nullptr;
-    FilesystemPanel* filesystem_panel_ = nullptr;
-    RegistryPanel*   registry_panel_ = nullptr;
-    NetworkPanel*    network_panel_ = nullptr;
+    /**
+     * @brief Environment variables of the environment workspace.
+     *
+     * The model is filled by the environment workspace itself, it travels with
+     * the project file and it is written into the archive, where the sandbox
+     * composes the environment of the packaged application from it.
+     */
+    appbox::EnvironmentModel environment_;
+
+    RibbonBar*        ribbon_ = nullptr;
+    SideNav*          side_nav_ = nullptr;
+    wxSimplebook*     workspace_ = nullptr;
+    FilesystemPanel*  filesystem_panel_ = nullptr;
+    RegistryPanel*    registry_panel_ = nullptr;
+    NetworkPanel*     network_panel_ = nullptr;
+    EnvironmentPanel* environment_panel_ = nullptr;
 
     bool output_path_edited_ = false;
 

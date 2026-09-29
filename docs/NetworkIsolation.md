@@ -48,7 +48,14 @@ connection keeps the path of the host.
 
 The tokens, the address literals and the rules of a port are shared between
 the packer and the sandbox through `common/NetworkIsolation.hpp`, so the two
-sides cannot drift apart.
+sides cannot drift apart. The document itself is read and written as the
+structure of the schema as well: the header describes an entry, the proxy and
+the document, and both sides convert them with `to_json()` and `from_json()`
+instead of reading or writing the members of a JSON object. An entry whose
+members are incomplete, which are of another type, or which carries an empty
+hostname is therefore refused while the file is read. The proxy is the one
+exception: its members are read leniently, so a proxy which cannot be used
+leaves a session without a proxy instead of failing the whole document.
 
 ## Sandbox side: DNS redirections
 

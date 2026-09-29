@@ -2,9 +2,59 @@
 #define APPBOX_LOADER_UTILS_KNOWNFOLDER_HPP
 
 #include <string>
+#include <vector>
 
 namespace appbox
 {
+
+/**
+ * @brief One variable the sandbox expands in a value of the workspace.
+ *
+ * A value the user enters in the Environment or the Registry workspace may
+ * reference a known folder of the machine the sandbox runs on with the syntax
+ * `%APPBOX:<NAME>%` instead of spelling its path out. The name is the layer key
+ * of a preset directory without its `#` delimiters, so `#ProgramFiles#` becomes
+ * the variable `ProgramFiles`; the supported list therefore follows the table
+ * of the known folders below, and a preset directory which is added later
+ * brings its variable with it.
+ *
+ * The loader copies the list into the injected configuration, which is why the
+ * texts are UTF-8 like the other texts of that document.
+ *
+ * @note The header is included by the packer as well, so it must not depend on
+ *       the sandbox configuration; the copy into the injected configuration is
+ *       made by the loader.
+ */
+struct KnownFolderVariable
+{
+    /**
+     * @brief Name of the variable without the `%APPBOX:` prefix.
+     *
+     * For example `"ProgramFiles"`. The sandbox compares the name of a
+     * reference with this name ignoring the case.
+     */
+    std::string name;
+
+    /**
+     * @brief Path the reference is replaced with.
+     *
+     * The real path of the known folder on the machine which runs the sandbox,
+     * for example `"C:\\Program Files"`.
+     */
+    std::string path;
+};
+
+/**
+ * @brief Get the variables the sandbox expands in the values of the workspace.
+ *
+ * One entry is produced per known folder of the table which can be resolved on
+ * this machine, in the order of the table. A folder whose path cannot be
+ * resolved is skipped with a warning, so the other variables stay usable
+ * instead of failing the whole start.
+ *
+ * @return The variables, in the order of the known folder table.
+ */
+std::vector<KnownFolderVariable> KnownFolderVariables();
 
 /**
  * @brief Search for a known folder by name.

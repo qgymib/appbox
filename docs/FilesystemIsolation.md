@@ -112,6 +112,14 @@ user set a mode for are listed; an entry which the document does not mention
 follows the closest listed folder above it and falls back to the default of its
 kind.
 
+The document is read and written as the structure of the schema:
+`common/FilesystemIsolation.hpp` describes an entry and the document, and both
+sides convert it with `to_json()` and `from_json()` instead of reading or
+writing the members of a JSON object. An entry whose members are incomplete,
+which are of another type, or which names a mode its kind cannot hold is
+therefore refused while the file is read, which is what keeps the packer and the
+sandbox in step.
+
 The loader derives the path of the file from the resources of the archive and
 passes it to the sandbox. A missing file, a missing configuration or a malformed document is not
 an error: the sandbox then behaves like one without an isolation file, in which

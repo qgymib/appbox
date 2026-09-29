@@ -464,3 +464,52 @@ TEST(Unit_FilesystemIsolation, TheIsolationFileOfThePackerIsReadByTheSandbox)
     EXPECT_EQ(mode, appbox::FilesystemIsolation::Full);
     EXPECT_EQ(kind, appbox::FilesystemEntryKind::Directory);
 }
+
+/**
+ * @brief Every mode of the table is explained by a description.
+ *
+ * The description is the text the workspace shows for the mode of a row and for
+ * the modes the `Isolation` column offers, so every mode has to name itself and
+ * its own rule.
+ */
+TEST(Unit_FilesystemIsolation, EveryModeIsDescribedForATooltip)
+{
+    for (const auto isolation : { appbox::FilesystemIsolation::Full, appbox::FilesystemIsolation::WriteCopy,
+                                  appbox::FilesystemIsolation::Whiteout })
+    {
+        const std::wstring description =
+            appbox::FilesystemIsolationDescription(isolation, appbox::FilesystemEntryKind::Directory);
+
+        EXPECT_NE(description.find(L"Isolation mode"), std::wstring::npos) << description;
+        EXPECT_NE(description.find(appbox::FilesystemIsolationName(isolation)), std::wstring::npos) << description;
+    }
+
+    EXPECT_NE(appbox::FilesystemIsolationDescription(appbox::FilesystemIsolation::Whiteout,
+                                                     appbox::FilesystemEntryKind::Directory)
+                  .find(L"invisible"),
+              std::wstring::npos);
+    EXPECT_NE(appbox::FilesystemIsolationDescription(appbox::FilesystemIsolation::WriteCopy,
+                                                     appbox::FilesystemEntryKind::Directory)
+                  .find(L"default mode of a folder"),
+              std::wstring::npos);
+}
+
+/**
+ * @brief `Full` is described for the kind it was asked for.
+ *
+ * A folder is hidden from the application together with everything below it,
+ * while a file keeps its host copy readable and only redirects the writes, so
+ * the description of the two differs.
+ */
+TEST(Unit_FilesystemIsolation, FullTellsAFolderAndAFileApart)
+{
+    const auto folder = appbox::FilesystemIsolationDescription(appbox::FilesystemIsolation::Full,
+                                                               appbox::FilesystemEntryKind::Directory);
+    const auto file =
+        appbox::FilesystemIsolationDescription(appbox::FilesystemIsolation::Full, appbox::FilesystemEntryKind::File);
+
+    EXPECT_NE(folder.find(L"hidden"), std::wstring::npos) << folder;
+    EXPECT_EQ(folder.find(L"host file stays readable"), std::wstring::npos) << folder;
+    EXPECT_NE(file.find(L"host file stays readable"), std::wstring::npos) << file;
+    EXPECT_NE(folder, file);
+}

@@ -94,6 +94,33 @@ std::wstring FilesystemIsolationName(FilesystemIsolation isolation)
     return names[index];
 }
 
+std::wstring FilesystemIsolationDescription(FilesystemIsolation isolation, FilesystemEntryKind kind)
+{
+    switch (isolation)
+    {
+    case FilesystemIsolation::WriteCopy:
+        return L"Isolation mode 'Write Copy': the host entry and the sandbox entry are both visible with the sandbox "
+               L"taking precedence, and every modification lands in the sandbox. This is the default mode of a folder.";
+    case FilesystemIsolation::Whiteout:
+        return L"Isolation mode 'Whiteout': the entry is invisible for the application, even while the host holds it; "
+               L"creating the entry succeeds inside the sandbox and it is readable and writable afterwards.";
+    case FilesystemIsolation::Full:
+        break;
+    }
+
+    /*
+     * `Full` hides a folder together with everything below it, while a file
+     * keeps its host copy readable and only redirects the writes.
+     */
+    if (kind == FilesystemEntryKind::Directory)
+    {
+        return L"Isolation mode 'Full': only the sandbox is visible, so the host folder and everything below it are "
+               L"hidden, and every modification lands in the sandbox.";
+    }
+    return L"Isolation mode 'Full': every write of the file lands in the sandbox, while the host file stays readable; "
+           L"this is the default mode of a file.";
+}
+
 const std::vector<std::wstring>& FilesystemIsolationNamesFor(FilesystemEntryKind kind)
 {
     static const std::vector<std::wstring> folder_names = FilesystemIsolationNames();

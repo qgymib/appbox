@@ -58,32 +58,34 @@ bool appbox::test::WriteNetworkIsolationFile(const std::filesystem::path&       
                                              const std::vector<NetworkIsolationEntry>& entries,
                                              const NetworkIsolationProxy&              proxy)
 {
-    nlohmann::json document;
-    document[appbox::network_isolation::kVersionKey] = appbox::network_isolation::kVersion;
-    document[appbox::network_isolation::kEntriesKey] = nlohmann::json::array();
+    /*
+     * The document is filled as the structure of the schema of the file, so a
+     * case writes the same document the workspace writes.
+     */
+    appbox::network_isolation::Document document;
 
     for (const auto& entry : entries)
     {
-        nlohmann::json item;
-        item[appbox::network_isolation::kHostnameKey] = appbox::WideToUTF8(entry.hostname);
-        item[appbox::network_isolation::kRedirectKey] = appbox::WideToUTF8(entry.redirect);
-        document[appbox::network_isolation::kEntriesKey].push_back(std::move(item));
+        appbox::network_isolation::Entry item;
+        item.hostname = appbox::WideToUTF8(entry.hostname);
+        item.redirect = appbox::WideToUTF8(entry.redirect);
+        document.entries.push_back(std::move(item));
     }
 
     if (proxy.IsConfigured())
     {
-        nlohmann::json item;
-        item[appbox::network_isolation::kProxyTypeKey] = appbox::network_isolation::kSocks5Token;
-        item[appbox::network_isolation::kProxyTcpKey] = proxy.tcp;
-        item[appbox::network_isolation::kProxyUdpKey] = proxy.udp;
-        item[appbox::network_isolation::kProxyServerKey] = appbox::WideToUTF8(proxy.server);
-        item[appbox::network_isolation::kProxyPortKey] = appbox::WideToUTF8(proxy.port);
-        item[appbox::network_isolation::kProxyUsernameKey] = appbox::WideToUTF8(proxy.username);
-        item[appbox::network_isolation::kProxyPasswordKey] = appbox::WideToUTF8(proxy.password);
-        document[appbox::network_isolation::kProxyKey] = std::move(item);
+        appbox::network_isolation::Proxy item;
+        item.type = appbox::network_isolation::kSocks5Token;
+        item.tcp = proxy.tcp;
+        item.udp = proxy.udp;
+        item.server = appbox::WideToUTF8(proxy.server);
+        item.port = appbox::WideToUTF8(proxy.port);
+        item.username = appbox::WideToUTF8(proxy.username);
+        item.password = appbox::WideToUTF8(proxy.password);
+        document.proxy = std::move(item);
     }
 
-    return WriteText(case_root, document.dump(2));
+    return WriteText(case_root, nlohmann::json(document).dump(2));
 }
 
 bool appbox::test::WriteNetworkIsolationFileText(const std::filesystem::path& case_root, const std::string& text)

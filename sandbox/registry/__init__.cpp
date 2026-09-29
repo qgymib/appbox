@@ -24,6 +24,7 @@
 #include "registry/RootMap.hpp"
 #include "registry/Whiteout.hpp"
 #include "utils/QueryHandlePath.hpp"
+#include "utils/VariableExpansion.hpp"
 #include "utils/Log.hpp"
 #include "Sandbox.hpp"
 #include "WString.hpp"
@@ -39,6 +40,25 @@ typedef LONG(WINAPI* T_RegLoadAppKeyW)(
     /* [IN] */ REGSAM  samDesired,
     /* [IN] */ DWORD   dwFlags,
     /* [IN] */ DWORD   dwReserved);
+
+/**
+ * @brief Advapi32 entries which read and write the values of a mounted hive.
+ *
+ * The module is initialized before the hooks are attached and the sandbox
+ * library does not link the registry API, so the entries are resolved from the
+ * loaded `advapi32.dll` like the mount of the hive resolves its own entry.
+ * @{
+ */
+typedef LONG(WINAPI* T_RegOpenKeyExW)(HKEY hKey, LPCWSTR lpSubKey, DWORD ulOptions, REGSAM samDesired, PHKEY phkResult);
+typedef LONG(WINAPI* T_RegEnumKeyExW)(HKEY hKey, DWORD dwIndex, LPWSTR lpName, LPDWORD lpcchName, LPDWORD lpReserved,
+                                      LPWSTR lpClass, LPDWORD lpcchClass, PFILETIME lpftLastWriteTime);
+typedef LONG(WINAPI* T_RegEnumValueW)(HKEY hKey, DWORD dwIndex, LPWSTR lpValueName, LPDWORD lpcchValueName,
+                                      LPDWORD lpReserved, LPDWORD lpType, LPBYTE lpData, LPDWORD lpcbData);
+typedef LONG(WINAPI* T_RegQueryValueExW)(HKEY hKey, LPCWSTR lpValueName, LPDWORD lpReserved, LPDWORD lpType,
+                                         LPBYTE lpData, LPDWORD lpcbData);
+typedef LONG(WINAPI* T_RegSetValueExW)(HKEY hKey, LPCWSTR lpValueName, DWORD Reserved, DWORD dwType, const BYTE* lpData,
+                                       DWORD cbData);
+/** @} */
 
 /**
  * @brief Opens the access token of a process.
@@ -931,6 +951,238 @@ static void DeleteSaveHiveFiles(const std::wstring& path)
     DeleteOverlayFile(path + L".LOG2");
 }
 
+/**
+ * @brief Entry points of the registry API the value expansion uses.
+ */
+struct RegistryApi
+{
+    T_RegOpenKeyExW    open_key = nullptr;    /* Opens a sub key of a key. */
+    T_RegEnumKeyExW    enum_key = nullptr;    /* Enumerates the sub keys of a key. */
+    T_RegEnumValueW    enum_value = nullptr;  /* Enumerates the values of a key. */
+    T_RegQueryValueExW query_value = nullptr; /* Reads a value of a key. */
+    T_RegSetValueExW   set_value = nullptr;   /* Writes a value of a key. */
+};
+
+/**
+ * @brief Length of the buffer the walk of the hive enumerates a name into.
+ *
+ * A key or value name of the registry is limited to 255 characters, so the
+ * buffer holds every name a hive can carry.
+ */
+static constexpr std::size_t s_max_hive_name = 512;
+
+/**
+ * @brief Deepest key the walk of the hive descends into.
+ *
+ * The hive is written by the packer and by the sandboxed application, so a key
+ * which is nested deeper than the budget is left alone instead of running the
+ * stack of the initialization out.
+ */
+static constexpr std::size_t s_max_hive_depth = 64;
+
+/**
+ * @brief Resolve the entry points of the value expansion.
+ * @param[in] advapi32 The loaded advapi32 module.
+ * @param[out] api The entry points to fill.
+ * @return true when every entry point was resolved.
+ */
+static bool ResolveRegistryApi(HMODULE advapi32, RegistryApi& api)
+{
+    api.open_key = reinterpret_cast<T_RegOpenKeyExW>(GetProcAddress(advapi32, "RegOpenKeyExW"));
+    api.enum_key = reinterpret_cast<T_RegEnumKeyExW>(GetProcAddress(advapi32, "RegEnumKeyExW"));
+    api.enum_value = reinterpret_cast<T_RegEnumValueW>(GetProcAddress(advapi32, "RegEnumValueW"));
+    api.query_value = reinterpret_cast<T_RegQueryValueExW>(GetProcAddress(advapi32, "RegQueryValueExW"));
+    api.set_value = reinterpret_cast<T_RegSetValueExW>(GetProcAddress(advapi32, "RegSetValueExW"));
+
+    return api.open_key != nullptr && api.enum_key != nullptr && api.enum_value != nullptr &&
+           api.query_value != nullptr && api.set_value != nullptr;
+}
+
+/**
+ * @brief Collect the value names of a key.
+ *
+ * The names are collected before a value is written back, because a write
+ * disturbs the enumeration of the key it belongs to.
+ *
+ * @param[in] api The resolved entry points.
+ * @param[in] key The key to enumerate.
+ * @param[out] names The value names in enumeration order.
+ */
+static void CollectHiveValueNames(const RegistryApi& api, HKEY key, std::vector<std::wstring>& names)
+{
+    for (DWORD index = 0;; ++index)
+    {
+        wchar_t name[s_max_hive_name] = {};
+        DWORD   size = static_cast<DWORD>(s_max_hive_name);
+
+        const LONG status = api.enum_value(key, index, name, &size, nullptr, nullptr, nullptr, nullptr);
+        if (status == ERROR_NO_MORE_ITEMS)
+        {
+            return;
+        }
+        if (status != ERROR_SUCCESS)
+        {
+            LOG_W("the values of a key of the hive cannot be enumerated: {}", status);
+            return;
+        }
+
+        names.emplace_back(name, size);
+    }
+}
+
+/**
+ * @brief Collect the sub key names of a key.
+ * @param[in] api The resolved entry points.
+ * @param[in] key The key to enumerate.
+ * @param[out] names The sub key names in enumeration order.
+ */
+static void CollectHiveSubKeyNames(const RegistryApi& api, HKEY key, std::vector<std::wstring>& names)
+{
+    for (DWORD index = 0;; ++index)
+    {
+        wchar_t name[s_max_hive_name] = {};
+        DWORD   size = static_cast<DWORD>(s_max_hive_name);
+
+        const LONG status = api.enum_key(key, index, name, &size, nullptr, nullptr, nullptr, nullptr);
+        if (status == ERROR_NO_MORE_ITEMS)
+        {
+            return;
+        }
+        if (status != ERROR_SUCCESS)
+        {
+            LOG_W("the sub keys of a key of the hive cannot be enumerated: {}", status);
+            return;
+        }
+
+        names.emplace_back(name, size);
+    }
+}
+
+/**
+ * @brief Expand the references of the string values of a key and of its subtree.
+ *
+ * A value of a string type is read, expanded and written back only when the
+ * expansion changed it, so a hive without a reference is left exactly as it is
+ * and the walk is idempotent: the second run of a process finds nothing to
+ * replace any more.
+ *
+ * A key or a value which cannot be read or written is reported and skipped.
+ * The expansion is a convenience of the workspace and must never fail the
+ * start of the sandbox.
+ *
+ * @param[in] api The resolved entry points.
+ * @param[in] key The key to walk.
+ * @param[in] depth Depth of the key, 0 for the root of the hive.
+ * @return The number of values which were rewritten.
+ */
+static std::size_t ExpandHiveValues(const RegistryApi& api, HKEY key, std::size_t depth)
+{
+    std::size_t rewritten = 0;
+
+    std::vector<std::wstring> names;
+    CollectHiveValueNames(api, key, names);
+
+    for (const auto& name : names)
+    {
+        DWORD type = REG_NONE;
+        DWORD size = 0;
+        LONG  status = api.query_value(key, name.c_str(), nullptr, &type, nullptr, &size);
+        if (status != ERROR_SUCCESS && status != ERROR_MORE_DATA)
+        {
+            continue;
+        }
+
+        /* Only the string types of the registry carry a reference. */
+        if (type != REG_SZ && type != REG_EXPAND_SZ && type != REG_MULTI_SZ)
+        {
+            continue;
+        }
+
+        std::vector<BYTE> data(size);
+        DWORD             read = size;
+        status = api.query_value(key, name.c_str(), nullptr, &type, data.empty() ? nullptr : data.data(), &read);
+        if (status != ERROR_SUCCESS)
+        {
+            continue;
+        }
+        data.resize(read);
+
+        const std::vector<BYTE> expanded = appbox::ExpandRegistryValueData(type, data, appbox::sandbox->variables);
+        if (expanded == data)
+        {
+            continue;
+        }
+
+        status = api.set_value(key, name.c_str(), 0, type, expanded.empty() ? nullptr : expanded.data(),
+                               static_cast<DWORD>(expanded.size()));
+        if (status != ERROR_SUCCESS)
+        {
+            LOG_W("the value '{}' of the hive cannot be written back: {}", appbox::WideToUTF8(name), status);
+            continue;
+        }
+
+        ++rewritten;
+    }
+
+    if (depth >= s_max_hive_depth)
+    {
+        return rewritten;
+    }
+
+    std::vector<std::wstring> sub_keys;
+    CollectHiveSubKeyNames(api, key, sub_keys);
+
+    for (const auto& name : sub_keys)
+    {
+        /*
+         * The whiteout store of the sandbox keeps the deletions of the view in
+         * the hive; it holds no value of the workspace.
+         */
+        if (depth == 0 && name == appbox::registry_whiteout::kStoreKey)
+        {
+            continue;
+        }
+
+        HKEY sub = nullptr;
+        if (api.open_key(key, name.c_str(), 0, KEY_READ | KEY_WRITE, &sub) != ERROR_SUCCESS)
+        {
+            LOG_W("a sub key of the hive cannot be opened for the value expansion: {}", appbox::WideToUTF8(name));
+            continue;
+        }
+
+        rewritten += ExpandHiveValues(api, sub, depth + 1);
+        CloseLocal(sub);
+    }
+
+    return rewritten;
+}
+
+/**
+ * @brief Expand the references of every string value of the mounted hive.
+ *
+ * A value of the Registry workspace may reference a known folder of the
+ * machine which runs the sandbox with `%APPBOX:<NAME>%`. The references are
+ * replaced while the hive is mounted, which happens before the hooks are
+ * attached, so every read path of the registry — the value query, the
+ * enumeration, the batch query and the export of a key — reports the expanded
+ * value without a hook which would have to resize a caller buffer.
+ *
+ * @param[in] advapi32 The loaded advapi32 module.
+ * @param[in] hive_root The root key handle of the mount.
+ * @return The number of values which were rewritten.
+ */
+static std::size_t ExpandHiveVariableReferences(HMODULE advapi32, HANDLE hive_root)
+{
+    RegistryApi api;
+    if (!ResolveRegistryApi(advapi32, api))
+    {
+        LOG_W("the values of the hive are not expanded, the registry API cannot be resolved");
+        return 0;
+    }
+
+    return ExpandHiveValues(api, reinterpret_cast<HKEY>(hive_root), 0);
+}
+
 NTSTATUS appbox::registry::Hive::Init()
 {
     if (appbox::sandbox == nullptr || !appbox::sandbox->bIsolationMode)
@@ -1018,6 +1270,13 @@ NTSTATUS appbox::registry::Hive::Init()
         return status;
     }
 
+    /*
+     * Replace the references of the values of the workspace while the hive is
+     * mounted, so every read path of the registry reports the expanded value.
+     * The walk runs before the hooks are attached and never fails the start.
+     */
+    const std::size_t expanded = ExpandHiveVariableReferences(advapi32, data->hive_root);
+
     /* The modes of the virtual registry, which decide which host entries stay
      * invisible. A missing file keeps the default mode of every entry. */
     data->isolation_path = appbox::sandbox->wRegistryIsolationDOSPath;
@@ -1032,8 +1291,9 @@ NTSTATUS appbox::registry::Hive::Init()
      */
     data->whiteout_possible = WhiteoutStoreExists();
 
-    LOG_I("registry hive mounted: {} (mount: {}, hkcu: {}, whiteout store: {})", appbox::WideToUTF8(data->hive_path),
-          appbox::WideToUTF8(data->hive_mount_name), appbox::WideToUTF8(data->hkcu_prefix), data->whiteout_possible);
+    LOG_I("registry hive mounted: {} (mount: {}, hkcu: {}, whiteout store: {}, expanded values: {})",
+          appbox::WideToUTF8(data->hive_path), appbox::WideToUTF8(data->hive_mount_name),
+          appbox::WideToUTF8(data->hkcu_prefix), data->whiteout_possible, expanded);
     return STATUS_SUCCESS;
 }
 

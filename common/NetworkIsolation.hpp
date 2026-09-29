@@ -1,11 +1,15 @@
 #ifndef APPBOX_COMMON_NETWORK_ISOLATION_HPP
 #define APPBOX_COMMON_NETWORK_ISOLATION_HPP
 
+#include "IsolationDocument.hpp"
+#include <nlohmann/json.hpp>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace appbox
 {
@@ -564,6 +568,237 @@ inline std::string NormalizeHostname(std::string_view hostname)
 inline bool HostnamesEqual(std::string_view left, std::string_view right)
 {
     return NormalizeHostname(left) == NormalizeHostname(right);
+}
+
+/**
+ * @brief One DNS redirection of the network isolation file.
+ *
+ * The structure is the schema of one listed hostname: the packer fills it while
+ * it writes the file of the workspace, and the sandbox reads the file back into
+ * the same structure, so neither side parses the JSON object of an entry member
+ * by member.
+ */
+struct Entry
+{
+    /**
+     * @brief Hostname or IP address the entry redirects, in UTF-8.
+     */
+    std::string hostname;
+
+    /**
+     * @brief Address the hostname resolves to inside the sandbox, in UTF-8.
+     *
+     * The text is the IPv4 or IPv6 address literal the packer stored. The
+     * reader of the file validates it with ParseAddress() while it applies the
+     * entry.
+     */
+    std::string redirect;
+};
+
+/**
+ * @brief The proxy of the network isolation file.
+ *
+ * The structure is the schema of the optional `proxy` member. Its members are
+ * read leniently: a proxy which cannot be used describes a session without a
+ * proxy and never fails the whole document, so a missing member and a member of
+ * another type leave the default of the structure instead of an error. The
+ * rules which decide whether the proxy can be used at all (the protocol, the
+ * server and the port) are applied by the sandbox while it applies the file,
+ * which is also what the `Network` workspace of the packer does.
+ */
+struct Proxy
+{
+    /**
+     * @brief Protocol of the proxy, which has to name SOCKS5.
+     */
+    std::string type;
+
+    /**
+     * @brief Whether the TCP traffic is carried by the proxy.
+     */
+    bool tcp = false;
+
+    /**
+     * @brief Whether the UDP traffic is carried by the proxy.
+     */
+    bool udp = false;
+
+    /**
+     * @brief Hostname or address of the server, in UTF-8.
+     */
+    std::string server;
+
+    /**
+     * @brief Port of the server, as the text the user entered.
+     */
+    std::string port;
+
+    /**
+     * @brief Optional user name, empty while the server asks for none.
+     */
+    std::string username;
+
+    /**
+     * @brief Optional password, empty while the server asks for none.
+     */
+    std::string password;
+};
+
+/**
+ * @brief The content of the network isolation file.
+ */
+struct Document
+{
+    /**
+     * @brief Schema version the document was written with.
+     *
+     * The reader compares the version with kVersion and refuses a document of
+     * another version, so a file of a newer schema is never read with the rules
+     * of this one.
+     */
+    int version = kVersion;
+
+    /**
+     * @brief The listed DNS redirections, in the order of the file.
+     */
+    std::vector<Entry> entries;
+
+    /**
+     * @brief The proxy of the session, empty while the file holds none.
+     */
+    std::optional<Proxy> proxy;
+};
+
+/**
+ * @brief Store one DNS redirection of the network isolation file.
+ * @param[out] json Object which receives the entry.
+ * @param[in] entry The entry to store.
+ */
+inline void to_json(nlohmann::json& json, const Entry& entry)
+{
+    json = nlohmann::json::object();
+    json[kHostnameKey] = entry.hostname;
+    json[kRedirectKey] = entry.redirect;
+}
+
+/**
+ * @brief Store the proxy of the network isolation file.
+ * @param[out] json Object which receives the proxy.
+ * @param[in] proxy The proxy to store.
+ */
+inline void to_json(nlohmann::json& json, const Proxy& proxy)
+{
+    json = nlohmann::json::object();
+    json[kProxyTypeKey] = proxy.type;
+    json[kProxyTcpKey] = proxy.tcp;
+    json[kProxyUdpKey] = proxy.udp;
+    json[kProxyServerKey] = proxy.server;
+    json[kProxyPortKey] = proxy.port;
+    json[kProxyUsernameKey] = proxy.username;
+    json[kProxyPasswordKey] = proxy.password;
+}
+
+/**
+ * @brief Read one DNS redirection of the network isolation file.
+ * @param[in] json Object holding the entry.
+ * @param[out] entry The entry to fill.
+ * @throw appbox::IsolationDocumentError The entry does not fit the schema.
+ */
+inline void from_json(const nlohmann::json& json, Entry& entry)
+{
+    const std::string holder = "a network isolation file entry";
+    isolation_document::RequireObject(json, holder);
+
+    entry.hostname = isolation_document::RequiredText(json, kHostnameKey, holder);
+    entry.redirect = isolation_document::RequiredText(json, kRedirectKey, holder);
+
+    if (entry.hostname.empty())
+    {
+        isolation_document::Throw("a network isolation file entry has an empty hostname");
+    }
+}
+
+/**
+ * @brief Read the proxy of the network isolation file.
+ *
+ * The members are read leniently, see Proxy.
+ *
+ * @param[in] json Object holding the proxy.
+ * @param[out] proxy The proxy to fill.
+ */
+inline void from_json(const nlohmann::json& json, Proxy& proxy)
+{
+    proxy = Proxy{};
+    if (!json.is_object())
+    {
+        return;
+    }
+
+    proxy.type = isolation_document::LenientText(json, kProxyTypeKey);
+    proxy.tcp = isolation_document::LenientFlag(json, kProxyTcpKey);
+    proxy.udp = isolation_document::LenientFlag(json, kProxyUdpKey);
+    proxy.server = isolation_document::LenientText(json, kProxyServerKey);
+    proxy.port = isolation_document::LenientText(json, kProxyPortKey);
+    proxy.username = isolation_document::LenientText(json, kProxyUsernameKey);
+    proxy.password = isolation_document::LenientText(json, kProxyPasswordKey);
+}
+
+/**
+ * @brief Store the content of the network isolation file.
+ * @param[out] json Object which receives the document.
+ * @param[in] document The document to store.
+ */
+inline void to_json(nlohmann::json& json, const Document& document)
+{
+    json = nlohmann::json::object();
+    json[kVersionKey] = document.version;
+
+    nlohmann::json entries = nlohmann::json::array();
+    for (const auto& entry : document.entries)
+    {
+        entries.push_back(nlohmann::json(entry));
+    }
+    json[kEntriesKey] = std::move(entries);
+
+    if (document.proxy.has_value())
+    {
+        json[kProxyKey] = nlohmann::json(*document.proxy);
+    }
+}
+
+/**
+ * @brief Read the content of the network isolation file.
+ *
+ * A document which does not list a redirection and which carries no proxy
+ * describes a session without a network isolation, which is what a session
+ * without a configuration writes. The `proxy` member is only read while it is
+ * an object: a member of another type describes a session without a proxy.
+ *
+ * @param[in] json Object holding the document.
+ * @param[out] document The document to fill.
+ * @throw appbox::IsolationDocumentError The document does not fit the schema.
+ */
+inline void from_json(const nlohmann::json& json, Document& document)
+{
+    const std::string holder = "the network isolation file";
+    isolation_document::RequireObject(json, holder);
+
+    document = Document{};
+    document.version = isolation_document::RequiredInt(json, kVersionKey, holder);
+
+    if (const auto* entries = isolation_document::OptionalArray(json, kEntriesKey, holder))
+    {
+        for (const auto& item : *entries)
+        {
+            document.entries.push_back(item.get<Entry>());
+        }
+    }
+
+    const auto* proxy = isolation_document::FindMember(json, kProxyKey);
+    if (proxy != nullptr && proxy->is_object())
+    {
+        document.proxy = proxy->get<Proxy>();
+    }
 }
 
 } // namespace network_isolation

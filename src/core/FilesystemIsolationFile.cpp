@@ -11,20 +11,24 @@ bool appbox::BuildFilesystemIsolationFile(const FilesystemIsolationModel& model,
 
     try
     {
-        nlohmann::json document;
-        document[filesystem_isolation::kVersionKey] = filesystem_isolation::kVersion;
-        document[filesystem_isolation::kEntriesKey] = nlohmann::json::array();
+        /*
+         * The document is built as the structure of the schema
+         * (`common/FilesystemIsolation.hpp`) and not as a JSON object, so the
+         * text the packer writes and the text the sandbox reads are described
+         * by one definition.
+         */
+        filesystem_isolation::Document document;
 
         for (const auto& entry : model.Entries())
         {
-            nlohmann::json item;
-            item[filesystem_isolation::kPathKey] = WideToUTF8(entry.path);
-            item[filesystem_isolation::kKindKey] = filesystem_isolation::EntryKindToken(entry.kind);
-            item[filesystem_isolation::kIsolationKey] = filesystem_isolation::IsolationToken(entry.isolation);
-            document[filesystem_isolation::kEntriesKey].push_back(std::move(item));
+            filesystem_isolation::Entry item;
+            item.path = WideToUTF8(entry.path);
+            item.kind = entry.kind;
+            item.isolation = entry.isolation;
+            document.entries.push_back(std::move(item));
         }
 
-        text = document.dump(2);
+        text = nlohmann::json(document).dump(2);
         return true;
     }
     catch (const std::exception& e)

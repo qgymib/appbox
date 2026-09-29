@@ -125,6 +125,14 @@ app\registry\isolation.json              the isolation modes
 data\registry\user.hiv                   the hive the sandbox mounts
 ```
 
+The isolation file is read and written as the structure of its schema:
+`common/RegistryIsolation.hpp` describes a key entry, a value entry and the
+document, and both sides convert it with `to_json()` and `from_json()` instead
+of reading or writing the members of a JSON object. An entry whose members are
+incomplete, which are of another type, or which names an unknown mode is
+therefore refused while the file is read, which is what keeps the packer and the
+sandbox in step.
+
 The hive holds the five root keys of the view and, below a reserved key which
 is not part of the view, the **whiteout store** of the entries the sandbox
 deleted:
@@ -176,6 +184,28 @@ The isolation file is UTF-8 JSON:
 
 `Build` of the packer writes the two artifacts into the registry domain of the
 resources of the archive, which is where the loader looks for them.
+
+## Variable references
+
+A value of the workspace may reference a known folder of the machine which runs
+the sandbox with `%APPBOX:<NAME>%` instead of spelling its path out, so an
+archive stays correct on a machine whose folders are somewhere else. The
+references are replaced while the hive is mounted — which happens before the
+hooks are attached — so every read path of the registry reports the expanded
+value without a hook which would have to resize a caller buffer: the value
+query, the enumeration, the batch query and the export of a key all see it.
+
+The walk covers the string types of the registry only: `REG_SZ`, `REG_EXPAND_SZ`
+and `REG_MULTI_SZ`, whose every item is expanded on its own. `REG_DWORD`,
+`REG_BINARY` and every other type keep their bytes, even when they happen to
+spell a reference. The whiteout store is skipped, because it holds the
+bookkeeping of the sandbox and no value of the workspace. A value is written
+back only when the expansion changed it, so the walk is idempotent and a hive
+without a reference is left exactly as it is.
+
+The syntax, the supported names and the rules of the expansion are documented in
+[README.md](../README.md#variable-expansion); the expansion itself is
+`appbox::ExpandRegistryValueData()` of `sandbox/utils/VariableExpansion.*`.
 
 ## Deletion and whiteouts
 

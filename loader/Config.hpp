@@ -40,21 +40,6 @@ struct LoaderStartup
     NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderStartup, trigger, auto_start, executable, arguments)
 };
 
-struct LoaderEnvironment
-{
-    /**
-     * @brief Environment variable key.
-     */
-    std::string key;
-
-    /**
-     * @brief Environment variable value.
-     */
-    std::string value;
-
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderEnvironment, key, value)
-};
-
 /**
  * @brief Configuration of the loader of one packed application.
  *
@@ -87,12 +72,7 @@ struct LoaderConfig
      */
     std::vector<LoaderStartup> startups;
 
-    /**
-     * @brief Environment variables.
-     */
-    std::vector<LoaderEnvironment> environment;
-
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderConfig, enable_admin_ui, hide_console, startups, environment)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderConfig, enable_admin_ui, hide_console, startups)
 };
 
 } // namespace appbox

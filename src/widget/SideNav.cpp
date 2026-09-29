@@ -60,11 +60,12 @@ SideNav::SideNav(wxWindow* parent, wxWindowID id)
     Bind(wxEVT_LEAVE_WINDOW, &SideNav::OnLeaveWindow, this);
 }
 
-void SideNav::AddItem(const wxString& label, const wxString& art)
+void SideNav::AddItem(const wxString& label, const wxString& art, const wxString& tooltip)
 {
     Item item;
     item.label = label;
     item.icon = wxArtProvider::GetBitmap(art, wxART_OTHER, wxSize(kIconSize, kIconSize));
+    item.tooltip = tooltip;
     items_.push_back(std::move(item));
 
     Refresh();
@@ -140,6 +141,26 @@ void SideNav::OnMotion(wxMouseEvent& event)
         hovered_ = hovered;
         Refresh();
     }
+
+    /*
+     * The tooltip of a window covers the whole control, so the description of
+     * the hovered item is only replaced while the hovered item changes and is
+     * dropped while the cursor leaves the navigation, see OnLeaveWindow().
+     */
+    const wxString text = hovered == wxNOT_FOUND ? wxString() : items_[static_cast<std::size_t>(hovered)].tooltip;
+    if (text != tooltip_text_)
+    {
+        tooltip_text_ = text;
+        if (text.empty())
+        {
+            UnsetToolTip();
+        }
+        else
+        {
+            SetToolTip(text);
+        }
+    }
+
     event.Skip();
 }
 
@@ -150,6 +171,13 @@ void SideNav::OnLeaveWindow(wxMouseEvent& event)
         hovered_ = wxNOT_FOUND;
         Refresh();
     }
+
+    if (!tooltip_text_.empty())
+    {
+        tooltip_text_.clear();
+        UnsetToolTip();
+    }
+
     event.Skip();
 }
 

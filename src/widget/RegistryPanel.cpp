@@ -26,6 +26,27 @@ const wxColour kToolBarBackground(0xF2, 0xF3, 0xF5);
 /** Maximum number of characters shown by the value column. */
 constexpr std::size_t kValuePreviewLength = 120;
 
+/** Lead of the tooltip of the header of the `Isolation` column. */
+const char* const kIsolationColumnLead =
+    "Isolation mode of the entry, which decides what the application sees and where its modifications land.\n"
+    "A key entry covers the key and everything below it, a value entry covers the value of that name.";
+
+/**
+ * @brief Describe the modes the `Isolation` column offers.
+ * @return The description of the column.
+ */
+wxString IsolationColumnTooltip()
+{
+    wxString text = kIsolationColumnLead;
+    for (const auto isolation :
+         { appbox::RegistryIsolation::Full, appbox::RegistryIsolation::WriteCopy, appbox::RegistryIsolation::Hide })
+    {
+        text += "\n\n";
+        text += wxString(appbox::RegistryIsolationDescription(isolation));
+    }
+    return text;
+}
+
 /**
  * @brief Get the name shown by the name column of a row.
  * @param[in] row Row to format.
@@ -142,6 +163,23 @@ void RegistryPanel::CreateList(wxWindow* parent)
         UpdateToolBarState();
         event.Skip();
     });
+
+    /*
+     * The header of the table describes the modes of the `Isolation` column, see
+     * DataViewTooltip; the cells of the table carry no tooltip of their own.
+     */
+    tooltip_ = std::make_unique<DataViewTooltip>(
+        *list_, [](int, int) { return wxString(); }, [this](int column) { return TooltipForHeader(column); });
+}
+
+wxString RegistryPanel::TooltipForHeader(int column) const
+{
+    if (column == static_cast<int>(kIsolationColumn))
+    {
+        return IsolationColumnTooltip();
+    }
+
+    return {};
 }
 
 wxWindow* RegistryPanel::CreateToolBarRow(wxWindow* parent)

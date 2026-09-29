@@ -33,8 +33,10 @@ public:
      * @brief Append one navigation item.
      * @param[in] label Item label.
      * @param[in] art Art provider identifier of the item icon.
+     * @param[in] tooltip Text which describes the item, empty for an item
+     *                    without a tooltip.
      */
-    void AddItem(const wxString& label, const wxString& art);
+    void AddItem(const wxString& label, const wxString& art, const wxString& tooltip = wxEmptyString);
 
 private:
     /**
@@ -42,8 +44,9 @@ private:
      */
     struct Item
     {
-        wxString label; ///< Label of the item.
-        wxBitmap icon;  ///< Icon of the item.
+        wxString label;   ///< Label of the item.
+        wxBitmap icon;    ///< Icon of the item.
+        wxString tooltip; ///< Text which describes the item, may be empty.
     };
 
     /**
@@ -66,7 +69,7 @@ private:
     void OnLeftDown(wxMouseEvent& event);
 
     /**
-     * @brief Track the hovered item.
+     * @brief Track the hovered item and show its tooltip.
      * @param[in] event Mouse event.
      */
     void OnMotion(wxMouseEvent& event);
@@ -86,6 +89,15 @@ private:
     std::vector<Item> items_;
     std::size_t       selection_ = 0;
     int               hovered_ = wxNOT_FOUND;
+
+    /**
+     * @brief Tooltip the control currently shows.
+     *
+     * The tooltip of a window is a single control which covers the whole
+     * control, so the text is only replaced while the hovered item changes and
+     * is dropped while the cursor leaves the navigation.
+     */
+    wxString tooltip_text_;
 };
 
 #endif // APPBOX_PACKER_WIDGET_SIDE_NAV_HPP

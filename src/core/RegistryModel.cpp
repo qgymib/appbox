@@ -208,6 +208,23 @@ std::wstring RegistryIsolationName(RegistryIsolation isolation)
     return names[index];
 }
 
+std::wstring RegistryIsolationDescription(RegistryIsolation isolation)
+{
+    switch (isolation)
+    {
+    case RegistryIsolation::Full:
+        return L"Isolation mode 'Full': only the sandbox registry is visible; the host entry and everything below it "
+               L"are hidden, and every modification lands in the sandbox.";
+    case RegistryIsolation::WriteCopy:
+        return L"Isolation mode 'Write Copy': the host entry and the sandbox entry are both visible with the sandbox "
+               L"taking precedence, and a write copies the host entry up into the sandbox. This is the default mode.";
+    case RegistryIsolation::Hide:
+        return L"Isolation mode 'Hide': the entry is invisible for the application, even while the host holds it; "
+               L"creating the entry succeeds inside the sandbox.";
+    }
+    return L"";
+}
+
 const std::vector<RegistryValueType>& RegistryValueTypes()
 {
     static const std::vector<RegistryValueType> types = {

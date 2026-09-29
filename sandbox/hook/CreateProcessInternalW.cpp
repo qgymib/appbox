@@ -2,6 +2,7 @@
 #include "utils/Log.hpp"
 #include "utils/Defines.hpp"
 #include "utils/MappingAsDosNtPath.hpp"
+#include "environment/Isolation.hpp"
 #include "filesystem/Resolve.hpp"
 #include "Sandbox.hpp"
 #include "CreateProcessInternalW.hpp"
@@ -166,18 +167,64 @@ static BOOL Hook_CreateProcessInternalW(HANDLE hToken, LPCWSTR lpApplicationName
     LPCSTR lpDllName = appbox::sandbox->sandbox32_dos_path.c_str();
 #endif
 
-    if (!WrapDetourCreateProcessWithDllExW(hToken, effective_app_name, lpCommandLine, lpProcessAttributes,
-                                           lpThreadAttributes, bInheritHandles, dwCreationFlags | CREATE_SUSPENDED,
-                                           lpEnvironment, lpCurrentDirectory, lpStartupInfo, lpProcessInformation,
-                                           hNewToken, lpDllName))
+    /*
+     * The environment of the child is the view of the sandbox. A caller which
+     * inherits the environment of this process receives the block of the
+     * sandbox, and every child is told that its environment is composed
+     * already, so the configuration is not applied to it a second time: the
+     * values the merge modes join would be joined twice.
+     */
+    wchar_t*           environment_block = nullptr;
+    LPVOID             effective_environment = lpEnvironment;
+    std::string        child_inject_data;
+    const std::string* inject_data = &appbox::sandbox->inject_data;
+
+    if (appbox::environment::Isolation::IsEnabled())
+    {
+        if (lpEnvironment == nullptr)
+        {
+            environment_block = appbox::environment::Isolation::CreateBlock();
+            if (environment_block != nullptr)
+            {
+                effective_environment = environment_block;
+            }
+        }
+
+        child_inject_data = appbox::environment::BuildChildInjectData();
+        inject_data = &child_inject_data;
+    }
+
+    DWORD creation_flags = dwCreationFlags | CREATE_SUSPENDED;
+    if (environment_block != nullptr)
+    {
+        /*
+         * The block of the sandbox is Unicode text, and a caller which brings
+         * an environment block of its own has to say so as well: without the
+         * flag the block is read as ANSI text and the creation fails with
+         * `ERROR_INVALID_PARAMETER`.
+         */
+        creation_flags |= CREATE_UNICODE_ENVIRONMENT;
+    }
+
+    const BOOL started = WrapDetourCreateProcessWithDllExW(hToken, effective_app_name, lpCommandLine,
+                                                           lpProcessAttributes, lpThreadAttributes, bInheritHandles,
+                                                           creation_flags, effective_environment, lpCurrentDirectory,
+                                                           lpStartupInfo, lpProcessInformation, hNewToken, lpDllName);
+
+    if (environment_block != nullptr)
+    {
+        /* The block is read while the process is created and not afterwards. */
+        appbox::environment::Isolation::ReleaseBlock(environment_block);
+    }
+
+    if (!started)
     {
         return FALSE;
     }
 
     const GUID guid = APPBOX_SANDBOX_GUID;
-    auto       inject_data_sz = static_cast<DWORD>(appbox::sandbox->inject_data.size());
-    if (!DetourCopyPayloadToProcess(lpProcessInformation->hProcess, guid, appbox::sandbox->inject_data.c_str(),
-                                    inject_data_sz))
+    auto       inject_data_sz = static_cast<DWORD>(inject_data->size());
+    if (!DetourCopyPayloadToProcess(lpProcessInformation->hProcess, guid, inject_data->c_str(), inject_data_sz))
     {
         auto errcode = GetLastError();
         TerminateProcess(lpProcessInformation->hProcess, errcode);

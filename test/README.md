@@ -219,16 +219,18 @@ The unit tests of the packer:
 * `test/unit/ProjectDocument.cpp` — the document of a project file: the
   round trip of every member of the schema, the version and the order of the
   written members, the paths as UTF-8 bytes, the members an entry needs, the
-  path of a rejected entry, the unknown isolation, kind, value type and proxy
-  tokens, malformed value data, the `startup_files` array of the startup files
-  and the optional `proxy` member, which is omitted while it is absent and read
-  back as absent, and the atomic read.
+  path of a rejected entry, the unknown isolation, kind, value type, proxy and
+  environment tokens, malformed value data, the `startup_files` array of the
+  startup files, the `environment` array of the environment variables, which is
+  always written, the optional `proxy` member, which is omitted while it is
+  absent and read back as absent, and the atomic read.
 * `test/unit/ProjectFile.cpp` — the file layer of a project file: the
   round trip of the configuration, of the virtual registry, of the
-  filesystem isolation modes and of the proxy of the network workspace, the
-  strict UTF-8 encoding, the failures of a malformed document and the
-  atomicity of applying a document to the models, including a mode which a
-  file cannot hold, a path which is listed twice and a proxy the model
+  filesystem isolation modes, of the proxy of the network workspace and of the
+  environment variables of the environment workspace, the strict UTF-8
+  encoding, the failures of a malformed document and the atomicity of applying
+  a document to the models, including a mode which a file cannot hold, a path
+  which is listed twice, a proxy the model refuses and a variable the model
   refuses.
 * `test/unit/PackService.cpp` — the archive carries the hive, the isolation
   file of the registry, the isolation file of the filesystem workspace and the
@@ -262,6 +264,23 @@ The unit tests of the packer:
 * `test/unit/NetworkIsolationFile.cpp` — the isolation file the packer
   writes for the network workspace: the schema of an empty model, the order and
   the content of the entries and the hostname as UTF-8 bytes.
+* `test/unit/EnvironmentModel.cpp` — the model of the environment workspace:
+  the insertion order of the variables, the rejection of an empty name, of a
+  name which carries an equals sign and of a name which is listed twice
+  (ignoring the case), the in place replacement of an entry, the removal, the
+  fill of the search path variable with the merge mode `Prepend` and the
+  separator `;` whatever the case of its name is, the fact that the model stores
+  the mode it is given - so a mode the user picked by hand survives an import -
+  and the display names and the tokens of the isolation and merge modes.
+* `test/unit/EnvironmentIsolation.cpp` — the vocabulary which the packer and
+  the sandbox share: the composition of a value of the host with the value of a
+  row for every isolation mode and every merge mode, a variable the host does
+  not hold, a value which is empty, and the schema of the isolation file and of
+  the state file.
+* `test/unit/EnvironmentIsolationFile.cpp` — the isolation file the packer
+  writes for the environment workspace: the schema of an empty model, the order
+  and the members of the entries, the mode the model was given, the name and the
+  value as UTF-8 bytes and the refusal of an entry the model refuses.
 
 The unit tests of the loader and of the sandbox modules which the test
 executable carries itself:
@@ -273,13 +292,39 @@ executable carries itself:
   key of a path, including a path which carries no key, the rejection of the
   historical `%Name%` delimiter and the set of known layer keys: only the keys
   the packer produces are known, a mapping which no preset directory uses is
-  removed from the table.
+  removed from the table. It pins the variables the sandbox expands in the
+  values of the workspace as well: one per known folder, named after the layer
+  key without its `#` delimiters, with the real path of the folder of this
+  machine.
 * `test/unit/GetExecutableDir.cpp`, `test/unit/MiniLauncher.cpp`,
   `test/unit/ProcessJob.cpp` — the loader helpers which locate the
   executable, start it and own the job of a started process.
 * `test/unit/ModuleTable.cpp`, `test/unit/HookTransaction.cpp` — the
   module table of the sandbox and the transaction which attaches and detaches
   its hooks.
+* `test/unit/EnvironmentTable.cpp` — the private table of the environment
+  isolation and the two documents the sandbox reads: the block of the host with
+  its drive relative current directory, the names which are compared ignoring
+  the case, the order of the table, the round trip of a block, the block of the
+  ANSI code page, the refusal of a malformed isolation file without a partial
+  result, and the state with its one modification per variable.
+* `test/unit/VariableExpansion.cpp` — the `%APPBOX:<NAME>%` expansion the
+  sandbox applies to the values of the workspace: a known reference, the case
+  insensitive prefix and name, several references of one text, a name which is
+  not listed, a `%NAME%` reference of the shell, a reference without a closing
+  `%`, a lone `%` and `%%`, an empty text and an empty table, and the fact that
+  an expansion is never resolved again. The registry side pins the three string
+  types (`REG_SZ` with and without its terminator, `REG_EXPAND_SZ` and
+  `REG_MULTI_SZ` with an empty item), that every other type keeps its data, and
+  that a blob which is not made of whole wide characters is left alone.
+* `test/unit/IsolationDocument.cpp` — the schema of the five documents of
+  `common/` (the four isolation files and the environment state file): the
+  round trip of a document through its text, the refusal of a member which is
+  missing or of another type, of an unknown mode, of an empty path, of an empty
+  hostname, of a mode a kind cannot hold and of a name which carries an equals
+  sign, with the error text of every refusal, the lenient reading of the network
+  proxy, and the two documents the packer writes which the sandbox reads back
+  (network and environment).
 * `test/unit/Log.cpp`, `test/unit/PipeClient.cpp` — the hook
   robustness contract: never read more than the caller declared, never throw.
   The abort sentinel of the parameter parsers is part of it
@@ -478,6 +523,13 @@ folder below `#USERPROFILE#` of the host as the entry of the host layer
   `HKEY_USERS` and the SID of the current user is visible through
   `HKEY_CURRENT_USER`, so the two roots name the same key of the hive layer,
   and the real registry never gains the key.
+* `test/e2e/Reg_VariableExpansion.cpp` — the values of the packed hive which
+  reference a known folder of this machine with `%APPBOX:<NAME>%` are read
+  inside the sandbox with the real path of the folder: the `REG_SZ`, the
+  `REG_EXPAND_SZ` and every item of a `REG_MULTI_SZ` value, while a `REG_DWORD`
+  and a `REG_BINARY` value whose bytes spell the same reference keep their own
+  bytes. The hive of the resources is byte identical afterwards, so the archive
+  keeps the reference and the expansion happens while the sandbox runs.
 
 ### Network isolation cases
 
@@ -516,6 +568,46 @@ isolation file as the server of the proxy.
 | `Net_Dns_HostnameIsNormalized` | `Update.Example.COM.` → `127.0.0.1` | the name in three spellings | every question is answered, because the case and the trailing dot do not matter |
 | `Net_Dns_FamilyOfTheRedirectIsHonoured` | `v4.…` → `127.0.0.1`, `v6.…` → `::1` | both names, both families | a question is answered by the entry of its family; the other family keeps the resolution of the host, which fails for a name only the file knows |
 | `Net_Dns_EveryResolutionApiIsRedirected` | `appbox-spike.invalid` → `127.0.0.1` | the name with every entry point the sandbox hooks: `GetAddrInfoW`, `getaddrinfo`, `GetAddrInfoExW`, `gethostbyname`, `DnsQuery_UTF8`, `DnsQuery_A` and `DnsQuery_W` | every API answers the redirect address, and the two ANSI entry points keep the resolution of the host for a name the file does not list |
+
+### Environment isolation cases
+
+The environment cases (`test/e2e/Env_*.cpp`) write the isolation file of the case
+into the environment domain of the resources
+(`test/utils/EnvironmentIsolationBuilder.*`, `app/environment/isolation.json`)
+and read the environment of the sandbox with the probe `EnvironmentRead`, which
+answers the value of a variable through the wide and the ANSI entry point, the
+entries of the block which enumerates the environment, and the expansion of a
+`%NAME%` reference; the probe `EnvironmentWrite` stores and removes variables and
+reads them back.
+
+The value of the host of a case is set in the environment of the test process
+before the loader starts, because the environment of the sandboxed application is
+the environment of the loader, which the test process passes to it
+(`test/utils/EnvironmentIsolationBuilder.*`, `HostEnvironmentVariable`, which
+removes the variable again when the case ends). The names the cases use are
+prefixed with `APPBOX_ENV_`, so they cannot collide with a variable of the
+machine the cases run on.
+
+| Case | Isolation of the row | Steps | Expected |
+| --- | --- | --- | --- |
+| `Env_Full_HidesTheHostValue` | `Full`, host holds `foo` | read the configured variable and a variable the file does not list | the configured variable carries the value of the row, the unlisted one carries the value of the host, and the ANSI entry point reports the same view |
+| `Env_WriteCopy_Replace` | `Write Copy` + `Replace` | read the variable, and ask the lowest reader of the process environment for its size while bringing no buffer | the value of the row, and a refusal (`STATUS_BUFFER_TOO_SMALL`) with the size the caller has to provide, which is what the loader of the operating system relies on while it computes the search path of a DLL |
+| `Env_WriteCopy_Host` | `Write Copy` + `Host` | read the variable | the value of the host |
+| `Env_WriteCopy_Prepend` | `Write Copy` + `Prepend` + `;` | read the variable, enumerate the environment, expand `%NAME%` | `bar;foo` from every entry point |
+| `Env_WriteCopy_Append` | `Write Copy` + `Append` + `;` | read the variable | `foo;bar` |
+| `Env_MissingHostValue_KeepsTheConfiguredValue` | `Prepend` and `Host` for two variables the host does not hold | read both variables | the joined value carries the row alone (no separator), the `Host` row is not visible at all |
+| `Env_ModificationStaysInTheSandbox` | `Replace` | store the variable, remove a variable of the host, read both back | the stored value is read back, the removed variable is gone, and the environment of the test process still holds the values it set |
+| `Env_StateIsKeptAcrossRuns` | `Replace` | store the variable in one run, read it in the next one | the second run sees the stored value, which is what the state directory of the sandbox carries |
+| `Env_StateFileIsApplied` | – | read the variables while the state directory carries the document of an earlier run | the stored value is seen and the removed variable is gone |
+| `Env_VariableExpansion` | `Write Copy` + `Replace`, one row with `Prepend` and a value of the host | read variables whose values reference a known folder of this machine with `%APPBOX:<NAME>%`, a name the sandbox does not know and `%PATH%` | the known references carry the real path of the folder of this machine (also in another spelling of the prefix and of the name), the merged row carries `<path>;<host>`, the unknown reference and the reference of the shell keep their spelling, and the block which enumerates the environment reports the expanded value |
+| `Env_MalformedIsolationFile_FallsBack` | document which cannot be read | read the variable | the value of the host stays visible and the sandbox still runs |
+
+The child of a sandboxed process sees the view of its parent, which every one of
+the cases above pins: the loader starts the relay process, the relay is a
+sandboxed process, and the probe process of a case is started by that relay. The
+value the probe reads is therefore the environment the sandbox handed over to a
+child, and a composition which ran twice would report `bar;bar;foo` for the
+`Prepend` case.
 
 ### Loader startup cases
 
@@ -627,6 +719,10 @@ hive the sandbox mounted.
 * `test/probe/RegWriteValue.cpp` / `RegReadValue.cpp` — the operations
   executed inside the sandbox; both address the key through a root key of the
   view, so a case can pin that two roots name the same key.
+* `test/probe/RegReadValues.cpp` — several values of one key in one call, with
+  the type, the text, the items of a list and the raw bytes of every value, so a
+  case which pins a string type next to a `REG_DWORD` and a `REG_BINARY` pays
+  for the chain of the loader and of the sandbox once.
 * `test/probe/RegEnumKey.cpp` / `RegEnumValue.cpp` — sub key and value
   enumeration inside the sandbox.
 * `test/probe/RegShadowRead.cpp` / `RegQueryKeyName.cpp` — shadow key value
@@ -678,5 +774,7 @@ hive the sandbox mounted.
   architecture.
 * [NetworkIsolation.md](../docs/NetworkIsolation.md) — network isolation
   architecture.
+* [EnvironmentIsolation.md](../docs/EnvironmentIsolation.md) — environment
+  isolation architecture.
 * [Tracer.md](../docs/Tracer.md) — API tracer: usage, mechanism and measured
   cost.

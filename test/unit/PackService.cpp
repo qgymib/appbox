@@ -207,8 +207,9 @@ TEST(Unit_PackService, PackRequiresAStartupFile)
     appbox::PackModel     model;
     appbox::RegistryModel registry;
 
-    const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                                     "LOADER", 6, (temp.Get() / L"out.zip").wstring(), nullptr);
+    const auto result =
+        appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                     appbox::EnvironmentModel(), "LOADER", 6, (temp.Get() / L"out.zip").wstring(), nullptr);
     EXPECT_NE(result.find("startup file"), std::string::npos);
 }
 
@@ -224,8 +225,9 @@ TEST(Unit_PackService, PackRequiresAnAutoStartStartupFile)
     ASSERT_TRUE(model.AddStartupFile("program_files", temp.Get().filename().wstring(), L"app.exe", false, error))
         << error;
 
-    const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                                     "LOADER", 6, (temp.Get() / L"out.zip").wstring(), nullptr);
+    const auto result =
+        appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                     appbox::EnvironmentModel(), "LOADER", 6, (temp.Get() / L"out.zip").wstring(), nullptr);
     EXPECT_NE(result.find("start automatically"), std::string::npos);
 }
 
@@ -241,8 +243,9 @@ TEST(Unit_PackService, PackRequiresLoaderBytes)
     ASSERT_TRUE(model.AddStartupFile("program_files", temp.Get().filename().wstring(), L"app.exe", true, error))
         << error;
 
-    const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                                     nullptr, 0, (temp.Get() / L"out.zip").wstring(), nullptr);
+    const auto result =
+        appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                     appbox::EnvironmentModel(), nullptr, 0, (temp.Get() / L"out.zip").wstring(), nullptr);
     EXPECT_NE(result.find("loader payload"), std::string::npos);
 }
 
@@ -265,7 +268,7 @@ TEST(Unit_PackService, PackProducesLoaderConfigurationAndLayers)
 
     const auto zip_path = program_files.Get().parent_path() / (program_files.Get().filename().wstring() + L"-pack.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                                     "FAKE-LOADER", 11, zip_path.wstring(), nullptr);
+                                     appbox::EnvironmentModel(), "FAKE-LOADER", 11, zip_path.wstring(), nullptr);
     EXPECT_EQ(result, "") << result;
 
     ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
@@ -343,7 +346,7 @@ TEST(Unit_PackService, PackWritesRegistryArtifacts)
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-registry.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                                     "FAKE", 4, zip_path.wstring(), nullptr);
+                                     appbox::EnvironmentModel(), "FAKE", 4, zip_path.wstring(), nullptr);
     EXPECT_EQ(result, "") << result;
 
     ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
@@ -395,8 +398,8 @@ TEST(Unit_PackService, PackWritesFilesystemIsolationFile)
         << error;
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-fs-isolation.zip");
-    const auto result =
-        appbox::Pack(model, registry, isolation, appbox::NetworkModel(), "FAKE", 4, zip_path.wstring(), nullptr);
+    const auto result = appbox::Pack(model, registry, isolation, appbox::NetworkModel(), appbox::EnvironmentModel(),
+                                     "FAKE", 4, zip_path.wstring(), nullptr);
     EXPECT_EQ(result, "") << result;
 
     ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
@@ -441,8 +444,8 @@ TEST(Unit_PackService, PackWritesNetworkIsolationFile)
     ASSERT_TRUE(network.AddDnsEntry(L"api.example.com", L"::1", error)) << error;
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-network-isolation.zip");
-    const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), network, "FAKE", 4,
-                                     zip_path.wstring(), nullptr);
+    const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), network,
+                                     appbox::EnvironmentModel(), "FAKE", 4, zip_path.wstring(), nullptr);
     EXPECT_EQ(result, "") << result;
 
     ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
@@ -470,6 +473,62 @@ TEST(Unit_PackService, PackWritesNetworkIsolationFile)
     EXPECT_FALSE(document.contains("proxy"));
 }
 
+TEST(Unit_PackService, PackWritesEnvironmentIsolationFile)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE");
+
+    appbox::PackModel        model;
+    appbox::RegistryModel    registry;
+    appbox::EnvironmentModel environment;
+    std::string              error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
+
+    /* The search path rule of the workspace fills in the mode and the string. */
+    appbox::EnvironmentEntry path;
+    path.name = L"PATH";
+    path.value = L"C:/MyApp/bin";
+    appbox::ApplyPathVariableDefaults(path);
+    ASSERT_TRUE(environment.AddEntry(path, error)) << error;
+
+    appbox::EnvironmentEntry mode;
+    mode.name = L"APPBOX_MODE";
+    mode.value = L"sandbox";
+    ASSERT_TRUE(environment.AddEntry(mode, error)) << error;
+
+    const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-env-isolation.zip");
+    const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                                     environment, "FAKE", 4, zip_path.wstring(), nullptr);
+    EXPECT_EQ(result, "") << result;
+
+    ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
+    zip_t*           archive = closer.archive;
+    ASSERT_NE(archive, nullptr);
+
+    /*
+     * The variables travel in the environment domain of the resources, which is
+     * where the loader looks for them.
+     */
+    const auto text = ReadEntry(archive, "app/environment/isolation.json");
+    ASSERT_FALSE(text.empty());
+
+    const auto document = nlohmann::json::parse(text);
+    EXPECT_EQ(document["version"].get<int>(), 1);
+
+    const auto& entries = document["entries"];
+    ASSERT_EQ(entries.size(), 2u);
+    EXPECT_EQ(entries[0]["name"].get<std::string>(), "PATH");
+    EXPECT_EQ(entries[0]["value"].get<std::string>(), "C:/MyApp/bin");
+    EXPECT_EQ(entries[0]["isolation"].get<std::string>(), "write_copy");
+    EXPECT_EQ(entries[0]["merge"].get<std::string>(), "prepend");
+    EXPECT_EQ(entries[0]["merge_string"].get<std::string>(), ";");
+    EXPECT_EQ(entries[1]["name"].get<std::string>(), "APPBOX_MODE");
+    EXPECT_EQ(entries[1]["isolation"].get<std::string>(), "write_copy");
+    EXPECT_EQ(entries[1]["merge"].get<std::string>(), "replace");
+}
+
 TEST(Unit_PackService, PackWritesTheProxyOfTheNetworkWorkspace)
 {
     TempDir    temp;
@@ -493,8 +552,8 @@ TEST(Unit_PackService, PackWritesTheProxyOfTheNetworkWorkspace)
     ASSERT_TRUE(network.SetProxy(proxy, error)) << error;
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-proxy.zip");
-    const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), network, "FAKE", 4,
-                                     zip_path.wstring(), nullptr);
+    const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), network,
+                                     appbox::EnvironmentModel(), "FAKE", 4, zip_path.wstring(), nullptr);
     EXPECT_EQ(result, "") << result;
 
     ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
@@ -548,7 +607,7 @@ TEST(Unit_PackService, LoaderEntryNameDropsTheDirectoryOfTheStartupFile)
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-entry.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                                     "FAKE-LOADER", 11, zip_path.wstring(), nullptr);
+                                     appbox::EnvironmentModel(), "FAKE-LOADER", 11, zip_path.wstring(), nullptr);
     EXPECT_EQ(result, "") << result;
 
     ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
@@ -585,7 +644,7 @@ TEST(Unit_PackService, LoaderEntryNameFollowsTheFirstStartupFile)
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-order.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                                     "FAKE-LOADER", 11, zip_path.wstring(), nullptr);
+                                     appbox::EnvironmentModel(), "FAKE-LOADER", 11, zip_path.wstring(), nullptr);
     EXPECT_EQ(result, "") << result;
 
     ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
@@ -627,7 +686,7 @@ TEST(Unit_PackService, PackReportsProgress)
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-progress.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                                     "FAKE", 4, zip_path.wstring(), progress);
+                                     appbox::EnvironmentModel(), "FAKE", 4, zip_path.wstring(), progress);
     EXPECT_EQ(result, "") << result;
 
     ASSERT_FALSE(reports.empty());
@@ -674,7 +733,8 @@ TEST(Unit_PackService, PackCanBeCancelled)
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-cancel.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                                     "FAKE", 4, zip_path.wstring(), [](const appbox::BuildProgress&) { return false; });
+                                     appbox::EnvironmentModel(), "FAKE", 4, zip_path.wstring(),
+                                     [](const appbox::BuildProgress&) { return false; });
     EXPECT_EQ(result, appbox::kBuildCancelledError);
 }
 
@@ -697,7 +757,7 @@ TEST(Unit_PackService, PackWritesImportedFiles)
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-files.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                                     "FAKE-LOADER", 11, zip_path.wstring(), nullptr);
+                                     appbox::EnvironmentModel(), "FAKE-LOADER", 11, zip_path.wstring(), nullptr);
     EXPECT_EQ(result, "") << result;
 
     ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
@@ -731,7 +791,7 @@ TEST(Unit_PackService, PackCreatesDirectoriesOfImportedFiles)
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-dirs.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                                     "FAKE", 4, zip_path.wstring(), nullptr);
+                                     appbox::EnvironmentModel(), "FAKE", 4, zip_path.wstring(), nullptr);
     EXPECT_EQ(result, "") << result;
 
     ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
@@ -767,7 +827,7 @@ TEST(Unit_PackService, PackCountsImportedFilesInTheProgressTotal)
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-files-progress.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                                     "FAKE", 4, zip_path.wstring(), progress);
+                                     appbox::EnvironmentModel(), "FAKE", 4, zip_path.wstring(), progress);
     EXPECT_EQ(result, "") << result;
 
     ASSERT_FALSE(reports.empty());

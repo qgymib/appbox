@@ -168,28 +168,27 @@ bool appbox::test::HiveBuilder::Write(std::string& error)
     }
 
     /* The isolation file lists the modes which were set by the test. */
-    nlohmann::json document;
-    document[appbox::registry_isolation::kVersionKey] = appbox::registry_isolation::kVersion;
-    document[appbox::registry_isolation::kKeysKey] = nlohmann::json::array();
-    document[appbox::registry_isolation::kValuesKey] = nlohmann::json::array();
+    appbox::registry_isolation::Document document;
 
     for (const auto& entry : isolations_)
     {
-        nlohmann::json item;
-        item[appbox::registry_isolation::kPathKey] = appbox::WideToUTF8(entry.key_path);
-        item[appbox::registry_isolation::kIsolationKey] = appbox::registry_isolation::IsolationToken(entry.isolation);
-
-        if (!entry.is_value)
+        if (entry.is_value)
         {
-            document[appbox::registry_isolation::kKeysKey].push_back(std::move(item));
+            appbox::registry_isolation::ValueEntry item;
+            item.path = appbox::WideToUTF8(entry.key_path);
+            item.name = appbox::WideToUTF8(entry.value_name);
+            item.isolation = entry.isolation;
+            document.values.push_back(std::move(item));
             continue;
         }
 
-        item[appbox::registry_isolation::kNameKey] = appbox::WideToUTF8(entry.value_name);
-        document[appbox::registry_isolation::kValuesKey].push_back(std::move(item));
+        appbox::registry_isolation::KeyEntry item;
+        item.path = appbox::WideToUTF8(entry.key_path);
+        item.isolation = entry.isolation;
+        document.keys.push_back(std::move(item));
     }
 
-    const auto    text = document.dump(2);
+    const auto    text = nlohmann::json(document).dump(2);
     std::ofstream out(registry_dir / appbox::layout::kIsolationFileNameW, std::ios::binary | std::ios::trunc);
     if (!out.is_open())
     {

@@ -37,6 +37,22 @@ const std::vector<std::wstring>& FilesystemIsolationNames();
 std::wstring FilesystemIsolationName(FilesystemIsolation isolation);
 
 /**
+ * @brief Describe an isolation mode of an entry for a tooltip.
+ *
+ * The description names the mode and says what it does with the entry and with
+ * the host filesystem. It is the text the workspace shows for the mode of a row
+ * and for the modes the `Isolation` column offers, so the explanation of a mode
+ * lives in one place.
+ *
+ * @param[in] isolation The isolation mode.
+ * @param[in] kind The kind of the entry: `Full` hides a folder from the
+ *                 application, while it only redirects the writes of a file,
+ *                 which the description has to tell apart.
+ * @return The description of the mode.
+ */
+std::wstring FilesystemIsolationDescription(FilesystemIsolation isolation, FilesystemEntryKind kind);
+
+/**
  * @brief Get the display names of the modes an entry kind accepts.
  *
  * A folder accepts `Full`, `Write Copy` and `Whiteout`; a file accepts `Full`

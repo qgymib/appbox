@@ -1,8 +1,11 @@
 #ifndef APPBOX_COMMON_REGISTRY_ISOLATION_HPP
 #define APPBOX_COMMON_REGISTRY_ISOLATION_HPP
 
+#include "IsolationDocument.hpp"
+#include <nlohmann/json.hpp>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace appbox
 {
@@ -154,6 +157,228 @@ inline bool ParseIsolationToken(std::string_view token, RegistryIsolation& out)
         return true;
     }
     return false;
+}
+
+/**
+ * @brief One key entry of the registry isolation file.
+ *
+ * The structure is the schema of one listed key: the packer fills it while it
+ * writes the file of the workspace, and the sandbox reads the file back into
+ * the same structure, so neither side parses the JSON object of an entry
+ * member by member.
+ */
+struct KeyEntry
+{
+    /**
+     * @brief Path of the key inside the virtual registry, in UTF-8.
+     *
+     * The path is relative to the root of the hive: its first component is the
+     * name of one of the five root keys of the view.
+     */
+    std::string path;
+
+    /**
+     * @brief Isolation mode of the key and of everything below it.
+     */
+    RegistryIsolation isolation = RegistryIsolation::WriteCopy;
+};
+
+/**
+ * @brief One value entry of the registry isolation file.
+ */
+struct ValueEntry
+{
+    /**
+     * @brief Path of the key which holds the value, in UTF-8.
+     */
+    std::string path;
+
+    /**
+     * @brief Name of the value, empty for the default value of the key.
+     */
+    std::string name;
+
+    /**
+     * @brief Isolation mode of the value.
+     */
+    RegistryIsolation isolation = RegistryIsolation::WriteCopy;
+};
+
+/**
+ * @brief The content of the registry isolation file.
+ */
+struct Document
+{
+    /**
+     * @brief Schema version the document was written with.
+     *
+     * The reader compares the version with kVersion and refuses a document of
+     * another version, so a file of a newer schema is never read with the rules
+     * of this one.
+     */
+    int version = kVersion;
+
+    /**
+     * @brief The listed keys, in the order of the file.
+     */
+    std::vector<KeyEntry> keys;
+
+    /**
+     * @brief The listed values, in the order of the file.
+     */
+    std::vector<ValueEntry> values;
+};
+
+/**
+ * @brief Store one key entry of the registry isolation file.
+ * @param[out] json Object which receives the entry.
+ * @param[in] entry The entry to store.
+ */
+inline void to_json(nlohmann::json& json, const KeyEntry& entry)
+{
+    json = nlohmann::json::object();
+    json[kPathKey] = entry.path;
+    json[kIsolationKey] = IsolationToken(entry.isolation);
+}
+
+/**
+ * @brief Store one value entry of the registry isolation file.
+ * @param[out] json Object which receives the entry.
+ * @param[in] entry The entry to store.
+ */
+inline void to_json(nlohmann::json& json, const ValueEntry& entry)
+{
+    json = nlohmann::json::object();
+    json[kPathKey] = entry.path;
+    json[kNameKey] = entry.name;
+    json[kIsolationKey] = IsolationToken(entry.isolation);
+}
+
+/**
+ * @brief Read one key entry of the registry isolation file.
+ * @param[in] json Object holding the entry.
+ * @param[out] entry The entry to fill.
+ * @throw appbox::IsolationDocumentError The entry does not fit the schema.
+ */
+inline void from_json(const nlohmann::json& json, KeyEntry& entry)
+{
+    const std::string holder = "an isolation file entry";
+    isolation_document::RequireObject(json, holder);
+
+    entry.path = isolation_document::RequiredText(json, kPathKey, holder);
+    if (entry.path.empty())
+    {
+        isolation_document::Throw("an isolation file entry has an empty key path");
+    }
+
+    /*
+     * A key entry names no value, but a document which carries a name of
+     * another type is refused like a value entry, so both lists of the file
+     * follow the same rules.
+     */
+    const auto* name = isolation_document::FindMember(json, kNameKey);
+    if (name != nullptr && !name->is_string())
+    {
+        isolation_document::Throw("the '" + std::string(kNameKey) + "' member of " + holder + " is not a string");
+    }
+
+    const std::string isolation_token = isolation_document::RequiredText(json, kIsolationKey, holder);
+    RegistryIsolation isolation = RegistryIsolation::WriteCopy;
+    if (!ParseIsolationToken(isolation_token, isolation))
+    {
+        isolation_document::Throw("unknown isolation mode '" + isolation_token + "' in the isolation file");
+    }
+
+    entry.isolation = isolation;
+}
+
+/**
+ * @brief Read one value entry of the registry isolation file.
+ * @param[in] json Object holding the entry.
+ * @param[out] entry The entry to fill.
+ * @throw appbox::IsolationDocumentError The entry does not fit the schema.
+ */
+inline void from_json(const nlohmann::json& json, ValueEntry& entry)
+{
+    const std::string holder = "an isolation file entry";
+    isolation_document::RequireObject(json, holder);
+
+    entry.path = isolation_document::RequiredText(json, kPathKey, holder);
+    if (entry.path.empty())
+    {
+        isolation_document::Throw("an isolation file entry has an empty key path");
+    }
+
+    entry.name = isolation_document::RequiredText(json, kNameKey, holder);
+
+    const std::string isolation_token = isolation_document::RequiredText(json, kIsolationKey, holder);
+    RegistryIsolation isolation = RegistryIsolation::WriteCopy;
+    if (!ParseIsolationToken(isolation_token, isolation))
+    {
+        isolation_document::Throw("unknown isolation mode '" + isolation_token + "' in the isolation file");
+    }
+
+    entry.isolation = isolation;
+}
+
+/**
+ * @brief Store the content of the registry isolation file.
+ * @param[out] json Object which receives the document.
+ * @param[in] document The document to store.
+ */
+inline void to_json(nlohmann::json& json, const Document& document)
+{
+    json = nlohmann::json::object();
+    json[kVersionKey] = document.version;
+
+    nlohmann::json keys = nlohmann::json::array();
+    for (const auto& key : document.keys)
+    {
+        keys.push_back(nlohmann::json(key));
+    }
+    json[kKeysKey] = std::move(keys);
+
+    nlohmann::json values = nlohmann::json::array();
+    for (const auto& value : document.values)
+    {
+        values.push_back(nlohmann::json(value));
+    }
+    json[kValuesKey] = std::move(values);
+}
+
+/**
+ * @brief Read the content of the registry isolation file.
+ *
+ * A document which does not list a key or a value describes a file which sets
+ * no mode at all, which is what a session without a mode writes.
+ *
+ * @param[in] json Object holding the document.
+ * @param[out] document The document to fill.
+ * @throw appbox::IsolationDocumentError The document does not fit the schema.
+ */
+inline void from_json(const nlohmann::json& json, Document& document)
+{
+    const std::string holder = "the isolation file";
+    isolation_document::RequireObject(json, holder);
+
+    document = Document{};
+    document.version = isolation_document::RequiredInt(json, kVersionKey, holder);
+
+    if (const auto* keys = isolation_document::OptionalArray(json, kKeysKey, holder))
+    {
+        for (const auto& item : *keys)
+        {
+            document.keys.push_back(item.get<KeyEntry>());
+        }
+    }
+
+    if (const auto* values = isolation_document::OptionalArray(json, kValuesKey, holder))
+    {
+        for (const auto& item : *values)
+        {
+            document.values.push_back(item.get<ValueEntry>());
+        }
+    }
 }
 
 } // namespace registry_isolation

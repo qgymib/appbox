@@ -1,6 +1,7 @@
 #ifndef APPBOX_PACKER_CORE_PROJECT_FILE_HPP
 #define APPBOX_PACKER_CORE_PROJECT_FILE_HPP
 
+#include "EnvironmentModel.hpp"
 #include "FilesystemIsolationModel.hpp"
 #include "NetworkModel.hpp"
 #include "PackModel.hpp"
@@ -17,9 +18,10 @@ namespace appbox
  * The document describes the current configuration: the imported folders, the
  * imported files, the startup files, the virtual registry with the isolation
  * modes of every key and value, the isolation modes of the virtual filesystem,
- * the DNS redirections and the proxy of the network workspace and the path of
- * the `Output File` box. The structure and the schema of the document are
- * described by ProjectDocument.
+ * the DNS redirections and the proxy of the network workspace, the environment
+ * variables of the environment workspace and the path of the `Output File` box.
+ * The structure and the schema of the document are described by
+ * ProjectDocument.
  *
  * The imported folders are listed preset directory by preset directory, so the
  * order of the document does not depend on the order the user imported them
@@ -29,13 +31,14 @@ namespace appbox
  * @param[in] registry Virtual registry of the workspace.
  * @param[in] isolation Isolation modes of the virtual filesystem.
  * @param[in] network DNS redirections of the network workspace.
+ * @param[in] environment Environment variables of the environment workspace.
  * @param[in] output_path Destination archive path of the configuration, which
  *                        may be empty when no path was chosen yet.
  * @return The document of the session.
  */
 ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel& registry,
                                     const FilesystemIsolationModel& isolation, const NetworkModel& network,
-                                    const std::wstring& output_path);
+                                    const EnvironmentModel& environment, const std::wstring& output_path);
 
 /**
  * @brief Replace the models of a session with the content of a document.
@@ -58,14 +61,16 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
  * @param[out] isolation Isolation modes replaced with the modes of the document.
  * @param[out] network Network model replaced with the redirections and the
  *                     proxy of the document.
+ * @param[out] environment Environment model replaced with the variables of the
+ *                         document.
  * @param[out] output_path Destination archive path of the document.
  * @param[out] error Error description on failure, prefixed with the path of the
  *                   entry which was rejected, for example `folders[1]: ...`.
  * @return true on success.
  */
 bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, RegistryModel& registry,
-                          FilesystemIsolationModel& isolation, NetworkModel& network, std::wstring& output_path,
-                          std::string& error);
+                          FilesystemIsolationModel& isolation, NetworkModel& network, EnvironmentModel& environment,
+                          std::wstring& output_path, std::string& error);
 
 /**
  * @brief Write the content of a document into a project file.

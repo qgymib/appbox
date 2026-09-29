@@ -1,5 +1,6 @@
 #include "MainFrame.hpp"
 #include "AboutDialog.hpp"
+#include "EnvironmentPanel.hpp"
 #include "FilesystemPanel.hpp"
 #include "StartupFilesDialog.hpp"
 #include "NetworkPanel.hpp"
@@ -178,11 +179,20 @@ void MainFrame::CreateLayout()
 {
     ribbon_ = new RibbonBar(this, wxID_ANY);
 
+    /*
+     * The order of the navigation items is the order of the pages of the
+     * workspace book, because the activation of an item selects the page of
+     * its index.
+     */
     side_nav_ = new SideNav(this, wxID_ANY);
-    side_nav_->AddItem("Filesystem", wxART_FOLDER);
-    side_nav_->AddItem("Registry", wxART_HARDDISK);
-    side_nav_->AddItem("Network", wxART_GO_FORWARD);
-    side_nav_->AddItem("Settings", wxART_HELP);
+    side_nav_->AddItem("Filesystem", wxART_FOLDER,
+                       "Folders and files the packaged application sees, with the isolation mode of every entry");
+    side_nav_->AddItem("Registry", wxART_HARDDISK, "Registry the packaged application sees inside the sandbox");
+    side_nav_->AddItem("Network", wxART_GO_FORWARD,
+                       "Name resolution and proxy the packaged application uses inside the sandbox");
+    side_nav_->AddItem("Environment", wxART_LIST_VIEW,
+                       "Environment variables the packaged application sees inside the sandbox");
+    side_nav_->AddItem("Settings", wxART_HELP, "Launch configuration of the packaged application");
 
     workspace_ = new wxSimplebook(this, wxID_ANY);
 
@@ -194,6 +204,9 @@ void MainFrame::CreateLayout()
 
     network_panel_ = new NetworkPanel(workspace_, network_);
     workspace_->AddPage(network_panel_, "Network");
+
+    environment_panel_ = new EnvironmentPanel(workspace_, environment_);
+    workspace_->AddPage(environment_panel_, "Environment");
     workspace_->AddPage(
         new PlaceholderPanel(workspace_, "Settings", "Launch configuration of the packaged application."), "Settings");
     workspace_->SetSelection(static_cast<size_t>(0));
@@ -344,12 +357,13 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     appbox::RegistryModel            loaded_registry;
     appbox::FilesystemIsolationModel loaded_isolation;
     appbox::NetworkModel             loaded_network;
+    appbox::EnvironmentModel         loaded_environment;
     std::wstring                     output_path;
     std::string                      error;
 
     if (!appbox::LoadProject(dialog.GetPath().ToStdWstring(), document, error) ||
-        !appbox::ApplyProjectDocument(document, loaded, loaded_registry, loaded_isolation, loaded_network, output_path,
-                                      error))
+        !appbox::ApplyProjectDocument(document, loaded, loaded_registry, loaded_isolation, loaded_network,
+                                      loaded_environment, output_path, error))
     {
         spdlog::error("importing the configuration failed: {}", error);
         wxMessageBox("The configuration could not be imported:\n\n" + wxString::FromUTF8(error), "Import Configuration",
@@ -361,9 +375,11 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     registry_model_ = std::move(loaded_registry);
     filesystem_isolation_ = std::move(loaded_isolation);
     network_ = std::move(loaded_network);
+    environment_ = std::move(loaded_environment);
     filesystem_panel_->RefreshModel();
     registry_panel_->RefreshModel();
     network_panel_->RefreshModel();
+    environment_panel_->RefreshModel();
 
     /*
      * A path recorded by the project file becomes the authoritative archive
@@ -403,7 +419,7 @@ void MainFrame::OnExportConfiguration(wxCommandEvent&)
 
     std::string error;
     const auto  document = appbox::MakeProjectDocument(model_, registry_model_, filesystem_isolation_, network_,
-                                                       OutputPath().ToStdWstring());
+                                                       environment_, OutputPath().ToStdWstring());
     if (!appbox::SaveProject(document, dialog.GetPath().ToStdWstring(), error))
     {
         spdlog::error("exporting the configuration failed: {}", error);
@@ -601,43 +617,45 @@ void MainFrame::StartPack(bool run_after)
     const auto registry_snapshot = registry_model_;
     const auto isolation_snapshot = filesystem_isolation_;
     const auto network_snapshot = network_;
+    const auto environment_snapshot = environment_;
     const auto loader_bytes = std::string(loader);
     const auto zip_wide = zip_path.ToStdWstring();
 
-    pack_thread_ = std::thread(
-        [this, snapshot, registry_snapshot, isolation_snapshot, network_snapshot, loader_bytes, zip_wide, run_after]() {
-            const auto report_progress = [this](const appbox::BuildProgress& report) {
-                auto* event = new wxThreadEvent(APPBOX_PACK_PROGRESS);
-                event->SetPayload(report);
-                this->GetEventHandler()->QueueEvent(event);
-                return !this->pack_cancelled_.load();
-            };
+    pack_thread_ = std::thread([this, snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
+                                environment_snapshot, loader_bytes, zip_wide, run_after]() {
+        const auto report_progress = [this](const appbox::BuildProgress& report) {
+            auto* event = new wxThreadEvent(APPBOX_PACK_PROGRESS);
+            event->SetPayload(report);
+            this->GetEventHandler()->QueueEvent(event);
+            return !this->pack_cancelled_.load();
+        };
 
-            PackOutcome outcome;
-            outcome.error = appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
-                                         loader_bytes.data(), loader_bytes.size(), zip_wide, report_progress);
+        PackOutcome outcome;
+        outcome.error =
+            appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, network_snapshot, environment_snapshot,
+                         loader_bytes.data(), loader_bytes.size(), zip_wide, report_progress);
 
+        if (outcome.error.empty())
+        {
+            /* The loader is named after the main program of the snapshot. */
+            outcome.loader_entry = appbox::LoaderEntryName(snapshot);
+            outcome.archive_path = zip_wide;
+        }
+
+        if (outcome.error.empty() && run_after)
+        {
+            const auto folder = std::filesystem::temp_directory_path() / UniqueExtractFolder();
+            outcome.error = appbox::ExtractArchive(zip_wide, folder.wstring(), report_progress);
             if (outcome.error.empty())
             {
-                /* The loader is named after the main program of the snapshot. */
-                outcome.loader_entry = appbox::LoaderEntryName(snapshot);
-                outcome.archive_path = zip_wide;
+                outcome.extract_dir = folder.wstring();
             }
+        }
 
-            if (outcome.error.empty() && run_after)
-            {
-                const auto folder = std::filesystem::temp_directory_path() / UniqueExtractFolder();
-                outcome.error = appbox::ExtractArchive(zip_wide, folder.wstring(), report_progress);
-                if (outcome.error.empty())
-                {
-                    outcome.extract_dir = folder.wstring();
-                }
-            }
-
-            auto* event = new wxThreadEvent(APPBOX_PACK_FINISHED);
-            event->SetPayload(outcome);
-            this->GetEventHandler()->QueueEvent(event);
-        });
+        auto* event = new wxThreadEvent(APPBOX_PACK_FINISHED);
+        event->SetPayload(outcome);
+        this->GetEventHandler()->QueueEvent(event);
+    });
 }
 
 void MainFrame::UpdateProgressDialog(int value, const wxString& text)

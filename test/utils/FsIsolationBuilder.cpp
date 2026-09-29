@@ -46,21 +46,22 @@ static bool WriteIsolationText(const std::filesystem::path& case_root, const std
 bool appbox::test::WriteFsIsolationFile(const std::filesystem::path&         case_root,
                                         const std::vector<FsIsolationEntry>& entries)
 {
-    nlohmann::json document;
-    document[appbox::filesystem_isolation::kVersionKey] = appbox::filesystem_isolation::kVersion;
-    document[appbox::filesystem_isolation::kEntriesKey] = nlohmann::json::array();
+    /*
+     * The document is filled as the structure of the schema of the file, so a
+     * case writes the same document the workspace writes.
+     */
+    appbox::filesystem_isolation::Document document;
 
     for (const auto& entry : entries)
     {
-        nlohmann::json item;
-        item[appbox::filesystem_isolation::kPathKey] = appbox::WideToUTF8(entry.path);
-        item[appbox::filesystem_isolation::kKindKey] = appbox::filesystem_isolation::EntryKindToken(entry.kind);
-        item[appbox::filesystem_isolation::kIsolationKey] =
-            appbox::filesystem_isolation::IsolationToken(entry.isolation);
-        document[appbox::filesystem_isolation::kEntriesKey].push_back(std::move(item));
+        appbox::filesystem_isolation::Entry item;
+        item.path = appbox::WideToUTF8(entry.path);
+        item.kind = entry.kind;
+        item.isolation = entry.isolation;
+        document.entries.push_back(std::move(item));
     }
 
-    return WriteIsolationText(case_root, document.dump(2));
+    return WriteIsolationText(case_root, nlohmann::json(document).dump(2));
 }
 
 bool appbox::test::WriteRawFsIsolationFile(const std::filesystem::path& case_root, const std::string& text)

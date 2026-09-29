@@ -1,0 +1,315 @@
+# Environment Isolation
+
+The environment isolation of appbox describes the environment variables a
+packaged application sees while it runs inside the sandbox: which variable is
+visible at all, which value it carries, and how that value is composed with the
+value the host holds.
+
+The `Environment` workspace of `AppBox.exe` collects the variables and their
+modes, and the configuration travels with the project file of
+`File -> Export Configuration...` and `File -> Import Configuration...`. The
+vocabulary of the domain — the isolation modes and the merge modes with their
+tokens — lives in `common/EnvironmentIsolation.hpp`, which the packer and the
+sandbox share.
+
+> **State of the implementation.** The workspace, the model, the project file and
+> the runtime are implemented: the packer writes the isolation file into the
+> archive, the loader hands its path to the sandbox, and the sandbox composes the
+> environment of the packaged application and keeps its modifications in the
+> state directory of the sandbox. See [Runtime](#runtime).
+
+## Workspace
+
+The navigation of the packer offers the `Environment` workspace between
+`Network` and `Settings`. Its toolbar holds two buttons above a table with five
+columns:
+
+| Column | Content |
+| --- | --- |
+| `Name` | Name of the variable, typed in the cell. The environment of a process ignores the case, so `Path` names the same variable as `PATH`. |
+| `Value` | Value the packaged application receives, typed in the cell. |
+| `IsolationMode` | Isolation mode of the row, picked from a dropdown. |
+| `MergeMode` | Merge mode of the row, picked from a dropdown. |
+| `MergeString` | Text which joins the two values, typed in the cell. |
+
+`Add` appends an empty row and puts the cursor into its name; `Remove` drops the
+selected row. The rules of the model are:
+
+- The name has to carry a value and must not carry an equals sign, because the
+  equals sign separates the name of a variable from its value inside the
+  environment block of a process.
+- The name must not be listed twice, compared ignoring the case.
+- An empty row is a draft of the table: it reaches the model once it carries a
+  name, and a value the model refuses is reported while the row stays as it was
+  typed.
+- The value and the merge string are free text, so a value may be empty and may
+  carry whitespace characters.
+
+Every control explains itself with a tooltip: the two buttons describe what they
+do, and the table describes the column below the cursor — for the two mode
+columns the meaning of the mode the hovered row holds.
+
+## Isolation modes
+
+| Mode | Behaviour |
+| --- | --- |
+| `Full` | The value of the host is invisible for the packaged application; it sees the value of the row. |
+| `Write Copy` | The value of the host is visible and is merged with the value of the row, see the merge mode. This is the default mode of a row. |
+
+## Merge modes
+
+The merge mode decides how the two values are composed while the isolation mode
+is `Write Copy`. The examples below assume a host value of `foo` and a row which
+stores `bar` with the merge string `;`.
+
+| Mode | Behaviour | Result |
+| --- | --- | --- |
+| `Replace` | The application sees the value of the row; the value of the host is hidden. | `bar` |
+| `Host` | The application sees the value of the host; the value of the row is ignored. | `foo` |
+| `Prepend` | The value of the row is put in front of the value of the host, joined with the merge string. | `bar;foo` |
+| `Append` | The value of the row is put behind the value of the host, joined with the merge string. | `foo;bar` |
+
+`Replace` is the default of a row, which is what a variable of a packaged
+application normally does. The merge string is used by `Prepend` and `Append`
+only; `Replace` and `Host` pick one of the two values and ignore it.
+
+## Search path rule
+
+The search path of a process is a list of paths which are separated by a
+semicolon, and the paths of a packaged application have to be searched before
+the paths of the host. A row whose name is the search path variable is therefore
+filled in with the merge mode `Prepend` and the merge string `;` while the name
+is entered, whatever the case of the name is (`PATH`, `path` and `Path` name the
+same variable).
+
+The rule fires while a name becomes the search path variable: a mode and a
+string the user picks by hand afterwards are kept, and a row which is renamed to
+another variable keeps the values it carries. The fill is applied by
+`appbox::ApplyPathVariableDefaults()` of `src/core/EnvironmentModel.*`, which
+the workspace calls while it stores a row.
+
+## Project file
+
+The configuration travels with the project file as the `environment` member,
+which is written after the `proxy` member:
+
+```json
+{
+  "version": 1,
+  "environment": [
+    { "name": "PATH", "value": "C:\\MyApp\\bin",
+      "isolation": "write_copy", "merge": "prepend", "merge_string": ";" },
+    { "name": "APPBOX_MODE", "value": "sandbox",
+      "isolation": "write_copy", "merge": "replace", "merge_string": "" }
+  ]
+}
+```
+
+The member is always written, also while the workspace holds no variable, and a
+file which does not carry it is read as a session without variables. Every
+record needs all five of its members; the isolation and the merge mode are
+tokens, which are read ignoring the case and with spaces or dashes in place of
+the underscore of the canonical token.
+
+A record is stored as the file holds it: an import does not fill in the search
+path rule again, so a mode the user picked by hand survives the next import.
+
+## Runtime
+
+The configuration travels with the archive and is enforced while the packaged
+application runs.
+
+### Archive
+
+`Pack()` writes the variables of the workspace into
+`app/environment/isolation.json` of the archive, next to the isolation files of
+the other domains. The document is built by
+`src/core/EnvironmentIsolationFile.*` and its schema is the vocabulary of
+`common/EnvironmentIsolation.hpp`, which the packer and the sandbox share, so
+the two sides cannot drift apart:
+
+```json
+{
+  "version": 1,
+  "entries": [
+    { "name": "PATH", "value": "C:\\MyApp\\bin",
+      "isolation": "write_copy", "merge": "prepend", "merge_string": ";" }
+  ]
+}
+```
+
+The document is read and written as the structure of the schema:
+`common/EnvironmentIsolation.hpp` describes a variable, the document and the
+entries of the state file below, and both sides convert them with `to_json()`
+and `from_json()` instead of reading or writing the members of a JSON object. An
+entry whose members are incomplete, which are of another type, which names an
+unknown mode, which carries no name or whose name carries an equals sign is
+therefore refused while the file is read, and the error text names the position
+of the entry in the list.
+
+The file belongs to the resources of the archive, so it is part of the content
+of a session and not of its state: `common/SandboxLayout.hpp` lists it together
+with the other domain directories.
+
+### Loader
+
+`loader/utils/SandboxPaths.hpp` resolves the isolation file of the archive
+(`<root>/app/environment/isolation.json`) and the state file of the sandbox
+(`<root>/data/environment/state.json`). `Loader.cpp` hands both paths to the
+sandbox through the injected `SandboxConfig` and creates the state directory.
+
+The state directory belongs to the loader, which is the owner of `data/`: the
+sandbox never writes it itself, it sends the document of its modifications over
+the RPC pipe (`MsgEnvironment`, see `loader/rpc/Environment.cpp`) and the loader
+writes it to disk. The answer of the call is sent after the document is on disk,
+so a sandbox which received the answer knows that its state survives the end of
+the process which made it.
+
+### Sandbox
+
+The `environment` module of the sandbox DLL composes the environment of the
+packaged application while the DLL is injected, which is before the hooks are
+attached, so the environment of the host is read through the original entry
+points of the process. The composition has three sources, in this order:
+
+1. The environment block of the process itself, which is the environment of the
+   host.
+2. The variables of the isolation file of the archive, composed with the value
+   of the host by the isolation mode and the merge mode of the row. A variable
+   which the isolation file does not list keeps the value of the host.
+3. The modifications of the state file, which an earlier run of the application
+   made and which win over the two sources above.
+
+The environment block of the process is **never** modified. The composed
+environment lives in a private table of the sandbox (`sandbox/environment/`),
+and the entry points which read, write, enumerate or expand a variable of the
+process environment are hooked and answered from that table, so the environment
+of the host keeps every value it had, whatever the packaged application does:
+
+| Entry point | Behaviour |
+| --- | --- |
+| `GetEnvironmentVariableW` / `GetEnvironmentVariableA` | Reads the table; a variable the table does not hold reports `ERROR_ENVVAR_NOT_FOUND`. |
+| `SetEnvironmentVariableW` / `SetEnvironmentVariableA` | Writes the table and records the modification; a value of null removes the variable. |
+| `GetEnvironmentStringsW` / `GetEnvironmentStringsA` | Builds a block of the table, which the caller owns. A block of the process would report the values of the host, so a variable the `Full` mode hides would leak through it. |
+| `FreeEnvironmentStringsW` / `FreeEnvironmentStringsA` | Releases a block the sandbox handed out; every other block goes to the operating system. |
+| `ExpandEnvironmentStringsW` / `ExpandEnvironmentStringsA` | Expands the `%NAME%` references from the table. |
+| `RtlQueryEnvironmentVariable_U`, `RtlQueryEnvironmentVariable` | The lowest readers of the process environment, which the runtime of a process uses as well. |
+| `RtlSetEnvironmentVariable` | The lowest writer; a caller which brings its own environment block is forwarded. |
+| `RtlExpandEnvironmentStrings_U` | The lowest expansion. |
+| `RtlCreateEnvironment` | A caller which asks for a copy of the environment of the process receives the view of the sandbox, so a child it starts does not see the values of the host. |
+
+The hooks live in `sandbox/hook/`, one file per export. The contracts of the
+counted `ntdll` entry points are measured rather than assumed: the lengths of
+`RtlQueryEnvironmentVariable` are counted in characters, `RtlQueryEnvironmentVariable_U`
+reports the size a buffer has to provide through the length of the value, and
+`RtlExpandEnvironmentStrings_U` reports the size of its answer with its
+terminator.
+
+### Variable references
+
+The value of a row may reference a known folder of the machine which runs the
+sandbox with `%APPBOX:<NAME>%` instead of spelling its path out, so an archive
+stays correct on a machine whose folders are somewhere else. The reference is
+replaced by `appbox::ExpandVariables()` (`sandbox/utils/VariableExpansion.*`)
+**before** the value is composed with the value of the host, so `Prepend` and
+`Append` join the expanded text; the list of the names is the known folder
+table of the loader, which is handed to the sandbox through the injected
+configuration.
+
+Only the values of the archive are expanded: the modifications of the state
+file are applied as the application spelled them. The syntax, the supported
+names and the rules of the expansion are documented in
+[README.md](../README.md#variable-expansion).
+
+### Child processes
+
+A process which the packaged application starts receives the view of its parent:
+the hook of `CreateProcessInternalW` hands the block of the sandbox over while
+the caller inherits the environment of its parent, and it marks the child so the
+configuration is not applied to it a second time. A value the merge modes join
+would be joined twice otherwise, because the environment of the child is the
+composed view of the parent and not the environment of the host.
+
+The loader starts the relay process, which starts the packaged application, so
+every sandboxed process of a run is a child of a sandboxed process: the
+end-to-end cases below pin the hand over of the environment with the value they
+read, which is the composed one.
+
+### State and reset
+
+Every modification the application makes is recorded once per variable — the
+last one wins — and the whole document is sent to the loader, so the number of
+writes an application performs does not grow the state. The state is read while
+the environment of the next run is composed, which is what makes a modification
+survive the end of the process which made it.
+
+Deleting the state directory of a sandbox (`data/`) drops the modifications and
+returns the sandbox to the environment of the archive, exactly like the other
+state of the sandbox.
+
+### Known gaps
+
+- `RtlSetCurrentEnvironment` and `RtlCreateEnvironmentEx` are not hooked: an
+  application which replaces the environment block of its process with the first
+  one, or which builds a child environment with the second one, is not tracked.
+  Both are rare, and the source of the second one is documented so loosely that
+  a hook would have to guess whether it inherits the environment of the process
+  or creates an empty one.
+- A variable whose name carries an equals sign cannot be stored, which is what
+  the environment of a process cannot hold either. The drive relative current
+  directory of the host (`=C:=C:\...`) is kept as it is, so a block which the
+  sandbox reports carries it like the block of the host does.
+- The names of the variables are compared ignoring the case, so `Path` and
+  `PATH` name the same variable, like the operating system does.
+
+## Tests
+
+The workspace has no test infrastructure of its own, so its logic lives in
+`src/core/EnvironmentModel.*` and is covered there:
+
+- `test/unit/EnvironmentModel.cpp` — the model: the insertion order, the
+  validation of a name, the uniqueness ignoring the case, the in place
+  replacement, the removal, the search path rule with its case insensitive
+  match, the fact that the model stores the mode it is given, the display names
+  of the modes and the tokens of the schema.
+- `test/unit/ProjectDocument.cpp` — the `environment` member of the schema: the
+  round trip, the order of the written members, the empty array, a missing
+  member, the unknown tokens and the path of a rejected entry.
+- `test/unit/ProjectFile.cpp` — the member through the file layer: the round
+  trip of the variables, the mode the user picked for the search path, the
+  rejection of a broken member and the replacement of the variables of a
+  session.
+
+The assembly of the panel — the toolbar, the table, the dropdowns and the
+tooltips — is verified by hand.
+
+The runtime side is covered by:
+
+- `test/unit/EnvironmentIsolation.cpp` — the vocabulary of the domain: the
+  composition of a host value with a stored value for every isolation mode and
+  every merge mode, the variables the host does not hold, the empty value and
+  the schema of both documents.
+- `test/unit/EnvironmentIsolationFile.cpp` — the document the packer writes: the
+  order of the entries, the members of an entry, the tokens of the modes and the
+  refusal of an entry the model refuses.
+- `test/unit/EnvironmentTable.cpp` — the private table and the two documents the
+  sandbox reads: the block of the host with its drive relative entry, the case
+  insensitive names, the order of the table, the round trip of a block, the ANSI
+  block, the refusal of a malformed isolation file without a partial result, and
+  the state with its one modification per variable.
+- `test/e2e/Env_*.cpp` — the whole chain with the real loader and a probe
+  process inside the sandbox: every isolation and merge combination, a variable
+  the host does not hold, the enumeration of the block and the expansion of a
+  reference, a modification which stays in the sandbox, the state of an earlier
+  run and the state file a case writes itself, a malformed isolation file
+  which falls back to the environment of the host, and the references of a
+  value (the canonical and another spelling of a name, a merged row, a name the
+  sandbox does not know and a `%NAME%` reference of the shell).
+
+## Related documentation
+
+- [README.md](../README.md) — build, components and artifacts.
+- [FilesystemIsolation.md](FilesystemIsolation.md) — filesystem isolation.
+- [RegistryIsolation.md](RegistryIsolation.md) — registry isolation.
+- [NetworkIsolation.md](NetworkIsolation.md) — network isolation.
+- [Tests](../test/README.md) — unit tests and end-to-end tests.

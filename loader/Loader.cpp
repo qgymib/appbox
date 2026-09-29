@@ -12,6 +12,7 @@
 #include "rpc/__init__.hpp"
 #include "utils/GetExecutableDir.hpp"
 #include "utils/ConvertDosPathToNtPath.hpp"
+#include "utils/KnownFolder.hpp"
 #include "utils/MapBaseFS.hpp"
 #include "WString.hpp"
 #include "Loader.hpp"
@@ -154,6 +155,18 @@ AppBoxLoaderRuntime::AppBoxLoaderRuntime()
     MapBaseFS(appbox::WideToUTF8(paths.LayerRoot()), inject_data.fs_lower);
     MapOverlayFS(paths.state, inject_data.fs_upper);
 
+    /*
+     * The variables the sandbox expands in the values of the workspace. The
+     * name of each one is the layer key of a preset directory without its `#`
+     * delimiters, so the supported list follows the preset directories of the
+     * packer and a preset directory which is added later brings its variable
+     * with it.
+     */
+    for (const auto& variable : appbox::KnownFolderVariables())
+    {
+        inject_data.variables.push_back(appbox::SandboxVariable{ variable.name, variable.path });
+    }
+
     {
         const auto error = SeedRegistryHive(paths.RegistryHiveFile(), paths.StateRegistryHiveFile());
         if (!error.empty())
@@ -166,6 +179,24 @@ AppBoxLoaderRuntime::AppBoxLoaderRuntime()
     inject_data.registry_isolation_dos_path = appbox::WideToUTF8(paths.RegistryIsolationFile());
     inject_data.filesystem_isolation_dos_path = appbox::WideToUTF8(paths.FilesystemIsolationFile());
     inject_data.network_isolation_dos_path = appbox::WideToUTF8(paths.NetworkIsolationFile());
+    inject_data.environment_isolation_dos_path = appbox::WideToUTF8(paths.EnvironmentIsolationFile());
+    inject_data.environment_state_dos_path = appbox::WideToUTF8(paths.StateEnvironmentFile());
+
+    /*
+     * The environment state file is written by the RPC method of the loader
+     * while the sandboxed application changes its environment, so its directory
+     * exists before the application runs.
+     */
+    {
+        const std::filesystem::path state_file(paths.StateEnvironmentFile());
+        std::error_code             ec;
+        std::filesystem::create_directories(state_file.parent_path(), ec);
+        if (ec)
+        {
+            SPDLOG_ERROR("failed to create '{}': {}", appbox::WideToUTF8(state_file.parent_path().wstring()),
+                         ec.message());
+        }
+    }
 
     {
         const std::filesystem::path state(paths.state);

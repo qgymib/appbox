@@ -55,6 +55,12 @@ constexpr const char* kPortKey = "port";
 constexpr const char* kUsernameKey = "username";
 constexpr const char* kPasswordKey = "password";
 
+/* Member names of the environment part of the schema. */
+constexpr const char* kEnvironmentKey = "environment";
+constexpr const char* kValueKey = "value";
+constexpr const char* kMergeKey = "merge";
+constexpr const char* kMergeStringKey = "merge_string";
+
 /**
  * @brief Reject a JSON value which is not an object.
  * @param[in] json The value to check.
@@ -257,6 +263,46 @@ appbox::ProxyType ReadProxyType(const Json& json, const char* key)
     }
 
     return type;
+}
+
+/**
+ * @brief Read the isolation mode of an environment variable.
+ * @param[in] json Object to read from.
+ * @param[in] key Name of the member.
+ * @return The isolation mode of the member.
+ * @throw appbox::ProjectDocumentError The mode is unknown or not a string.
+ */
+appbox::EnvironmentIsolation ReadEnvironmentIsolation(const Json& json, const char* key)
+{
+    const auto text = ReadRequiredString(json, key);
+
+    appbox::EnvironmentIsolation isolation = appbox::EnvironmentIsolation::WriteCopy;
+    if (!appbox::environment_isolation::ParseIsolationToken(text, isolation))
+    {
+        throw appbox::ProjectDocumentError("unknown isolation mode '" + text + "'");
+    }
+
+    return isolation;
+}
+
+/**
+ * @brief Read the merge mode of an environment variable.
+ * @param[in] json Object to read from.
+ * @param[in] key Name of the member.
+ * @return The merge mode of the member.
+ * @throw appbox::ProjectDocumentError The mode is unknown or not a string.
+ */
+appbox::EnvironmentMergeMode ReadEnvironmentMergeMode(const Json& json, const char* key)
+{
+    const auto text = ReadRequiredString(json, key);
+
+    appbox::EnvironmentMergeMode merge = appbox::environment_isolation::kDefaultMergeMode;
+    if (!appbox::environment_isolation::ParseMergeModeToken(text, merge))
+    {
+        throw appbox::ProjectDocumentError("unknown merge mode '" + text + "'");
+    }
+
+    return merge;
 }
 
 /**
@@ -509,6 +555,30 @@ void from_json(const nlohmann::ordered_json& json, ProjectProxyRecord& record)
     record = std::move(candidate);
 }
 
+void to_json(nlohmann::ordered_json& json, const ProjectEnvironmentRecord& record)
+{
+    json = nlohmann::ordered_json::object();
+    json[kNameKey] = WideToUTF8(record.name);
+    json[kValueKey] = WideToUTF8(record.value);
+    json[kIsolationKey] = environment_isolation::IsolationToken(record.isolation);
+    json[kMergeKey] = environment_isolation::MergeModeToken(record.merge);
+    json[kMergeStringKey] = WideToUTF8(record.merge_string);
+}
+
+void from_json(const nlohmann::ordered_json& json, ProjectEnvironmentRecord& record)
+{
+    RequireObject(json);
+
+    ProjectEnvironmentRecord candidate;
+    candidate.name = ReadRequiredText(json, kNameKey);
+    candidate.value = ReadRequiredText(json, kValueKey);
+    candidate.isolation = ReadEnvironmentIsolation(json, kIsolationKey);
+    candidate.merge = ReadEnvironmentMergeMode(json, kMergeKey);
+    candidate.merge_string = ReadRequiredText(json, kMergeStringKey);
+
+    record = std::move(candidate);
+}
+
 void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
 {
     json = nlohmann::ordered_json::object();
@@ -526,6 +596,8 @@ void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
     {
         json[kProxyKey] = *document.proxy;
     }
+
+    json[kEnvironmentKey] = document.environment;
 }
 
 void from_json(const nlohmann::ordered_json& json, ProjectDocument& document)
@@ -562,6 +634,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectDocument& document)
     ReadRecordArray(json, kFilesystemKey, candidate.filesystem);
     ReadRecordArray(json, kNetworkKey, candidate.network);
     ReadOptionalRecord(json, kProxyKey, candidate.proxy);
+    ReadRecordArray(json, kEnvironmentKey, candidate.environment);
 
     document = std::move(candidate);
 }

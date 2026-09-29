@@ -2,6 +2,7 @@
 #define APPBOX_PACKER_CORE_PACK_SERVICE_HPP
 
 #include "BuildReport.hpp"
+#include "EnvironmentModel.hpp"
 #include "FilesystemIsolationModel.hpp"
 #include "NetworkModel.hpp"
 #include "PackModel.hpp"
@@ -17,11 +18,12 @@ namespace appbox
  *
  * The loader payload, the loader configuration, the two registry artifacts
  * (the hive and the isolation file), the isolation file of the filesystem
- * workspace and the isolation file of the network workspace. The pack run and
- * the extraction of a `Build and Run` run report the same total, so both count
- * this constant instead of a literal.
+ * workspace, the isolation file of the network workspace and the isolation
+ * file of the environment workspace. The pack run and the extraction of a
+ * `Build and Run` run report the same total, so both count this constant
+ * instead of a literal.
  */
-inline constexpr std::size_t kNonContentArchiveEntries = 6;
+inline constexpr std::size_t kNonContentArchiveEntries = 7;
 
 /**
  * @brief Count the regular files below a folder.
@@ -69,6 +71,7 @@ std::wstring LoaderEntryName(const PackModel& model);
  * app/registry/user.hiv                  virtual registry of the workspace
  * app/registry/isolation.json            isolation modes of the registry
  * app/network/isolation.json             network configuration of the workspace
+ * app/environment/isolation.json         environment variables of the workspace
  * ```
  *
  * The loader program and its configuration carry the file name of the first
@@ -115,6 +118,12 @@ std::wstring LoaderEntryName(const PackModel& model);
  * redirections and sends its traffic through its proxy (see
  * `common/NetworkIsolation.hpp`).
  *
+ * The environment variables of the workspace land in the environment domain as
+ * `app/environment/isolation.json`: the loader hands the file to the sandbox,
+ * which composes the environment of the packaged application from its entries
+ * and keeps the modifications the application makes to itself inside the
+ * sandbox (see `common/EnvironmentIsolation.hpp`).
+ *
  * @param[in] model The pack model.
  * @param[in] registry Virtual registry of the workspace, which is written into
  *                     the registry domain of the archive as a hive file and an
@@ -125,6 +134,9 @@ std::wstring LoaderEntryName(const PackModel& model);
  * @param[in] network DNS redirections of the network workspace, which are
  *                    written into the network domain of the archive as an
  *                    isolation file.
+ * @param[in] environment Environment variables of the workspace, which are
+ *                        written into the environment domain of the archive as
+ *                        an isolation file.
  * @param[in] loader_bytes Embedded AppBoxLoader.exe payload.
  * @param[in] loader_size Payload size in bytes.
  * @param[in] zip_path Destination zip path (truncated when it exists).
@@ -134,8 +146,8 @@ std::wstring LoaderEntryName(const PackModel& model);
  * @return Error description, empty on success.
  */
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
-                 const NetworkModel& network, const void* loader_bytes, std::size_t loader_size,
-                 const std::wstring& zip_path, const BuildProgressCallback& progress);
+                 const NetworkModel& network, const EnvironmentModel& environment, const void* loader_bytes,
+                 std::size_t loader_size, const std::wstring& zip_path, const BuildProgressCallback& progress);
 
 } // namespace appbox
 

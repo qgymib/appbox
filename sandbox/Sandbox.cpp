@@ -1,10 +1,12 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include <detours.h>
 #include <stdexcept>
+#include <utility>
 #include <spdlog/spdlog.h>
 #include "hook/__init__.hpp"
 #include "hook/NtCreateFile.hpp"
 #include "hook/NtCurrentTeb.hpp"
+#include "environment/Isolation.hpp"
 #include "filesystem/Isolation.hpp"
 #include "network/Isolation.hpp"
 #include "registry/__init__.hpp"
@@ -16,11 +18,12 @@
 #include "WString.hpp"
 
 static const appbox::ModuleInitializer s_module[] = {
-    { appbox::HandleInfo::Init,            appbox::HandleInfo::Exit            },
-    { appbox::registry::Hive::Init,        appbox::registry::Hive::Exit        },
-    { appbox::filesystem::Isolation::Init, appbox::filesystem::Isolation::Exit },
-    { appbox::network::Isolation::Init,    appbox::network::Isolation::Exit    },
-    { appbox::InitHook,                    appbox::ExitHook                    },
+    { appbox::HandleInfo::Init,             appbox::HandleInfo::Exit             },
+    { appbox::registry::Hive::Init,         appbox::registry::Hive::Exit         },
+    { appbox::filesystem::Isolation::Init,  appbox::filesystem::Isolation::Exit  },
+    { appbox::network::Isolation::Init,     appbox::network::Isolation::Exit     },
+    { appbox::environment::Isolation::Init, appbox::environment::Isolation::Exit },
+    { appbox::InitHook,                     appbox::ExitHook                     },
 };
 
 appbox::Sandbox* appbox::sandbox = nullptr;
@@ -43,10 +46,21 @@ static void ParseInjectData(const std::string& data)
         appbox::sandbox->fs.fs_lower.push_back(mapping);
     }
 
+    for (const auto& v : inject_data.variables)
+    {
+        appbox::VariableMapping variable;
+        variable.name = appbox::UTF8ToWide(v.name);
+        variable.path = appbox::UTF8ToWide(v.path);
+        appbox::sandbox->variables.push_back(std::move(variable));
+    }
+
     appbox::sandbox->wRegistryHiveDOSPath = appbox::UTF8ToWide(inject_data.registry_hive_dos_path);
     appbox::sandbox->wRegistryIsolationDOSPath = appbox::UTF8ToWide(inject_data.registry_isolation_dos_path);
     appbox::sandbox->wFilesystemIsolationDOSPath = appbox::UTF8ToWide(inject_data.filesystem_isolation_dos_path);
     appbox::sandbox->wNetworkIsolationDOSPath = appbox::UTF8ToWide(inject_data.network_isolation_dos_path);
+    appbox::sandbox->wEnvironmentIsolationDOSPath = appbox::UTF8ToWide(inject_data.environment_isolation_dos_path);
+    appbox::sandbox->wEnvironmentStateDOSPath = appbox::UTF8ToWide(inject_data.environment_state_dos_path);
+    appbox::sandbox->bEnvironmentComposed = inject_data.environment_is_composed;
 
     appbox::sandbox->client = std::make_shared<appbox::PipeClient>(appbox::sandbox->wPipePath);
     if (!appbox::sandbox->client->Start())
@@ -228,6 +242,7 @@ void appbox::to_json(nlohmann::json& j, const Sandbox& r)
     j["bIsolationMode"] = r.bIsolationMode;
     j["wPipePath"] = appbox::WideToUTF8(r.wPipePath);
     j["fs"] = r.fs;
+    j["variables"] = r.variables.size();
     j["sandbox32_dos_path"] = r.sandbox32_dos_path;
     j["sandbox64_dos_path"] = r.sandbox64_dos_path;
     j["registry_hive_dos_path"] = appbox::WideToUTF8(r.wRegistryHiveDOSPath);
@@ -236,6 +251,10 @@ void appbox::to_json(nlohmann::json& j, const Sandbox& r)
     j["fs_isolation_entries"] = r.fs_isolation.Count();
     j["network_isolation_dos_path"] = appbox::WideToUTF8(r.wNetworkIsolationDOSPath);
     j["dns_entries"] = r.dns_table.Count();
+    j["environment_isolation_dos_path"] = appbox::WideToUTF8(r.wEnvironmentIsolationDOSPath);
+    j["environment_state_dos_path"] = appbox::WideToUTF8(r.wEnvironmentStateDOSPath);
+    j["environment_variables"] = r.env_table.Count();
+    j["environment_modifications"] = r.env_state.Count();
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)

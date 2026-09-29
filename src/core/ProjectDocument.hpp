@@ -1,6 +1,7 @@
 #ifndef APPBOX_PACKER_CORE_PROJECT_DOCUMENT_HPP
 #define APPBOX_PACKER_CORE_PROJECT_DOCUMENT_HPP
 
+#include "EnvironmentIsolation.hpp"
 #include "FilesystemIsolation.hpp"
 #include "NetworkModel.hpp"
 #include "RegistryIsolation.hpp"
@@ -291,14 +292,60 @@ struct ProjectProxyRecord
 };
 
 /**
+ * @brief One environment variable of the environment part of a project
+ *        document.
+ *
+ * The record names a variable the packaged application sees inside the sandbox,
+ * the value the user entered for it and the way that value is composed with the
+ * value of the host: the isolation mode decides whether the host value is
+ * visible at all, and the merge mode with the merge string decides how the two
+ * values are joined while the isolation mode is `WriteCopy`. It is the
+ * counterpart of `EnvironmentEntry` of the environment workspace.
+ *
+ * The record is stored as it is written: the merge mode and the merge string of
+ * the search path variable are filled in by the workspace while the variable is
+ * entered, so a mode the user picked by hand afterwards is part of the file and
+ * survives the next import.
+ */
+struct ProjectEnvironmentRecord
+{
+    /**
+     * @brief Name of the variable.
+     */
+    std::wstring name;
+
+    /**
+     * @brief Value the user entered, which may be empty.
+     */
+    std::wstring value;
+
+    /**
+     * @brief Isolation mode of the variable.
+     */
+    EnvironmentIsolation isolation = EnvironmentIsolation::WriteCopy;
+
+    /**
+     * @brief Merge mode of the variable.
+     */
+    EnvironmentMergeMode merge = environment_isolation::kDefaultMergeMode;
+
+    /**
+     * @brief Text which joins the two values while the merge mode is `Prepend`
+     *        or `Append`, empty while the user entered none.
+     */
+    std::wstring merge_string;
+};
+
+/**
  * @brief The content of a project file.
  *
  * The structure is the document of the `File -> Export Configuration...` and
  * `File -> Import Configuration...` commands: the imported folders and files,
  * the startup files, the virtual registry, the isolation modes of the virtual
- * filesystem, the DNS redirections of the network workspace and the proxy of
- * the network workspace. It holds no host state and no wxWidgets dependency,
- * so the conversion is unit testable.
+ * filesystem, the DNS redirections of the network workspace, the proxy of the
+ * network workspace and the environment variables of the environment
+ * workspace. It holds no host state and no wxWidgets dependency, so the
+ * conversion is unit testable.
  *
  * `to_json()` and `from_json()` convert the structure to and from the JSON
  * text of a project file; the file itself is written and read by
@@ -331,7 +378,10 @@ struct ProjectProxyRecord
  *                  "redirect": "127.0.0.1" } ],
  *   "proxy": { "type": "socks5", "tcp": true, "udp": false,
  *              "server": "127.0.0.1", "port": "1080",
- *              "username": "user", "password": "secret" }
+ *              "username": "user", "password": "secret" },
+ *   "environment": [ { "name": "PATH", "value": "C:\\MyApp\\bin",
+ *                      "isolation": "write_copy", "merge": "prepend",
+ *                      "merge_string": ";" } ]
  * }
  * ```
  *
@@ -389,6 +439,11 @@ struct ProjectDocument
      * and then disabled is part of the document as well.
      */
     std::optional<ProjectProxyRecord> proxy;
+
+    /**
+     * @brief The environment variables of the environment workspace.
+     */
+    std::vector<ProjectEnvironmentRecord> environment;
 };
 
 /**
@@ -510,6 +565,21 @@ void to_json(nlohmann::ordered_json& json, const ProjectProxyRecord& record);
  * @throw ProjectDocumentError The object does not fit the schema.
  */
 void from_json(const nlohmann::ordered_json& json, ProjectProxyRecord& record);
+
+/**
+ * @brief Store one environment variable of a document.
+ * @param[out] json Object which receives the record.
+ * @param[in] record The record to store.
+ */
+void to_json(nlohmann::ordered_json& json, const ProjectEnvironmentRecord& record);
+
+/**
+ * @brief Read one environment variable of a document.
+ * @param[in] json Object holding the record.
+ * @param[out] record The record to fill.
+ * @throw ProjectDocumentError The object does not fit the schema.
+ */
+void from_json(const nlohmann::ordered_json& json, ProjectEnvironmentRecord& record);
 
 /**
  * @brief Store the content of a project file as a JSON document.

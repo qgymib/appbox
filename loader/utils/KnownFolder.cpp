@@ -1,6 +1,7 @@
 #include "KnownFolder.hpp"
 #include <spdlog/spdlog.h>
 #include <Shlobj.h>
+#include "WString.hpp"
 
 struct FolderMapping
 {
@@ -56,6 +57,46 @@ bool appbox::SearchFolderID(const std::wstring& name, std::wstring& folder_path)
         }
     }
     return false;
+}
+
+std::vector<appbox::KnownFolderVariable> appbox::KnownFolderVariables()
+{
+    std::vector<KnownFolderVariable> variables;
+
+    for (const auto& entry : s_known_folders)
+    {
+        /*
+         * The name of the variable is the layer key without its `#` delimiters,
+         * so the supported list follows the table of the known folders: a
+         * preset directory which is added later brings its variable with it.
+         */
+        if (entry.name.size() < 3 || entry.name.front() != L'#' || entry.name.back() != L'#')
+        {
+            SPDLOG_WARN("a known folder of the table is not delimited by '#', its variable is skipped");
+            continue;
+        }
+
+        const std::string name = WideToUTF8(entry.name.substr(1, entry.name.size() - 2));
+
+        /*
+         * A folder which cannot be resolved on this machine is skipped: the
+         * other variables stay usable instead of failing the whole start.
+         */
+        std::wstring folder_path;
+        try
+        {
+            folder_path = GetFolderPath(entry.guid);
+        }
+        catch (const std::exception& e)
+        {
+            SPDLOG_WARN("the variable '{}' is skipped, its known folder cannot be resolved: {}", name, e.what());
+            continue;
+        }
+
+        variables.push_back(KnownFolderVariable{ name, WideToUTF8(folder_path) });
+    }
+
+    return variables;
 }
 
 std::wstring appbox::ExpandKnownFolder(const std::wstring& path)

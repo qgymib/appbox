@@ -1,8 +1,11 @@
 #ifndef APPBOX_COMMON_FILESYSTEM_ISOLATION_HPP
 #define APPBOX_COMMON_FILESYSTEM_ISOLATION_HPP
 
+#include "IsolationDocument.hpp"
+#include <nlohmann/json.hpp>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace appbox
 {
@@ -265,6 +268,163 @@ inline bool IsAllowed(FilesystemIsolation isolation, FilesystemEntryKind kind)
         return true;
     }
     return isolation != FilesystemIsolation::WriteCopy;
+}
+
+/**
+ * @brief One entry of the filesystem isolation file.
+ *
+ * The structure is the schema of one listed path: the packer fills it while it
+ * writes the file of the workspace, and the sandbox reads the file back into
+ * the same structure, so neither side parses the JSON object of an entry
+ * member by member.
+ */
+struct Entry
+{
+    /**
+     * @brief Path of the entry in the virtual filesystem, in UTF-8.
+     *
+     * The first component is the layer key of a preset directory and the
+     * remaining ones are the path below it.
+     */
+    std::string path;
+
+    /**
+     * @brief Kind of the entry the mode was picked for.
+     */
+    FilesystemEntryKind kind = FilesystemEntryKind::Directory;
+
+    /**
+     * @brief Isolation mode of the entry.
+     */
+    FilesystemIsolation isolation = FilesystemIsolation::WriteCopy;
+};
+
+/**
+ * @brief The content of the filesystem isolation file.
+ */
+struct Document
+{
+    /**
+     * @brief Schema version the document was written with.
+     *
+     * The version is a member of the file and not a rule of the schema: the
+     * reader compares it with kVersion and refuses a document of another
+     * version, so a file of a newer schema is never read with the rules of this
+     * one.
+     */
+    int version = kVersion;
+
+    /**
+     * @brief The listed entries, in the order of the file.
+     */
+    std::vector<Entry> entries;
+};
+
+/**
+ * @brief Store one entry of the filesystem isolation file.
+ * @param[out] json Object which receives the entry.
+ * @param[in] entry The entry to store.
+ */
+inline void to_json(nlohmann::json& json, const Entry& entry)
+{
+    json = nlohmann::json::object();
+    json[kPathKey] = entry.path;
+    json[kKindKey] = EntryKindToken(entry.kind);
+    json[kIsolationKey] = IsolationToken(entry.isolation);
+}
+
+/**
+ * @brief Read one entry of the filesystem isolation file.
+ *
+ * The call refuses everything the packer would never write: an entry which is
+ * not an object, a member which is missing or of another type, an empty path,
+ * an unknown kind or mode, and a mode which the kind cannot hold.
+ *
+ * @param[in] json Object holding the entry.
+ * @param[out] entry The entry to fill.
+ * @throw appbox::IsolationDocumentError The entry does not fit the schema.
+ */
+inline void from_json(const nlohmann::json& json, Entry& entry)
+{
+    const std::string holder = "a filesystem isolation file entry";
+    isolation_document::RequireObject(json, holder);
+
+    entry.path = isolation_document::RequiredText(json, kPathKey, holder);
+    if (entry.path.empty())
+    {
+        isolation_document::Throw("a filesystem isolation file entry has an empty path");
+    }
+
+    const std::string   kind_token = isolation_document::RequiredText(json, kKindKey, holder);
+    FilesystemEntryKind kind = FilesystemEntryKind::Directory;
+    if (!ParseEntryKindToken(kind_token, kind))
+    {
+        isolation_document::Throw("unknown entry kind '" + kind_token + "' in the filesystem isolation file");
+    }
+
+    const std::string   isolation_token = isolation_document::RequiredText(json, kIsolationKey, holder);
+    FilesystemIsolation isolation = FilesystemIsolation::Full;
+    if (!ParseIsolationToken(isolation_token, isolation))
+    {
+        isolation_document::Throw("unknown isolation mode '" + isolation_token + "' in the filesystem isolation file");
+    }
+
+    if (!IsAllowed(isolation, kind))
+    {
+        isolation_document::Throw("the isolation mode '" + isolation_token + "' cannot be used for a " +
+                                  EntryKindToken(kind) + " in the filesystem isolation file");
+    }
+
+    entry.kind = kind;
+    entry.isolation = isolation;
+}
+
+/**
+ * @brief Store the content of the filesystem isolation file.
+ * @param[out] json Object which receives the document.
+ * @param[in] document The document to store.
+ */
+inline void to_json(nlohmann::json& json, const Document& document)
+{
+    json = nlohmann::json::object();
+    json[kVersionKey] = document.version;
+
+    nlohmann::json entries = nlohmann::json::array();
+    for (const auto& entry : document.entries)
+    {
+        entries.push_back(nlohmann::json(entry));
+    }
+    json[kEntriesKey] = std::move(entries);
+}
+
+/**
+ * @brief Read the content of the filesystem isolation file.
+ *
+ * A document which does not list any entry describes a file which sets no mode
+ * at all, which is what a session without a mode writes.
+ *
+ * @param[in] json Object holding the document.
+ * @param[out] document The document to fill.
+ * @throw appbox::IsolationDocumentError The document does not fit the schema.
+ */
+inline void from_json(const nlohmann::json& json, Document& document)
+{
+    const std::string holder = "the filesystem isolation file";
+    isolation_document::RequireObject(json, holder);
+
+    document = Document{};
+    document.version = isolation_document::RequiredInt(json, kVersionKey, holder);
+
+    const auto* entries = isolation_document::OptionalArray(json, kEntriesKey, holder);
+    if (entries == nullptr)
+    {
+        return;
+    }
+
+    for (const auto& item : *entries)
+    {
+        document.entries.push_back(item.get<Entry>());
+    }
 }
 
 } // namespace filesystem_isolation

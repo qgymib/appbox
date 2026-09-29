@@ -54,6 +54,19 @@ const std::vector<std::wstring>& RegistryIsolationNames();
 std::wstring RegistryIsolationName(RegistryIsolation isolation);
 
 /**
+ * @brief Describe an isolation mode of an entry for a tooltip.
+ *
+ * The description names the mode and says what it does with the entry and with
+ * the host registry. It is the text the workspace shows for the mode of a row
+ * and for the modes the `Isolation` column offers, so the explanation of a mode
+ * lives in one place.
+ *
+ * @param[in] isolation The isolation mode.
+ * @return The description of the mode.
+ */
+std::wstring RegistryIsolationDescription(RegistryIsolation isolation);
+
+/**
  * @brief Registry value types supported by the workspace.
  *
  * The values are the Win32 `REG_*` type codes, so the raw bytes of a value can

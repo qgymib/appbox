@@ -7,33 +7,6 @@ namespace
 {
 
 /**
- * @brief Read a member of an entry which holds a string.
- * @param[in] entry Object of the entry.
- * @param[in] member Name of the member.
- * @param[out] out Text of the member.
- * @param[out] error Error description on failure.
- * @return true when the member is a string.
- */
-bool ReadString(const nlohmann::json& entry, const char* member, std::string& out, std::string& error)
-{
-    const auto it = entry.find(member);
-    if (it == entry.end())
-    {
-        error = std::string("a network isolation file entry has no '") + member + "' member";
-        return false;
-    }
-
-    if (!it->is_string())
-    {
-        error = std::string("the '") + member + "' member of a network isolation file entry is not a string";
-        return false;
-    }
-
-    out = it->get<std::string>();
-    return true;
-}
-
-/**
  * @brief Whether a redirect address fits the family of a question.
  * @param[in] family Family of the redirect address.
  * @param[in] requested Family the application asked for.
@@ -59,80 +32,59 @@ bool appbox::network::DnsTable::Parse(const std::string& text, std::string& erro
 
     try
     {
-        const auto document = nlohmann::json::parse(text);
-        if (!document.is_object())
-        {
-            error = "the network isolation file is not a JSON object";
-            return false;
-        }
+        /*
+         * The document is read as the structure of its schema
+         * (`common/NetworkIsolation.hpp`) and never member by member, so a
+         * member which is missing, which is of another type or which carries an
+         * empty hostname is refused while the file is read.
+         */
+        const auto document = nlohmann::json::parse(text).get<network_isolation::Document>();
 
-        if (document.value(network_isolation::kVersionKey, 0) != network_isolation::kVersion)
+        if (document.version != network_isolation::kVersion)
         {
             error = "unsupported network isolation file version";
             return false;
         }
 
-        const auto list = document.find(network_isolation::kEntriesKey);
-        if (list != document.end())
+        for (const auto& item : document.entries)
         {
-            if (!list->is_array())
+            DnsEntry entry;
+            entry.hostname = network_isolation::NormalizeHostname(item.hostname);
+            entry.redirect = item.redirect;
+
+            network_isolation::Address address;
+            if (!network_isolation::ParseAddress(entry.redirect, address))
             {
-                error = std::string("the '") + network_isolation::kEntriesKey +
-                        "' member of the network isolation file is not a list";
+                error = "the redirect '" + entry.redirect +
+                        "' of a network isolation file entry is not an IPv4 or an IPv6 address";
                 return false;
             }
+            entry.family = address.family;
 
-            for (const auto& item : *list)
+            /*
+             * A hostname which is listed twice keeps the last entry, so a
+             * hand written file can correct an entry by repeating it.
+             */
+            bool replaced = false;
+            for (auto& existing : entries)
             {
-                if (!item.is_object())
+                if (existing.hostname == entry.hostname)
                 {
-                    error = "a network isolation file entry is not an object";
-                    return false;
-                }
-
-                DnsEntry entry;
-                if (!ReadString(item, network_isolation::kHostnameKey, entry.hostname, error) ||
-                    !ReadString(item, network_isolation::kRedirectKey, entry.redirect, error))
-                {
-                    return false;
-                }
-
-                if (entry.hostname.empty())
-                {
-                    error = "a network isolation file entry has an empty hostname";
-                    return false;
-                }
-
-                network_isolation::Address address;
-                if (!network_isolation::ParseAddress(entry.redirect, address))
-                {
-                    error = "the redirect '" + entry.redirect +
-                            "' of a network isolation file entry is not an IPv4 or an IPv6 address";
-                    return false;
-                }
-                entry.family = address.family;
-                entry.hostname = network_isolation::NormalizeHostname(entry.hostname);
-
-                /*
-                 * A hostname which is listed twice keeps the last entry, so a
-                 * hand written file can correct an entry by repeating it.
-                 */
-                bool replaced = false;
-                for (auto& existing : entries)
-                {
-                    if (existing.hostname == entry.hostname)
-                    {
-                        existing = entry;
-                        replaced = true;
-                        break;
-                    }
-                }
-                if (!replaced)
-                {
-                    entries.push_back(std::move(entry));
+                    existing = entry;
+                    replaced = true;
+                    break;
                 }
             }
+            if (!replaced)
+            {
+                entries.push_back(std::move(entry));
+            }
         }
+    }
+    catch (const IsolationDocumentError& e)
+    {
+        error = e.what();
+        return false;
     }
     catch (const std::exception& e)
     {

@@ -81,6 +81,32 @@ struct SandboxPaths
     }
 
     /**
+     * @brief Environment variables of the environment workspace.
+     * @return The path of the isolation file inside the environment domain.
+     */
+    std::wstring EnvironmentIsolationFile() const
+    {
+        return (std::filesystem::path(app) / layout::kEnvironmentDirNameW / layout::kIsolationFileNameW).wstring();
+    }
+
+    /**
+     * @brief Environment variables the packaged application changed.
+     *
+     * The file lives in the state directory, because the sandboxed process
+     * changes its environment while it runs and the loader writes the document
+     * the sandbox sends over the RPC pipe. A missing file means that the
+     * application never changed its environment, so deleting the state
+     * directory resets the sandbox to the environment of the archive.
+     *
+     * @return The path of the state file inside the state directory.
+     */
+    std::wstring StateEnvironmentFile() const
+    {
+        return (std::filesystem::path(state) / layout::kEnvironmentDirNameW / layout::kEnvironmentStateFileNameW)
+            .wstring();
+    }
+
+    /**
      * @brief Hive the sandbox mounts.
      *
      * The file lives in the state directory, because mounting a hive writes to

@@ -7,98 +7,52 @@ namespace
 {
 
 /**
- * @brief Read a member of the proxy which holds a flag.
- *
- * A member which is missing or which is not a flag leaves the flag clear: the
- * sandbox only carries the traffic the file asks for.
- *
- * @param[in] proxy Object of the proxy.
- * @param[in] member Name of the member.
- * @return The value of the member, false when it is missing or not a flag.
- */
-bool ReadFlag(const nlohmann::json& proxy, const char* member)
-{
-    const auto it = proxy.find(member);
-    if (it == proxy.end() || !it->is_boolean())
-    {
-        return false;
-    }
-    return it->get<bool>();
-}
-
-/**
- * @brief Read a member of the proxy which holds a text.
- * @param[in] proxy Object of the proxy.
- * @param[in] member Name of the member.
- * @param[out] out Text of the member, untouched when it is missing.
- * @return true when the member is a text.
- */
-bool ReadText(const nlohmann::json& proxy, const char* member, std::string& out)
-{
-    const auto it = proxy.find(member);
-    if (it == proxy.end() || !it->is_string())
-    {
-        return false;
-    }
-
-    out = it->get<std::string>();
-    return true;
-}
-
-/**
  * @brief Read the proxy of a document of the supported version.
  *
  * A proxy which cannot be used is reported as a disabled one instead of an
- * error, because the sandbox behaves the same way without it.
+ * error, because the sandbox behaves the same way without it: the document
+ * itself is accepted, so the DNS redirections it carries are applied either
+ * way.
  *
- * @param[in] document Document of the network isolation file.
+ * @param[in] document The network isolation file.
  * @return The proxy of the document, disabled when it holds none.
  */
-appbox::network::ProxyConfig ReadProxy(const nlohmann::json& document)
+appbox::network::ProxyConfig ReadProxy(const appbox::network_isolation::Document& document)
 {
-    using appbox::network_isolation::kProxyKey;
-    using appbox::network_isolation::kProxyPasswordKey;
-    using appbox::network_isolation::kProxyPortKey;
-    using appbox::network_isolation::kProxyServerKey;
-    using appbox::network_isolation::kProxyTcpKey;
-    using appbox::network_isolation::kProxyTypeKey;
-    using appbox::network_isolation::kProxyUdpKey;
-    using appbox::network_isolation::kProxyUsernameKey;
+    using appbox::network_isolation::IsSocks5Token;
+    using appbox::network_isolation::PortText;
+    using appbox::network_isolation::ReadPortText;
 
-    const auto member = document.find(kProxyKey);
-    if (member == document.end() || !member->is_object())
+    if (!document.proxy.has_value())
     {
         return {};
     }
 
-    std::string type;
-    if (!ReadText(*member, kProxyTypeKey, type) || !appbox::network_isolation::IsSocks5Token(type))
+    const appbox::network_isolation::Proxy& proxy = *document.proxy;
+
+    if (!IsSocks5Token(proxy.type))
     {
         return {};
     }
 
     appbox::network::ProxyConfig config;
-    config.tcp = ReadFlag(*member, kProxyTcpKey);
-    config.udp = ReadFlag(*member, kProxyUdpKey);
+    config.tcp = proxy.tcp;
+    config.udp = proxy.udp;
 
-    if (!ReadText(*member, kProxyServerKey, config.server) || config.server.empty())
+    if (proxy.server.empty())
+    {
+        return {};
+    }
+    config.server = proxy.server;
+
+    if (ReadPortText(proxy.port, config.port) != PortText::Ok)
     {
         return {};
     }
 
-    std::string port;
-    if (!ReadText(*member, kProxyPortKey, port))
-    {
-        return {};
-    }
-    if (appbox::network_isolation::ReadPortText(port, config.port) != appbox::network_isolation::PortText::Ok)
-    {
-        return {};
-    }
-
-    /* The credentials are optional; a member which is not a text is absent. */
-    ReadText(*member, kProxyUsernameKey, config.username);
-    ReadText(*member, kProxyPasswordKey, config.password);
+    /* The credentials are optional; a member which carries no text is absent. */
+    config.username = proxy.username;
+    config.password = proxy.password;
 
     return config;
 }
@@ -111,12 +65,14 @@ bool appbox::network::ParseProxyConfig(const std::string& text, ProxyConfig& out
 
     try
     {
-        const auto document = nlohmann::json::parse(text);
-        if (!document.is_object())
-        {
-            return false;
-        }
-        if (document.value(network_isolation::kVersionKey, 0) != network_isolation::kVersion)
+        /*
+         * The document is read as the structure of its schema
+         * (`common/NetworkIsolation.hpp`) and never member by member. The proxy
+         * member of the structure is read leniently, so a member of another
+         * type leaves the default of the proxy instead of failing the document.
+         */
+        const auto document = nlohmann::json::parse(text).get<network_isolation::Document>();
+        if (document.version != network_isolation::kVersion)
         {
             return false;
         }

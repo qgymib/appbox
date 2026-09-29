@@ -38,16 +38,31 @@
 #include "hook/DnsQuery_A.hpp"
 #include "hook/DnsQuery_UTF8.hpp"
 #include "hook/DnsQuery_W.hpp"
+#include "hook/ExpandEnvironmentStringsA.hpp"
+#include "hook/ExpandEnvironmentStringsW.hpp"
+#include "hook/FreeEnvironmentStringsA.hpp"
+#include "hook/FreeEnvironmentStringsW.hpp"
 #include "hook/GetAddrInfoExW.hpp"
 #include "hook/GetAddrInfoW.hpp"
 #include "hook/getaddrinfo.hpp"
+#include "hook/GetEnvironmentStringsA.hpp"
+#include "hook/GetEnvironmentStringsW.hpp"
+#include "hook/GetEnvironmentVariableA.hpp"
+#include "hook/GetEnvironmentVariableW.hpp"
 #include "hook/gethostbyname.hpp"
 #include "hook/closesocket.hpp"
 #include "hook/connect.hpp"
 #include "hook/recvfrom.hpp"
 #include "hook/RtlCompareUnicodeString.hpp"
+#include "hook/RtlCreateEnvironment.hpp"
+#include "hook/RtlExpandEnvironmentStrings_U.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
+#include "hook/RtlQueryEnvironmentVariable.hpp"
+#include "hook/RtlQueryEnvironmentVariable_U.hpp"
+#include "hook/RtlSetEnvironmentVariable.hpp"
 #include "hook/sendto.hpp"
+#include "hook/SetEnvironmentVariableA.hpp"
+#include "hook/SetEnvironmentVariableW.hpp"
 #include "hook/SetProcessMitigationPolicy.hpp"
 #include "hook/WSAConnect.hpp"
 #include "hook/WSARecvFrom.hpp"
@@ -66,9 +81,17 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookDnsQueryA,
     &appbox::HookDnsQueryUTF8,
     &appbox::HookDnsQueryW,
+    &appbox::HookExpandEnvironmentStringsA,
+    &appbox::HookExpandEnvironmentStringsW,
+    &appbox::HookFreeEnvironmentStringsA,
+    &appbox::HookFreeEnvironmentStringsW,
     &appbox::HookGetAddrInfo,
     &appbox::HookGetAddrInfoExW,
     &appbox::HookGetAddrInfoW,
+    &appbox::HookGetEnvironmentStringsA,
+    &appbox::HookGetEnvironmentStringsW,
+    &appbox::HookGetEnvironmentVariableA,
+    &appbox::HookGetEnvironmentVariableW,
     &appbox::HookGetHostByName,
     &appbox::HookLdrQueryImageFileExecutionOptionsEx,
     &appbox::HookNtClose,
@@ -103,8 +126,15 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtWriteFile,
     &appbox::HookRecvFrom,
     &appbox::HookRtlCompareUnicodeString,
+    &appbox::HookRtlCreateEnvironment,
+    &appbox::HookRtlExpandEnvironmentStrings_U,
     &appbox::HookRtlInitUnicodeString,
+    &appbox::HookRtlQueryEnvironmentVariable,
+    &appbox::HookRtlQueryEnvironmentVariable_U,
+    &appbox::HookRtlSetEnvironmentVariable,
     &appbox::HookSendTo,
+    &appbox::HookSetEnvironmentVariableA,
+    &appbox::HookSetEnvironmentVariableW,
     &appbox::HookSetProcessMitigationPolicy,
     &appbox::HookWSAConnect,
     &appbox::HookWSARecvFrom,

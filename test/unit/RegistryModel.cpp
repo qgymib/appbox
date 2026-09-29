@@ -713,3 +713,27 @@ TEST(Unit_RegistryModel, PathHelpersNormalizeAndSplit)
     EXPECT_FALSE(appbox::IsValidRegistryName(L"", false));
     EXPECT_FALSE(appbox::IsValidRegistryName(L"A\\B", true));
 }
+
+/**
+ * @brief Every isolation mode is explained by a description.
+ *
+ * The description is the text the workspace shows for the mode of a row and for
+ * the modes the `Isolation` column offers, so every mode has to name itself and
+ * its own rule.
+ */
+TEST(Unit_RegistryModel, EveryIsolationModeIsDescribedForATooltip)
+{
+    for (const auto isolation :
+         { appbox::RegistryIsolation::Full, appbox::RegistryIsolation::WriteCopy, appbox::RegistryIsolation::Hide })
+    {
+        const std::wstring description = appbox::RegistryIsolationDescription(isolation);
+
+        EXPECT_NE(description.find(L"Isolation mode"), std::wstring::npos) << description;
+        EXPECT_NE(description.find(appbox::RegistryIsolationName(isolation)), std::wstring::npos) << description;
+    }
+
+    EXPECT_NE(appbox::RegistryIsolationDescription(appbox::RegistryIsolation::Hide).find(L"invisible"),
+              std::wstring::npos);
+    EXPECT_NE(appbox::RegistryIsolationDescription(appbox::RegistryIsolation::WriteCopy).find(L"default mode"),
+              std::wstring::npos);
+}

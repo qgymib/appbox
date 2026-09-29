@@ -23,11 +23,16 @@ add_executable(AppBoxTests
     "unit/AboutInfo.cpp"
     "unit/ApplicationIcon.cpp"
     "unit/BuildReport.cpp"
+    "unit/EnvironmentIsolation.cpp"
+    "unit/EnvironmentIsolationFile.cpp"
+    "unit/EnvironmentModel.cpp"
+    "unit/EnvironmentTable.cpp"
     "unit/ExpandKnownFolder.cpp"
     "unit/FilesystemIsolation.cpp"
     "unit/GetExecutableDir.cpp"
     "unit/HiveReader.cpp"
     "unit/HookTransaction.cpp"
+    "unit/IsolationDocument.cpp"
     "unit/Log.cpp"
     "unit/MiniLauncher.cpp"
     "unit/ModuleTable.cpp"
@@ -57,11 +62,23 @@ add_executable(AppBoxTests
     "unit/TracerReport.cpp"
     "unit/TracerScope.cpp"
     "unit/TracerTargetProgram.cpp"
+    "unit/VariableExpansion.cpp"
     "unit/WString.cpp"
     "unit/ZipReader.cpp"
     "unit/ZipWriter.cpp"
 
     # End-to-end cases.
+    "e2e/Env_Full_HidesTheHostValue.cpp"
+    "e2e/Env_MalformedIsolationFile_FallsBack.cpp"
+    "e2e/Env_MissingHostValue_KeepsTheConfiguredValue.cpp"
+    "e2e/Env_ModificationStaysInTheSandbox.cpp"
+    "e2e/Env_StateFileIsApplied.cpp"
+    "e2e/Env_StateIsKeptAcrossRuns.cpp"
+    "e2e/Env_VariableExpansion.cpp"
+    "e2e/Env_WriteCopy_Append.cpp"
+    "e2e/Env_WriteCopy_Host.cpp"
+    "e2e/Env_WriteCopy_Prepend.cpp"
+    "e2e/Env_WriteCopy_Replace.cpp"
     "e2e/Fs_DeleteFile_LowerLayer.cpp"
     "e2e/Fs_DeleteFile_LowerLayerAndUpper.cpp"
     "e2e/Fs_DeleteFile_NonExists.cpp"
@@ -125,6 +142,7 @@ add_executable(AppBoxTests
     "e2e/Reg_ShadowKey_HidesRealEntriesOfSameName.cpp"
     "e2e/Reg_ShadowKey_ReadRealValue.cpp"
     "e2e/Reg_UsersRoot_MapsToTheCurrentUserHive.cpp"
+    "e2e/Reg_VariableExpansion.cpp"
     "e2e/Reg_WriteCopy_CreateDisposition.cpp"
     "e2e/Reg_WriteCopy_WriteOpen_CopyUp.cpp"
     "e2e/Reg_WriteValue_NewKey.cpp"
@@ -136,6 +154,8 @@ add_executable(AppBoxTests
     "probe/CreateDirectoryW.cpp"
     "probe/CreateFileW.cpp"
     "probe/DeleteFileW.cpp"
+    "probe/EnvironmentRead.cpp"
+    "probe/EnvironmentWrite.cpp"
     "probe/LaunchProcess.cpp"
     "probe/ListDir.cpp"
     "probe/ListDirNt.cpp"
@@ -150,6 +170,7 @@ add_executable(AppBoxTests
     "probe/RegQueryKeyName.cpp"
     "probe/RegQueryMultipleValues.cpp"
     "probe/RegReadValue.cpp"
+    "probe/RegReadValues.cpp"
     "probe/RegSaveKey.cpp"
     "probe/RegShadowRead.cpp"
     "probe/RegWriteValue.cpp"
@@ -164,6 +185,7 @@ add_executable(AppBoxTests
     "utils/Coredump.cpp"
     "utils/CWD.cpp"
     "utils/EchoServer.cpp"
+    "utils/EnvironmentIsolationBuilder.cpp"
     "utils/FsBuilder.cpp"
     "utils/FsIsolationBuilder.cpp"
     "utils/HiveBuilder.cpp"
@@ -197,6 +219,8 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/AboutInfo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationIcon.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentIsolationFile.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/NetworkIsolationFile.cpp
@@ -214,6 +238,8 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipWriter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/ModuleTable.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/environment/Configuration.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/environment/Table.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/IsolationTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/network/DnsTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/network/ProxyConfig.cpp
@@ -227,6 +253,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/HookTransaction.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/Log.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/PipeClient.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/VariableExpansion.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/ArmPlan.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/CdbLocator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/CdbOutputParser.cpp

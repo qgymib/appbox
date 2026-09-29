@@ -80,8 +80,9 @@ struct NetworkIsolationProxy
  * The file describes the DNS redirections of the packaged application and lives
  * in the network domain of the resources of the case, which is where the loader
  * looks for it (`<case root>/app/network/isolation.json`). The document is
- * built directly instead of through the packer, so a case also pins the schema
- * a hand written file uses.
+ * built from the schema structure of `common/NetworkIsolation.hpp` instead of
+ * through the packer, so a case also pins that the sandbox accepts a file which
+ * the workspace did not write.
  *
  * @param[in] case_root Root directory of the case, normally the working
  *                      directory.

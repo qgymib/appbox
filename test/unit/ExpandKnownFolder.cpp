@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 #include "utils/KnownFolder.hpp"
+#include "WString.hpp"
+#include <iterator>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -98,5 +101,32 @@ TEST(Unit_ExpandKnownFolder, RemovedLayerKeysAreNotKnown)
         std::wstring folder;
         EXPECT_FALSE(appbox::SearchFolderID(key, folder));
         EXPECT_EQ(appbox::ExpandKnownFolder(key + L"\\MyApp\\app.exe"), key + L"\\MyApp\\app.exe");
+    }
+}
+
+/**
+ * @brief The variables the sandbox expands in the values of the workspace
+ *        follow the table of the known folders.
+ *
+ * The name of a variable is the layer key of the folder without its `#`
+ * delimiters, so a preset directory which is added to the packer later brings
+ * its variable with it instead of having to be listed twice.
+ */
+TEST(Unit_ExpandKnownFolder, VariablesFollowTheKnownFolderTable)
+{
+    const std::wstring keys[] = { L"#ProgramFiles#", L"#USERPROFILE#", L"#Documents#", L"#Desktop#" };
+    const char*        names[] = { "ProgramFiles", "USERPROFILE", "Documents", "Desktop" };
+
+    const std::vector<appbox::KnownFolderVariable> variables = appbox::KnownFolderVariables();
+    ASSERT_EQ(variables.size(), std::size(keys));
+
+    for (std::size_t index = 0; index < std::size(keys); ++index)
+    {
+        EXPECT_EQ(variables[index].name, names[index]);
+
+        /* The path of the variable is the real folder of this machine. */
+        std::wstring folder;
+        ASSERT_TRUE(appbox::SearchFolderID(keys[index], folder));
+        EXPECT_EQ(variables[index].path, appbox::WideToUTF8(folder));
     }
 }

@@ -11,6 +11,7 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 - **Filesystem Isolation**: Redirects every file operation onto a layered view — a writable overlay on top of read-only base filesystems and the host — and enforces per-entry isolation modes (`Full`, `Write Copy`, `Whiteout`) that decide what the sandboxed process sees and where its modifications land (see [Filesystem Isolation](docs/FilesystemIsolation.md)).
 - **Registry Isolation**: Redirects all five root keys onto a private hive file inside the overlay and enforces three isolation modes (`Full`, `WriteCopy`, `Hide`); the host registry is never modified (see [Registry Isolation](docs/RegistryIsolation.md)).
 - **Network Isolation**: Answers the name resolution of the packaged application from the redirections of the workspace, and optionally carries its TCP and UDP traffic through a SOCKS5 proxy (see [Network Isolation](docs/NetworkIsolation.md)).
+- **Environment Isolation**: Collects the environment variables the packaged application sees inside the sandbox with the isolation mode and the merge mode of every variable; the composed environment lives in a private table of the sandbox, so the environment of the host is never modified and the modifications of the application survive in the state directory of the sandbox (see [Environment Isolation](docs/EnvironmentIsolation.md)).
 
 ## Requirements
 
@@ -59,12 +60,6 @@ subdirectory (`Debug` or `Release`):
 | `AppBoxTracer.exe` (API tracer) | `build/<config>/tracer/<config>/AppBoxTracer.exe` |
 | `AppBoxTests.exe` (unit and end-to-end tests) | `build/<config>/test/<config>/AppBoxTests.exe` |
 
-### Architecture-Specific Build
-
-**MSVC**: Use `-A Win32` or `-A x64` to select architecture.
-
-**GCC/Clang**: Requires multilib support (`gcc-multilib`, `g++-multilib`).
-
 ## Project Components
 
 ### AppBox
@@ -74,9 +69,20 @@ packages an installed application into a portable zip archive. The window
 follows the three part layout of a packaging tool: a ribbon toolbar on top, a
 vertical icon navigation on the left and the workspace on the right.
 
-The navigation offers the Filesystem, Registry and Network workspaces, which
-edit the isolation the packaged application runs with, and the Settings page,
-which is an empty state. The directory tree of the Filesystem workspace starts
+The navigation offers the Filesystem, Registry, Network and Environment
+workspaces, which edit the isolation the packaged application runs with, and the
+Settings page, which is an empty state. The table of the Environment workspace
+holds one row per variable with its name, its value, its isolation mode, its
+merge mode and the text which joins the value with the value of the host; the
+name of the search path variable is filled in with the merge mode `Prepend` and
+the separator `;`, and the two values can be changed afterwards. A value of the
+Environment and of the Registry workspace may reference a known folder of the
+machine which runs the sandbox (see [Variable Expansion](#variable-expansion)). The tables
+explain themselves while the mouse rests on them: the header of the `Isolation`
+column of the three workspaces lists the modes it offers with their meaning, and
+the mode columns of the Environment workspace describe the mode of the row below
+the cursor. The directory
+tree of the Filesystem workspace starts
 at the `Sandbox Filesystem` container and holds the preset directories below
 it: `Program Files` and `Current User Directory` at the top level, with
 `Documents` and `Desktop` below the profile of the user. Every preset directory
@@ -144,11 +150,68 @@ Windows DLL providing runtime isolation: filesystem, registry and network
 redirection via API hooks, an overlay filesystem for non-destructive testing,
 and named pipe communication with the loader.
 
+## Variable Expansion
+
+A value of the `Environment` or the `Registry` workspace may reference a known
+folder of the machine which runs the sandbox instead of spelling its path out.
+The archive keeps the reference and the sandbox replaces it while it runs, so a
+packed application stays correct on a machine whose folders are somewhere else —
+the `Documents` and `Desktop` folder of a user are redirected into OneDrive on
+many installations, for example.
+
+A reference is spelled `%APPBOX:<NAME>%`. The prefix `APPBOX:` and the name are
+compared ignoring the case, so `%appbox:documents%` names the same folder as
+`%APPBOX:Documents%` does.
+
+| Name | Known folder | Example path |
+| --- | --- | --- |
+| `ProgramFiles` | `FOLDERID_ProgramFiles` | `C:\Program Files` |
+| `USERPROFILE` | `FOLDERID_Profile` | `C:\Users\Alice` |
+| `Documents` | `FOLDERID_Documents` | `C:\Users\Alice\Documents` |
+| `Desktop` | `FOLDERID_Desktop` | `C:\Users\Alice\Desktop` |
+
+The list follows the preset directories of the Filesystem workspace: the name of
+a variable is the layer key of a preset directory without its `#` delimiters, so
+a preset directory which is added to the packer later brings its variable with
+it. The example paths above are the ones of a machine whose user profile is not
+redirected; the sandbox always reports the real path of the machine it runs on.
+
+Where a reference may be used:
+
+* **Environment workspace** — the value of a variable, for example
+  `PATH=%APPBOX:ProgramFiles%\Foo\Bar`, which the packaged application reads as
+  `PATH=C:\Program Files\Foo\Bar`. The reference is replaced before the value is
+  composed with the value of the host, so the merge modes `Prepend` and `Append`
+  join the expanded text.
+* **Registry workspace** — the value of a key, for a string type only:
+  `REG_SZ`, `REG_EXPAND_SZ` and `REG_MULTI_SZ`, whose every item is expanded on
+  its own. `REG_DWORD`, `REG_BINARY` and every other type keep their bytes, even
+  when they happen to spell a reference.
+
+The rules of the expansion:
+
+* A reference whose name is not listed, a reference without the `APPBOX:` prefix
+  (a `%PATH%` reference belongs to the shell), a reference without a closing `%`
+  and a lone `%` keep their own spelling.
+* An expansion is never resolved again: the text a reference was replaced with is
+  copied as it is.
+* The expansion belongs to the values the archive carries. The environment of
+  the sandbox is composed while the sandbox starts and the hive of the registry
+  is expanded while it is mounted, so a value the packaged application stores
+  while it runs is reported as the application spelled it for the rest of that
+  run.
+
+The names are resolved by the loader (`loader/utils/KnownFolder.*`) and handed
+to the sandbox through the injected configuration; the expansion itself is the
+pure function `appbox::ExpandVariables()` of
+`sandbox/utils/VariableExpansion.*`.
+
 ## Documentation
 
 - [Filesystem Isolation](docs/FilesystemIsolation.md) - Filesystem isolation architecture
 - [Registry Isolation](docs/RegistryIsolation.md) - Registry isolation architecture
 - [Network Isolation](docs/NetworkIsolation.md) - Network isolation architecture
+- [Environment Isolation](docs/EnvironmentIsolation.md) - Environment isolation architecture
 - [Tracer](docs/Tracer.md) - API tracer: usage, mechanism and measured cost
 - [Tests](test/README.md) - Unit tests and end-to-end tests of the sandbox
 

@@ -381,6 +381,46 @@ bool ApplyProxyRecord(const std::optional<appbox::ProjectProxyRecord>& record, a
     return true;
 }
 
+/**
+ * @brief Restore the environment variables of the environment workspace of a
+ *        document.
+ *
+ * Every record is stored as the document holds it: the merge mode and the merge
+ * string of the search path variable are not filled in again, so a mode the
+ * user picked by hand is not rewritten by an import.
+ *
+ * @param[in] records Entries of the document.
+ * @param[in,out] model Model which receives the variables.
+ * @param[out] error Error description on failure.
+ * @return true when the variables were restored.
+ */
+bool ApplyEnvironmentRecords(const std::vector<appbox::ProjectEnvironmentRecord>& records,
+                             appbox::EnvironmentModel& model, std::string& error)
+{
+    std::size_t index = 0;
+    for (const auto& record : records)
+    {
+        const auto scope = "environment[" + std::to_string(index) + "]";
+        ++index;
+
+        appbox::EnvironmentEntry entry;
+        entry.name = record.name;
+        entry.value = record.value;
+        entry.isolation = record.isolation;
+        entry.merge = record.merge;
+        entry.merge_string = record.merge_string;
+
+        std::string detail;
+        if (!model.AddEntry(entry, detail))
+        {
+            error = Scoped(scope, detail);
+            return false;
+        }
+    }
+
+    return true;
+}
+
 } // namespace
 
 namespace appbox
@@ -388,7 +428,7 @@ namespace appbox
 
 ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel& registry,
                                     const FilesystemIsolationModel& isolation, const NetworkModel& network,
-                                    const std::wstring& output_path)
+                                    const EnvironmentModel& environment, const std::wstring& output_path)
 {
     ProjectDocument document;
     document.output_path = output_path;
@@ -463,17 +503,29 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
         document.proxy = std::move(record);
     }
 
+    for (const auto& entry : environment.Entries())
+    {
+        ProjectEnvironmentRecord record;
+        record.name = entry.name;
+        record.value = entry.value;
+        record.isolation = entry.isolation;
+        record.merge = entry.merge;
+        record.merge_string = entry.merge_string;
+        document.environment.push_back(std::move(record));
+    }
+
     return document;
 }
 
 bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, RegistryModel& registry,
-                          FilesystemIsolationModel& isolation, NetworkModel& network, std::wstring& output_path,
-                          std::string& error)
+                          FilesystemIsolationModel& isolation, NetworkModel& network, EnvironmentModel& environment,
+                          std::wstring& output_path, std::string& error)
 {
     PackModel                candidate;
     RegistryModel            candidate_registry;
     FilesystemIsolationModel candidate_isolation;
     NetworkModel             candidate_network;
+    EnvironmentModel         candidate_environment;
 
     std::size_t index = 0;
     for (const auto& folder : document.folders)
@@ -538,11 +590,17 @@ bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, Reg
         return false;
     }
 
+    if (!ApplyEnvironmentRecords(document.environment, candidate_environment, error))
+    {
+        return false;
+    }
+
     /* Every entry was accepted: the document can replace the caller. */
     model = std::move(candidate);
     registry = std::move(candidate_registry);
     isolation = std::move(candidate_isolation);
     network = std::move(candidate_network);
+    environment = std::move(candidate_environment);
     output_path = document.output_path;
     return true;
 }

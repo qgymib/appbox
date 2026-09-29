@@ -678,8 +678,8 @@ TEST(Unit_ApplicationIcon, PackWritesTheIconOfTheStartupFile)
 
     const auto                  zip_path = temp.Get() / L"out.zip";
     const appbox::RegistryModel registry;
-    ASSERT_EQ(appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(), payload.data(),
-                           payload.size(), zip_path.wstring(), nullptr),
+    ASSERT_EQ(appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                           appbox::EnvironmentModel(), payload.data(), payload.size(), zip_path.wstring(), nullptr),
               "");
 
     const auto extracted = temp.Get() / L"extracted";

@@ -137,34 +137,6 @@ std::wstring MapVirtualPathToView(const std::wstring&                           
     return {};
 }
 
-/**
- * @brief Read a string member of an entry of the isolation file.
- *
- * @param[in] entry The json object of the entry.
- * @param[in] member The member name.
- * @param[out] out The member value.
- * @param[out] error Error description on failure.
- * @return true when the member was read.
- */
-bool ReadString(const nlohmann::json& entry, const char* member, std::string& out, std::string& error)
-{
-    const auto it = entry.find(member);
-    if (it == entry.end())
-    {
-        error = std::string("a filesystem isolation file entry has no '") + member + "' member";
-        return false;
-    }
-
-    if (!it->is_string())
-    {
-        error = std::string("the '") + member + "' member of a filesystem isolation file entry is not a string";
-        return false;
-    }
-
-    out = it->get<std::string>();
-    return true;
-}
-
 } // namespace
 
 bool appbox::filesystem::IsolationPathLess::operator()(const std::wstring& left, const std::wstring& right) const
@@ -180,89 +152,42 @@ bool appbox::filesystem::IsolationTable::Parse(const std::string& text, const st
 
     try
     {
-        const auto document = nlohmann::json::parse(text);
-        if (!document.is_object())
-        {
-            error = "the filesystem isolation file is not a JSON object";
-            return false;
-        }
+        /*
+         * The document is read as the structure of its schema
+         * (`common/FilesystemIsolation.hpp`) and never member by member, so a
+         * member which is missing, which is of another type, which names an
+         * unknown mode or which names a mode the kind cannot hold is refused
+         * while the file is read.
+         */
+        const auto document = nlohmann::json::parse(text).get<filesystem_isolation::Document>();
 
-        if (document.value(filesystem_isolation::kVersionKey, 0) != filesystem_isolation::kVersion)
+        if (document.version != filesystem_isolation::kVersion)
         {
             error = "unsupported filesystem isolation file version";
             return false;
         }
 
-        const auto list = document.find(filesystem_isolation::kEntriesKey);
-        if (list != document.end())
+        for (const auto& item : document.entries)
         {
-            if (!list->is_array())
+            const std::wstring virtual_path = UTF8ToWide(item.path);
+            const std::wstring view_path = MapVirtualPathToView(virtual_path, layers);
+            if (view_path.empty())
             {
-                error = std::string("the '") + filesystem_isolation::kEntriesKey +
-                        "' member of the filesystem isolation file is not a list";
-                return false;
+                skipped.push_back(virtual_path);
+                continue;
             }
 
-            for (const auto& item : *list)
-            {
-                if (!item.is_object())
-                {
-                    error = "a filesystem isolation file entry is not an object";
-                    return false;
-                }
-
-                std::string path;
-                std::string kind_token;
-                std::string isolation_token;
-                if (!ReadString(item, filesystem_isolation::kPathKey, path, error) ||
-                    !ReadString(item, filesystem_isolation::kKindKey, kind_token, error) ||
-                    !ReadString(item, filesystem_isolation::kIsolationKey, isolation_token, error))
-                {
-                    return false;
-                }
-
-                if (path.empty())
-                {
-                    error = "a filesystem isolation file entry has an empty path";
-                    return false;
-                }
-
-                FilesystemEntryKind kind = FilesystemEntryKind::Directory;
-                if (!filesystem_isolation::ParseEntryKindToken(kind_token, kind))
-                {
-                    error = "unknown entry kind '" + kind_token + "' in the filesystem isolation file";
-                    return false;
-                }
-
-                FilesystemIsolation mode = FilesystemIsolation::Full;
-                if (!filesystem_isolation::ParseIsolationToken(isolation_token, mode))
-                {
-                    error = "unknown isolation mode '" + isolation_token + "' in the filesystem isolation file";
-                    return false;
-                }
-
-                if (!filesystem_isolation::IsAllowed(mode, kind))
-                {
-                    error = "the isolation mode '" + isolation_token + "' cannot be used for a " +
-                            filesystem_isolation::EntryKindToken(kind) + " in the filesystem isolation file";
-                    return false;
-                }
-
-                const std::wstring virtual_path = UTF8ToWide(path);
-                const std::wstring view_path = MapVirtualPathToView(virtual_path, layers);
-                if (view_path.empty())
-                {
-                    skipped.push_back(virtual_path);
-                    continue;
-                }
-
-                IsolationEntry entry;
-                entry.view_path = view_path;
-                entry.kind = kind;
-                entry.isolation = mode;
-                entries[view_path] = std::move(entry);
-            }
+            IsolationEntry entry;
+            entry.view_path = view_path;
+            entry.kind = item.kind;
+            entry.isolation = item.isolation;
+            entries[view_path] = std::move(entry);
         }
+    }
+    catch (const IsolationDocumentError& e)
+    {
+        error = e.what();
+        return false;
     }
     catch (const std::exception& e)
     {

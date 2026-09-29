@@ -10,6 +10,7 @@
  */
 /* clang-format off */
 #define APPBOX_LOADER_RPC_METHODS(xx)   \
+    xx(MsgEnvironment)                  \
     xx(MsgLog)
 /* clang-format on */
 

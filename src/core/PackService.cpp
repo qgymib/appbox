@@ -1,5 +1,6 @@
 #include "PackService.hpp"
 #include "ApplicationIcon.hpp"
+#include "EnvironmentIsolationFile.hpp"
 #include "FilesystemIsolationFile.hpp"
 #include "NetworkIsolationFile.hpp"
 #include "PresetDirectory.hpp"
@@ -214,8 +215,8 @@ std::wstring LoaderEntryName(const PackModel& model)
 }
 
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
-                 const NetworkModel& network, const void* loader_bytes, std::size_t loader_size,
-                 const std::wstring& zip_path, const BuildProgressCallback& progress)
+                 const NetworkModel& network, const EnvironmentModel& environment, const void* loader_bytes,
+                 std::size_t loader_size, const std::wstring& zip_path, const BuildProgressCallback& progress)
 {
     if (!model.HasStartupFiles())
     {
@@ -330,16 +331,18 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
          * The read-only resources of the packaged application live below
          * `app`, one directory per isolation domain: the filesystem layers and
          * their isolation modes, the virtual registry and its isolation modes,
-         * and the network configuration. The `data` directory of the sandbox
-         * never travels in the archive: the loader creates it at run time, so
-         * deleting it resets the sandbox to the state this archive carries.
+         * the network configuration and the environment variables. The `data`
+         * directory of the sandbox never travels in the archive: the loader
+         * creates it at run time, so deleting it resets the sandbox to the
+         * state this archive carries.
          */
         const std::string app_prefix = layout::kAppDirName;
         const std::string layer_prefix = layout::kLayerRootRelative;
         const std::string registry_prefix = app_prefix + "/" + layout::kRegistryDirName;
         const std::string network_prefix = app_prefix + "/" + layout::kNetworkDirName;
+        const std::string environment_prefix = app_prefix + "/" + layout::kEnvironmentDirName;
 
-        for (const auto& directory : { app_prefix, layer_prefix, registry_prefix, network_prefix })
+        for (const auto& directory : { app_prefix, layer_prefix, registry_prefix, network_prefix, environment_prefix })
         {
             error = EnsureDirectory(writer, added, directory);
             if (!error.empty())
@@ -410,6 +413,24 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         }
         if (!writer.AddFileBuffer(layout::kNetworkIsolationRelative, network_isolation.data(), network_isolation.size(),
                                   error))
+        {
+            return error;
+        }
+
+        /*
+         * The environment variables of the workspace travel in the environment
+         * domain: the loader hands the file to the sandbox, which composes the
+         * environment of the packaged application from the entries while it
+         * starts and keeps the modifications of the application inside the
+         * sandbox.
+         */
+        std::string environment_isolation;
+        if (!BuildEnvironmentIsolationFile(environment, environment_isolation, error))
+        {
+            return error;
+        }
+        if (!writer.AddFileBuffer(layout::kEnvironmentIsolationRelative, environment_isolation.data(),
+                                  environment_isolation.size(), error))
         {
             return error;
         }

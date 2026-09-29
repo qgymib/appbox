@@ -2,6 +2,7 @@
 #include "WString.hpp"
 #include <nlohmann/json.hpp>
 #include <exception>
+#include <utility>
 
 namespace
 {
@@ -11,30 +12,28 @@ namespace
  *
  * @param[in] key The key to visit.
  * @param[in] path Path of the key inside the virtual registry.
- * @param[in,out] keys The list of the key entries.
- * @param[in,out] values The list of the value entries.
+ * @param[in,out] document The document which collects the entries.
  */
-void CollectEntries(const appbox::RegistryKeyNode& key, const std::wstring& path, nlohmann::json& keys,
-                    nlohmann::json& values)
+void CollectEntries(const appbox::RegistryKeyNode& key, const std::wstring& path,
+                    appbox::registry_isolation::Document& document)
 {
-    nlohmann::json key_entry;
-    key_entry[appbox::registry_isolation::kPathKey] = appbox::WideToUTF8(path);
-    key_entry[appbox::registry_isolation::kIsolationKey] = appbox::registry_isolation::IsolationToken(key.isolation);
-    keys.push_back(std::move(key_entry));
+    appbox::registry_isolation::KeyEntry key_entry;
+    key_entry.path = appbox::WideToUTF8(path);
+    key_entry.isolation = key.isolation;
+    document.keys.push_back(std::move(key_entry));
 
     for (const auto& value : key.values)
     {
-        nlohmann::json value_entry;
-        value_entry[appbox::registry_isolation::kPathKey] = appbox::WideToUTF8(path);
-        value_entry[appbox::registry_isolation::kNameKey] = appbox::WideToUTF8(value.name);
-        value_entry[appbox::registry_isolation::kIsolationKey] =
-            appbox::registry_isolation::IsolationToken(value.isolation);
-        values.push_back(std::move(value_entry));
+        appbox::registry_isolation::ValueEntry value_entry;
+        value_entry.path = appbox::WideToUTF8(path);
+        value_entry.name = appbox::WideToUTF8(value.name);
+        value_entry.isolation = value.isolation;
+        document.values.push_back(std::move(value_entry));
     }
 
     for (const auto& child : key.children)
     {
-        CollectEntries(child, appbox::JoinRegistryPath(path, child.name), keys, values);
+        CollectEntries(child, appbox::JoinRegistryPath(path, child.name), document);
     }
 }
 
@@ -47,10 +46,13 @@ bool appbox::BuildRegistryIsolationFile(const RegistryModel& model, std::string&
 
     try
     {
-        nlohmann::json document;
-        document[registry_isolation::kVersionKey] = registry_isolation::kVersion;
-        document[registry_isolation::kKeysKey] = nlohmann::json::array();
-        document[registry_isolation::kValuesKey] = nlohmann::json::array();
+        /*
+         * The document is built as the structure of the schema
+         * (`common/RegistryIsolation.hpp`) and not as a JSON object, so the text
+         * the packer writes and the text the sandbox reads are described by one
+         * definition.
+         */
+        registry_isolation::Document document;
 
         /*
          * The container itself carries no path, so the walk starts at the root
@@ -58,11 +60,10 @@ bool appbox::BuildRegistryIsolationFile(const RegistryModel& model, std::string&
          */
         for (const auto& root : model.Root().children)
         {
-            CollectEntries(root, root.name, document[registry_isolation::kKeysKey],
-                           document[registry_isolation::kValuesKey]);
+            CollectEntries(root, root.name, document);
         }
 
-        text = document.dump(2);
+        text = nlohmann::json(document).dump(2);
         return true;
     }
     catch (const std::exception& e)

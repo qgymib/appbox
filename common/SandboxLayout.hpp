@@ -21,6 +21,7 @@ namespace appbox
  * app/registry/user.hiv                virtual registry of the workspace
  * app/registry/isolation.json          isolation modes of the registry
  * app/network/isolation.json           DNS redirections and proxy
+ * app/environment/isolation.json       environment variables of the workspace
  * ```
  *
  * Everything below `app` is read-only while the sandbox runs:
@@ -29,6 +30,8 @@ namespace appbox
  * data/filesystem/...                  upper layer of the sandbox
  * data/registry/user.hiv               hive the sandbox mounts, seeded from
  *                                      `app/registry/user.hiv` on first run
+ * data/environment/state.json          environment variables the packaged
+ *                                      application changed inside the sandbox
  * data/sandbox32.dll                   injected sandbox DLL (32 bit)
  * data/sandbox64.dll                   injected sandbox DLL (64 bit)
  * ```
@@ -67,6 +70,11 @@ inline constexpr const char* kRegistryDirName = "registry";
 inline constexpr const char* kNetworkDirName = "network";
 
 /**
+ * @brief Name of the environment directory below `app`.
+ */
+inline constexpr const char* kEnvironmentDirName = "environment";
+
+/**
  * @brief Name of the isolation file of every domain directory.
  */
 inline constexpr const char* kIsolationFileName = "isolation.json";
@@ -75,6 +83,15 @@ inline constexpr const char* kIsolationFileName = "isolation.json";
  * @brief Name of the hive file which carries the virtual registry.
  */
 inline constexpr const char* kRegistryHiveFileName = "user.hiv";
+
+/**
+ * @brief Name of the state file which carries the environment of the sandbox.
+ *
+ * The file lives in the state directory, because the sandboxed process writes
+ * to it while it runs; it is created by the loader, which owns the state
+ * directory, from the state document the sandbox sends over the RPC pipe.
+ */
+inline constexpr const char* kEnvironmentStateFileName = "state.json";
 
 /**
  * @brief The names above, for the consumers which work with wide strings.
@@ -97,11 +114,17 @@ inline constexpr const wchar_t* kRegistryDirNameW = L"registry";
 /** @brief Wide spelling of kNetworkDirName. */
 inline constexpr const wchar_t* kNetworkDirNameW = L"network";
 
+/** @brief Wide spelling of kEnvironmentDirName. */
+inline constexpr const wchar_t* kEnvironmentDirNameW = L"environment";
+
 /** @brief Wide spelling of kIsolationFileName. */
 inline constexpr const wchar_t* kIsolationFileNameW = L"isolation.json";
 
 /** @brief Wide spelling of kRegistryHiveFileName. */
 inline constexpr const wchar_t* kRegistryHiveFileNameW = L"user.hiv";
+
+/** @brief Wide spelling of kEnvironmentStateFileName. */
+inline constexpr const wchar_t* kEnvironmentStateFileNameW = L"state.json";
 
 /**
  * @brief Root of the read-only layers, relative to the archive root.
@@ -134,6 +157,11 @@ inline constexpr const char* kRegistryIsolationRelative = "app/registry/isolatio
 inline constexpr const char* kNetworkIsolationRelative = "app/network/isolation.json";
 
 /**
+ * @brief Environment variables of the workspace, relative to the archive root.
+ */
+inline constexpr const char* kEnvironmentIsolationRelative = "app/environment/isolation.json";
+
+/**
  * @brief Hive the sandbox mounts, relative to the directory of the loader.
  *
  * The file does not travel in the archive: the loader seeds it from
@@ -141,6 +169,17 @@ inline constexpr const char* kNetworkIsolationRelative = "app/network/isolation.
  * sandboxed process makes afterwards.
  */
 inline constexpr const char* kStateRegistryHiveRelative = "data/registry/user.hiv";
+
+/**
+ * @brief Environment variables the packaged application changed, relative to
+ *        the directory of the loader.
+ *
+ * The file does not travel in the archive: the sandbox creates it while the
+ * application changes its environment and reads it back on the next run, so a
+ * change survives the process which made it. Deleting the state directory
+ * resets the environment of the sandbox to the state of the archive.
+ */
+inline constexpr const char* kStateEnvironmentRelative = "data/environment/state.json";
 
 } // namespace layout
 

@@ -3,6 +3,7 @@ project(AppBoxLoader)
 
 add_executable(${PROJECT_NAME} WIN32
     "rpc/__init__.cpp"
+    "rpc/Environment.cpp"
     "rpc/Log.cpp"
     "registry/HiveReader.cpp"
     "utils/CommandLineOptions.cpp"

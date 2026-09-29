@@ -138,11 +138,13 @@ bool BuildSampleIsolation(appbox::FilesystemIsolationModel& isolation)
 }
 
 /**
- * @brief Build the document of a session with the network model left out.
+ * @brief Build the document of a session with the network and the environment
+ *        model left out.
  *
- * The DNS redirections of the network workspace have their own cases; the cases
- * of the other parts of the schema build their document through this helper, so
- * they do not have to carry a network model which they do not check.
+ * The DNS redirections of the network workspace and the variables of the
+ * environment workspace have their own cases; the cases of the other parts of
+ * the schema build their document through this helper, so they do not have to
+ * carry a model which they do not check.
  *
  * @param[in] model Configuration to store.
  * @param[in] registry Registry to store.
@@ -153,11 +155,13 @@ bool BuildSampleIsolation(appbox::FilesystemIsolationModel& isolation)
 appbox::ProjectDocument MakeDocument(const appbox::PackModel& model, const appbox::RegistryModel& registry,
                                      const appbox::FilesystemIsolationModel& isolation, const std::wstring& output_path)
 {
-    return appbox::MakeProjectDocument(model, registry, isolation, appbox::NetworkModel{}, output_path);
+    return appbox::MakeProjectDocument(model, registry, isolation, appbox::NetworkModel{}, appbox::EnvironmentModel{},
+                                       output_path);
 }
 
 /**
- * @brief Apply a document and drop the network model of the session.
+ * @brief Apply a document and drop the network and the environment model of the
+ *        session.
  *
  * @param[in] document Document to apply.
  * @param[out] model Model replaced with the configuration of the document.
@@ -170,8 +174,68 @@ appbox::ProjectDocument MakeDocument(const appbox::PackModel& model, const appbo
 bool ApplyDocument(const appbox::ProjectDocument& document, appbox::PackModel& model, appbox::RegistryModel& registry,
                    appbox::FilesystemIsolationModel& isolation, std::wstring& output_path, std::string& error)
 {
-    appbox::NetworkModel network;
-    return appbox::ApplyProjectDocument(document, model, registry, isolation, network, output_path, error);
+    appbox::NetworkModel     network;
+    appbox::EnvironmentModel environment;
+    return appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, output_path, error);
+}
+
+/**
+ * @brief Build the document of a session with every other model left out.
+ * @param[in] environment Variables to store.
+ * @param[in] output_path Output path to store.
+ * @return The document of the session.
+ */
+appbox::ProjectDocument MakeEnvironmentDocument(const appbox::EnvironmentModel& environment,
+                                                const std::wstring&             output_path)
+{
+    return appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
+                                       appbox::NetworkModel{}, environment, output_path);
+}
+
+/**
+ * @brief Apply a document and keep the environment model of the session.
+ *
+ * The other models of the session are left out, because the cases of the
+ * environment workspace check the variables only.
+ *
+ * @param[in] document Document to apply.
+ * @param[out] environment Environment model replaced with the variables of the document.
+ * @param[out] error Error description on failure.
+ * @return true on success.
+ */
+bool ApplyEnvironmentDocument(const appbox::ProjectDocument& document, appbox::EnvironmentModel& environment,
+                              std::string& error)
+{
+    appbox::PackModel                model;
+    appbox::RegistryModel            registry;
+    appbox::FilesystemIsolationModel isolation;
+    appbox::NetworkModel             network;
+    std::wstring                     output_path;
+    return appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, output_path, error);
+}
+
+/**
+ * @brief Build an environment model with the search path and a plain variable.
+ *
+ * The search path variable is filled in like the workspace fills it in, so the
+ * cases pin the mode and the string the packer stores for it.
+ *
+ * @param[out] environment Model to fill.
+ * @return true when every entry was accepted.
+ */
+bool BuildSampleEnvironment(appbox::EnvironmentModel& environment)
+{
+    appbox::EnvironmentEntry path;
+    path.name = L"PATH";
+    path.value = L"C:\\MyApp\\bin";
+    appbox::ApplyPathVariableDefaults(path);
+
+    appbox::EnvironmentEntry mode;
+    mode.name = L"APPBOX_MODE";
+    mode.value = L"sandbox";
+
+    std::string detail;
+    return environment.AddEntry(path, detail) && environment.AddEntry(mode, detail);
 }
 
 /**
@@ -957,7 +1021,7 @@ TEST(Unit_ProjectFile, NetworkRedirectionsTravelWithTheProjectFile)
 
     const auto document =
         appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
-                                    network, L"D:\\out\\MyApp.zip");
+                                    network, appbox::EnvironmentModel{}, L"D:\\out\\MyApp.zip");
 
     const auto path = temp.File(L"network.json");
     ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
@@ -969,9 +1033,10 @@ TEST(Unit_ProjectFile, NetworkRedirectionsTravelWithTheProjectFile)
     appbox::RegistryModel            loaded_registry;
     appbox::FilesystemIsolationModel loaded_isolation;
     appbox::NetworkModel             loaded_network;
+    appbox::EnvironmentModel         loaded_environment;
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
-                                             loaded_output, error))
+                                             loaded_environment, loaded_output, error))
         << error;
 
     ASSERT_EQ(loaded_network.DnsEntries().size(), 2u);
@@ -1005,6 +1070,7 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenNetworkMember)
     appbox::PackModel                model;
     appbox::RegistryModel            registry;
     appbox::FilesystemIsolationModel isolation;
+    appbox::EnvironmentModel         environment;
     std::wstring                     output;
     appbox::ProjectDocument          document;
 
@@ -1014,12 +1080,14 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenNetworkMember)
     /* The address and the uniqueness of a hostname are rules of the model, so
      * the failure is reported while the document is applied. */
     ASSERT_TRUE(appbox::LoadProject(bad_address.wstring(), document, error)) << error;
-    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, output, error));
+    EXPECT_FALSE(
+        appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, output, error));
     EXPECT_NE(error.find("network[0]"), std::string::npos);
     EXPECT_NE(error.find("is not an IPv4 or an IPv6 address"), std::string::npos);
 
     ASSERT_TRUE(appbox::LoadProject(duplicate.wstring(), document, error)) << error;
-    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, output, error));
+    EXPECT_FALSE(
+        appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, output, error));
     EXPECT_NE(error.find("network[1]"), std::string::npos);
     EXPECT_NE(error.find("listed twice"), std::string::npos);
 
@@ -1047,8 +1115,9 @@ TEST(Unit_ProjectFile, ProxyTravelsWithTheProjectFile)
     ASSERT_TRUE(network.SetProxy(proxy, error)) << error;
     ASSERT_TRUE(network.AddDnsEntry(L"update.example.com", L"127.0.0.1", error)) << error;
 
-    const auto document = appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{},
-                                                      appbox::FilesystemIsolationModel{}, network, L"");
+    const auto document =
+        appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
+                                    network, appbox::EnvironmentModel{}, L"");
 
     const auto path = temp.File(L"proxy.json");
     ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
@@ -1060,9 +1129,10 @@ TEST(Unit_ProjectFile, ProxyTravelsWithTheProjectFile)
     appbox::RegistryModel            loaded_registry;
     appbox::FilesystemIsolationModel loaded_isolation;
     appbox::NetworkModel             loaded_network;
+    appbox::EnvironmentModel         loaded_environment;
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
-                                             loaded_output, error))
+                                             loaded_environment, loaded_output, error))
         << error;
 
     ASSERT_TRUE(loaded_network.HasProxy());
@@ -1093,8 +1163,9 @@ TEST(Unit_ProjectFile, KeepsAProxyWhichIsTurnedOff)
     std::string          error;
     ASSERT_TRUE(network.SetProxy(proxy, error)) << error;
 
-    const auto document = appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{},
-                                                      appbox::FilesystemIsolationModel{}, network, L"");
+    const auto document =
+        appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
+                                    network, appbox::EnvironmentModel{}, L"");
 
     /*
      * A proxy which was typed and then disabled is part of the document, so
@@ -1124,8 +1195,10 @@ TEST(Unit_ProjectFile, ApplyOfADocumentWithoutAProxyClearsTheProxy)
     appbox::PackModel                model;
     appbox::RegistryModel            registry;
     appbox::FilesystemIsolationModel isolation;
+    appbox::EnvironmentModel         environment;
     std::wstring                     output;
-    ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, output, error)) << error;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, output, error))
+        << error;
 
     /* A session which imports a configuration without a proxy holds none. */
     EXPECT_FALSE(network.HasProxy());
@@ -1158,8 +1231,10 @@ TEST(Unit_ProjectFile, ApplyRejectsAProxyTheModelRefuses)
     appbox::PackModel                model;
     appbox::RegistryModel            registry;
     appbox::FilesystemIsolationModel isolation;
+    appbox::EnvironmentModel         environment;
     std::wstring                     output;
-    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, output, error));
+    EXPECT_FALSE(
+        appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, output, error));
     EXPECT_NE(error.find("proxy"), std::string::npos) << error;
     EXPECT_NE(error.find("must not be empty"), std::string::npos) << error;
 
@@ -1168,4 +1243,145 @@ TEST(Unit_ProjectFile, ApplyRejectsAProxyTheModelRefuses)
     EXPECT_EQ(network.Proxy().server, L"proxy.example.com");
     ASSERT_EQ(network.DnsEntries().size(), 1u);
     EXPECT_EQ(network.DnsEntries()[0].hostname, L"keep.example.com");
+}
+
+TEST(Unit_ProjectFile, EnvironmentVariablesTravelWithTheProjectFile)
+{
+    TempDir temp;
+
+    appbox::EnvironmentModel environment;
+    ASSERT_TRUE(BuildSampleEnvironment(environment));
+
+    const auto document = MakeEnvironmentDocument(environment, L"D:\\out\\MyApp.zip");
+
+    const auto  path = temp.File(L"environment.json");
+    std::string error;
+    ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
+
+    appbox::ProjectDocument loaded_document;
+    ASSERT_TRUE(appbox::LoadProject(path.wstring(), loaded_document, error)) << error;
+
+    appbox::EnvironmentModel loaded;
+    ASSERT_TRUE(ApplyEnvironmentDocument(loaded_document, loaded, error)) << error;
+
+    ASSERT_EQ(loaded.Entries().size(), 2u);
+
+    EXPECT_EQ(loaded.Entries()[0].name, L"PATH");
+    EXPECT_EQ(loaded.Entries()[0].value, L"C:\\MyApp\\bin");
+    EXPECT_EQ(loaded.Entries()[0].isolation, appbox::EnvironmentIsolation::WriteCopy);
+    EXPECT_EQ(loaded.Entries()[0].merge, appbox::EnvironmentMergeMode::Prepend);
+    EXPECT_EQ(loaded.Entries()[0].merge_string, L";");
+
+    EXPECT_EQ(loaded.Entries()[1].name, L"APPBOX_MODE");
+    EXPECT_EQ(loaded.Entries()[1].value, L"sandbox");
+    EXPECT_EQ(loaded.Entries()[1].isolation, appbox::EnvironmentIsolation::WriteCopy);
+    EXPECT_EQ(loaded.Entries()[1].merge, appbox::EnvironmentMergeMode::Replace);
+    EXPECT_TRUE(loaded.Entries()[1].merge_string.empty());
+}
+
+TEST(Unit_ProjectFile, KeepsTheModeTheUserPickedForTheSearchPath)
+{
+    TempDir temp;
+
+    /*
+     * The workspace fills the search path in while its name is entered, and the
+     * user may change the two values afterwards. An import must not rewrite
+     * them, so the file keeps the mode which was exported.
+     */
+    appbox::EnvironmentModel environment;
+    appbox::EnvironmentEntry path;
+    path.name = L"PATH";
+    path.value = L"C:\\MyApp\\bin";
+    path.merge = appbox::EnvironmentMergeMode::Append;
+    path.merge_string = L":";
+
+    std::string error;
+    ASSERT_TRUE(environment.AddEntry(path, error)) << error;
+
+    const auto document = MakeEnvironmentDocument(environment, L"");
+    ASSERT_EQ(document.environment.size(), 1u);
+    EXPECT_EQ(document.environment[0].merge, appbox::EnvironmentMergeMode::Append);
+    EXPECT_EQ(document.environment[0].merge_string, L":");
+
+    const auto path_file = temp.File(L"environment-path.json");
+    ASSERT_TRUE(appbox::SaveProject(document, path_file.wstring(), error)) << error;
+
+    appbox::ProjectDocument loaded_document;
+    ASSERT_TRUE(appbox::LoadProject(path_file.wstring(), loaded_document, error)) << error;
+
+    appbox::EnvironmentModel loaded;
+    ASSERT_TRUE(ApplyEnvironmentDocument(loaded_document, loaded, error)) << error;
+
+    ASSERT_EQ(loaded.Entries().size(), 1u);
+    EXPECT_EQ(loaded.Entries()[0].merge, appbox::EnvironmentMergeMode::Append);
+    EXPECT_EQ(loaded.Entries()[0].merge_string, L":");
+}
+
+TEST(Unit_ProjectFile, ApplyRejectsABrokenEnvironmentMember)
+{
+    TempDir temp;
+
+    const auto empty_name = temp.File(L"environment-empty.json");
+    WriteBytes(empty_name, "{ \"version\": 1, \"environment\": [ { \"name\": \"\", \"value\": \"x\", "
+                           "\"isolation\": \"write_copy\", \"merge\": \"replace\", \"merge_string\": \"\" } ] }");
+
+    const auto equals_sign = temp.File(L"environment-equals.json");
+    WriteBytes(equals_sign, "{ \"version\": 1, \"environment\": [ { \"name\": \"TEMP=X\", \"value\": \"x\", "
+                            "\"isolation\": \"write_copy\", \"merge\": \"replace\", \"merge_string\": \"\" } ] }");
+
+    const auto duplicate = temp.File(L"environment-duplicate.json");
+    WriteBytes(duplicate, "{ \"version\": 1, \"environment\": [ "
+                          "{ \"name\": \"TEMP\", \"value\": \"1\", \"isolation\": \"write_copy\", "
+                          "\"merge\": \"replace\", \"merge_string\": \"\" }, "
+                          "{ \"name\": \"temp\", \"value\": \"2\", \"isolation\": \"write_copy\", "
+                          "\"merge\": \"replace\", \"merge_string\": \"\" } ] }");
+
+    appbox::EnvironmentModel environment;
+    appbox::EnvironmentEntry keep;
+    keep.name = L"KEEP";
+    keep.value = L"1";
+
+    std::string error;
+    ASSERT_TRUE(environment.AddEntry(keep, error)) << error;
+
+    appbox::ProjectDocument document;
+
+    ASSERT_TRUE(appbox::LoadProject(empty_name.wstring(), document, error)) << error;
+    EXPECT_FALSE(ApplyEnvironmentDocument(document, environment, error));
+    EXPECT_NE(error.find("environment[0]"), std::string::npos) << error;
+    EXPECT_NE(error.find("must not be empty"), std::string::npos) << error;
+
+    ASSERT_TRUE(appbox::LoadProject(equals_sign.wstring(), document, error)) << error;
+    EXPECT_FALSE(ApplyEnvironmentDocument(document, environment, error));
+    EXPECT_NE(error.find("environment[0]"), std::string::npos) << error;
+    EXPECT_NE(error.find("equals sign"), std::string::npos) << error;
+
+    ASSERT_TRUE(appbox::LoadProject(duplicate.wstring(), document, error)) << error;
+    EXPECT_FALSE(ApplyEnvironmentDocument(document, environment, error));
+    EXPECT_NE(error.find("environment[1]"), std::string::npos) << error;
+    EXPECT_NE(error.find("listed twice"), std::string::npos) << error;
+
+    /* A rejected document leaves the variables of the session untouched. */
+    ASSERT_EQ(environment.Entries().size(), 1u);
+    EXPECT_EQ(environment.Entries()[0].name, L"KEEP");
+    EXPECT_EQ(environment.Entries()[0].value, L"1");
+}
+
+TEST(Unit_ProjectFile, ApplyOfADocumentWithoutEnvironmentClearsTheVariables)
+{
+    appbox::EnvironmentModel environment;
+    appbox::EnvironmentEntry entry;
+    entry.name = L"TEMP";
+    entry.value = L"C:\\temp";
+
+    std::string error;
+    ASSERT_TRUE(environment.AddEntry(entry, error)) << error;
+
+    appbox::ProjectDocument document;
+    document.output_path = L"D:\\out\\MyApp.zip";
+
+    ASSERT_TRUE(ApplyEnvironmentDocument(document, environment, error)) << error;
+
+    /* The variables of a session are replaced as a whole by an import. */
+    EXPECT_TRUE(environment.IsEmpty());
 }
