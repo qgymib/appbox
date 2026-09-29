@@ -28,7 +28,7 @@ TEST_F(E2E_Fs, ListDir_LowerLayer)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
         FsDir(L"app", {
-            FsDir(L"filesystem\\#APPDATA#", {
+            FsDir(L"filesystem\\#USERPROFILE#", {
                 FsFile(wName, "hello1")
             })
         })
@@ -42,7 +42,7 @@ TEST_F(E2E_Fs, ListDir_LowerLayer)
     {
         /* List directory entries. */
         ProtocolListDir::Req req;
-        req.path = CLI::narrow(GetKnownFolderPath(L"#APPDATA#", false));
+        req.path = CLI::narrow(GetKnownFolderPath(L"#USERPROFILE#", false));
         req.method = ProtocolListDir::Req::Method::Std;
         ProbeListDir.Call(req, GetCWD(), config).get_to(rsp);
 
@@ -52,7 +52,7 @@ TEST_F(E2E_Fs, ListDir_LowerLayer)
         ASSERT_NE(it, rsp.entries.end());
     }
 
-    /* Entry count should larger than 1, because nativate filesystem should have files in #APPDATA# */
+    /* Entry count should larger than 1, because nativate filesystem should have files in #USERPROFILE# */
     ASSERT_GT(rsp.entries.size(), 1);
 
     /* Verify file number */

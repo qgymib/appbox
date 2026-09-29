@@ -13,7 +13,7 @@ namespace appbox::test
  * The folder is created by the test process outside the sandbox and removed
  * again when the helper goes out of scope, so a test which needs an entry of
  * the host filesystem does not leave anything behind. The known folder token
- * is the one the filesystem tree of the cases uses, for example `#APPDATA#`.
+ * is the one the filesystem tree of the cases uses, for example `#USERPROFILE#`.
  */
 class RealFsFolder
 {
@@ -21,7 +21,7 @@ public:
     /**
      * @brief Create a folder below a known folder.
      * @param[in] known_folder Token of the known folder, for example
-     *                         `L"#APPDATA#"`.
+     *                         `L"#USERPROFILE#"`.
      * @param[in] name Name of the folder below the known folder.
      */
     RealFsFolder(const std::wstring& known_folder, const std::wstring& name);

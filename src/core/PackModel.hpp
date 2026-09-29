@@ -397,6 +397,31 @@ public:
      */
     bool StartupFilePath(const StartupFile& file, std::wstring& path) const;
 
+    /**
+     * @brief Get the host folder behind a folder of the sandbox view.
+     *
+     * The container of the filesystem view is not a folder of the model and
+     * has no host counterpart, a preset directory maps to its resolved host
+     * directory, an imported folder maps to the host folder it was imported
+     * from, and a folder below an import maps to that host folder extended by
+     * the relative path of the folder.
+     *
+     * The lookup reads the model only, so the host filesystem is never
+     * touched: a folder which was imported on a machine where it does not
+     * exist still maps to its path.
+     *
+     * @param[in] preset_id Identifier of the preset directory, empty for the
+     *            container.
+     * @param[in] import_name Name of the imported folder, empty for a preset
+     *            directory.
+     * @param[in] relative_dir Folder path relative to the import root, empty
+     *            for import roots.
+     * @param[out] path The host folder when it is known, untouched otherwise.
+     * @return true when the folder maps to a host folder.
+     */
+    bool HostFolderPath(const std::string& preset_id, const std::wstring& import_name, const std::wstring& relative_dir,
+                        std::wstring& path) const;
+
 private:
     /**
      * @brief Resolve and validate one startup file reference.

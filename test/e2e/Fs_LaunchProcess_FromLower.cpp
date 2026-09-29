@@ -29,7 +29,7 @@ TEST_F(E2E_Fs, LaunchProcess_FromLower)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
         FsDir(L"app", {
-            FsDir(L"filesystem\\#APPDATA#", {
+            FsDir(L"filesystem\\#USERPROFILE#", {
                 FsNode(L"cmd.exe", cmd_bytes)
             })
         })
@@ -42,7 +42,7 @@ TEST_F(E2E_Fs, LaunchProcess_FromLower)
     /* Launch the executable from the sandbox view. */
     {
         ProtocolLaunchProcess::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#APPDATA#", false) + L"\\cmd.exe");
+        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\cmd.exe");
         req.Arguments = { "/c", "exit 42" };
 
         auto rsp = ProbeLaunchProcess.Call(req, GetCWD(), config).get<ProtocolLaunchProcess::Rsp>();

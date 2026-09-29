@@ -76,11 +76,24 @@ vertical icon navigation on the left and the workspace on the right.
 
 The navigation offers the Filesystem, Registry and Network workspaces, which
 edit the isolation the packaged application runs with, and the Settings page,
-which is an empty state. The Home page of the ribbon builds the archive to the
-path of the `Output File` box; the configuration of a session — imported
-folders, startup files and the three workspaces — travels with the JSON
-project file of `File -> Export Configuration...` and is restored by
-`File -> Import Configuration...`, which replaces the whole configuration
+which is an empty state. The directory tree of the Filesystem workspace starts
+at the `Sandbox Filesystem` container and holds the preset directories below
+it: `Program Files` and `Current User Directory` at the top level, with
+`Documents` and `Desktop` below the profile of the user. Every preset directory
+owns a layer of the archive and accepts imported folders and files, so
+`Documents` and `Desktop` are packed into `app/filesystem/#Documents#` and
+`app/filesystem/#Desktop#` and are mapped back to the real folders of the user
+when the sandbox runs; both are resolved from their own known folder id, which
+keeps them correct when the shell redirects them.
+
+The tree names the host folder behind a node while the mouse rests on it: a
+preset directory shows its real host directory, an imported folder shows the
+folder it was imported from, and a folder below an import shows that folder
+extended by the relative path of the folder. The Home page of the ribbon builds
+the archive to the path of the `Output File` box; the configuration of a
+session — imported folders, startup files and the three workspaces — travels
+with the JSON project file of `File -> Export Configuration...` and is restored
+by `File -> Import Configuration...`, which replaces the whole configuration
 after a confirmation. Imported folders and files do not have to exist on the
 machine which imports the project, so a project can be exchanged before the
 packaged application is installed.

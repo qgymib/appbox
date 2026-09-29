@@ -91,16 +91,72 @@ std::filesystem::path MakeFile(const std::filesystem::path& parent, const std::w
 TEST(Unit_PresetDirectory, ProvidesExpectedPresets)
 {
     const auto& presets = appbox::PresetDirectories();
-    ASSERT_EQ(presets.size(), static_cast<std::size_t>(2));
+    ASSERT_EQ(presets.size(), static_cast<std::size_t>(4));
 
     EXPECT_EQ(presets[0].id, "program_files");
+    EXPECT_EQ(presets[0].parent_id, "");
     EXPECT_EQ(presets[0].layer_key, L"#ProgramFiles#");
     EXPECT_FALSE(presets[0].display_name.empty());
     EXPECT_TRUE(std::filesystem::path(presets[0].real_path).is_absolute());
 
     EXPECT_EQ(presets[1].id, "user_profile");
+    EXPECT_EQ(presets[1].parent_id, "");
     EXPECT_EQ(presets[1].layer_key, L"#USERPROFILE#");
     EXPECT_TRUE(std::filesystem::path(presets[1].real_path).is_absolute());
+
+    /* The folders of the user profile hang below the profile itself. */
+    EXPECT_EQ(presets[2].id, "documents");
+    EXPECT_EQ(presets[2].parent_id, "user_profile");
+    EXPECT_EQ(presets[2].display_name, L"Documents");
+    EXPECT_EQ(presets[2].layer_key, L"#Documents#");
+    EXPECT_TRUE(std::filesystem::path(presets[2].real_path).is_absolute());
+
+    EXPECT_EQ(presets[3].id, "desktop");
+    EXPECT_EQ(presets[3].parent_id, "user_profile");
+    EXPECT_EQ(presets[3].display_name, L"Desktop");
+    EXPECT_EQ(presets[3].layer_key, L"#Desktop#");
+    EXPECT_TRUE(std::filesystem::path(presets[3].real_path).is_absolute());
+
+    /* Every preset owns a layer of its own, so the keys are unique. */
+    for (std::size_t i = 0; i < presets.size(); ++i)
+    {
+        for (std::size_t j = i + 1; j < presets.size(); ++j)
+        {
+            EXPECT_NE(presets[i].layer_key, presets[j].layer_key);
+            EXPECT_NE(presets[i].id, presets[j].id);
+        }
+    }
+}
+
+TEST(Unit_PresetDirectory, ChildPresetsNestTheUserFolders)
+{
+    const auto top = appbox::ChildPresets("");
+    ASSERT_EQ(top.size(), static_cast<std::size_t>(2));
+    EXPECT_EQ(top[0].id, "program_files");
+    EXPECT_EQ(top[1].id, "user_profile");
+
+    const auto nested = appbox::ChildPresets("user_profile");
+    ASSERT_EQ(nested.size(), static_cast<std::size_t>(2));
+    EXPECT_EQ(nested[0].id, "documents");
+    EXPECT_EQ(nested[0].layer_key, L"#Documents#");
+    EXPECT_EQ(nested[1].id, "desktop");
+    EXPECT_EQ(nested[1].layer_key, L"#Desktop#");
+
+    /* A preset without nested presets and an unknown preset hold nothing. */
+    EXPECT_TRUE(appbox::ChildPresets("program_files").empty());
+    EXPECT_TRUE(appbox::ChildPresets("documents").empty());
+    EXPECT_TRUE(appbox::ChildPresets("does_not_exist").empty());
+
+    /*
+     * The tree of the presets holds every preset exactly once, which is what
+     * the filesystem workspace walks to build its items.
+     */
+    std::size_t reachable = top.size();
+    for (const auto& preset : top)
+    {
+        reachable += appbox::ChildPresets(preset.id).size();
+    }
+    EXPECT_EQ(reachable, appbox::PresetDirectories().size());
 }
 
 TEST(Unit_PresetDirectory, FindsKnownAndRejectsUnknownIds)
@@ -110,6 +166,10 @@ TEST(Unit_PresetDirectory, FindsKnownAndRejectsUnknownIds)
     EXPECT_EQ(preset.id, "program_files");
     EXPECT_TRUE(appbox::FindPresetDirectory("user_profile", preset));
     EXPECT_EQ(preset.id, "user_profile");
+    EXPECT_TRUE(appbox::FindPresetDirectory("documents", preset));
+    EXPECT_EQ(preset.layer_key, L"#Documents#");
+    EXPECT_TRUE(appbox::FindPresetDirectory("desktop", preset));
+    EXPECT_EQ(preset.layer_key, L"#Desktop#");
     EXPECT_FALSE(appbox::FindPresetDirectory("does_not_exist", preset));
 }
 
@@ -849,4 +909,98 @@ TEST(Unit_PackModel, RestoreStartupFileRejectsDuplicateTrigger)
     EXPECT_FALSE(model.RestoreStartupFile("program_files", L"MyApp", L"two.exe", L"APP", true, error));
     EXPECT_NE(error.find("used twice"), std::string::npos);
     EXPECT_EQ(model.StartupFiles().size(), static_cast<std::size_t>(1));
+}
+
+TEST(Unit_PackModel, HostFolderPathResolvesThePresetDirectory)
+{
+    appbox::PresetDirectory preset;
+    ASSERT_TRUE(appbox::FindPresetDirectory("program_files", preset));
+
+    /* A preset node carries no import name, so it maps to the layer root. */
+    appbox::PackModel model;
+    std::wstring      path;
+    EXPECT_TRUE(model.HostFolderPath("program_files", std::wstring(), std::wstring(), path));
+    EXPECT_EQ(path, preset.real_path);
+}
+
+TEST(Unit_PackModel, HostFolderPathResolvesTheImportRoot)
+{
+    TempDir temp;
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("user_profile", temp.Get().wstring(), error)) << error;
+
+    /* An import root maps to the host folder it was imported from. */
+    std::wstring path;
+    EXPECT_TRUE(model.HostFolderPath("user_profile", temp.Get().filename().wstring(), std::wstring(), path));
+    EXPECT_EQ(std::filesystem::path(path).lexically_normal(), temp.Get().lexically_normal());
+}
+
+TEST(Unit_PackModel, HostFolderPathAppendsTheRelativeDirectory)
+{
+    TempDir    temp;
+    const auto sub = MakeFolder(temp.Get(), L"bin");
+    MakeFolder(sub, L"x64");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
+
+    const auto import_name = temp.Get().filename().wstring();
+
+    std::wstring path;
+    EXPECT_TRUE(model.HostFolderPath("program_files", import_name, L"bin", path));
+    EXPECT_EQ(std::filesystem::path(path).lexically_normal(), sub.lexically_normal());
+
+    EXPECT_TRUE(model.HostFolderPath("program_files", import_name, L"bin\\x64", path));
+    EXPECT_EQ(std::filesystem::path(path).lexically_normal(), (sub / L"x64").lexically_normal());
+}
+
+TEST(Unit_PackModel, HostFolderPathDoesNotTouchTheHostFilesystem)
+{
+    /*
+     * A project file can be imported on a machine where the packaged
+     * application is not installed, so the mapping answers the path of a
+     * folder which does not exist as well. The import name is matched ignoring
+     * the case, like every other lookup of the model.
+     */
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:/Host/MyApp", error)) << error;
+
+    std::wstring path;
+    EXPECT_TRUE(model.HostFolderPath("program_files", L"MyApp", std::wstring(), path));
+    EXPECT_EQ(path, L"C:/Host/MyApp");
+
+    EXPECT_TRUE(model.HostFolderPath("program_files", L"myapp", L"bin", path));
+    EXPECT_EQ(path, (std::filesystem::path(L"C:/Host/MyApp") / L"bin").wstring());
+}
+
+TEST(Unit_PackModel, HostFolderPathRejectsTheContainer)
+{
+    /*
+     * The container of the filesystem view holds the preset directories and is
+     * not a folder of the model, so it must not answer a path.
+     */
+    appbox::PackModel model;
+
+    std::wstring path = L"untouched";
+    EXPECT_FALSE(model.HostFolderPath(std::string(), std::wstring(), std::wstring(), path));
+    EXPECT_EQ(path, L"untouched");
+}
+
+TEST(Unit_PackModel, HostFolderPathRejectsUnknownPresetAndImport)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:/Host/MyApp", error)) << error;
+
+    std::wstring path = L"untouched";
+    EXPECT_FALSE(model.HostFolderPath("does_not_exist", std::wstring(), std::wstring(), path));
+    EXPECT_EQ(path, L"untouched");
+
+    /* The preset exists, but the folder below it is not imported. */
+    EXPECT_FALSE(model.HostFolderPath("program_files", L"Missing", L"bin", path));
+    EXPECT_EQ(path, L"untouched");
 }

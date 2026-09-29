@@ -192,6 +192,8 @@ FilesystemPanel::FilesystemPanel(wxWindow* parent, appbox::PackModel& model,
 
     tree_->Bind(wxEVT_TREE_SEL_CHANGED, &FilesystemPanel::OnTreeSelectionChanged, this);
     tree_->Bind(wxEVT_TREE_ITEM_EXPANDING, &FilesystemPanel::OnTreeItemExpanding, this);
+    tree_->Bind(wxEVT_TREE_ITEM_GETTOOLTIP, &FilesystemPanel::OnTreeItemToolTip, this);
+    tree_->Bind(wxEVT_MOTION, &FilesystemPanel::OnTreeMouseMove, this);
     tree_->Bind(wxEVT_TREE_ITEM_RIGHT_CLICK, &FilesystemPanel::OnTreeItemContextMenu, this);
     Bind(wxEVT_MENU, &FilesystemPanel::OnAddFolder, this, kMenuImportFolder);
     Bind(wxEVT_MENU, &FilesystemPanel::OnRemoveImportFromTree, this, kMenuRemoveImport);
@@ -322,28 +324,43 @@ void FilesystemPanel::BuildTree()
     /* The container carries no preset, which marks it as the top item. */
     const auto root = tree_->AddRoot(wxString(appbox::kFilesystemContainerLabel), 0, 1, new TreeNode());
 
-    for (const auto& preset : appbox::PresetDirectories())
+    /* The container holds the top level presets, a preset holds its nested ones. */
+    for (const auto& preset : appbox::ChildPresets(""))
     {
-        auto* data = new TreeNode();
-        data->preset_id = preset.id;
-
-        const auto item = tree_->AppendItem(root, preset.display_name, 0, -1, data);
-        for (const auto& imported : model_.ImportsOf(preset.id))
-        {
-            auto* import_data = new TreeNode();
-            import_data->preset_id = preset.id;
-            import_data->import_name = imported.import_name;
-
-            const auto import_item = tree_->AppendItem(item, imported.import_name, 1, -1, import_data);
-            tree_->SetItemHasChildren(import_item);
-        }
-        tree_->Expand(item);
+        AppendPreset(root, preset);
     }
 
     tree_->Expand(root);
 
     /* The workspace starts on the container, which lists the preset directories. */
     tree_->SelectItem(root);
+}
+
+wxTreeItemId FilesystemPanel::AppendPreset(const wxTreeItemId& parent, const appbox::PresetDirectory& preset)
+{
+    auto* data = new TreeNode();
+    data->preset_id = preset.id;
+
+    const auto item = tree_->AppendItem(parent, preset.display_name, 0, -1, data);
+
+    /* The nested presets are fixed entries, so they come before the imports. */
+    for (const auto& nested : appbox::ChildPresets(preset.id))
+    {
+        AppendPreset(item, nested);
+    }
+
+    for (const auto& imported : model_.ImportsOf(preset.id))
+    {
+        auto* import_data = new TreeNode();
+        import_data->preset_id = preset.id;
+        import_data->import_name = imported.import_name;
+
+        const auto import_item = tree_->AppendItem(item, imported.import_name, 1, -1, import_data);
+        tree_->SetItemHasChildren(import_item);
+    }
+
+    tree_->Expand(item);
+    return item;
 }
 
 void FilesystemPanel::PopulateNode(const wxTreeItemId& item)
@@ -355,14 +372,18 @@ void FilesystemPanel::PopulateNode(const wxTreeItemId& item)
     }
     node->populated = true;
 
-    appbox::ImportedFolder imported;
-    if (!model_.GetImport(node->preset_id, node->import_name, imported))
+    /*
+     * The host folder of the node is the one the tooltip of the tree shows as
+     * well, so the mapping of the model is used instead of composing the path
+     * here.
+     */
+    std::wstring host_path;
+    if (!model_.HostFolderPath(node->preset_id, node->import_name, node->relative_dir, host_path))
     {
         return;
     }
 
-    const auto folder = node->relative_dir.empty() ? std::filesystem::path(imported.source_path)
-                                                   : std::filesystem::path(imported.source_path) / node->relative_dir;
+    const auto folder = std::filesystem::path(host_path);
 
     std::vector<std::wstring> subfolders;
     std::error_code           ec;
@@ -421,11 +442,13 @@ void FilesystemPanel::RefreshList()
 void FilesystemPanel::ListPresets()
 {
     /*
-     * The container holds the preset directories, so it lists them the way the
-     * registry container lists the root keys. A preset directory is a fixed
-     * entry: it owns neither a size nor an isolation mode of its own.
+     * The container holds the top level preset directories, so it lists them
+     * the way the registry container lists the root keys. A preset directory
+     * is a fixed entry: it owns neither a size nor an isolation mode of its
+     * own. A nested preset directory is reached by entering the preset which
+     * holds it, which is the very shape of the tree.
      */
-    for (const auto& preset : appbox::PresetDirectories())
+    for (const auto& preset : appbox::ChildPresets(""))
     {
         RowInfo row;
         row.kind = RowInfo::Kind::Preset;
@@ -438,6 +461,17 @@ void FilesystemPanel::ListPresets()
 
 void FilesystemPanel::ListPresetImports(const TreeNode& node)
 {
+    /* The nested preset directories come first, see BuildTree(). */
+    for (const auto& nested : appbox::ChildPresets(node.preset_id))
+    {
+        RowInfo row;
+        row.kind = RowInfo::Kind::Preset;
+        row.preset_id = nested.id;
+        row.file_name = nested.display_name;
+        row.is_directory = true;
+        rows_.push_back(std::move(row));
+    }
+
     for (const auto& imported : model_.ImportsOf(node.preset_id))
     {
         RowInfo row;
@@ -459,19 +493,19 @@ void FilesystemPanel::ListFolderContent(const TreeNode& node)
         return;
     }
 
-    appbox::ImportedFolder imported;
-    if (!model_.GetImport(node.preset_id, node.import_name, imported))
+    std::wstring host_path;
+    if (!model_.HostFolderPath(node.preset_id, node.import_name, node.relative_dir, host_path))
     {
         return;
     }
 
     std::wstring target_dir = node.import_name;
-    auto         folder = std::filesystem::path(imported.source_path);
     if (!node.relative_dir.empty())
     {
         target_dir += L"\\" + node.relative_dir;
-        folder /= node.relative_dir;
     }
+
+    const auto folder = std::filesystem::path(host_path);
 
     /* Folders first, then files, both ordered by name. */
     std::vector<std::pair<std::wstring, bool>> entries;
@@ -628,6 +662,33 @@ bool FilesystemPanel::SelectedTreePath(TreePath& path) const
     return true;
 }
 
+wxTreeItemId FilesystemPanel::FindPresetItem(const wxTreeItemId& parent, const std::string& preset_id) const
+{
+    wxTreeItemIdValue cookie = nullptr;
+    for (auto item = tree_->GetFirstChild(parent, cookie); item.IsOk(); item = tree_->GetNextChild(parent, cookie))
+    {
+        auto* node = static_cast<TreeNode*>(tree_->GetItemData(item));
+        if (node == nullptr || node->preset_id.empty() || !node->import_name.empty())
+        {
+            continue;
+        }
+
+        if (node->preset_id == preset_id)
+        {
+            return item;
+        }
+
+        /* A preset directory can hold nested preset directories. */
+        const auto nested = FindPresetItem(item, preset_id);
+        if (nested.IsOk())
+        {
+            return nested;
+        }
+    }
+
+    return wxTreeItemId();
+}
+
 void FilesystemPanel::SelectTreePath(const TreePath& path)
 {
     const auto root = tree_->GetRootItem();
@@ -642,15 +703,12 @@ void FilesystemPanel::SelectTreePath(const TreePath& path)
      */
     auto selected = root;
 
-    wxTreeItemIdValue preset_cookie = nullptr;
-    for (auto item = tree_->GetFirstChild(root, preset_cookie); item.IsOk();
-         item = tree_->GetNextChild(root, preset_cookie))
+    if (!path.preset_id.empty())
     {
-        auto* node = static_cast<TreeNode*>(tree_->GetItemData(item));
-        if (node != nullptr && node->preset_id == path.preset_id)
+        const auto preset_item = FindPresetItem(root, path.preset_id);
+        if (preset_item.IsOk())
         {
-            selected = item;
-            break;
+            selected = preset_item;
         }
     }
 
@@ -1014,6 +1072,44 @@ void FilesystemPanel::OnTreeSelectionChanged(wxTreeEvent& event)
     if (!updating_)
     {
         RefreshList();
+    }
+    event.Skip();
+}
+
+void FilesystemPanel::OnTreeItemToolTip(wxTreeEvent& event)
+{
+    const auto item = event.GetItem();
+    auto*      node = item.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(item)) : nullptr;
+    if (node == nullptr)
+    {
+        return;
+    }
+
+    /*
+     * The text is the host folder of the item, which the model resolves without
+     * touching the host filesystem.
+     */
+    std::wstring host_path;
+    if (model_.HostFolderPath(node->preset_id, node->import_name, node->relative_dir, host_path) && !host_path.empty())
+    {
+        event.SetToolTip(wxString(host_path));
+        item_tooltip_shown_ = true;
+        return;
+    }
+
+    /*
+     * An item without a host folder keeps the empty text of the event, which
+     * drops the text of the item the mouse came from.
+     */
+    item_tooltip_shown_ = false;
+}
+
+void FilesystemPanel::OnTreeMouseMove(wxMouseEvent& event)
+{
+    if (item_tooltip_shown_ && tree_ != nullptr && !tree_->HitTest(event.GetPosition()).IsOk())
+    {
+        tree_->UnsetToolTip();
+        item_tooltip_shown_ = false;
     }
     event.Skip();
 }

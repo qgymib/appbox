@@ -24,12 +24,12 @@ TEST_F(E2E_Fs, NewFile_WhiteoutInUpper)
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {
-            FsDir(L"filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true), {
+            FsDir(L"filesystem\\" + GetKnownFolderPath(L"#USERPROFILE#", true), {
                 FsFile(L"data.txt.$APPBOX_DELETE$", "")
             })
         }),
         FsDir(L"app", {
-            FsDir(L"filesystem\\#APPDATA#", {
+            FsDir(L"filesystem\\#USERPROFILE#", {
                 FsFile(L"data.txt", "hello1")
             })
         })
@@ -42,7 +42,7 @@ TEST_F(E2E_Fs, NewFile_WhiteoutInUpper)
     /* Create file in the state of the sandbox. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#APPDATA#", false) + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt");
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
         auto rsp = ProbeCreateFileW.Call(req, GetCWD(), config).get<ProtocolCreateFileW::Rsp>();
@@ -51,13 +51,14 @@ TEST_F(E2E_Fs, NewFile_WhiteoutInUpper)
 
     /* Target file should be created. */
     {
-        auto fPath = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\data.txt";
+        auto fPath =
+            GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#USERPROFILE#", true) + L"\\data.txt";
         ASSERT_TRUE(std::filesystem::exists(fPath));
     }
 
     /* Whiteout file should be deleted. */
     {
-        auto fPath = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) +
+        auto fPath = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#USERPROFILE#", true) +
                      L"\\data.txt.$APPBOX_DELETE$";
         ASSERT_FALSE(std::filesystem::exists(fPath));
     }

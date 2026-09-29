@@ -233,6 +233,12 @@ The unit tests of the packer:
 * `test/unit/PackService.cpp` — the archive carries the hive, the isolation
   file of the registry, the isolation file of the filesystem workspace and the
   isolation file of the network workspace.
+* `test/unit/PackModel.cpp` — the editable model of a packer session: the
+  import of a host folder and of individual files, the rules of the import
+  names and of the executables, the startup file list with its triggers, the
+  restoration of a project file without touching the host filesystem, and the
+  host folder a folder of the filesystem view maps to (the text the tooltip of
+  the tree shows).
 * `test/unit/RegistryModel.cpp` — the model of the packer, including the
   mode of a single row and the explicit recursion of the isolation dialog.
 * `test/unit/RegistryHive.cpp` — the hive writer (all seven value types,
@@ -264,8 +270,10 @@ executable carries itself:
   formatting of the loader registry browser, including the root of the hive
   which hides the whiteout store of the sandbox.
 * `test/unit/ExpandKnownFolder.cpp` — the expansion of a `#Name#` layer
-  key of a path, including a path which carries no key and the rejection of the
-  historical `%Name%` delimiter.
+  key of a path, including a path which carries no key, the rejection of the
+  historical `%Name%` delimiter and the set of known layer keys: only the keys
+  the packer produces are known, a mapping which no preset directory uses is
+  removed from the table.
 * `test/unit/GetExecutableDir.cpp`, `test/unit/MiniLauncher.cpp`,
   `test/unit/ProcessJob.cpp` — the loader helpers which locate the
   executable, start it and own the job of a started process.
@@ -328,21 +336,24 @@ comment.
 | `DeleteFile_UpperOnly` | `data.txt` | – | delete `data.txt` | success, no whiteout (nothing to hide) |
 | `DeleteFile_NonExists` | – | `data1.txt` | delete `data.txt` | failure, no whiteout |
 | `DeleteFile_WhiteoutInLower_ExistsInUpper` | `data.txt` | `data.txt.$APPBOX_DELETE$` | delete `data.txt` | success, file of the state deleted, no whiteout in the state |
-| `ListDir_LowerLayer` | – | `F.txt` | list `#APPDATA#` | `F.txt` appears exactly once, host entries also listed |
-| `ListDir_WhiteoutInUpper` | `F.txt.$APPBOX_DELETE$` | `F.txt`, `F2.txt` | list `#APPDATA#` | `F.txt` hidden, `F2.txt` listed once |
+| `ListDir_LowerLayer` | – | `F.txt` | list `#USERPROFILE#` | `F.txt` appears exactly once, host entries also listed |
+| `ListDir_WhiteoutInUpper` | `F.txt.$APPBOX_DELETE$` | `F.txt`, `F2.txt` | list `#USERPROFILE#` | `F.txt` hidden, `F2.txt` listed once |
 | `NewFile_WhiteoutInLower` | – | `data.txt.$APPBOX_DELETE$` | create `data.txt` (`CREATE_NEW`) | success, file created in the state |
 | `NewFile_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | create `data.txt` (`CREATE_NEW`) | success, whiteout removed, file created in the state |
 | `ReadFile_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | read `data.txt` | failure |
 | `QueryAttributes_LowerLayer` | – | `data.txt` | query the attributes of `data.txt` | success, a regular file is reported |
 | `QueryAttributes_NonExists` | – | `other.txt` | query the attributes of `data.txt` | failure with `File Not Found` |
 
-`test/e2e/Fs_LaunchProcess_FromLower.cpp` is the remaining filesystem case; it
-is not part of the matrix above.
+Two cases are not part of the matrices above:
+`test/e2e/Fs_LaunchProcess_FromLower.cpp` starts an executable which only a
+lower layer holds, and `test/e2e/Fs_ListDir_UserPresetLayers.cpp` mounts one
+layer per folder of the user (`#Documents#`, `#Desktop#`) and checks that each
+of them is mapped to the real folder its layer key names.
 
 The cases which exercise the isolation modes of the workspace write the
 isolation file of the case into the filesystem domain of the resources
 (`test/utils/FsIsolationBuilder.*`, `app/filesystem/isolation.json`) and use a
-folder below `#APPDATA#` of the host as the entry of the host layer
+folder below `#USERPROFILE#` of the host as the entry of the host layer
 (`test/utils/RealFsFolder.*`, which removes it again when the case ends):
 
 | Case | Isolation | Operation | Expected |
@@ -557,7 +568,7 @@ hive the sandbox mounted.
   which carries no path: the loader resolves the state directory `data` and the resource
   directory `app` against the directory of its configuration file, which is the working
   directory of the case. The resource directories are named after the known folder token
-  (`app\filesystem\#APPDATA#`) so that `MapBaseFS` resolves them. `Verify()` re-reads
+  (`app\filesystem\#USERPROFILE#`) so that `MapBaseFS` resolves them. `Verify()` re-reads
   everything a case declared and fails if the content changed; the isolation files which
   the helpers of the suite write are not part of the declared content.
 * `test/utils/CommonFixture.*` — gives every case a private working directory.

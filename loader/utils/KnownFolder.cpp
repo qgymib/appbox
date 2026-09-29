@@ -14,29 +14,21 @@ struct FolderMapping
  * syntax of the shell (`%Name%`, where `%%` is an escape sequence) when the
  * path is handed to a command line or to an expanding API.
  */
+/*
+ * Only the layer keys the packer produces are mapped: every layer directory
+ * below `app\filesystem` is named after the layer key of a preset directory of
+ * the packer, so a key which no preset uses has no layer to describe. A layer
+ * key which is not listed here is rejected by MapBaseFS with `Unknown folder`.
+ *
+ * The keys share no prefix with each other, which keeps the prefix match of
+ * ExpandKnownFolder unambiguous.
+ */
 static const FolderMapping s_known_folders[] = {
     /* Known FolderID */
-    { L"#Fonts#",                  FOLDERID_Fonts                  }, /* %windir%\Fonts */
-    { L"#LocalAppData#",           FOLDERID_LocalAppData           }, /* %LOCALAPPDATA% (%USERPROFILE%\AppData\Local) */
-    { L"#LocalAppDataLow#",        FOLDERID_LocalAppDataLow        }, /* %USERPROFILE%\AppData\LocalLow */
-    { L"#Profile#",                FOLDERID_Profile                }, /* %USERPROFILE% (%SystemDrive%\Users\%USERNAME%) */
-    { L"#ProgramData#",            FOLDERID_ProgramData            }, /* %ALLUSERSPROFILE% (%ProgramData%, %SystemDrive%\ProgramData) */
-    { L"#ProgramFiles#",           FOLDERID_ProgramFiles           }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
-    { L"#ProgramFilesX64#",        FOLDERID_ProgramFilesX64        }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
-    { L"#ProgramFilesX86#",        FOLDERID_ProgramFilesX86        }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
-    { L"#ProgramFilesCommon#",     FOLDERID_ProgramFilesCommon     }, /* %ProgramFiles%\Common Files */
-    { L"#ProgramFilesCommonX64#",  FOLDERID_ProgramFilesCommonX64  }, /* %ProgramFiles%\Common Files */
-    { L"#ProgramFilesCommonX86#",  FOLDERID_ProgramFilesCommonX86  }, /* %ProgramFiles%\Common Files */
-    { L"#RoamingAppData#",         FOLDERID_RoamingAppData         }, /* %APPDATA% (%USERPROFILE%\AppData\Roaming) */
-    { L"#UserProfiles#",           FOLDERID_UserProfiles           }, /* %SystemDrive%\Users */
-    { L"#UserProgramFiles#",       FOLDERID_UserProgramFiles       }, /* %LOCALAPPDATA%\Programs */
-    { L"#UserProgramFilesCommon#", FOLDERID_UserProgramFilesCommon }, /* %LOCALAPPDATA%\Programs\Common */
-    { L"#Windows#",                FOLDERID_Windows                }, /* %windir% */
-    /* For compatibility */
-    { L"#ALLUSERSPROFILE#",        FOLDERID_ProgramData            }, /* %ALLUSERSPROFILE% (%ProgramData%, %SystemDrive%\ProgramData) */
-    { L"#APPDATA#",                FOLDERID_RoamingAppData         }, /* %APPDATA% (%USERPROFILE%\AppData\Roaming) */
-    { L"#USERPROFILE#",            FOLDERID_Profile                }, /* %USERPROFILE% (%SystemDrive%\Users\%USERNAME%) */
-    { L"#windir#",                 FOLDERID_Windows                }, /* %windir% */
+    { L"#ProgramFiles#", FOLDERID_ProgramFiles }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
+    { L"#USERPROFILE#",  FOLDERID_Profile      }, /* %USERPROFILE% (%SystemDrive%\Users\%USERNAME%) */
+    { L"#Documents#",    FOLDERID_Documents    }, /* the Documents folder of the user (may be redirected) */
+    { L"#Desktop#",      FOLDERID_Desktop      }, /* the Desktop folder of the user (may be redirected) */
 };
 
 static std::wstring GetFolderPath(const GUID& guid)

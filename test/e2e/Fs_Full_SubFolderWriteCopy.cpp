@@ -11,7 +11,7 @@
 typedef appbox::test::CommonFixture E2E_Fs;
 using namespace appbox::test;
 
-/** Name of the folder of this case below `#APPDATA#`. */
+/** Name of the folder of this case below `#USERPROFILE#`. */
 constexpr wchar_t kFolderName[] = L"AppBoxTest_Override";
 
 /**
@@ -32,7 +32,7 @@ constexpr wchar_t kFolderName[] = L"AppBoxTest_Override";
  */
 TEST_F(E2E_Fs, Full_SubFolderWriteCopyShowsTheHost)
 {
-    RealFsFolder host(L"#APPDATA#", kFolderName);
+    RealFsFolder host(L"#USERPROFILE#", kFolderName);
     ASSERT_TRUE(host.WriteFile(L"host.txt", "host"));
     ASSERT_TRUE(host.WriteFile(L"data\\host.txt", "host-data"));
 
@@ -40,7 +40,7 @@ TEST_F(E2E_Fs, Full_SubFolderWriteCopyShowsTheHost)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
         FsDir(L"app", {
-            FsDir(L"filesystem\\#APPDATA#", {
+            FsDir(L"filesystem\\#USERPROFILE#", {
                 FsDir(kFolderName, {
                     FsDir(L"data", {
                         FsFile(L"packed.txt", "packed")
@@ -54,13 +54,13 @@ TEST_F(E2E_Fs, Full_SubFolderWriteCopyShowsTheHost)
     auto config = tree.Build();
     ASSERT_TRUE(WriteFsIsolationFile(
         GetCWD(), {
-                      { L"#APPDATA#\\" + std::wstring(kFolderName),             appbox::FilesystemEntryKind::Directory,
-                       appbox::FilesystemIsolation::Full      },
-                      { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\data", appbox::FilesystemEntryKind::Directory,
-                       appbox::FilesystemIsolation::WriteCopy }
+                      { L"#USERPROFILE#\\" + std::wstring(kFolderName),             appbox::FilesystemEntryKind::Directory,
+                       appbox::FilesystemIsolation::Full                                                                                                           },
+                      { L"#USERPROFILE#\\" + std::wstring(kFolderName) + L"\\data",
+                       appbox::FilesystemEntryKind::Directory,                                                              appbox::FilesystemIsolation::WriteCopy }
     }));
 
-    const auto folder = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName;
+    const auto folder = GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName;
 
     /* The folder above is `Full`: its host content is hidden. */
     {
@@ -103,8 +103,8 @@ TEST_F(E2E_Fs, Full_SubFolderWriteCopyShowsTheHost)
     }
 
     {
-        const auto overlay = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\" +
-                             kFolderName + L"\\data\\new.txt";
+        const auto overlay = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#USERPROFILE#", true) +
+                             L"\\" + kFolderName + L"\\data\\new.txt";
         ASSERT_TRUE(std::filesystem::exists(overlay));
     }
 

@@ -25,6 +25,13 @@ inline constexpr const wchar_t* kFilesystemContainerLabel = L"Sandbox Filesystem
  * which imported folders become subdirectories of. The layer key is the
  * directory name below `app\filesystem` which MapBaseFS translates into the
  * real location at sandbox runtime.
+ *
+ * The preset directories form a tree: a preset which names another preset as
+ * its parent is shown below that preset (the folders of the user profile are
+ * offered below `Current User Directory`), while a preset without a parent is
+ * a direct child of the container of the filesystem view. Every preset owns a
+ * layer of its own, so the nesting only shapes the tree and never shares a
+ * layer between two presets.
  */
 struct PresetDirectory
 {
@@ -32,6 +39,11 @@ struct PresetDirectory
      * @brief Stable identifier used by the model layer.
      */
     std::string id;
+
+    /**
+     * @brief Identifier of the preset which holds this one, empty at top level.
+     */
+    std::string parent_id;
 
     /**
      * @brief Label shown in the tree control.
@@ -53,11 +65,26 @@ struct PresetDirectory
  * @brief Get the preset directories.
  *
  * The list is resolved from the known folder table on the first call and
- * stays valid for the process lifetime.
+ * stays valid for the process lifetime. The presets are returned in the order
+ * of their definition, which keeps every preset behind the preset it hangs
+ * below. A preset whose known folder cannot be resolved, and a nested preset
+ * whose parent is not offered, are skipped.
  *
  * @return The list of preset directories.
  */
 const std::vector<PresetDirectory>& PresetDirectories();
+
+/**
+ * @brief Get the preset directories which hang below one preset directory.
+ *
+ * The lookup reads the table of the preset directories only; it never touches
+ * the host filesystem.
+ *
+ * @param[in] parent_id Identifier of the holding preset directory, empty for
+ *            the top level of the tree.
+ * @return The nested preset directories in definition order.
+ */
+std::vector<PresetDirectory> ChildPresets(const std::string& parent_id);
 
 /**
  * @brief Find a preset directory by identifier.

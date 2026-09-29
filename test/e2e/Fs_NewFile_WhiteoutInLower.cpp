@@ -22,7 +22,7 @@ TEST_F(E2E_Fs, NewFile_WhiteoutInLower)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
         FsDir(L"app", {
-            FsDir(L"filesystem\\#APPDATA#", {
+            FsDir(L"filesystem\\#USERPROFILE#", {
                 FsFile(L"data.txt.$APPBOX_DELETE$", "")
             })
         })
@@ -35,7 +35,7 @@ TEST_F(E2E_Fs, NewFile_WhiteoutInLower)
     /* Create file in the state of the sandbox should success. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#APPDATA#", false) + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt");
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
         auto rsp = ProbeCreateFileW.Call(req, GetCWD(), config).get<ProtocolCreateFileW::Rsp>();
@@ -44,7 +44,8 @@ TEST_F(E2E_Fs, NewFile_WhiteoutInLower)
 
     /* Target file should be created. */
     {
-        auto fPath = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\data.txt";
+        auto fPath =
+            GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#USERPROFILE#", true) + L"\\data.txt";
         ASSERT_TRUE(std::filesystem::exists(fPath));
     }
 

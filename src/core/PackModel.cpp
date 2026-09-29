@@ -815,4 +815,40 @@ bool PackModel::StartupFilePath(const StartupFile& file, std::wstring& path) con
     return true;
 }
 
+bool PackModel::HostFolderPath(const std::string& preset_id, const std::wstring& import_name,
+                               const std::wstring& relative_dir, std::wstring& path) const
+{
+    /*
+     * The container of the filesystem view holds the preset directories and is
+     * not a folder of the model, so it has no host counterpart.
+     */
+    if (preset_id.empty())
+    {
+        return false;
+    }
+
+    if (import_name.empty())
+    {
+        /* A preset directory is the layer root, which is a real host folder. */
+        PresetDirectory preset;
+        if (!FindPresetDirectory(preset_id, preset) || preset.real_path.empty())
+        {
+            return false;
+        }
+
+        path = preset.real_path;
+        return true;
+    }
+
+    ImportedFolder imported;
+    if (!GetImport(preset_id, import_name, imported))
+    {
+        return false;
+    }
+
+    path = relative_dir.empty() ? imported.source_path
+                                : (std::filesystem::path(imported.source_path) / relative_dir).wstring();
+    return true;
+}
+
 } // namespace appbox

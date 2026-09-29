@@ -14,7 +14,7 @@
 typedef appbox::test::CommonFixture E2E_Fs;
 using namespace appbox::test;
 
-/** Name of the folder of this case below `#APPDATA#`. */
+/** Name of the folder of this case below `#USERPROFILE#`. */
 constexpr wchar_t kFolderName[] = L"AppBoxTest_Whiteout";
 
 /**
@@ -31,7 +31,7 @@ constexpr wchar_t kFolderName[] = L"AppBoxTest_Whiteout";
  */
 TEST_F(E2E_Fs, Whiteout_FileIsNotFound)
 {
-    RealFsFolder host(L"#APPDATA#", kFolderName);
+    RealFsFolder host(L"#USERPROFILE#", kFolderName);
     ASSERT_TRUE(host.WriteFile(L"hidden.txt", "host"));
     ASSERT_TRUE(host.WriteFile(L"visible.txt", "host-visible"));
 
@@ -39,7 +39,7 @@ TEST_F(E2E_Fs, Whiteout_FileIsNotFound)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
         FsDir(L"app", {
-            FsDir(L"filesystem\\#APPDATA#", {
+            FsDir(L"filesystem\\#USERPROFILE#", {
                 FsDir(kFolderName, {
                     FsFile(L"hidden.txt", "packed"),
                     FsFile(L"visible.txt", "packed-visible")
@@ -52,11 +52,11 @@ TEST_F(E2E_Fs, Whiteout_FileIsNotFound)
     auto config = tree.Build();
     ASSERT_TRUE(WriteFsIsolationFile(
         GetCWD(), {
-                      { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\hidden.txt", appbox::FilesystemEntryKind::File,
-                       appbox::FilesystemIsolation::Whiteout }
+                      { L"#USERPROFILE#\\" + std::wstring(kFolderName) + L"\\hidden.txt",
+                       appbox::FilesystemEntryKind::File, appbox::FilesystemIsolation::Whiteout }
     }));
 
-    const auto folder = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName;
+    const auto folder = GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName;
 
     /* The hidden file cannot be read, the other file keeps its read through. */
     {

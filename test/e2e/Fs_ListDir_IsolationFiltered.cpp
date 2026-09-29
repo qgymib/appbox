@@ -13,7 +13,7 @@
 typedef appbox::test::CommonFixture E2E_Fs;
 using namespace appbox::test;
 
-/** Name of the folder of this case below `#APPDATA#`. */
+/** Name of the folder of this case below `#USERPROFILE#`. */
 constexpr wchar_t kFolderName[] = L"AppBoxTest_List";
 
 /**
@@ -44,7 +44,7 @@ void ExpectVisibleEntriesOnly(const std::vector<std::string>& names)
  */
 TEST_F(E2E_Fs, ListDir_IsolationFiltersTheEntries)
 {
-    RealFsFolder host(L"#APPDATA#", kFolderName);
+    RealFsFolder host(L"#USERPROFILE#", kFolderName);
     ASSERT_TRUE(host.WriteFile(L"host.txt", "host"));
     ASSERT_TRUE(host.WriteFile(L"hostdir\\host.txt", "host"));
 
@@ -52,7 +52,7 @@ TEST_F(E2E_Fs, ListDir_IsolationFiltersTheEntries)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
         FsDir(L"app", {
-            FsDir(L"filesystem\\#APPDATA#", {
+            FsDir(L"filesystem\\#USERPROFILE#", {
                 FsDir(kFolderName, {
                     FsFile(L"visible.txt", "packed"),
                     FsFile(L"hidden.txt", "packed")
@@ -65,13 +65,13 @@ TEST_F(E2E_Fs, ListDir_IsolationFiltersTheEntries)
     auto config = tree.Build();
     ASSERT_TRUE(WriteFsIsolationFile(
         GetCWD(), {
-                      { L"#APPDATA#\\" + std::wstring(kFolderName),                   appbox::FilesystemEntryKind::Directory,
-                       appbox::FilesystemIsolation::Full     },
-                      { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\hidden.txt", appbox::FilesystemEntryKind::File,
-                       appbox::FilesystemIsolation::Whiteout }
+                      { L"#USERPROFILE#\\" + std::wstring(kFolderName),                   appbox::FilesystemEntryKind::Directory,
+                       appbox::FilesystemIsolation::Full                                                                                                                },
+                      { L"#USERPROFILE#\\" + std::wstring(kFolderName) + L"\\hidden.txt",
+                       appbox::FilesystemEntryKind::File,                                                                         appbox::FilesystemIsolation::Whiteout }
     }));
 
-    const auto folder = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName;
+    const auto folder = GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName;
 
     /* The user mode wrappers report the visible entry only. */
     for (const auto method :

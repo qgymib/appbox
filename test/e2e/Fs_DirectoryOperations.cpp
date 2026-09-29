@@ -17,7 +17,7 @@ using namespace appbox::test;
 namespace
 {
 
-/** Name of the folder of this case below `#APPDATA#`. */
+/** Name of the folder of this case below `#USERPROFILE#`. */
 constexpr wchar_t kFolderName[] = L"AppBoxTest_Directory";
 
 /**
@@ -26,7 +26,7 @@ constexpr wchar_t kFolderName[] = L"AppBoxTest_Directory";
  */
 std::wstring CreatedDirectory()
 {
-    return GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName + L"\\created";
+    return GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName + L"\\created";
 }
 
 /**
@@ -36,7 +36,8 @@ std::wstring CreatedDirectory()
  */
 std::wstring CreatedDirectoryInOverlay(const std::wstring& cwd)
 {
-    return cwd + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\" + kFolderName + L"\\created";
+    return cwd + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#USERPROFILE#", true) + L"\\" + kFolderName +
+           L"\\created";
 }
 
 } // namespace
@@ -58,7 +59,7 @@ std::wstring CreatedDirectoryInOverlay(const std::wstring& cwd)
  */
 TEST_F(E2E_Fs, Directory_CreateAndDelete)
 {
-    RealFsFolder host(L"#APPDATA#", kFolderName);
+    RealFsFolder host(L"#USERPROFILE#", kFolderName);
 
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {

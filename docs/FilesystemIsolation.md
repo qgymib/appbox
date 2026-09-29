@@ -141,9 +141,13 @@ view path is rebased by replacing the layer's `mapped_nt_path` prefix with its
 followed by a path separator, so `...\AppData\RoamingX` does not match the
 `...\AppData\Roaming` mapping.
 
-A layer key is a `#Name#` delimited token (`#APPDATA#`, `#ProgramFiles#`, a
-single drive letter); `#REGISTRY#` and `#NETWORK#` are reserved for the other
-isolation domains. Layers are matched longest prefix first, so nested prefixes
+A layer key is a `#Name#` delimited token (`#ProgramFiles#`, `#USERPROFILE#`,
+`#Documents#`, `#Desktop#`, a single drive letter); `#REGISTRY#` and
+`#NETWORK#` are reserved for the other isolation domains. The packer offers one
+layer per preset directory of its filesystem workspace and names it after the
+layer key of that preset, so the loader knows exactly the keys the packer
+produces: a directory which is named after any other key is rejected with
+`Unknown folder`. Layers are matched longest prefix first, so nested prefixes
 are matched before their parents. An archive which was packed with the former
 `%Name%` form has to be packed again: the loader rejects the unknown layer
 name.
@@ -184,8 +188,12 @@ The loader resolves its configuration as `<own file name>.json` in its own
 directory, so renaming the extracted loader program requires renaming the
 configuration file as well. Running the extracted loader program shows the
 imported folders at their preset locations (`#ProgramFiles#\<import>`,
-`#USERPROFILE#\<import>`) and starts the selected startup files inside the
-isolation.
+`#USERPROFILE#\<import>`, `#Documents#\<import>`, `#Desktop#\<import>`) and
+starts the selected startup files inside the isolation. The folders of the user
+hang below `Current User Directory` in the tree of the packer, yet every preset
+directory owns a layer of its own: `Documents` and `Desktop` are resolved from
+their own known folder id, which keeps them correct when the shell redirects
+them (for example into OneDrive).
 
 ## Key behavior rules
 

@@ -14,7 +14,7 @@ namespace appbox::test
  * a different API (`appbox::SearchFolderID` and `appbox::ExpandKnownFolder`),
  * and the single test executable compiles both sides.
  *
- * @param[in] folder_id Known folder ID, for example `#APPDATA#`.
+ * @param[in] folder_id Known folder ID, for example `#USERPROFILE#`.
  * @param[in] pure If true, remove the `:` in the return value.
  * @return Path of the known folder.
  */

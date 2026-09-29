@@ -15,11 +15,13 @@ class wxSearchCtrl;
  * @brief Filesystem workspace of the packer.
  *
  * Left side: the tree of the virtual filesystem. Its top item is the
- * `Sandbox Filesystem` container with the preset directories below it, which
- * hold their imported folders and the host subfolders of the imports,
- * expanded on demand. Right side: a toolbar row (Add Files, Add Folder, New
- * Folder, Remove, Up Dir and a search box) above the report style list of the
- * selected folder.
+ * `Sandbox Filesystem` container with the preset directories below it. A
+ * preset directory can hold nested preset directories of its own (the folders
+ * of the user profile hang below `Current User Directory`), and every preset
+ * directory holds its imported folders and the host subfolders of the
+ * imports, expanded on demand. Right side: a toolbar row (Add Files, Add
+ * Folder, New Folder, Remove, Up Dir and a search box) above the report style
+ * list of the selected folder.
  *
  * The list shows the filename, the isolation mode, the size and the virtual
  * source path of every entry, following the layout of the reference packaging
@@ -27,8 +29,11 @@ class wxSearchCtrl;
  * folder offers `Full`, `Write Copy` and `Whiteout`, a file offers `Full` and
  * `Whiteout`. A row which the user never touched shows the mode it inherits
  * from the closest folder above it, so the mode of a folder reaches the
- * entries below it. The container lists the preset directories themselves;
- * they are fixed, so they can neither be removed nor renamed.
+ * entries below it. The container lists the top level preset directories;
+ * every preset directory is fixed, so it can neither be removed nor renamed.
+ * A nested preset directory is offered by the same commands as a top level
+ * one: it accepts imported folders and imported files, and it can be entered
+ * from the list.
  */
 class FilesystemPanel : public wxPanel
 {
@@ -57,7 +62,9 @@ private:
      * The fields mirror the client data of the tree items: the container
      * leaves all of them empty, a preset directory carries its identifier
      * only, an imported folder adds its name, and a folder below an import
-     * adds its path relative to the import root.
+     * adds its path relative to the import root. The path does not record
+     * whether a preset directory hangs below another one, because the preset
+     * identifiers are unique and a preset is looked up in the whole tree.
      */
     struct TreePath
     {
@@ -115,7 +122,7 @@ private:
          */
         enum class Kind
         {
-            Preset,         ///< A preset directory below the filesystem container.
+            Preset,         ///< A preset directory of the filesystem tree.
             ImportedFolder, ///< An imported folder below a preset directory.
             HostEntry,      ///< An entry of the host folder of an import.
             ImportedFile    ///< A file imported on its own.
@@ -186,6 +193,20 @@ private:
     void BuildTree();
 
     /**
+     * @brief Append one preset directory and everything below it.
+     *
+     * The item is appended below the given parent, its nested preset
+     * directories are appended below it, and its imported folders follow as
+     * items of their own. The nested presets come first, so the fixed entries
+     * of the tree stay above the content the user added.
+     *
+     * @param[in] parent Item which holds the preset directory.
+     * @param[in] preset Preset directory to append.
+     * @return The item of the preset directory.
+     */
+    wxTreeItemId AppendPreset(const wxTreeItemId& parent, const appbox::PresetDirectory& preset);
+
+    /**
      * @brief Append the host subfolders of one import node.
      * @param[in] item Tree item holding TreeNode data.
      */
@@ -197,12 +218,17 @@ private:
     void RefreshList();
 
     /**
-     * @brief Fill the rows with the preset directories held by the container.
+     * @brief Fill the rows with the top level preset directories of the container.
      */
     void ListPresets();
 
     /**
-     * @brief Fill the rows with the imports below one preset directory.
+     * @brief Fill the rows with the content below one preset directory.
+     *
+     * A preset directory holds nested preset directories and the imported
+     * folders which were imported below it. The nested presets are listed
+     * first, mirroring the order of the tree.
+     *
      * @param[in] node Data of the selected preset node.
      */
     void ListPresetImports(const TreeNode& node);
@@ -239,6 +265,19 @@ private:
      * @return true when an item is selected.
      */
     bool SelectedTreePath(TreePath& path) const;
+
+    /**
+     * @brief Find the item of a preset directory inside a subtree.
+     *
+     * The preset directories form a tree, so a preset is looked up in the
+     * whole subtree of the given item and not only among its direct children.
+     *
+     * @param[in] parent Item whose subtree is searched.
+     * @param[in] preset_id Identifier of the preset directory.
+     * @return The item of the preset directory, an invalid item when the
+     *         subtree does not hold it.
+     */
+    wxTreeItemId FindPresetItem(const wxTreeItemId& parent, const std::string& preset_id) const;
 
     /**
      * @brief Select the tree item of a path.
@@ -348,6 +387,31 @@ private:
     void OnTreeItemExpanding(wxTreeEvent& event);
 
     /**
+     * @brief Show the host folder behind the tree item the mouse rests on.
+     *
+     * The tooltip carries the host folder the item maps to, see
+     * PackModel::HostFolderPath(). The container of the filesystem view has no
+     * host counterpart and stays without a tooltip, which also clears the text
+     * of the item the mouse came from.
+     *
+     * @param[in] event Tree tooltip event carrying the item to describe.
+     */
+    void OnTreeItemToolTip(wxTreeEvent& event);
+
+    /**
+     * @brief Drop the tree tooltip while the mouse is not over an item.
+     *
+     * The item tooltip of the native control is a tooltip of the tree control
+     * as a whole, so it would stay attached while the mouse rests on a part of
+     * the control which carries no item. The handler drops the text as soon as
+     * the cursor leaves the items, so a host path is never shown for a blank
+     * part of the tree.
+     *
+     * @param[in] event Mouse motion event of the tree.
+     */
+    void OnTreeMouseMove(wxMouseEvent& event);
+
+    /**
      * @brief Show the context menu of a tree item.
      * @param[in] event Tree context menu event.
      */
@@ -446,6 +510,15 @@ private:
      * of the tree, which rebuild the table.
      */
     bool updating_ = false;
+
+    /**
+     * @brief Whether the tooltip of the tree carries the host path of an item.
+     *
+     * The item tooltip of the native control is a tooltip of the tree control
+     * as a whole, so the panel tracks whether a host path is attached to it
+     * and drops the text as soon as the mouse leaves the items.
+     */
+    bool item_tooltip_shown_ = false;
 
     wxTreeCtrl*         tree_ = nullptr;
     wxDataViewListCtrl* list_ = nullptr;

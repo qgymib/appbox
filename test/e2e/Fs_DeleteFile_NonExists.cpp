@@ -23,7 +23,7 @@ TEST_F(E2E_Fs, DeleteFile_NonExists)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
         FsDir(L"app", {
-            FsDir(L"filesystem\\#APPDATA#", {
+            FsDir(L"filesystem\\#USERPROFILE#", {
                 FsFile(L"data1.txt", "hello1")
             })
         })
@@ -36,7 +36,7 @@ TEST_F(E2E_Fs, DeleteFile_NonExists)
     /* Delete file should fail. */
     {
         ProtocolDeleteFileW::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#APPDATA#", false) + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt");
 
         auto rsp = ProbeDeleteFileW.Call(req, GetCWD(), config).get<ProtocolDeleteFileW::Rsp>();
         ASSERT_NE(rsp.code, 0);
@@ -44,7 +44,7 @@ TEST_F(E2E_Fs, DeleteFile_NonExists)
 
     /* No whiteout file in the state of the sandbox. */
     {
-        auto fPath = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) +
+        auto fPath = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#USERPROFILE#", true) +
                      L"\\data.txt.$APPBOX_DELETE$";
         ASSERT_FALSE(std::filesystem::exists(fPath));
     }

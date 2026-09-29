@@ -10,8 +10,15 @@ struct KnownFolderMap
     const GUID     guid;
 };
 
+/*
+ * The tokens the cases use as layer keys of their resource tree. The loader
+ * resolves the very same known folders (`loader/utils/KnownFolder.cpp`), so a
+ * case and the sandbox agree on the real directory behind a token.
+ */
 static const KnownFolderMap KnownFolders[] = {
-    { L"#APPDATA#", FOLDERID_RoamingAppData },
+    { L"#USERPROFILE#", FOLDERID_Profile   },
+    { L"#Documents#",   FOLDERID_Documents },
+    { L"#Desktop#",     FOLDERID_Desktop   },
 };
 
 std::wstring appbox::test::GetKnownFolderPath(const std::wstring& folder_id, bool pure)

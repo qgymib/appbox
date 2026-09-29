@@ -14,7 +14,7 @@
 typedef appbox::test::CommonFixture E2E_Fs;
 using namespace appbox::test;
 
-/** Name of the folder of this case below `#APPDATA#`. */
+/** Name of the folder of this case below `#USERPROFILE#`. */
 constexpr wchar_t kFolderName[] = L"AppBoxTest_Full";
 
 /**
@@ -33,7 +33,7 @@ constexpr wchar_t kFolderName[] = L"AppBoxTest_Full";
  */
 TEST_F(E2E_Fs, Full_HidesTheHostFolder)
 {
-    RealFsFolder host(L"#APPDATA#", kFolderName);
+    RealFsFolder host(L"#USERPROFILE#", kFolderName);
     ASSERT_TRUE(host.WriteFile(L"host.txt", "host"));
     ASSERT_TRUE(host.WriteFile(L"data\\host.txt", "host-data"));
 
@@ -41,7 +41,7 @@ TEST_F(E2E_Fs, Full_HidesTheHostFolder)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
         FsDir(L"app", {
-            FsDir(L"filesystem\\#APPDATA#", {
+            FsDir(L"filesystem\\#USERPROFILE#", {
                 FsDir(kFolderName, {
                     FsFile(L"packed.txt", "packed")
                 })
@@ -53,11 +53,11 @@ TEST_F(E2E_Fs, Full_HidesTheHostFolder)
     auto config = tree.Build();
     ASSERT_TRUE(WriteFsIsolationFile(
         GetCWD(), {
-                      { L"#APPDATA#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
+                      { L"#USERPROFILE#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
                        appbox::FilesystemIsolation::Full }
     }));
 
-    const auto folder = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName;
+    const auto folder = GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName;
 
     /* The content of the lower layer stays visible. */
     {
@@ -118,8 +118,8 @@ TEST_F(E2E_Fs, Full_HidesTheHostFolder)
     }
 
     {
-        const auto overlay = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\" +
-                             kFolderName + L"\\new.txt";
+        const auto overlay = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#USERPROFILE#", true) +
+                             L"\\" + kFolderName + L"\\new.txt";
         ASSERT_TRUE(std::filesystem::exists(overlay));
     }
 

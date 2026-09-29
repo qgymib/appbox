@@ -15,7 +15,7 @@ using namespace appbox::test;
 namespace
 {
 
-/** Name of the folder of this case below `#APPDATA#`. */
+/** Name of the folder of this case below `#USERPROFILE#`. */
 constexpr wchar_t kFolderName[] = L"AppBoxTest_Malformed";
 
 /** A version number no sandbox of this build knows. */
@@ -56,14 +56,14 @@ ProtocolReadFileFull::Rsp ReadFile(const std::wstring& file, const std::filesyst
  */
 TEST_F(E2E_Fs, MalformedIsolationFile_FallsBack)
 {
-    RealFsFolder host(L"#APPDATA#", kFolderName);
+    RealFsFolder host(L"#USERPROFILE#", kFolderName);
     ASSERT_TRUE(host.WriteFile(L"host.txt", "host"));
 
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
         FsDir(L"app", {
-            FsDir(L"filesystem\\#APPDATA#", {
+            FsDir(L"filesystem\\#USERPROFILE#", {
                 FsDir(kFolderName, {
                     FsFile(L"packed.txt", "packed")
                 })
@@ -74,7 +74,7 @@ TEST_F(E2E_Fs, MalformedIsolationFile_FallsBack)
 
     auto config = tree.Build();
 
-    const auto folder = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName;
+    const auto folder = GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName;
     const auto host_file = folder + L"\\host.txt";
     const auto packed_file = folder + L"\\packed.txt";
 
@@ -103,7 +103,7 @@ TEST_F(E2E_Fs, MalformedIsolationFile_FallsBack)
      * runs above really are the fallback of a refused document. */
     ASSERT_TRUE(WriteFsIsolationFile(
         GetCWD(), {
-                      { L"#APPDATA#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
+                      { L"#USERPROFILE#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
                        appbox::FilesystemIsolation::Full }
     }));
     {

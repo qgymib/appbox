@@ -73,6 +73,7 @@ add_executable(AppBoxTests
     "e2e/Fs_LaunchProcess_FromLower.cpp"
     "e2e/Fs_ListDir_IsolationFiltered.cpp"
     "e2e/Fs_ListDir_LowerLayer.cpp"
+    "e2e/Fs_ListDir_UserPresetLayers.cpp"
     "e2e/Fs_ListDir_WhiteoutInUpper.cpp"
     "e2e/Fs_MalformedIsolationFile_FallsBack.cpp"
     "e2e/Fs_NewFile_WhiteoutInLower.cpp"

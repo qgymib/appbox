@@ -13,7 +13,7 @@ using namespace appbox::test;
 namespace
 {
 
-/** Name of the folder of this case below `#APPDATA#`. */
+/** Name of the folder of this case below `#USERPROFILE#`. */
 constexpr wchar_t kFolderName[] = L"AppBoxTest_CopyUp";
 
 } // namespace
@@ -37,7 +37,7 @@ TEST_F(E2E_Fs, WriteLowerLayerFile_CopyUp)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
         FsDir(L"app", {
-            FsDir(L"filesystem\\#APPDATA#", {
+            FsDir(L"filesystem\\#USERPROFILE#", {
                 FsDir(kFolderName, {
                     FsFile(L"data.txt", "packed")
                 })
@@ -48,7 +48,7 @@ TEST_F(E2E_Fs, WriteLowerLayerFile_CopyUp)
 
     auto config = tree.Build();
 
-    const auto file = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName + L"\\data.txt";
+    const auto file = GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName + L"\\data.txt";
 
     /* The write opens the file of the lower layer for writing, which copies it
      * into the overlay of the sandbox, and reports what the file holds after
@@ -65,8 +65,8 @@ TEST_F(E2E_Fs, WriteLowerLayerFile_CopyUp)
 
     /* The copy of the overlay carries the new content. */
     {
-        const auto overlay = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\" +
-                             kFolderName + L"\\data.txt";
+        const auto overlay = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#USERPROFILE#", true) +
+                             L"\\" + kFolderName + L"\\data.txt";
 
         std::string data;
         ASSERT_EQ(ReadFileFull(overlay, data), static_cast<DWORD>(ERROR_SUCCESS));

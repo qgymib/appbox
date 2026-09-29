@@ -18,7 +18,7 @@ struct FsIsolationEntry
      * @brief Path of the entry in the virtual filesystem.
      *
      * The first component is the layer key of the preset directory, for
-     * example `#APPDATA#\MyApp`.
+     * example `#USERPROFILE#\MyApp`.
      */
     std::wstring path;
 

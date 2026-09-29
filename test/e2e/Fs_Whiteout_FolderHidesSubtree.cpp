@@ -12,7 +12,7 @@
 typedef appbox::test::CommonFixture E2E_Fs;
 using namespace appbox::test;
 
-/** Name of the folder of this case below `#APPDATA#`. */
+/** Name of the folder of this case below `#USERPROFILE#`. */
 constexpr wchar_t kFolderName[] = L"AppBoxTest_WhiteoutDir";
 
 /**
@@ -33,7 +33,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
         FsDir(L"app", {
-            FsDir(L"filesystem\\#APPDATA#", {
+            FsDir(L"filesystem\\#USERPROFILE#", {
                 FsDir(kFolderName, {
                     FsFile(L"packed.txt", "packed")
                 })
@@ -45,11 +45,11 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
     auto config = tree.Build();
     ASSERT_TRUE(WriteFsIsolationFile(
         GetCWD(), {
-                      { L"#APPDATA#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
+                      { L"#USERPROFILE#\\" + std::wstring(kFolderName), appbox::FilesystemEntryKind::Directory,
                        appbox::FilesystemIsolation::Whiteout }
     }));
 
-    const auto folder = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName;
+    const auto folder = GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName;
 
     /* The folder and the file below it do not exist in the view. */
     {
@@ -107,7 +107,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
 
     {
         const auto overlay =
-            GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\" + kFolderName;
+            GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#USERPROFILE#", true) + L"\\" + kFolderName;
         ASSERT_TRUE(std::filesystem::exists(overlay));
         ASSERT_TRUE(std::filesystem::exists(overlay + L"\\new.txt"));
     }

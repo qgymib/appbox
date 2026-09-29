@@ -15,7 +15,7 @@
 typedef appbox::test::CommonFixture E2E_Fs;
 using namespace appbox::test;
 
-/** Name of the folder of this case below `#APPDATA#`. */
+/** Name of the folder of this case below `#USERPROFILE#`. */
 constexpr wchar_t kFolderName[] = L"AppBoxTest_Create";
 
 /**
@@ -31,14 +31,14 @@ constexpr wchar_t kFolderName[] = L"AppBoxTest_Create";
  */
 TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
 {
-    RealFsFolder host(L"#APPDATA#", kFolderName);
+    RealFsFolder host(L"#USERPROFILE#", kFolderName);
     ASSERT_TRUE(host.WriteFile(L"data.txt", "host"));
 
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
         FsDir(L"app", {
-            FsDir(L"filesystem\\#APPDATA#", {
+            FsDir(L"filesystem\\#USERPROFILE#", {
                 FsDir(kFolderName, {
                     FsFile(L"data.txt", "packed")
                 })
@@ -50,11 +50,11 @@ TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
     auto config = tree.Build();
     ASSERT_TRUE(WriteFsIsolationFile(
         GetCWD(), {
-                      { L"#APPDATA#\\" + std::wstring(kFolderName) + L"\\data.txt", appbox::FilesystemEntryKind::File,
-                       appbox::FilesystemIsolation::Whiteout }
+                      { L"#USERPROFILE#\\" + std::wstring(kFolderName) + L"\\data.txt",
+                       appbox::FilesystemEntryKind::File, appbox::FilesystemIsolation::Whiteout }
     }));
 
-    const auto file = GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName + L"\\data.txt";
+    const auto file = GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName + L"\\data.txt";
 
     /* The entry does not exist in the view. */
     {
@@ -95,7 +95,7 @@ TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
     }
     {
         ProtocolListDir::Req req;
-        req.path = appbox::WideToUTF8(GetKnownFolderPath(L"#APPDATA#", false) + L"\\" + kFolderName);
+        req.path = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName);
         req.method = ProtocolListDir::Req::Method::WinAPI;
 
         auto rsp = ProbeListDir.Call(req, GetCWD(), config).get<ProtocolListDir::Rsp>();
@@ -105,8 +105,8 @@ TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
 
     /* The file of the overlay was created. */
     {
-        const auto overlay = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#APPDATA#", true) + L"\\" +
-                             kFolderName + L"\\data.txt";
+        const auto overlay = GetCWDString() + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#USERPROFILE#", true) +
+                             L"\\" + kFolderName + L"\\data.txt";
         ASSERT_TRUE(std::filesystem::exists(overlay));
     }
 

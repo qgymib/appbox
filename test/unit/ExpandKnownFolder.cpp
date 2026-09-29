@@ -67,7 +67,7 @@ TEST(Unit_ExpandKnownFolder, PercentDelimitedTokenIsNotALayerKey)
  */
 TEST(Unit_ExpandKnownFolder, LayerKeysUseTheHashDelimiter)
 {
-    const std::wstring keys[] = { L"#ProgramFiles#", L"#USERPROFILE#", L"#APPDATA#", L"#windir#" };
+    const std::wstring keys[] = { L"#ProgramFiles#", L"#USERPROFILE#", L"#Documents#", L"#Desktop#" };
 
     for (const auto& key : keys)
     {
@@ -77,5 +77,26 @@ TEST(Unit_ExpandKnownFolder, LayerKeysUseTheHashDelimiter)
 
         std::wstring folder;
         EXPECT_TRUE(appbox::SearchFolderID(key, folder));
+    }
+}
+
+/**
+ * @brief Only the layer keys the packer produces are known.
+ *
+ * A mapping which no preset directory uses describes no layer of the archive,
+ * so it was removed: a layer directory named after such a key is rejected by
+ * `MapBaseFS`, and a startup file path which uses it is not expanded.
+ */
+TEST(Unit_ExpandKnownFolder, RemovedLayerKeysAreNotKnown)
+{
+    const std::wstring keys[] = { L"#APPDATA#",      L"#windir#",         L"#Windows#",
+                                  L"#Fonts#",        L"#Profile#",        L"#ProgramData#",
+                                  L"#LocalAppData#", L"#RoamingAppData#", L"#ALLUSERSPROFILE#" };
+
+    for (const auto& key : keys)
+    {
+        std::wstring folder;
+        EXPECT_FALSE(appbox::SearchFolderID(key, folder));
+        EXPECT_EQ(appbox::ExpandKnownFolder(key + L"\\MyApp\\app.exe"), key + L"\\MyApp\\app.exe");
     }
 }
