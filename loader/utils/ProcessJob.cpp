@@ -17,11 +17,12 @@ struct appbox::ProcessJob::Data
     appbox::SandboxConfig     inject_data;  /* Injection data. */
     std::wstring              exe_path;     /* Target executable path to run. */
     std::vector<std::wstring> exe_args;     /* Target executable command line. */
+    bool                      hide_console; /* Start the target without a console window. */
     DWORD                     exit_code;    /* Exit code of target executable. */
 };
 
 appbox::ProcessJob::Data::Data(const appbox::SandboxConfig& cfg)
-    : hIOCP(nullptr), hJob(nullptr), inject_data(cfg), exit_code(0)
+    : hIOCP(nullptr), hJob(nullptr), inject_data(cfg), hide_console(false), exit_code(0)
 {
     ZeroMemory(&process_info, sizeof(process_info));
 
@@ -87,11 +88,12 @@ appbox::ProcessJob::Data::~Data()
 }
 
 appbox::ProcessJob::ProcessJob(const std::wstring exePath, const std::vector<std::wstring> args,
-                               const appbox::SandboxConfig& inject_data)
+                               const appbox::SandboxConfig& inject_data, bool hide_console)
 {
     data_ = new Data(inject_data);
     data_->exe_path = exePath;
     data_->exe_args = args;
+    data_->hide_console = hide_console;
 }
 
 appbox::ProcessJob::~ProcessJob()
@@ -119,7 +121,19 @@ DWORD appbox::ProcessJob::Start()
 #endif
 
     auto                      self_path = appbox::GetExecutablePath();
-    std::vector<std::wstring> self_args = { L"--X-AppBox-Launcher=true", data_->exe_path };
+    std::vector<std::wstring> self_args = { L"--X-AppBox-Launcher=true" };
+
+    /*
+     * The console flag belongs to the launcher of the target, so it has to
+     * precede the path of the target: everything behind that path is passed
+     * to the target unchanged.
+     */
+    if (data_->hide_console)
+    {
+        self_args.push_back(L"--X-AppBox-HideConsole=true");
+    }
+
+    self_args.push_back(data_->exe_path);
     self_args.insert(self_args.end(), data_->exe_args.begin(), data_->exe_args.end());
     auto cmdline = appbox::BuildCommandLine(self_path, self_args);
 

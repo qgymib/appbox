@@ -522,6 +522,17 @@ documented in its own header comment.
 | `SelectedByTrigger` | `manual` | only `manual` starts, the auto start files do not, the loader exits with zero |
 | `UnknownTrigger` | `missing` | nothing starts, not even the auto start files, and the loader reports a non zero exit code |
 
+### Loader console case
+
+The loader is a GUI program without a console, so a console program it starts
+gets a console window of its own: without a countermeasure the probe process of
+every case would pop up on the desktop of the machine the cases run on. The
+harness therefore enables `hide_console` in the configuration it writes, and
+`test/e2e/Loader_HideConsole.cpp` pins the result. The case asks the probe
+`ConsoleWindow` for the console of the probe process: the console is still
+attached, so the standard streams of the probe keep working, while its window
+is not visible.
+
 ### Loader registry state cases
 
 The registry state cases (`test/e2e/Loader_RegistryState*.cpp`) pin what the
@@ -555,10 +566,12 @@ hive the sandbox mounted.
 * `test/utils/ProbeCall.*` — writes the `LoaderConfig` to `config.json`, starts the
   **loader** with `--X-AppBox-ConfigFile`, which launches the test binary as a probe
   process with the sandbox DLL injected; the probe asks the test process for its task
-  over a named pipe and reports the result back. `ProbeStartupRun()` runs the loader
-  for a startup file selection instead: it passes `--X-AppBox-Startup` when a trigger
-  is given and reports the markers of the startup files the loader started together
-  with its exit code.
+  over a named pipe and reports the result back. Every configuration it hands to the
+  loader enables `hide_console`, so the probe process of a case does not open a console
+  window (see [Loader console case](#loader-console-case)). `ProbeStartupRun()` runs the
+  loader for a startup file selection instead: it passes `--X-AppBox-Startup` when a
+  trigger is given and reports the markers of the startup files the loader started
+  together with its exit code.
 * `test/utils/HiveBuilder.*` — builds the registry artifacts of a case, so an
   end-to-end test owns what the sandbox mounts. The builder writes the hive file and
   the isolation file into the registry domain of the resources of the case
@@ -595,7 +608,7 @@ hive the sandbox mounted.
 * `test/probe/*` — the operations executed inside the sandbox (`CreateFileW`,
   `CreateDirectoryW`, `DeleteFileW`, `RemoveDirectoryW`, `WriteFile`,
   `ListDir`, `ListDirNt`, `ReadFileFull`), plus the probes of the remaining
-  cases (`LaunchProcess`, `QueryAttributes`).
+  cases (`LaunchProcess`, `QueryAttributes`, `ConsoleWindow`).
   `ListDirNt` opens a directory with `NtOpenFile` and enumerates it with
   `NtQueryDirectoryFile` or `NtQueryDirectoryFileEx`, so it pins both entry
   points of the merged view directly, while the user mode wrappers may use

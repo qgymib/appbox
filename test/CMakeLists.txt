@@ -83,6 +83,7 @@ add_executable(AppBoxTests
     "e2e/Fs_Whiteout_FileNotFound.cpp"
     "e2e/Fs_Whiteout_FolderHidesSubtree.cpp"
     "e2e/Fs_WriteLowerLayerFile_CopyUp.cpp"
+    "e2e/Loader_HideConsole.cpp"
     "e2e/Loader_RegistryStateIsKept.cpp"
     "e2e/Loader_RegistryStateIsReset.cpp"
     "e2e/Loader_RegistryStateIsSeeded.cpp"
@@ -130,6 +131,7 @@ add_executable(AppBoxTests
     # The operations which are executed inside the sandbox. The loader starts
     # this executable as the probe process of a case.
     "probe/__init__.cpp"
+    "probe/ConsoleWindow.cpp"
     "probe/CreateDirectoryW.cpp"
     "probe/CreateFileW.cpp"
     "probe/DeleteFileW.cpp"

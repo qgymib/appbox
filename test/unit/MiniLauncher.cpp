@@ -10,7 +10,7 @@
  */
 TEST(Unit_MiniLauncher, CreateFailureReturnsErrorCode)
 {
-    const DWORD ret = appbox::MiniLauncer(L"Z:\\appbox_unit\\does_not_exist.exe", {});
+    const DWORD ret = appbox::MiniLauncer(L"Z:\\appbox_unit\\does_not_exist.exe", {}, true);
 
     EXPECT_NE(ret, 0u);
     EXPECT_TRUE(ret == ERROR_FILE_NOT_FOUND || ret == ERROR_PATH_NOT_FOUND) << "unexpected error code: " << ret;
@@ -27,7 +27,7 @@ TEST(Unit_MiniLauncher, ReturnsChildExitCode)
     ASSERT_GT(length, 0u);
     ASSERT_LT(length, MAX_PATH);
 
-    const DWORD ret = appbox::MiniLauncer(comspec, { L"/c", L"exit", L"7" });
+    const DWORD ret = appbox::MiniLauncer(comspec, { L"/c", L"exit", L"7" }, true);
 
     EXPECT_EQ(ret, 7u);
 }
@@ -43,7 +43,7 @@ TEST(Unit_MiniLauncher, ReturnsZeroForSuccessfulChild)
     ASSERT_GT(length, 0u);
     ASSERT_LT(length, MAX_PATH);
 
-    const DWORD ret = appbox::MiniLauncer(comspec, { L"/c", L"exit", L"0" });
+    const DWORD ret = appbox::MiniLauncer(comspec, { L"/c", L"exit", L"0" }, true);
 
     EXPECT_EQ(ret, 0u);
 }

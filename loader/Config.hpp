@@ -71,6 +71,18 @@ struct LoaderConfig
     bool enable_admin_ui = false;
 
     /**
+     * @brief Start the startup files without a console window.
+     *
+     * The loader is a GUI program without a console, so a console program it
+     * starts gets a console window of its own. With this flag the window is
+     * created hidden instead of being shown, which is what an unattended run
+     * needs: the program keeps a console, and therefore its standard streams,
+     * but nothing pops up on the desktop. The flag has no effect on a GUI
+     * program, which never has a console window.
+     */
+    bool hide_console = false;
+
+    /**
      * @brief Startup files, in the order the loader starts them.
      */
     std::vector<LoaderStartup> startups;
@@ -80,7 +92,7 @@ struct LoaderConfig
      */
     std::vector<LoaderEnvironment> environment;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderConfig, enable_admin_ui, startups, environment)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LoaderConfig, enable_admin_ui, hide_console, startups, environment)
 };
 
 } // namespace appbox

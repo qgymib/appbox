@@ -10,7 +10,7 @@
 TEST(Unit_ProcessJob, InitialExitCodeIsZero)
 {
     appbox::SandboxConfig cfg;
-    appbox::ProcessJob    job(L"appbox_unit_missing.exe", {}, cfg);
+    appbox::ProcessJob    job(L"appbox_unit_missing.exe", {}, cfg, false);
 
     EXPECT_EQ(job.GetExitCode(), 0u);
 }
@@ -22,7 +22,7 @@ TEST(Unit_ProcessJob, InitialExitCodeIsZero)
 TEST(Unit_ProcessJob, WaitWithoutEventReportsTimeout)
 {
     appbox::SandboxConfig cfg;
-    appbox::ProcessJob    job(L"appbox_unit_missing.exe", {}, cfg);
+    appbox::ProcessJob    job(L"appbox_unit_missing.exe", {}, cfg, false);
 
     EXPECT_EQ(job.Wait(0), ERROR_TIMEOUT);
 }
@@ -33,7 +33,7 @@ TEST(Unit_ProcessJob, WaitWithoutEventReportsTimeout)
 TEST(Unit_ProcessJob, RepeatedWaitReportsTimeout)
 {
     appbox::SandboxConfig cfg;
-    appbox::ProcessJob    job(L"appbox_unit_missing.exe", {}, cfg);
+    appbox::ProcessJob    job(L"appbox_unit_missing.exe", {}, cfg, false);
 
     for (int i = 0; i < 3; ++i)
     {

@@ -25,7 +25,13 @@ static void SetupConfigFile(appbox::CommandLineOptions& opt, const std::wstring&
     opt.override_config = nlohmann::json::parse(f);
 }
 
-static void RunAsStarter(CLI::App& app)
+/**
+ * @brief Start the target of a mini launcher and exit with its exit code.
+ * @param[in] app The command line, whose first remaining argument is the
+ *                target and whose other remaining arguments belong to it.
+ * @param[in] hide_console True to start the target without a console window.
+ */
+static void RunAsStarter(CLI::App& app, bool hide_console)
 {
     auto remain_args = app.remaining();
     auto remain_args_sz = remain_args.size();
@@ -45,7 +51,7 @@ static void RunAsStarter(CLI::App& app)
         }
     }
 
-    exit(appbox::MiniLauncer(exe_path, exe_args));
+    exit(appbox::MiniLauncer(exe_path, exe_args, hide_console));
 }
 
 appbox::CommandLineOptions::CommandLineOptions()
@@ -53,6 +59,7 @@ appbox::CommandLineOptions::CommandLineOptions()
     wargc = 0;
     wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
     is_launcher = false;
+    hide_console = false;
     has_startup_trigger = false;
 }
 
@@ -71,6 +78,7 @@ bool appbox::CommandLineOptions::ParseOptions()
         "--X-AppBox-ConfigFile", [this](const std::wstring& arg) { SetupConfigFile(*this, arg); },
         "Use config file instead of loading builtin config file");
     app.add_option("--X-AppBox-Launcher", is_launcher, "Run as minilauncher");
+    app.add_option("--X-AppBox-HideConsole", hide_console, "Start the target without a console window");
     app.add_option_function<std::wstring>(
         "--X-AppBox-Startup",
         [this](const std::wstring& arg) {
@@ -83,7 +91,7 @@ bool appbox::CommandLineOptions::ParseOptions()
 
     if (is_launcher)
     {
-        RunAsStarter(app);
+        RunAsStarter(app, hide_console);
         return false;
     }
 

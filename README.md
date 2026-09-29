@@ -101,6 +101,13 @@ wxWidgets-based GUI application for managing sandboxed processes:
   start; `--X-AppBox-Startup <trigger>` starts the single startup file with
   that trigger instead and suppresses the auto start of the other files. An
   unknown trigger starts nothing and turns into a non zero exit code.
+- Starts the startup files without a console window when the configuration
+  sets `hide_console`: the loader is a GUI program without a console, so a
+  console program it starts would otherwise open a console window of its own.
+  The window is created hidden instead of being shown, which is what an
+  unattended run needs; the program keeps its console and therefore its
+  standard streams. The switch is off by default and does not affect a GUI
+  program, which never owns a console window.
 - Offers a read-only sandbox registry browser in its admin UI, which mounts
   the hive of the overlay directly and never touches the host registry
   (see [Registry Isolation](docs/RegistryIsolation.md)).

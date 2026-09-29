@@ -1,7 +1,7 @@
 #include "MiniLauncher.hpp"
 #include "BuildCommandLine.hpp"
 
-DWORD appbox::MiniLauncer(const std::wstring& path, const std::vector<std::wstring> args)
+DWORD appbox::MiniLauncer(const std::wstring& path, const std::vector<std::wstring> args, bool hide_console)
 {
     auto cmd = appbox::BuildCommandLine(path, args);
 
@@ -12,7 +12,16 @@ DWORD appbox::MiniLauncer(const std::wstring& path, const std::vector<std::wstri
     PROCESS_INFORMATION pi;
     ZeroMemory(&pi, sizeof(pi));
 
-    if (!CreateProcessW(path.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi))
+    /*
+     * A console program started by a program without a console gets a console
+     * window of its own. The flag creates that console without the window, so
+     * nothing appears on the desktop; the program keeps its console and
+     * therefore its standard streams. A GUI program never owns a console
+     * window and is not affected by the flag.
+     */
+    const DWORD creation_flags = hide_console ? CREATE_NO_WINDOW : 0;
+
+    if (!CreateProcessW(path.c_str(), cmd.data(), nullptr, nullptr, FALSE, creation_flags, nullptr, nullptr, &si, &pi))
     {
         return GetLastError();
     }

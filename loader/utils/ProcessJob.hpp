@@ -16,9 +16,11 @@ struct ProcessJob
      * @param[in] exePath Path of the target executable.
      * @param[in] args Arguments of the target executable.
      * @param[in] inject_data Injection data written into the target process.
+     * @param[in] hide_console True to start the target without a console
+     *                         window.
      */
     ProcessJob(const std::wstring exePath, const std::vector<std::wstring> args,
-               const appbox::SandboxConfig& inject_data);
+               const appbox::SandboxConfig& inject_data, bool hide_console);
     ~ProcessJob();
 
     /**

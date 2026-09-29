@@ -202,6 +202,22 @@ ProbeKey::~ProbeKey()
     s_probe_srv->context_map.erase(key);
 }
 
+/**
+ * @brief Adapt the configuration of a case to the probe process.
+ *
+ * A case which describes no startup file starts the probe once, like the single
+ * main program of a packaged application, and every startup file is pointed at
+ * the test executable instead of the program of the case.
+ *
+ * The console window of the probe is hidden as well: the probe is a console
+ * program, while the loader and its launcher are GUI programs without a
+ * console, so Windows would open a console window for every probe process of
+ * every case and that window would pop up on the desktop of the machine the
+ * cases run on.
+ *
+ * @param[in] config Configuration of the case.
+ * @return The configuration of the probe run.
+ */
 static appbox::LoaderConfig OverrideConfig(const appbox::LoaderConfig& config)
 {
     appbox::LoaderConfig copy_config = config;
@@ -227,6 +243,9 @@ static appbox::LoaderConfig OverrideConfig(const appbox::LoaderConfig& config)
     {
         startup.executable = s_probe_srv->exe_path;
     }
+
+    copy_config.hide_console = true;
+
     return copy_config;
 }
 

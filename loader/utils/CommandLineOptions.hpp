@@ -23,6 +23,7 @@ struct CommandLineOptions
     int                      wargc;               /* Command line argument count */
     LPWSTR*                  wargv;               /* Command line argument array */
     bool                     is_launcher;         /* True if it is a mini launcher */
+    bool                     hide_console;        /* True to start the target without a console window */
     std::wstring             config_dir;          /* Config file directory path */
     nlohmann::json           override_config;     /* Override config */
     std::vector<std::string> extra_args;          /* Extra arguments, encoding in UTF-8 */

@@ -140,8 +140,8 @@ static void MainLoader()
         auto exe_path = appbox::UTF8ToWide(startup->executable.c_str());
         exe_path = appbox::ExpandKnownFolder(exe_path);
 
-        auto job =
-            std::make_unique<appbox::ProcessJob>(exe_path, BuildCmdArg(*startup), wxGetApp().runtime->inject_data);
+        auto job = std::make_unique<appbox::ProcessJob>(
+            exe_path, BuildCmdArg(*startup), wxGetApp().runtime->inject_data, wxGetApp().loader_config.hide_console);
         const auto ret = job->Start();
         if (ret != 0)
         {
