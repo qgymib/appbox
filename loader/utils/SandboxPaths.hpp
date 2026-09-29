@@ -138,6 +138,28 @@ struct SandboxPaths
     }
 
     /**
+     * @brief 32 bit sandbox injection module of the archive.
+     *
+     * The module travels in the read-only resources of the archive and the
+     * loader injects it from there, so a run writes no module of its own.
+     *
+     * @return The path of the module inside the resource root.
+     */
+    std::wstring Sandbox32Dll() const
+    {
+        return (std::filesystem::path(app) / layout::kSandbox32DllNameW).wstring();
+    }
+
+    /**
+     * @brief 64 bit sandbox injection module of the archive.
+     * @return The path of the module inside the resource root.
+     */
+    std::wstring Sandbox64Dll() const
+    {
+        return (std::filesystem::path(app) / layout::kSandbox64DllNameW).wstring();
+    }
+
+    /**
      * @brief Environment variables the packaged application changed.
      *
      * The file lives in the state directory, because the sandboxed process

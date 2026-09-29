@@ -14,7 +14,6 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "appbox: build all dependencies as static l
 
 # Add cmake search path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/cmrc")
 
 ###############################################################################
 # Support functions
@@ -31,7 +30,6 @@ endfunction()
 # Build Sandbox as 32-bit and 64-bit dll
 ###############################################################################
 include(ExternalProject)
-include(CMakeRC)
 
 if(MSVC)
     # Visual Studio 通过 CMAKE_GENERATOR_PLATFORM 切换架构
@@ -84,12 +82,6 @@ ExternalProject_Add(sandbox_x64_build
     BUILD_ALWAYS ON
 )
 
-cmrc_add_resource_library(sandbox_resource
-    WHENCE ${CMAKE_BINARY_DIR}/resource
-    ${CMAKE_BINARY_DIR}/resource/lib/AppBoxSandbox32.dll
-    ${CMAKE_BINARY_DIR}/resource/lib/AppBoxSandbox64.dll
-)
-
 ###############################################################################
 # Build information of the About dialog
 #
@@ -120,6 +112,42 @@ add_custom_target(appbox_build_info
 )
 
 ###############################################################################
+# Payloads embedded as Windows resources
+#
+# The packer carries the loader program and the two sandbox injection modules
+# as RCDATA resources of its own executable, so a pack run needs no file beside
+# the executable. The three payloads are build products of this build tree, so
+# the resource script which names them cannot be checked in: it is generated
+# here from cmake/EmbeddedResources.rc.in, with the absolute path of every
+# payload substituted for its placeholder. src/resource.rc includes the
+# generated script, so the payloads are compiled into the one resource script
+# of the target.
+#
+# The resource compiler reads the backslash of a Windows path as an escape
+# character inside a string literal, so every separator is doubled before the
+# path is substituted.
+###############################################################################
+set(APPBOX_RESOURCE_LOADER "${CMAKE_BINARY_DIR}/resource/appbox/AppBoxLoader.exe")
+set(APPBOX_RESOURCE_SANDBOX32 "${CMAKE_BINARY_DIR}/resource/lib/AppBoxSandbox32.dll")
+set(APPBOX_RESOURCE_SANDBOX64 "${CMAKE_BINARY_DIR}/resource/lib/AppBoxSandbox64.dll")
+
+function(appbox_escape_resource_path out_var path)
+    file(TO_NATIVE_PATH "${path}" native)
+    string(REPLACE "\\" "\\\\" escaped "${native}")
+    set(${out_var} "${escaped}" PARENT_SCOPE)
+endfunction()
+
+appbox_escape_resource_path(APPBOX_RESOURCE_LOADER_RC "${APPBOX_RESOURCE_LOADER}")
+appbox_escape_resource_path(APPBOX_RESOURCE_SANDBOX32_RC "${APPBOX_RESOURCE_SANDBOX32}")
+appbox_escape_resource_path(APPBOX_RESOURCE_SANDBOX64_RC "${APPBOX_RESOURCE_SANDBOX64}")
+
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbeddedResources.rc.in"
+    "${APPBOX_GENERATED_DIR}/EmbeddedResources.generated.rc"
+    @ONLY
+)
+
+###############################################################################
 # Project products
 ###############################################################################
 add_subdirectory(loader)
@@ -147,6 +175,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/AboutInfo.cpp"
     "${APPBOX_SOURCE_DIR}/core/ApplicationIcon.cpp"
     "${APPBOX_SOURCE_DIR}/core/BuildReport.cpp"
+    "${APPBOX_SOURCE_DIR}/core/EmbeddedResource.cpp"
     "${APPBOX_SOURCE_DIR}/core/EnvironmentIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/EnvironmentModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/FilesystemIsolationFile.cpp"
@@ -171,7 +200,6 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/widget/EnvironmentPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/FilesystemIsolationRenderer.cpp"
     "${APPBOX_SOURCE_DIR}/widget/FilesystemPanel.cpp"
-    "${APPBOX_SOURCE_DIR}/widget/LoaderResource.cpp"
     "${APPBOX_SOURCE_DIR}/widget/MainFrame.cpp"
     "${APPBOX_SOURCE_DIR}/widget/NetworkPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/NetworkTabBar.cpp"
@@ -251,22 +279,20 @@ find_package(libzip REQUIRED)
 target_link_libraries(AppBox PRIVATE libzip::zip)
 
 ###############################################################################
-# Embed the loader
+# Embed the payloads
 #
-# The loader copies itself below the build resource tree (POST_BUILD command of
-# AppBoxLoader), and CMakeRC embeds the copied bytes into this executable. The
-# resource intermediate file is generated at build time, so the loader binary
-# does not need to exist at configure time; the target dependency keeps the
-# embedding order correct.
+# The loader and the two sandbox injection modules are RCDATA resources of this
+# executable (see the `Payloads embedded as Windows resources` section above),
+# so a pack run needs no file beside the executable. The resource compiler reads
+# the payloads from the build tree, which is why the target depends on the
+# builds which produce them: the loader copies itself below the build resource
+# tree (POST_BUILD command of AppBoxLoader) and the sandbox builds install their
+# modules there.
 ###############################################################################
-cmrc_add_resource_library(appbox_resource
-    WHENCE ${CMAKE_BINARY_DIR}/resource/appbox
-    ${CMAKE_BINARY_DIR}/resource/appbox/AppBoxLoader.exe
-)
-add_dependencies(appbox_resource AppBoxLoader)
-target_link_libraries(AppBox
-    PRIVATE
-        appbox_resource
+add_dependencies(AppBox
+    AppBoxLoader
+    sandbox_x86_build
+    sandbox_x64_build
 )
 
 include (CTest)

@@ -60,6 +60,10 @@ struct FsDir : FsNode
  * sandbox may modify and the resource root `app` carries what it must not
  * touch, both with the `filesystem` subdirectory which carries their content.
  *
+ * The sandbox injection modules are written by the builder instead of being
+ * declared by the case: they belong to the fixed layout of the sandbox like
+ * the isolation files, because every case which starts the loader needs them.
+ *
  * The loader configuration carries no path at all: the loader resolves `app`
  * and `data` against the directory of its configuration file, which is the
  * working directory of the case.

@@ -226,6 +226,18 @@ void SetConfigFromEnv()
     {
         appbox::test::config.loader_path = val;
     }
+    if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_SANDBOX32", val))
+    {
+        appbox::test::config.sandbox32_path = val;
+    }
+    if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_SANDBOX64", val))
+    {
+        appbox::test::config.sandbox64_path = val;
+    }
+    if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_PACKER", val))
+    {
+        appbox::test::config.packer_path = val;
+    }
     if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_LOG_LEVEL", val))
     {
         SetLogLevelFromString(val);
@@ -291,6 +303,12 @@ int appbox::test::SetupTestConfig(CLI::App& app)
 
     app.add_option("--loader", appbox::test::config.loader_path,
                    "Path to loader. Environment variable: APPBOX_TEST_LOADER.");
+    app.add_option("--sandbox32", appbox::test::config.sandbox32_path,
+                   "Path to the 32 bit sandbox injection module. Environment variable: APPBOX_TEST_SANDBOX32.");
+    app.add_option("--sandbox64", appbox::test::config.sandbox64_path,
+                   "Path to the 64 bit sandbox injection module. Environment variable: APPBOX_TEST_SANDBOX64.");
+    app.add_option("--packer", appbox::test::config.packer_path,
+                   "Path to the packer executable. Environment variable: APPBOX_TEST_PACKER.");
     app.add_option_function<std::wstring>("--log-level", SetLogLevelFromString,
                                           "Log level. Available levels: trace, debug, info, warn, err, critical, off. "
                                           "Default: info. Environment variable: APPBOX_TEST_LOG_LEVEL.");

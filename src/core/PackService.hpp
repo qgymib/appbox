@@ -16,26 +16,26 @@ namespace appbox
 /**
  * @brief Number of archive entries which do not come from an import.
  *
- * The loader payload, the loader configuration, the two registry artifacts
- * (the hive and the isolation file), the isolation file of the filesystem
- * workspace, the isolation file of the network workspace and the isolation
- * file of the environment workspace. The pack run and the extraction of a
- * `Build and Run` run report the same total, so both count this constant
- * instead of a literal.
+ * The loader payload, the loader configuration, the two sandbox injection
+ * modules below `app`, the two registry artifacts (the hive and the isolation
+ * file), the isolation file of the filesystem workspace, the isolation file of
+ * the network workspace and the isolation file of the environment workspace.
+ * The pack run and the extraction of a `Build and Run` run report the same
+ * total, so both count this constant instead of a literal.
  */
-inline constexpr std::size_t kNonContentArchiveEntries = 7;
+inline constexpr std::size_t kNonContentArchiveEntries = 9;
 
 /**
  * @brief Number of patch archive entries which do not come from an import.
  *
  * A patch package carries the resources of a standalone archive without the
- * loader: the loader payload and the loader configuration do not travel, so
- * the count is two below kNonContentArchiveEntries. What remains is the two
- * registry artifacts (the hive and the isolation file) and the isolation file
- * of the filesystem, of the network and of the environment workspace. The
- * patch run and the extraction of a `Build and Run` run of a standalone
- * archive report the same total for their own kind, so both count a constant
- * instead of a literal.
+ * program which starts it: the loader payload, the loader configuration and
+ * the two sandbox injection modules do not travel, so the count is four below
+ * kNonContentArchiveEntries. What remains is the two registry artifacts (the
+ * hive and the isolation file) and the isolation file of the filesystem, of
+ * the network and of the environment workspace. The patch run and the
+ * extraction of a `Build and Run` run of a standalone archive report the same
+ * total for their own kind, so both count a constant instead of a literal.
  */
 inline constexpr std::size_t kNonContentPatchEntries = 5;
 
@@ -80,6 +80,28 @@ std::size_t ContentFileCount(const PackModel& model);
 std::wstring LoaderEntryName(const PackModel& model);
 
 /**
+ * @brief Payloads a pack run writes into the archive beside the resources.
+ *
+ * A standalone archive carries the loader program and the two sandbox
+ * injection modules of the build which produced it. The packer reads them from
+ * its own resources (see `src/core/EmbeddedResource.hpp`), so they reach the
+ * run as byte ranges instead of file paths; the caller which read them keeps
+ * them alive for the whole run.
+ *
+ * A patch package carries none of the three, so a run of `PackPatch()` needs
+ * no payload at all.
+ */
+struct PackPayloads
+{
+    const void* loader_bytes = nullptr;    /*!< The loader program. */
+    std::size_t loader_size = 0;           /*!< Size of the loader program in bytes. */
+    const void* sandbox32_bytes = nullptr; /*!< The 32 bit sandbox injection module. */
+    std::size_t sandbox32_size = 0;        /*!< Size of the 32 bit module in bytes. */
+    const void* sandbox64_bytes = nullptr; /*!< The 64 bit sandbox injection module. */
+    std::size_t sandbox64_size = 0;        /*!< Size of the 64 bit module in bytes. */
+};
+
+/**
  * @brief Pack the model into a self-contained zip archive.
  *
  * The archive layout is the fixed convention of `common/SandboxLayout.hpp`:
@@ -89,9 +111,11 @@ std::wstring LoaderEntryName(const PackModel& model);
  * deleting it resets the sandbox to the state the archive carries.
  *
  * ```
- * <first startup file name>              loader payload (loader_bytes)
+ * <first startup file name>              loader payload (payloads.loader_bytes)
  * <first startup file name>.json         startups[] = { trigger, auto_start,
  *                                        executable = <layer key>\<import>\<exe> }
+ * app/sandbox32.dll                      injected sandbox DLL (32 bit)
+ * app/sandbox64.dll                      injected sandbox DLL (64 bit)
  * app/filesystem/isolation.json          isolation modes of the filesystem
  * app/filesystem/<layer key>/<import>/... imported folder content
  * app/filesystem/<layer key>/<target>/<file> imported file content
@@ -104,6 +128,14 @@ std::wstring LoaderEntryName(const PackModel& model);
  * The loader program and its configuration carry the file name of the first
  * startup file, see LoaderEntryName(). The entry programs themselves keep
  * their place below the layer tree.
+ *
+ * The two sandbox injection modules are resources of the archive: they land
+ * directly below `app`, beside the four isolation domains, and the loader
+ * injects them from there instead of writing a copy into its state directory,
+ * so a run of the extracted archive copies no module at all (see
+ * `common/SandboxLayout.hpp`). A patch package carries none of them: the
+ * modules belong to the archive which is started and not to the resources a
+ * package overrides.
  *
  * The registry artifacts land in the registry domain of the resources: the
  * hive holds the virtual registry the packaged application sees and the
@@ -119,8 +151,8 @@ std::wstring LoaderEntryName(const PackModel& model);
  * its own icon resources. A startup file without an icon leaves the payload
  * unchanged; the run then only logs a warning instead of failing.
  *
- * The loader bytes are supplied by the caller so unit tests can inject a
- * fake payload without a real loader binary.
+ * The payloads are supplied by the caller so unit tests can inject fake bytes
+ * without a real loader binary and without real sandbox modules.
  *
  * The progress total covers the files of the imported folders plus the
  * individually imported files and kNonContentArchiveEntries, so the callback
@@ -164,8 +196,8 @@ std::wstring LoaderEntryName(const PackModel& model);
  * @param[in] environment Environment variables of the workspace, which are
  *                        written into the environment domain of the archive as
  *                        an isolation file.
- * @param[in] loader_bytes Embedded AppBoxLoader.exe payload.
- * @param[in] loader_size Payload size in bytes.
+ * @param[in] payloads Embedded loader program and sandbox injection modules,
+ *                     written beside the resources of the archive.
  * @param[in] zip_path Destination zip path (truncated when it exists).
  * @param[in] progress Called once per packed file; returning false aborts the
  *                     pack with kBuildCancelledError. May be empty to disable
@@ -173,15 +205,16 @@ std::wstring LoaderEntryName(const PackModel& model);
  * @return Error description, empty on success.
  */
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
-                 const NetworkModel& network, const EnvironmentModel& environment, const void* loader_bytes,
-                 std::size_t loader_size, const std::wstring& zip_path, const BuildProgressCallback& progress);
+                 const NetworkModel& network, const EnvironmentModel& environment, const PackPayloads& payloads,
+                 const std::wstring& zip_path, const BuildProgressCallback& progress);
 
 /**
  * @brief Pack the resources of the model into a patch package.
  *
  * The archive holds the very same resource tree a standalone archive keeps
  * below `app`, rooted at the archive root instead: the loader program, its
- * configuration and the `app` directory itself do not travel. The package is
+ * configuration, the two sandbox injection modules and the `app` directory
+ * itself do not travel. The package is
  * meant to be dropped into the `patch` directory next to the loader of a
  * standalone archive, which merges every patch of that directory in ascending
  * name order on top of the resources of `app`, so a later package overrides an

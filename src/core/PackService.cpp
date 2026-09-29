@@ -182,7 +182,9 @@ std::string AddImportedFolder(appbox::ZipWriter& writer, const std::wstring& sou
  *                 patch package, which roots the resources at the archive root.
  * @param[in] app_relative Entry name relative to the resource root, which is
  *                         one of the `*AppRelative` names of
- *                         `common/SandboxLayout.hpp`.
+ *                         `common/SandboxLayout.hpp` or the name of an entry
+ *                         which lives directly below that root, like the
+ *                         sandbox injection modules.
  * @return The entry name relative to the archive root.
  */
 std::string ResourceEntry(const std::string& root, const char* app_relative)
@@ -468,8 +470,8 @@ std::wstring LoaderEntryName(const PackModel& model)
 }
 
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
-                 const NetworkModel& network, const EnvironmentModel& environment, const void* loader_bytes,
-                 std::size_t loader_size, const std::wstring& zip_path, const BuildProgressCallback& progress)
+                 const NetworkModel& network, const EnvironmentModel& environment, const PackPayloads& payloads,
+                 const std::wstring& zip_path, const BuildProgressCallback& progress)
 {
     if (!model.HasStartupFiles())
     {
@@ -479,9 +481,17 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
     {
         return "at least one startup file must start automatically";
     }
-    if (loader_bytes == nullptr || loader_size == 0)
+    if (payloads.loader_bytes == nullptr || payloads.loader_size == 0)
     {
         return "the embedded loader payload is empty";
+    }
+    if (payloads.sandbox32_bytes == nullptr || payloads.sandbox32_size == 0)
+    {
+        return "the embedded 32 bit sandbox module is empty";
+    }
+    if (payloads.sandbox64_bytes == nullptr || payloads.sandbox64_size == 0)
+    {
+        return "the embedded 64 bit sandbox module is empty";
     }
 
     /* Count the files once so the progress callback has a stable total. */
@@ -523,15 +533,16 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         if (model.StartupFilePath(model.StartupFiles().front(), startup_path))
         {
             std::string icon_warning;
-            patched_loader = ApplyApplicationIcon(loader_bytes, loader_size, startup_path, icon_warning);
+            patched_loader =
+                ApplyApplicationIcon(payloads.loader_bytes, payloads.loader_size, startup_path, icon_warning);
             if (!icon_warning.empty())
             {
                 spdlog::warn("the loader keeps its own icon: {}", icon_warning);
             }
         }
 
-        const void* const payload = patched_loader.empty() ? loader_bytes : patched_loader.data();
-        const auto        payload_size = patched_loader.empty() ? loader_size : patched_loader.size();
+        const void* const payload = patched_loader.empty() ? payloads.loader_bytes : patched_loader.data();
+        const auto        payload_size = patched_loader.empty() ? payloads.loader_size : patched_loader.size();
         if (!writer.AddFileBuffer(loader_entry, payload, payload_size, error))
         {
             return error;
@@ -584,6 +595,24 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         error = WriteResourceTree(writer, layout::kAppDirName, model, registry, isolation, network, environment, total,
                                   progress);
         if (!error.empty())
+        {
+            return error;
+        }
+
+        /*
+         * The sandbox injection modules are resources of the archive, so they
+         * land beside the four isolation domains instead of in the state
+         * directory of the sandbox: the loader injects the module of the
+         * bitness of the process it starts from `app`, which keeps a run of the
+         * extracted archive from copying a module of its own.
+         */
+        if (!writer.AddFileBuffer(ResourceEntry(layout::kAppDirName, layout::kSandbox32DllName),
+                                  payloads.sandbox32_bytes, payloads.sandbox32_size, error))
+        {
+            return error;
+        }
+        if (!writer.AddFileBuffer(ResourceEntry(layout::kAppDirName, layout::kSandbox64DllName),
+                                  payloads.sandbox64_bytes, payloads.sandbox64_size, error))
         {
             return error;
         }

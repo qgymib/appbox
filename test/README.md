@@ -32,13 +32,21 @@ The presets of `CMakePresets.json` wrap the same steps:
 `APPBOX_TEST_LOG_LEVEL=trace`, stop at the first failure and fail when no test
 is registered at all.
 
-CTest passes `--loader=$<TARGET_FILE:AppBoxLoader>` to both entries. A test
-executable which is started by hand needs that argument as well: without it the
-end-to-end cases cannot start the loader, and the unit tests which work on the
-real loader payload skip themselves.
+CTest passes `--loader=$<TARGET_FILE:AppBoxLoader>` to both entries, the two
+injection modules the build installed below `resource/lib` and the packer
+executable `$<TARGET_FILE:AppBox>`.
+
+A test executable which is started by hand needs those arguments as well:
+without the loader the end-to-end cases cannot start it, without the modules the
+cases skip themselves (see `appbox::test::CommonFixture::SetUp()`), and without
+the packer the unit test of the embedded resources skips itself.
 
 ```bash
-build/Debug/test/Debug/AppBoxTests.exe --mode=e2e --loader=<absolute path of AppBoxLoader.exe>
+build/Debug/test/Debug/AppBoxTests.exe --mode=e2e \
+    --loader=<absolute path of AppBoxLoader.exe> \
+    --sandbox32=<absolute path of AppBoxSandbox32.dll> \
+    --sandbox64=<absolute path of AppBoxSandbox64.dll> \
+    --packer=<absolute path of AppBox.exe>
 ```
 
 The executable accepts these options; every one of them has an environment
@@ -47,6 +55,9 @@ variable counterpart:
 | Option | Environment variable | Meaning |
 | --- | --- | --- |
 | `--loader` | `APPBOX_TEST_LOADER` | Path of the loader executable the cases start. |
+| `--sandbox32` | `APPBOX_TEST_SANDBOX32` | Path of the 32 bit sandbox injection module the cases put into the resource root of their directory. |
+| `--sandbox64` | `APPBOX_TEST_SANDBOX64` | Path of the 64 bit sandbox injection module. |
+| `--packer` | `APPBOX_TEST_PACKER` | Path of the packer executable, which carries the payloads as resources. |
 | `--log-level` | `APPBOX_TEST_LOG_LEVEL` | `trace`, `debug`, `info`, `warn`, `err`, `critical` or `off`; default `info`. |
 | `--mode` | `APPBOX_TEST_MODE` | `all`, `unit` or `e2e`; default `all`. |
 | `--no-cleanup` | `APPBOX_TEST_NO_CLEANUP` | Keep the working directory of a case instead of removing it. |
@@ -168,7 +179,8 @@ The limits which are worth knowing:
 | `test/utils/Coredump.*` | The coredump writer: the full memory dump of a process, the walk of a process tree and the termination of its processes. |
 | `test/utils/CommandLine.*` | The command line and the environment of a run, which the coredump writer reads before GoogleTest and CLI11 look at them. |
 | `test/utils/LoaderPath.hpp` | The loader path of a run: `LoaderPath()` answers the `--loader` value of the configuration. |
-| `test/Test.cpp` / `test/Test.hpp` | The configuration of the run: `--loader`, `--log-level`, `--mode`, `--no-cleanup`, the timeout options, the prefixes which tell the mode of a suite, the guard which keeps the prefix and the directory of a suite together and the mode filter. |
+| `test/utils/SandboxDll.hpp` | The injection modules of a run: `Sandbox32DllPath()` and `Sandbox64DllPath()` answer the `--sandbox32` and `--sandbox64` values, and `SandboxModulesAvailable()` tells whether the run can start the loader at all. |
+| `test/Test.cpp` / `test/Test.hpp` | The configuration of the run: `--loader`, `--sandbox32`, `--sandbox64`, `--packer`, `--log-level`, `--mode`, `--no-cleanup`, the timeout options, the prefixes which tell the mode of a suite, the guard which keeps the prefix and the directory of a suite together and the mode filter. |
 | `test/main.cpp` | The entry point of the test executable. It serves both sides, and it also handles the coredump writer, the name resolution probe of the tracer and the `probe` subcommand the loader starts. |
 
 The source files of the executable are an explicit list in
@@ -246,12 +258,21 @@ The unit tests of the packer:
   which are refused, the label of every entry of the box, and the mapping
   between the entries of the box and the enumeration, including the fallback of
   an index which is outside of the box.
+* `test/unit/EmbeddedResource.cpp` — the payloads the packer carries as RCDATA
+  resources of its own executable: the loader program and the two sandbox
+  injection modules are read from the executable opened as a data file and
+  compared byte for byte with the files of the build tree they were embedded
+  from, and a resource which an executable does not carry is reported instead of
+  being handed out as an empty payload. The suite is the only automated coverage
+  of the resource script of the build.
 * `test/unit/PackService.cpp` — the archive carries the hive, the isolation
   file of the registry, the isolation file of the filesystem workspace, the
-  isolation file of the network workspace and the isolation file of the
-  environment workspace; the patch package carries the very same resources
-  rooted at the archive root, without the loader and without an `app`
-  directory, and needs neither a startup file nor the embedded payload, which is
+  isolation file of the network workspace, the isolation file of the
+  environment workspace and the two sandbox injection modules below `app`; the
+  patch package carries the very same resources
+  rooted at the archive root, without the loader, without the injection modules
+  and without an `app`
+  directory, and needs neither a startup file nor the payloads, which is
   what the patch cases of the suite pin: the root layout, the layer tree, the
   registry artifacts, the imported files, the progress total, the cancellation
   and the fact that the archive relative spelling of an entry is the `app`
@@ -714,6 +735,22 @@ hive the sandbox mounted.
 | `RegistryStateIsKept` | the resources carry `packed`, the first run writes `sandbox` into the key | the second run returns `sandbox`, so the state of the first run survives the next one |
 | `RegistryStateIsReset` | the resources carry `packed`, the first run writes `sandbox`, then the state directory is deleted | the second run returns `packed`, so deleting the state directory resets the sandbox to the registry of the archive |
 
+### Loader sandbox module cases
+
+The module cases (`test/e2e/Loader_MissingSandboxDll.cpp` and
+`test/e2e/Loader_SandboxDllFromTheApp.cpp`) pin the contract of the injection
+modules: they are resources of the archive below `app`, so the loader injects
+them from there and writes no copy into the state directory, and a run without
+them is refused before anything starts. The harness links the modules of the run
+into the resource root of every case, so a case which describes a run without
+them removes them again.
+
+| Case | Steps | Expected |
+| --- | --- | --- |
+| `MissingSandboxDll.BothModulesAreMissing` | the resource root carries neither module, the configuration holds an auto start file | the loader reports the module which is missing, starts nothing and exits with a non zero code |
+| `MissingSandboxDll.The32BitModuleIsMissing` | the resource root carries the 64 bit module only | the run is refused as well, because a packaged application may start a 32 bit process which has to be injected |
+| `SandboxDllFromTheApp.TheRunInjectsFromTheResourceRoot` | the resource root carries both modules, the state root is empty | the startup file runs inside the sandbox, so the modules of the resource root were injected, and the state root carries no module afterwards |
+
 ### Patch layer cases
 
 The patch cases (`test/e2e/Patch_*.cpp`) run the layout of the filesystem cases
@@ -758,10 +795,18 @@ header comment.
   which carries no path: the loader resolves the state directory `data` and the resource
   directory `app` against the directory of its configuration file, which is the working
   directory of the case. The resource directories are named after the known folder token
-  (`app\filesystem\#USERPROFILE#`) so that `MapBaseFS` resolves them. `Verify()` re-reads
+  (`app\filesystem\#USERPROFILE#`) so that `MapBaseFS` resolves them. The builder also
+  links the sandbox injection modules of the run into the resource root of the case,
+  because every case which starts the loader needs them there. `Verify()` re-reads
   everything a case declared and fails if the content changed; the isolation files which
-  the helpers of the suite write are not part of the declared content.
-* `test/utils/CommonFixture.*` — gives every case a private working directory.
+  the helpers of the suite write and the injection modules are not part of the declared
+  content.
+* `test/utils/CommonFixture.*` — gives every case a private working directory, and
+  skips the case when the run provided no sandbox injection modules, because the loader
+  of a case cannot inject anything without them.
+* `test/utils/SandboxDll.hpp` — the injection modules of a run:
+  `Sandbox32DllPath()` and `Sandbox64DllPath()` answer the paths of the run and
+  `SandboxModulesAvailable()` tells whether both of them exist.
 * `test/utils/CWD.*` — the working directory itself: `Create()` makes it,
   `NoCleanup()` keeps it after the case.
 * `test/utils/ProbeCall.*` — writes the `LoaderConfig` to `config.json`, starts the

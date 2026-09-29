@@ -26,6 +26,7 @@ add_executable(AppBoxTests
     "unit/EnvironmentIsolation.cpp"
     "unit/EnvironmentIsolationFile.cpp"
     "unit/EnvironmentModel.cpp"
+    "unit/EmbeddedResource.cpp"
     "unit/EnvironmentTable.cpp"
     "unit/ExpandKnownFolder.cpp"
     "unit/FilesystemIsolation.cpp"
@@ -106,9 +107,11 @@ add_executable(AppBoxTests
     "e2e/Fs_Whiteout_FolderHidesSubtree.cpp"
     "e2e/Fs_WriteLowerLayerFile_CopyUp.cpp"
     "e2e/Loader_HideConsole.cpp"
+    "e2e/Loader_MissingSandboxDll.cpp"
     "e2e/Loader_RegistryStateIsKept.cpp"
     "e2e/Loader_RegistryStateIsReset.cpp"
     "e2e/Loader_RegistryStateIsSeeded.cpp"
+    "e2e/Loader_SandboxDllFromTheApp.cpp"
     "e2e/Loader_Shell.cpp"
     "e2e/Loader_Startup.cpp"
     "e2e/Net_Dns_EveryResolutionApiIsRedirected.cpp"
@@ -246,6 +249,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/AboutInfo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationIcon.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EmbeddedResource.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationFile.cpp
@@ -310,6 +314,15 @@ target_include_directories(AppBoxTests
 add_dependencies(AppBoxTests appbox_build_info)
 add_dependencies(AppBoxTests AppBoxLoader)
 
+# The end-to-end cases start the loader, which injects the modules below
+# `resource/lib`, and the unit test of the embedded resources reads the
+# resources of the packer.
+add_dependencies(AppBoxTests
+    AppBox
+    sandbox_x86_build
+    sandbox_x64_build
+)
+
 ###############################################################################
 # Dependency
 ###############################################################################
@@ -366,11 +379,17 @@ target_link_libraries(AppBoxTests PRIVATE libzip::zip)
 add_test(NAME AppBoxUnitTests
     COMMAND AppBoxTests
         --loader=$<TARGET_FILE:AppBoxLoader>
+        --sandbox32=${APPBOX_RESOURCE_SANDBOX32}
+        --sandbox64=${APPBOX_RESOURCE_SANDBOX64}
+        --packer=$<TARGET_FILE:AppBox>
         --mode=unit
 )
 
 add_test(NAME AppBoxTests
     COMMAND AppBoxTests
         --loader=$<TARGET_FILE:AppBoxLoader>
+        --sandbox32=${APPBOX_RESOURCE_SANDBOX32}
+        --sandbox64=${APPBOX_RESOURCE_SANDBOX64}
+        --packer=$<TARGET_FILE:AppBox>
         --mode=e2e
 )

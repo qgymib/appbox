@@ -676,10 +676,25 @@ TEST(Unit_ApplicationIcon, PackWritesTheIconOfTheStartupFile)
     const auto payload = ReadAllBytes(SelfPath());
     ASSERT_FALSE(payload.empty());
 
+    /*
+     * The case describes the icon of the loader entry, so the injection modules
+     * only have to be present for the run.
+     */
+    constexpr char kSandbox32[] = "SANDBOX32";
+    constexpr char kSandbox64[] = "SANDBOX64";
+
+    appbox::PackPayloads payloads;
+    payloads.loader_bytes = payload.data();
+    payloads.loader_size = payload.size();
+    payloads.sandbox32_bytes = kSandbox32;
+    payloads.sandbox32_size = sizeof(kSandbox32) - 1;
+    payloads.sandbox64_bytes = kSandbox64;
+    payloads.sandbox64_size = sizeof(kSandbox64) - 1;
+
     const auto                  zip_path = temp.Get() / L"out.zip";
     const appbox::RegistryModel registry;
     ASSERT_EQ(appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                           appbox::EnvironmentModel(), payload.data(), payload.size(), zip_path.wstring(), nullptr),
+                           appbox::EnvironmentModel(), payloads, zip_path.wstring(), nullptr),
               "");
 
     const auto extracted = temp.Get() / L"extracted";

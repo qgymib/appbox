@@ -16,6 +16,8 @@ namespace appbox
  * ```
  * <startup>.exe                        loader payload
  * <startup>.exe.json                   loader configuration
+ * app/sandbox32.dll                    injected sandbox DLL (32 bit)
+ * app/sandbox64.dll                    injected sandbox DLL (64 bit)
  * app/filesystem/isolation.json        isolation modes of the filesystem
  * app/filesystem/<layer key>/...       imported content (read-only layers)
  * app/registry/user.hiv                virtual registry of the workspace
@@ -24,9 +26,10 @@ namespace appbox
  * app/environment/isolation.json       environment variables of the workspace
  * ```
  *
- * A patch package carries the very same resources without the loader: the
- * loader program, its configuration and the `app` directory itself do not
- * travel, so the tree of `app` is rooted at the archive root instead. The
+ * A patch package carries the very same resources without the program which
+ * starts them: the loader program, its configuration, the two sandbox
+ * injection modules and the `app` directory itself do not travel, so the tree
+ * of `app` is rooted at the archive root instead. The
  * package is dropped into the `patch` directory next to the loader of a
  * standalone archive, which merges every patch of that directory in ascending
  * name order on top of the resources of `app`.
@@ -40,7 +43,8 @@ namespace appbox
  * environment/isolation.json           environment variables of the workspace
  * ```
  *
- * Everything below `app` is read-only while the sandbox runs:
+ * Everything below `app` is read-only while the sandbox runs, and the loader
+ * only creates the writable state directory `data` at run time:
  *
  * ```
  * data/filesystem/...                  upper layer of the sandbox
@@ -48,8 +52,6 @@ namespace appbox
  *                                      `app/registry/user.hiv` on first run
  * data/environment/state.json          environment variables the packaged
  *                                      application changed inside the sandbox
- * data/sandbox32.dll                   injected sandbox DLL (32 bit)
- * data/sandbox64.dll                   injected sandbox DLL (64 bit)
  * ```
  *
  * A patch package is consumed next to those directories: the user creates
@@ -102,6 +104,20 @@ inline constexpr const char* kNetworkDirName = "network";
  * @brief Name of the environment directory below `app`.
  */
 inline constexpr const char* kEnvironmentDirName = "environment";
+
+/**
+ * @brief Name of the 32 bit sandbox injection module below `app`.
+ *
+ * The module is a resource of the archive and not a state of the sandbox: it
+ * travels in `app` and the loader injects it from there, so a run of the
+ * extracted archive copies no module of its own.
+ */
+inline constexpr const char* kSandbox32DllName = "sandbox32.dll";
+
+/**
+ * @brief Name of the 64 bit sandbox injection module below `app`.
+ */
+inline constexpr const char* kSandbox64DllName = "sandbox64.dll";
 
 /**
  * @brief Name of the isolation file of every domain directory.
@@ -183,6 +199,12 @@ inline constexpr const wchar_t* kNetworkDirNameW = L"network";
 
 /** @brief Wide spelling of kEnvironmentDirName. */
 inline constexpr const wchar_t* kEnvironmentDirNameW = L"environment";
+
+/** @brief Wide spelling of kSandbox32DllName. */
+inline constexpr const wchar_t* kSandbox32DllNameW = L"sandbox32.dll";
+
+/** @brief Wide spelling of kSandbox64DllName. */
+inline constexpr const wchar_t* kSandbox64DllNameW = L"sandbox64.dll";
 
 /** @brief Wide spelling of kIsolationFileName. */
 inline constexpr const wchar_t* kIsolationFileNameW = L"isolation.json";

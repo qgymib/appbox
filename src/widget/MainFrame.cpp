@@ -8,8 +8,9 @@
 #include "RegistryPanel.hpp"
 #include "RibbonBar.hpp"
 #include "SideNav.hpp"
-#include "LoaderResource.hpp"
 #include "core/BuildReport.hpp"
+#include "core/EmbeddedResource.hpp"
+#include "core/EmbeddedResourceIds.h"
 #include "core/PackService.hpp"
 #include "core/PresetDirectory.hpp"
 #include "core/ProjectFile.hpp"
@@ -599,16 +600,33 @@ void MainFrame::StartPack(bool run_after)
         return;
     }
 
-    std::string loader;
+    /*
+     * The payloads of a standalone archive are the resources of this
+     * executable: the loader program and the two sandbox injection modules,
+     * which the archive carries below `app`. A patch package holds none of
+     * them, so its payloads stay empty.
+     */
+    appbox::PackPayloads payloads;
     if (standalone)
     {
-        std::string error;
-        loader = appbox::LoadEmbeddedLoader(error);
-        if (!error.empty() || loader.empty())
+        std::string      error;
+        std::string_view loader;
+        std::string_view sandbox32;
+        std::string_view sandbox64;
+        if (!appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_LOADER, loader, error) ||
+            !appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_SANDBOX32, sandbox32, error) ||
+            !appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_SANDBOX64, sandbox64, error))
         {
-            wxMessageBox("The embedded loader is unavailable: " + error, "Build", wxOK | wxICON_ERROR, this);
+            wxMessageBox("The embedded payloads are unavailable: " + error, "Build", wxOK | wxICON_ERROR, this);
             return;
         }
+
+        payloads.loader_bytes = loader.data();
+        payloads.loader_size = loader.size();
+        payloads.sandbox32_bytes = sandbox32.data();
+        payloads.sandbox32_size = sandbox32.size();
+        payloads.sandbox64_bytes = sandbox64.data();
+        payloads.sandbox64_size = sandbox64.size();
     }
 
     /*
@@ -675,12 +693,11 @@ void MainFrame::StartPack(bool run_after)
     const auto isolation_snapshot = filesystem_isolation_;
     const auto network_snapshot = network_;
     const auto environment_snapshot = environment_;
-    const auto loader_bytes = std::string(loader);
     const auto zip_wide = zip_path.ToStdWstring();
     const auto project_type = project_type_;
 
     pack_thread_ = std::thread([this, snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
-                                environment_snapshot, loader_bytes, zip_wide, run_after, project_type]() {
+                                environment_snapshot, payloads, zip_wide, run_after, project_type]() {
         const auto report_progress = [this](const appbox::BuildProgress& report) {
             auto* event = new wxThreadEvent(APPBOX_PACK_PROGRESS);
             event->SetPayload(report);
@@ -697,9 +714,8 @@ void MainFrame::StartPack(bool run_after)
         }
         else
         {
-            outcome.error =
-                appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, network_snapshot, environment_snapshot,
-                             loader_bytes.data(), loader_bytes.size(), zip_wide, report_progress);
+            outcome.error = appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
+                                         environment_snapshot, payloads, zip_wide, report_progress);
         }
 
         if (outcome.error.empty())

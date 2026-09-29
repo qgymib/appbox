@@ -302,6 +302,34 @@ static void ResolveSandboxPaths(const std::wstring& config_dir)
     wxGetApp().sandbox_paths = appbox::SandboxPaths::Resolve(dir);
 }
 
+/**
+ * @brief Refuse a run whose sandbox injection modules are missing.
+ *
+ * The modules are resources of the archive and the loader injects them from
+ * `app` instead of writing a copy into the state directory (see
+ * `common/SandboxLayout.hpp`), so a run without them cannot sandbox anything:
+ * the check happens before the runtime is created, which reports the missing
+ * path instead of failing while the application is started.
+ *
+ * @param[out] error Description of the first module which was not found, left
+ *                   untouched when both modules exist.
+ */
+static void CheckSandboxModules(std::string& error)
+{
+    const auto& paths = wxGetApp().sandbox_paths;
+
+    const std::wstring modules[] = { paths.Sandbox32Dll(), paths.Sandbox64Dll() };
+    for (const auto& module : modules)
+    {
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(module, ec))
+        {
+            error = "the sandbox injection module was not found: " + appbox::WideToUTF8(module);
+            return;
+        }
+    }
+}
+
 static void LoadConfig()
 {
     /*
@@ -398,6 +426,13 @@ bool AppBoxLoader::OnInit()
         }
         PrepareShellRun(opt);
         SPDLOG_INFO("Load config: {}", nlohmann::json(wxGetApp().loader_config).dump());
+
+        /*
+         * A run without the injection modules cannot sandbox anything: the
+         * failure is reported by the block below the startup selection, which
+         * turns it into a non zero exit code and starts nothing.
+         */
+        CheckSandboxModules(wxGetApp().startup_error);
 
         wxGetApp().runtime = std::make_shared<AppBoxLoaderRuntime>();
     }

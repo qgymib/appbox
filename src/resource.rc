@@ -19,3 +19,13 @@
 // by wx/msw/wx.rc, so Windows picks this icon group for the executable and for
 // the default frame icon.
 IDI_ICON1 ICON DISCARDABLE "../docs/icon.ico"
+
+// The payloads a pack run needs: the loader program and the two sandbox
+// injection modules, declared as RCDATA resources of this executable. The
+// identifiers are shared with the code which reads the payloads back, and the
+// statements themselves live in a file which CMake generates at configure time,
+// because the payloads are build products of this build tree and are named with
+// an absolute path (see the `Payloads embedded as Windows resources` section of
+// the top level CMakeLists.txt).
+#include "core/EmbeddedResourceIds.h"
+#include "EmbeddedResources.generated.rc"

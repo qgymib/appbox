@@ -97,20 +97,11 @@ find_package(libzip REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE libzip::zip)
 
 ###############################################################################
-# Embed Sandbox
-###############################################################################
-
-target_link_libraries(${PROJECT_NAME}
-    PRIVATE
-        sandbox_resource
-)
-
-###############################################################################
 # Export for the packer
 #
-# Copy the built loader below the build resource tree so the packer can embed
-# it as a CMakeRC resource (see the AppBox section of the top level
-# CMakeLists.txt).
+# Copy the built loader below the build resource tree, where the resource script
+# of the packer names it (see the `Payloads embedded as Windows resources`
+# section of the top level CMakeLists.txt).
 ###############################################################################
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/resource/appbox"

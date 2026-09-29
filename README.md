@@ -12,7 +12,7 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 - **Registry Isolation**: Redirects all five root keys onto a private hive file inside the overlay and enforces three isolation modes (`Full`, `WriteCopy`, `Hide`); the host registry is never modified (see [Registry Isolation](docs/RegistryIsolation.md)).
 - **Network Isolation**: Answers the name resolution of the packaged application from the redirections of the workspace, and optionally carries its TCP and UDP traffic through a SOCKS5 proxy (see [Network Isolation](docs/NetworkIsolation.md)).
 - **Environment Isolation**: Collects the environment variables the packaged application sees inside the sandbox with the isolation mode and the merge mode of every variable; the composed environment lives in a private table of the sandbox, so the environment of the host is never modified and the modifications of the application survive in the state directory of the sandbox (see [Environment Isolation](docs/EnvironmentIsolation.md)).
-- **Patch Packages**: The `Project Type` box of the packer writes either a self-contained archive or a patch package which holds the resources of the packaged application without the loader; the packages of the `patch` directory next to a standalone archive are merged into its resources in ascending name order — the filesystem layers, the virtual registry, the network configuration and the environment variables of a package included (see [Patch Layers](docs/PatchLayer.md)).
+- **Patch Packages**: The `Project Type` box of the packer writes either a self-contained archive or a patch package which holds the resources of the packaged application without the loader and without the sandbox injection modules; the packages of the `patch` directory next to a standalone archive are merged into its resources in ascending name order — the filesystem layers, the virtual registry, the network configuration and the environment variables of a package included (see [Patch Layers](docs/PatchLayer.md)).
 
 ## Requirements
 
@@ -116,10 +116,12 @@ project can be exchanged before the packaged application is installed.
 
 The `Project Type` box of the Output group selects the product of the `Build`
 command. `Standalone (ZIP)` writes the self-contained archive described above:
-the loader named after the first startup file, its configuration and the
-resources of the application below `app`. `Patch (ZIP)` writes a patch package
+the loader named after the first startup file, its configuration, the two
+sandbox injection modules and the resources of the application below `app`.
+`Patch (ZIP)` writes a patch package
 instead, which holds the very same resources rooted at the archive root: the
-loader, its configuration and the `app` directory itself do not travel, so the
+loader, its configuration, the injection modules and the `app` directory itself
+do not travel, so the
 package can be dropped into the `patch` directory next to a standalone archive,
 where the loader of that archive merges it on top of the resources of `app`.
 A patch project needs no startup file, and `Build and Run` is offered for a
@@ -146,14 +148,16 @@ package, and deleting `cache` only costs the extraction of the next run.
 
 wxWidgets-based GUI application for managing sandboxed processes:
 
-- Extracts the packed archive, injects the sandbox DLL and starts the
-  sandboxed processes.
+- Injects the sandbox DLLs the archive carries below `app` (`sandbox32.dll` and
+  `sandbox64.dll`) and starts the sandboxed processes. The loader keeps no copy
+  of its own, so a run copies no module, and a run whose modules are missing is
+  refused with the path which was looked for instead of starting anything.
 - Keeps the read-only resources of the packed application below `app` and the
   state of the sandbox below `data`, both beside the loader program: the state
   directory is created at run time and carries the writable overlay of the
-  filesystem, the registry hive the sandbox mounts (seeded from
-  `app/registry/user.hiv` on the first run) and the injected sandbox DLLs.
-  Deleting it resets the sandbox to the state the archive was packed with.
+  filesystem and the registry hive the sandbox mounts (seeded from
+  `app/registry/user.hiv` on the first run). Deleting it resets the sandbox to
+  the state the archive was packed with.
 - Starts every startup file of its configuration which is marked for auto
   start; `--X-AppBox-Startup <trigger>` starts the single startup file with
   that trigger instead and suppresses the auto start of the other files. An

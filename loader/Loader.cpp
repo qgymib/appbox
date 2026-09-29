@@ -1,6 +1,5 @@
 #include <wx/wx.h>
 #include <spdlog/spdlog.h>
-#include <cmrc/cmrc.hpp>
 #include <sstream>
 #include <chrono>
 #include <Shlobj.h>
@@ -19,31 +18,7 @@
 #include "WString.hpp"
 #include "Loader.hpp"
 
-CMRC_DECLARE(sandbox_resource);
 wxDEFINE_EVENT(APPBOX_EXIT_APPLICATION_IF_NO_GUI, wxCommandEvent);
-
-static void ExtractSandboxDll(const std::wstring& dll32_path, const std::wstring& dll64_path)
-{
-    auto fs = cmrc::sandbox_resource::get_filesystem();
-    {
-        auto dll = fs.open("lib/AppBoxSandbox32.dll");
-
-        std::ofstream ofs(dll32_path, std::ios::binary | std::ios::trunc);
-        ofs.write(dll.begin(), dll.size());
-    }
-    {
-        auto          dll = fs.open("lib/AppBoxSandbox64.dll");
-        std::ofstream ofs(dll64_path, std::ios::binary | std::ios::trunc);
-        ofs.write(dll.begin(), dll.size());
-    }
-}
-
-static void ExtractSandboxDll(const std::string& dll32_path, const std::string& dll64_path)
-{
-    auto dll32_path_w = appbox::UTF8ToWide(dll32_path);
-    auto dll64_path_w = appbox::UTF8ToWide(dll64_path);
-    ExtractSandboxDll(dll32_path_w, dll64_path_w);
-}
 
 /**
  * @brief Create the writable upper layer of the sandbox.
@@ -212,10 +187,11 @@ AppBoxLoaderRuntime::AppBoxLoaderRuntime()
 
     /*
      * The resources below `app` are read-only: the layer tree of the packaged
-     * application is mounted as the lower filesystem and the isolation files of
-     * the three domains are handed to the sandbox as they are. The state of the
-     * sandbox lives in `data`, which is created here and carries the writable
-     * upper layer, the hive the sandbox mounts and the injected DLLs.
+     * application is mounted as the lower filesystem, the injection modules are
+     * injected from there and the isolation files of the three domains are
+     * handed to the sandbox as they are. The state of the sandbox lives in
+     * `data`, which is created here and carries the writable upper layer and
+     * the hive the sandbox mounts.
      *
      * The patch packages of the user are the layers above the resources of the
      * archive: the resolution of the view prefers the layer which was mounted
@@ -324,13 +300,13 @@ AppBoxLoaderRuntime::AppBoxLoaderRuntime()
         }
     }
 
-    {
-        const std::filesystem::path state(paths.state);
-        this->inject_data.sandbox32_dos_path = appbox::WideToUTF8((state / L"sandbox32.dll").wstring());
-        this->inject_data.sandbox64_dos_path = appbox::WideToUTF8((state / L"sandbox64.dll").wstring());
-    }
-
-    ExtractSandboxDll(inject_data.sandbox32_dos_path, inject_data.sandbox64_dos_path);
+    /*
+     * The injection modules are resources of the archive and the sandbox is
+     * injected from there, so a run writes no module of its own: the state
+     * directory keeps carrying what the sandbox really modifies.
+     */
+    this->inject_data.sandbox32_dos_path = appbox::WideToUTF8(paths.Sandbox32Dll());
+    this->inject_data.sandbox64_dos_path = appbox::WideToUTF8(paths.Sandbox64Dll());
 
     this->pipe_server = appbox::RemoteServer::Create(this->inject_data.pipe_path);
     SPDLOG_DEBUG("pipe listen on {}", this->inject_data.pipe_path);

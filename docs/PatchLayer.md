@@ -19,9 +19,9 @@ the `patch` directory is applied on top of them in ascending name order.
 A patch package is a zip archive written by the `Patch (ZIP)` project type of
 the `Project Type` box of the packer. It holds the very same resource tree a
 standalone archive keeps below `app`, rooted at the archive root instead: the
-loader program, its configuration and the `app` directory itself do not travel,
-because a patch is applied by the loader of a standalone archive and not started
-on its own.
+loader program, its configuration, the two sandbox injection modules and the
+`app` directory itself do not travel, because a patch is applied by the loader
+of a standalone archive and not started on its own.
 
 ```
 <patch>.zip
@@ -82,6 +82,10 @@ project only.
 - Deleting `cache` only costs the extraction of the next run. The loader does
   not delete the entry of a package which the user removed from `patch`: the
   directory holds what the runs so far extracted, and deleting it resets that.
+- `app` carries the injection modules the loader injects (`app/sandbox32.dll`
+  and `app/sandbox64.dll`) beside the four domains, so the modules belong to the
+  archive which is started. A patch package carries none of them: a package
+  never replaces the modules of the archive it is applied to.
 
 ## Merge rules
 

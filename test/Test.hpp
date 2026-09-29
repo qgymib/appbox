@@ -40,6 +40,9 @@ enum class TestMode
 struct TestConfig
 {
     std::wstring      loader_path;          /* Path to loader */
+    std::wstring      sandbox32_path;       /* Path to the 32 bit sandbox injection module */
+    std::wstring      sandbox64_path;       /* Path to the 64 bit sandbox injection module */
+    std::wstring      packer_path;          /* Path to the packer */
     std::wstring      log_level = L"info";  /* Log level */
     bool              no_cleanup = false;   /* Do not cleanup the test directory */
     TestMode          mode = TestMode::All; /* Part of the suites the run executes */

@@ -18,6 +18,17 @@ public:
     ~CommonFixture() override;
 
     /**
+     * @brief Skip the case when the run cannot start the sandbox.
+     *
+     * Every case starts the real loader, which injects the sandbox injection
+     * modules of the resource root of the case: a run which was started without
+     * them cannot run a case, so the cases skip themselves instead of failing.
+     *
+     * @see appbox::test::SandboxModulesAvailable()
+     */
+    void SetUp() override;
+
+    /**
      * @brief Get the path of the CWD directory.
      * @return The path of the CWD directory.
      */
