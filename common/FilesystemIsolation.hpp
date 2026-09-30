@@ -13,9 +13,10 @@ namespace appbox
 /**
  * @brief Isolation mode of a file or folder of the virtual filesystem.
  *
- * The modes describe how a sandboxed process sees the entry. No mode ever
- * modifies the host filesystem: every write of the sandboxed process lands in
- * the overlay of the sandbox.
+ * The modes describe how a sandboxed process sees the entry and where its
+ * modifications land. Every mode but `Merge` keeps the host filesystem
+ * untouched: the writes of the sandboxed process land in the overlay of the
+ * sandbox, while `Merge` lets a write reach the host filesystem by design.
  *
  * For a **folder** the modes are:
  *
@@ -26,6 +27,16 @@ namespace appbox
  * - `WriteCopy` - the host filesystem and the virtual filesystem are both
  *   visible with the virtual one taking precedence, and every modification is
  *   redirected into the sandbox. This is the default mode of a folder.
+ * - `Merge` - the host filesystem and the virtual filesystem are both visible
+ *   with the virtual one taking precedence, like `WriteCopy`, but a
+ *   modification is not always redirected into the sandbox: a write of an
+ *   entry which the host filesystem does not hold while a sandbox layer does
+ *   is redirected into the sandbox, and every other write lands in the host
+ *   filesystem, which also creates an entry no layer holds at all. The host
+ *   folders above a written entry are created when they are missing. A delete
+ *   follows the same rule, so an entry the host filesystem holds is really
+ *   removed while an entry only the sandbox holds is recorded as deleted
+ *   inside the sandbox.
  * - `Whiteout` - the folder is invisible for the sandboxed process: opening,
  *   reading and writing report `File Not Found`, even when the host holds the
  *   folder. Creating the folder succeeds inside the sandbox, and the folder is
@@ -40,10 +51,19 @@ namespace appbox
  *   file. Creating the file succeeds inside the sandbox, and the file is
  *   readable and writable afterwards.
  *
+ * `WriteCopy` and `Merge` describe the merge of a **folder** with the host
+ * filesystem, which a single file cannot express, so a file carries neither of
+ * them: a file the user picks a mode for offers `Full` and `Whiteout` only and
+ * follows the mode of the closest folder above it in every other case.
+ *
  * The mode of a folder reaches the entries below it: an entry which carries no
  * mode of its own follows the closest folder above it which does, and a folder
  * which the user never touched follows `WriteCopy` while a file which the user
- * never touched follows `Full`.
+ * never touched follows `Full`. A path no listed entry covers at all follows
+ * the entry of the **root of the view**, which is the entry whose path is
+ * empty, and falls back to the default of its kind when the document holds no
+ * such entry; the root entry is what decides the mode of a location outside
+ * the recorded paths.
  *
  * The enumeration lives in `common/` because the packer and the sandbox share
  * it: the packer stores the modes of the workspace and writes them into the
@@ -55,6 +75,7 @@ enum class FilesystemIsolation
 {
     Full,      ///< Sandbox only, every modification lands in the overlay.
     WriteCopy, ///< Host and sandbox with sandbox precedence, writes copied up.
+    Merge,     ///< Host and sandbox merged, writes prefer the host filesystem.
     Whiteout   ///< Invisible for the sandbox, creation lands in the sandbox.
 };
 
@@ -62,8 +83,8 @@ enum class FilesystemIsolation
  * @brief Kind of an entry of the virtual filesystem.
  *
  * The kind decides which isolation modes an entry accepts: a folder offers
- * `Full`, `Write Copy` and `Whiteout`, a file offers `Full` and `Whiteout`
- * only.
+ * `Full`, `Write Copy`, `Merge` and `Whiteout`, a file offers `Full` and
+ * `Whiteout` only.
  */
 enum class FilesystemEntryKind
 {
@@ -89,8 +110,9 @@ namespace filesystem_isolation
  * the overlay of the archive, the loader hands its path to the sandbox, and
  * the sandbox redirects the filesystem of the packaged application through the
  * modes. The packer lists the entries the user set a mode for; an entry which
- * is not listed follows the closest listed folder above it and falls back to
- * the default of its kind (`WriteCopy` for a folder, `Full` for a file).
+ * is not listed follows the closest listed folder above it, then the root
+ * entry of the view, and falls back to the default of its kind (`WriteCopy`
+ * for a folder, `Full` for a file).
  *
  * ```
  * {
@@ -105,6 +127,11 @@ namespace filesystem_isolation
  * layer key of a preset directory and the remaining ones are the path below
  * it. The sandbox translates the layer key back into the folder the layer is
  * mapped to before it looks the mode up.
+ *
+ * An entry whose path is **empty** is the root of the view: it is a folder and
+ * it decides the mode of every path no other entry covers, including the
+ * locations which are not part of the virtual filesystem at all (for example
+ * `C:\Windows` of a workspace which imports into `#ProgramFiles#` only).
  */
 
 /**
@@ -143,6 +170,8 @@ inline const char* IsolationToken(FilesystemIsolation isolation)
         return "full";
     case FilesystemIsolation::WriteCopy:
         return "write_copy";
+    case FilesystemIsolation::Merge:
+        return "merge";
     case FilesystemIsolation::Whiteout:
         return "whiteout";
     }
@@ -186,6 +215,11 @@ inline bool ParseIsolationToken(std::string_view token, FilesystemIsolation& out
     if (normalized == "write_copy" || normalized == "writecopy")
     {
         out = FilesystemIsolation::WriteCopy;
+        return true;
+    }
+    if (normalized == "merge")
+    {
+        out = FilesystemIsolation::Merge;
         return true;
     }
     if (normalized == "whiteout")
@@ -253,9 +287,9 @@ inline bool ParseEntryKindToken(std::string_view token, FilesystemEntryKind& out
 /**
  * @brief Whether an isolation mode may be used for an entry kind.
  *
- * A folder accepts `Full`, `WriteCopy` and `Whiteout`; a file accepts `Full`
- * and `Whiteout` only, because `WriteCopy` describes the merge of a folder
- * with the host filesystem, which a single file cannot express.
+ * A folder accepts every mode; a file accepts `Full` and `Whiteout` only,
+ * because `WriteCopy` and `Merge` describe the merge of a folder with the host
+ * filesystem, which a single file cannot express.
  *
  * @param[in] isolation The isolation mode.
  * @param[in] kind The kind of the entry.
@@ -267,7 +301,7 @@ inline bool IsAllowed(FilesystemIsolation isolation, FilesystemEntryKind kind)
     {
         return true;
     }
-    return isolation != FilesystemIsolation::WriteCopy;
+    return isolation == FilesystemIsolation::Full || isolation == FilesystemIsolation::Whiteout;
 }
 
 /**
@@ -284,7 +318,9 @@ struct Entry
      * @brief Path of the entry in the virtual filesystem, in UTF-8.
      *
      * The first component is the layer key of a preset directory and the
-     * remaining ones are the path below it.
+     * remaining ones are the path below it. An **empty** path is the root of
+     * the view, which decides the mode of every path no other entry covers; it
+     * is a folder, so its kind is `directory`.
      */
     std::string path;
 
@@ -337,8 +373,9 @@ inline void to_json(nlohmann::json& json, const Entry& entry)
  * @brief Read one entry of the filesystem isolation file.
  *
  * The call refuses everything the packer would never write: an entry which is
- * not an object, a member which is missing or of another type, an empty path,
- * an unknown kind or mode, and a mode which the kind cannot hold.
+ * not an object, a member which is missing or of another type, a root entry
+ * which is not a folder, an unknown kind or mode, and a mode which the kind
+ * cannot hold.
  *
  * @param[in] json Object holding the entry.
  * @param[out] entry The entry to fill.
@@ -350,16 +387,21 @@ inline void from_json(const nlohmann::json& json, Entry& entry)
     isolation_document::RequireObject(json, holder);
 
     entry.path = isolation_document::RequiredText(json, kPathKey, holder);
-    if (entry.path.empty())
-    {
-        isolation_document::Throw("a filesystem isolation file entry has an empty path");
-    }
 
     const std::string   kind_token = isolation_document::RequiredText(json, kKindKey, holder);
     FilesystemEntryKind kind = FilesystemEntryKind::Directory;
     if (!ParseEntryKindToken(kind_token, kind))
     {
         isolation_document::Throw("unknown entry kind '" + kind_token + "' in the filesystem isolation file");
+    }
+
+    /*
+     * An entry without a path is the root of the view, which is the folder
+     * every path no other entry covers belongs to.
+     */
+    if (entry.path.empty() && kind != FilesystemEntryKind::Directory)
+    {
+        isolation_document::Throw("a filesystem isolation file entry without a path has to be a directory");
     }
 
     const std::string   isolation_token = isolation_document::RequiredText(json, kIsolationKey, holder);

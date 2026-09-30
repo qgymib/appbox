@@ -198,6 +198,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/widget/AboutDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/DataViewTooltip.cpp"
     "${APPBOX_SOURCE_DIR}/widget/EnvironmentPanel.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/FilesystemIsolationDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/FilesystemIsolationRenderer.cpp"
     "${APPBOX_SOURCE_DIR}/widget/FilesystemPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/MainFrame.cpp"

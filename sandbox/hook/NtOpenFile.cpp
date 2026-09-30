@@ -4,6 +4,7 @@
 #include "utils/CopyFileNt.hpp"
 #include "utils/HandleInfo.hpp"
 #include "utils/ConvertToFullNtPath.hpp"
+#include "filesystem/IsolationPolicy.hpp"
 #include "filesystem/Resolve.hpp"
 #include "hook/NtCreateFile.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
@@ -87,7 +88,18 @@ static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
 
     const bool want_edit = (DesiredAccess & (DELETE | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA |
                                              FILE_APPEND_DATA | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE | GENERIC_ALL));
-    if (want_edit && !resolve_result->bInUpper)
+
+    /*
+     * `Merge` applies a modification to the host filesystem when the host
+     * holds the entry or when no layer holds it, so such an entry is opened in
+     * the host filesystem and is not copied into the upper layer.
+     */
+    const bool target_host =
+        want_edit && appbox::filesystem::WritesToHost(resolve_result->isolation, resolve_result->bHostHolds,
+                                                      resolve_result->bSandboxHolds);
+    LOG_T(L"open: target={}", target_host ? L"host" : L"view");
+
+    if (want_edit && !target_host && !resolve_result->bInUpper)
     {
         appbox::CopyFileNt(resolve_result->hPath[0].fPath, resolve_result->uPath);
         resolve_result->bInUpper = true;
@@ -98,9 +110,17 @@ static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
         resolve_result->hPath.insert(resolve_result->hPath.begin(), p);
     }
 
-    std::wstring open_path = resolve_result->bInUpper ? resolve_result->uPath : resolve_result->hPath[0].fPath;
-    auto         st = NtOpenFileWrap(open_path, ObjectAttributes->Attributes, FileHandle, DesiredAccess, IoStatusBlock,
-                                     ShareAccess, OpenOptions);
+    std::wstring open_path;
+    if (target_host)
+    {
+        open_path = resolve_result->hostPath;
+    }
+    else
+    {
+        open_path = resolve_result->bInUpper ? resolve_result->uPath : resolve_result->hPath[0].fPath;
+    }
+    auto st = NtOpenFileWrap(open_path, ObjectAttributes->Attributes, FileHandle, DesiredAccess, IoStatusBlock,
+                             ShareAccess, OpenOptions);
 
     if (NT_SUCCESS(st))
     {

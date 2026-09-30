@@ -54,10 +54,15 @@ bool LessIgnoreCase(const std::wstring& left, const std::wstring& right)
 /**
  * @brief Quote a wide text for an English error description.
  * @param[in] text The text to quote.
- * @return The quoted UTF-8 text.
+ * @return The quoted UTF-8 text, or the description of the root of the view
+ *         when the text is empty.
  */
 std::string Quote(const std::wstring& text)
 {
+    if (text.empty())
+    {
+        return "the root of the view";
+    }
     return "'" + appbox::WideToUTF8(text) + "'";
 }
 
@@ -79,7 +84,7 @@ namespace appbox
 
 const std::vector<std::wstring>& FilesystemIsolationNames()
 {
-    static const std::vector<std::wstring> names = { L"Full", L"Write Copy", L"Whiteout" };
+    static const std::vector<std::wstring> names = { L"Full", L"Write Copy", L"Merge", L"Whiteout" };
     return names;
 }
 
@@ -101,6 +106,12 @@ std::wstring FilesystemIsolationDescription(FilesystemIsolation isolation, Files
     case FilesystemIsolation::WriteCopy:
         return L"Isolation mode 'Write Copy': the host entry and the sandbox entry are both visible with the sandbox "
                L"taking precedence, and every modification lands in the sandbox. This is the default mode of a folder.";
+    case FilesystemIsolation::Merge:
+        return L"Isolation mode 'Merge': the host entry and the sandbox entry are both visible with the sandbox taking "
+               L"precedence, and a modification is written to the host filesystem whenever the host holds the entry or "
+               L"no layer holds it at all, while an entry only the sandbox holds is modified inside the sandbox. The "
+               L"host folders above a written entry are created when they are missing, and deleting an entry the host "
+               L"holds really removes it from the host filesystem.";
     case FilesystemIsolation::Whiteout:
         return L"Isolation mode 'Whiteout': the entry is invisible for the application, even while the host holds it; "
                L"creating the entry succeeds inside the sandbox and it is readable and writable afterwards.";
@@ -279,8 +290,8 @@ bool FilesystemIsolationModel::IsEmpty() const
 bool FilesystemIsolationModel::SetIsolation(const std::wstring& view_path, FilesystemEntryKind kind,
                                             FilesystemIsolation isolation, std::string& error)
 {
-    const auto path = NormalizeViewPath(view_path);
-    if (path.empty())
+    std::wstring path;
+    if (!NormalizeEntryPath(view_path, path))
     {
         error = "the path does not name an entry of the virtual filesystem";
         return false;
@@ -309,10 +320,64 @@ bool FilesystemIsolationModel::SetIsolation(const std::wstring& view_path, Files
     return true;
 }
 
+bool FilesystemIsolationModel::ApplyIsolationToSubtree(const std::wstring& view_path, FilesystemIsolation isolation,
+                                                       std::string& error)
+{
+    std::wstring path;
+    if (!NormalizeEntryPath(view_path, path))
+    {
+        error = "the path does not name an entry of the virtual filesystem";
+        return false;
+    }
+
+    /*
+     * The folder the user picked a mode for is set itself, whether the model
+     * already holds a mode for it or not. A folder accepts every mode, so the
+     * new mode needs no further validation.
+     */
+    const auto index = EntryIndex(path);
+    if (index >= 0)
+    {
+        auto& entry = entries_[static_cast<std::size_t>(index)];
+        entry.kind = FilesystemEntryKind::Directory;
+        entry.isolation = isolation;
+    }
+    else
+    {
+        FilesystemIsolationEntry entry;
+        entry.path = path;
+        entry.kind = FilesystemEntryKind::Directory;
+        entry.isolation = isolation;
+        entries_.push_back(std::move(entry));
+    }
+
+    /*
+     * Every folder below the path is overwritten, no matter which mode it held
+     * before. The files below it keep their own modes: the dialog applies the
+     * mode to the subfolders, and a file cannot hold every folder mode, so a
+     * file which carries none of its own follows the folder above it anyway.
+     * The root of the view covers every folder of the model.
+     */
+    for (auto& entry : entries_)
+    {
+        if (entry.kind != FilesystemEntryKind::Directory || ViewPathEquals(entry.path, path))
+        {
+            continue;
+        }
+        if (path.empty() || IsViewPathBelow(entry.path, path))
+        {
+            entry.isolation = isolation;
+        }
+    }
+
+    SortEntries();
+    return true;
+}
+
 bool FilesystemIsolationModel::AddEntry(const FilesystemIsolationEntry& entry, std::string& error)
 {
-    const auto path = NormalizeViewPath(entry.path);
-    if (path.empty())
+    std::wstring path;
+    if (!NormalizeEntryPath(entry.path, path))
     {
         error = "the path does not name an entry of the virtual filesystem";
         return false;
@@ -356,8 +421,12 @@ bool FilesystemIsolationModel::RemoveSubtree(const std::wstring& view_path)
 
 bool FilesystemIsolationModel::HasExplicitIsolation(const std::wstring& view_path) const
 {
-    const auto path = NormalizeViewPath(view_path);
-    return !path.empty() && EntryIndex(path) >= 0;
+    std::wstring path;
+    if (!NormalizeEntryPath(view_path, path))
+    {
+        return false;
+    }
+    return EntryIndex(path) >= 0;
 }
 
 FilesystemIsolation FilesystemIsolationModel::EffectiveIsolation(const std::wstring& view_path,
@@ -373,12 +442,39 @@ FilesystemIsolation FilesystemIsolationModel::EffectiveIsolation(const std::wstr
         }
         current = ViewPathParent(current);
     }
+
+    /*
+     * The root of the view decides the mode of every path no listed folder
+     * covers, including the locations outside the virtual filesystem.
+     */
+    const auto root = EntryIndex(std::wstring());
+    if (root >= 0)
+    {
+        return FilesystemIsolationForKind(entries_[static_cast<std::size_t>(root)].isolation, kind);
+    }
     return DefaultFilesystemIsolation(kind);
 }
 
 const std::vector<FilesystemIsolationEntry>& FilesystemIsolationModel::Entries() const
 {
     return entries_;
+}
+
+bool FilesystemIsolationModel::NormalizeEntryPath(const std::wstring& view_path, std::wstring& path)
+{
+    path = NormalizeViewPath(view_path);
+    if (!path.empty())
+    {
+        return true;
+    }
+
+    /*
+     * An empty path names the root of the view, which stays empty because it
+     * is the folder every path no other entry covers belongs to. A path which
+     * is not empty yet normalizes to nothing refers to a parent of the view
+     * and is refused.
+     */
+    return view_path.empty();
 }
 
 std::ptrdiff_t FilesystemIsolationModel::EntryIndex(const std::wstring& normalized_path) const

@@ -281,9 +281,46 @@ appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveFull(const Res
     resolve_result->uPath = path_vec[0].file_fs + (has_trailing_slash ? L"\\" : L"");
     resolve_result->uPathBaseSize = path_vec[0].base_fs.size();
 
+    /*
+     * The last candidate is the host layer: its path is where a modification
+     * lands when the isolation of the path writes to the host filesystem,
+     * whether the entry exists there or not.
+     */
+    resolve_result->hostLayer = path_vec.size() - 1;
+    resolve_result->hostPath = path_vec[resolve_result->hostLayer].file_fs + (has_trailing_slash ? L"\\" : L"");
+
+    /*
+     * The base of the host layer is the root of its drive with the separator,
+     * because the drive root always exists: a caller which creates the folders
+     * above an entry of the host filesystem therefore starts below it. The
+     * candidate list stops at the drive letter, and the drive letter of a
+     * process addresses the current directory of that drive, which a caller
+     * can neither create nor rely on.
+     */
+    const auto host_colon = resolve_result->hostPath.find(L':');
+    resolve_result->hostPathBaseSize = host_colon == std::wstring::npos ? 0 : host_colon + 2;
+
+    /*
+     * A `Merge` path is modified in the host filesystem when the host layer
+     * holds the entry or when no layer holds it at all, so the resolver has to
+     * know every layer which holds the path and not only the first one. The
+     * mode is looked up before the search, because the search itself stops at
+     * the first hit while the caller asked for it.
+     */
+    ResolveOption search_option = option;
+    if (search_option.bStopOnFirstFound && isolation != nullptr && !isolation->Empty())
+    {
+        FilesystemIsolation mode = FilesystemIsolation::WriteCopy;
+        FilesystemEntryKind source_kind = FilesystemEntryKind::Directory;
+        if (isolation->Lookup(copy_v_path, mode, source_kind) && mode == FilesystemIsolation::Merge)
+        {
+            search_option.bStopOnFirstFound = false;
+        }
+    }
+
     /* For each layer, check if the file exists. */
     SearchResult search_result;
-    SearchInMultipleLayer(path_vec, option, has_trailing_slash, search_result, *resolve_result);
+    SearchInMultipleLayer(path_vec, search_option, has_trailing_slash, search_result, *resolve_result);
 
     /*
      * The isolation of the path decides which of the hits stay visible: the
@@ -293,6 +330,24 @@ appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveFull(const Res
      * path can be created.
      */
     ApplyIsolation(isolation, copy_v_path, path_vec.size() - 1, *resolve_result);
+
+    /*
+     * The hooks decide the layer a modification is applied to from the two
+     * flags: `WritesToHost()` keeps the host filesystem in place when the host
+     * layer holds the entry or when no layer holds it at all, and redirects
+     * the modification into the upper layer otherwise.
+     */
+    for (const auto& path : resolve_result->hPath)
+    {
+        if (path.layer == resolve_result->hostLayer)
+        {
+            resolve_result->bHostHolds = true;
+        }
+        else
+        {
+            resolve_result->bSandboxHolds = true;
+        }
+    }
 
     /* Fix status. */
     if (resolve_result->hPath.empty())
@@ -374,6 +429,11 @@ void appbox::filesystem::to_json(nlohmann::json& j, const ResolveResult& r)
     j["opaquePath"] = appbox::WideToUTF8(r.opaquePath);
     j["bWhiteoutInUpper"] = r.bWhiteoutInUpper;
     j["bOpaqueInUpper"] = r.bOpaqueInUpper;
+
+    j["hostLayer"] = r.hostLayer;
+    j["hostPath"] = appbox::WideToUTF8(r.hostPath);
+    j["bHostHolds"] = r.bHostHolds;
+    j["bSandboxHolds"] = r.bSandboxHolds;
 
     j["bIsolationListed"] = r.bIsolationListed;
     j["bIsolationMasked"] = r.bIsolationMasked;

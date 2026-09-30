@@ -9,10 +9,15 @@ redirecting every path through a **view** that is composed of three kinds of lay
 | **lower** | Zero or more read-only base filesystems. Each one is mapped to a virtual path prefix. | no |
 | **host** | The real filesystem of the machine, used as the last layer of the view. | no |
 
-The lower and host layers are never modified. "Deleted" and "directory is opaque" states
-are expressed with **marker files** created inside the upper layer, so the read-only
-layers stay untouched and can be shared between runs. Operations that are not redirected
-yet are listed in [Known gaps and limitations](#known-gaps-and-limitations).
+A modification lands in the upper layer, unless the isolation mode of the path is
+`Merge`: that mode applies the modification to the host layer when the host holds the
+entry or when no layer holds it at all, which is what lets a packaged application change
+the real filesystem on purpose (see
+[Workspace isolation modes](#workspace-isolation-modes)). Every other mode keeps the
+lower and the host layers untouched: "deleted" and "directory is opaque" states are
+expressed with **marker files** created inside the upper layer, so the read-only layers
+stay untouched and can be shared between runs. Operations that are not redirected yet are
+listed in [Known gaps and limitations](#known-gaps-and-limitations).
 
 Isolation is active only when the sandbox DLL was injected by the loader
 (`appbox::Sandbox::bIsolationMode`). Outside isolation mode the hooks are never
@@ -42,14 +47,15 @@ they are produced by the delete and create paths of the hooks.
 ## Workspace isolation modes
 
 The packer offers an isolation mode for every file and folder of the virtual
-filesystem. The mode is picked in the `Isolation` column of the filesystem
-workspace (see [README.md](../README.md)), stored in the project file and
-written into the isolation file of the archive, which the sandbox reads back
-and enforces.
+filesystem. The mode of a folder is picked in the `Isolation` column of the
+filesystem workspace or through the isolation dialog of the tree, which reaches
+every node of the view (see [README.md](../README.md)). The modes are stored in
+the project file and written into the isolation file of the archive, which the
+sandbox reads back and enforces.
 
 | Kind | Modes | Default |
 | --- | --- | --- |
-| folder | `Full`, `Write Copy`, `Whiteout` | `Write Copy` |
+| folder | `Full`, `Write Copy`, `Merge`, `Whiteout` | `Write Copy` |
 | file | `Full`, `Whiteout` | `Full` |
 
 * **Full** (folder) - only the virtual filesystem is visible, even when the
@@ -59,6 +65,15 @@ and enforces.
 * **Write Copy** (folder) - the host filesystem and the virtual filesystem are
   both visible with the virtual one taking precedence. Every modification lands
   in the sandbox.
+* **Merge** (folder) - the host filesystem and the virtual filesystem are both
+  visible with the virtual one taking precedence, like `Write Copy`, yet a
+  modification does not always land in the sandbox: an entry which the host
+  filesystem does not hold while a sandbox layer does is modified inside the
+  sandbox, and every other modification is applied to the host filesystem. The
+  host folders above an entry which is written are created when they are
+  missing, so an application which installs a file into the real system can do
+  so; a folder which the host does not allow to be changed makes the write fail
+  with the error of the host filesystem.
 * **Whiteout** (folder and file) - the entry is invisible for the sandboxed
   process, even when the host or the packed content holds it: opening, reading,
   writing and deleting report `File Not Found`. Creating the entry succeeds
@@ -67,11 +82,21 @@ and enforces.
 * **Full** (file) - every write of the file lands in the sandbox, while the
   host file stays readable through the view.
 
+`Write Copy` and `Merge` are modes of a folder: a file carries neither of them,
+because both describe the merge of a folder with the host filesystem, which a
+single file cannot express. A file below a `Merge` folder follows the rule of
+the folder all the same.
+
 The mode of a folder reaches the entries below it: an entry which carries no
 mode of its own follows the closest folder above it which does, so the scope of
-a folder mode is its own subtree and a folder below it can override it. A
-conflict between the virtual filesystem and the host filesystem is resolved in
-favour of the virtual filesystem.
+a folder mode is its own subtree and a folder below it can override it. A path
+which no listed folder covers follows the **root of the view**, which is the
+entry whose path is empty: the mode picked for the `Sandbox Filesystem`
+container of the workspace decides the behaviour of every location outside the
+recorded paths, including the locations which are not part of the virtual
+filesystem at all (for example `C:\Windows`). A conflict between the virtual
+filesystem and the host filesystem is resolved in favour of the virtual
+filesystem.
 
 The mode of a path and the kind of the entry which carries it decide which
 layers of the view stay visible:
@@ -81,11 +106,21 @@ layers of the view stay visible:
 | `Full` | folder | masked | visible | visible |
 | `Full` | file | visible | visible | visible |
 | `Write Copy` | folder | visible | visible | visible |
+| `Merge` | folder | visible | visible | visible |
 | `Whiteout` | folder or file | masked | masked | visible |
 
 The upper layer is never masked: it holds the entries the sandboxed process
 created itself, which is what makes a `Whiteout` entry visible after its
 creation.
+
+The layers which stay visible decide what the sandboxed process reads; the mode
+decides where its modifications land. Only `Merge` lets them reach the host
+filesystem, and it does so by the rule of the mode: the entry of the host
+filesystem is modified when the host holds it or when no layer holds it at all,
+while an entry only a sandbox layer holds is modified in the upper layer. A
+delete follows the same rule, so an entry the host holds is really removed from
+the host filesystem while an entry only the sandbox holds is recorded as
+deleted inside the sandbox.
 
 ### The isolation file
 
@@ -99,6 +134,7 @@ other child of the folder is a layer of the view:
 {
   "version": 1,
   "entries": [
+    { "path": "", "kind": "directory", "isolation": "write_copy" },
     { "path": "#ProgramFiles#\\MyApp", "kind": "directory", "isolation": "full" },
     { "path": "#ProgramFiles#\\MyApp\\app.exe", "kind": "file", "isolation": "whiteout" }
   ]
@@ -109,8 +145,14 @@ The `path` of an entry is a path of the virtual filesystem, which is the path
 the `Source Path` column shows: the first component is the layer key of a preset
 directory and the remaining ones are the path below it. Only the entries the
 user set a mode for are listed; an entry which the document does not mention
-follows the closest listed folder above it and falls back to the default of its
-kind.
+follows the closest listed folder above it, then the root of the view, and falls
+back to the default of its kind.
+
+An entry whose `path` is **empty** is the root of the view: it is a folder and
+it decides the mode of every path no other entry covers, including the locations
+which are not part of the virtual filesystem at all. A document which lists no
+such entry leaves the behaviour outside the recorded paths to the default of the
+kind, which is the state of a workspace whose container was never given a mode.
 
 The document is read and written as the structure of the schema:
 `common/FilesystemIsolation.hpp` describes an entry and the document, and both
@@ -231,11 +273,17 @@ These rules constrain every hooked API; the implementation lives in
 
 * **Modifications land in the upper layer.** An object that exists only in a
   read-only layer and is opened for modification is **copied up** into the upper
-  layer first; the read-only layers are never written.
+  layer first; the read-only layers are never written. A path whose isolation is
+  `Merge` is the exception: its modification is applied to the host filesystem
+  when the host holds the entry or when no layer holds it, and the folders above
+  the entry are created in that layer first.
 * **A delete is recorded, not performed.** Deleting an object removes the upper
   copy and places a whiteout marker next to it, so lower and host layers keep
   their data while the view reports the object as gone. Deleting a directory
-  requires that every layer holding it contains nothing but marker files.
+  requires that every layer holding it contains nothing but marker files. A
+  delete of a `Merge` path removes the entry of the host filesystem as well,
+  which is the layer the mode names, and writes the marker only while a layer
+  below the upper one still holds the entry.
 * **Directory listings are merged.** The enumeration of a directory merges its
   entries across all layers which the isolation leaves visible: upper layer
   first, then every visible lower layer, then the host layer. A name which an
@@ -308,3 +356,9 @@ extending or testing the isolation:
    configuration and live in the `appbox::sandbox` singleton. The isolation modes are
    loaded once as well, so a mode which is changed in the packer afterwards needs a new
    archive.
+10. **A root mode which hides the host filesystem stops the process.** The mode of the
+    root of the view covers every path no other entry names, so `Full` or `Whiteout` at
+    the root hides the whole host filesystem: the sandboxed process can no longer load
+    the modules of the host and fails to start, which is the behaviour the mode asks for
+    but which no end-to-end case can drive. A root mode of `Write Copy` or `Merge` is the
+    one a workspace normally uses.

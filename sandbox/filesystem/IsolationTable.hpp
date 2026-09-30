@@ -86,9 +86,13 @@ struct IsolationEntry
  * The mode of a path which the document does not list is derived by walking
  * the path upwards: the closest listed entry above it covers its whole
  * subtree, which is what makes the mode of a folder reach the entries below it
- * and what lets a folder below override the folder above. A path without any
- * listed entry follows the default of its kind, so a sandbox without an
- * isolation file behaves like one whose document lists no entry at all.
+ * and what lets a folder below override the folder above. The walk ends on the
+ * **root of the view**, which is the entry whose path is empty and which is
+ * stored under the empty key, so its mode decides every path no listed folder
+ * covers, including the locations outside the virtual filesystem. A path which
+ * neither a listed folder nor the root covers follows the default of its kind,
+ * so a sandbox without an isolation file behaves like one whose document lists
+ * no entry at all.
  *
  * The class holds no dependency on the Windows API, so the lookup rules are
  * unit testable.
@@ -115,7 +119,8 @@ public:
      * expressed as a view path, so it is skipped and reported through \p
      * unmapped instead of failing the document: the layers of the run may
      * differ from the layers of the pack, and the remaining entries stay
-     * usable.
+     * usable. An entry without a path names the root of the view, which has no
+     * layer key to translate and is stored under the empty key.
      *
      * @param[in] text The UTF-8 text of the isolation file.
      * @param[in] layers The layers of the view, in mapping order.
@@ -143,10 +148,11 @@ public:
      *
      * The lookup starts at the path itself and walks the path upwards until a
      * listed entry is found, so a listed entry covers its whole subtree. The
-     * kind of that entry is reported as well, because the mode alone does not
-     * say which layers stay visible: `Full` hides the host folder of a
-     * *folder* together with its whole subtree, while `Full` of a *file*
-     * keeps the host file readable.
+     * walk ends on the root of the view, whose entry decides every path no
+     * listed folder covers. The kind of the entry which decided the mode is
+     * reported as well, because the mode alone does not say which layers stay
+     * visible: `Full` hides the host folder of a *folder* together with its
+     * whole subtree, while `Full` of a *file* keeps the host file readable.
      *
      * @param[in] view_path Path of the entry inside the view.
      * @param[out] mode The mode of the closest listed entry.

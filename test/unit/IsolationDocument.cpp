@@ -87,6 +87,13 @@ appbox::filesystem_isolation::Document FilesystemDocument()
     file.isolation = appbox::FilesystemIsolation::Whiteout;
     document.entries.push_back(file);
 
+    /* The root of the view is the entry without a path. */
+    appbox::filesystem_isolation::Entry root;
+    root.path = "";
+    root.kind = appbox::FilesystemEntryKind::Directory;
+    root.isolation = appbox::FilesystemIsolation::Merge;
+    document.entries.push_back(root);
+
     return document;
 }
 
@@ -98,7 +105,7 @@ TEST(Unit_IsolationDocument, FilesystemDocumentRoundTrips)
     const auto back = ParseOrFail<appbox::filesystem_isolation::Document>(text);
 
     EXPECT_EQ(back.version, appbox::filesystem_isolation::kVersion);
-    ASSERT_EQ(back.entries.size(), 2u);
+    ASSERT_EQ(back.entries.size(), 3u);
     EXPECT_EQ(back.entries[0].path, "#ProgramFiles#\\MyApp");
     EXPECT_EQ(back.entries[0].kind, appbox::FilesystemEntryKind::Directory);
     EXPECT_EQ(back.entries[0].isolation, appbox::FilesystemIsolation::Full);
@@ -106,11 +113,17 @@ TEST(Unit_IsolationDocument, FilesystemDocumentRoundTrips)
     EXPECT_EQ(back.entries[1].kind, appbox::FilesystemEntryKind::File);
     EXPECT_EQ(back.entries[1].isolation, appbox::FilesystemIsolation::Whiteout);
 
+    /* The root of the view is stored as an entry without a path. */
+    EXPECT_TRUE(back.entries[2].path.empty());
+    EXPECT_EQ(back.entries[2].kind, appbox::FilesystemEntryKind::Directory);
+    EXPECT_EQ(back.entries[2].isolation, appbox::FilesystemIsolation::Merge);
+
     /* The text keeps the members and the tokens of the schema of the file. */
     EXPECT_NE(text.find("\"path\""), std::string::npos);
     EXPECT_NE(text.find("\"kind\""), std::string::npos);
     EXPECT_NE(text.find("\"isolation\""), std::string::npos);
     EXPECT_NE(text.find("\"whiteout\""), std::string::npos);
+    EXPECT_NE(text.find("\"merge\""), std::string::npos);
 }
 
 TEST(Unit_IsolationDocument, FilesystemDocumentRefusesWhatTheSchemaDoesNotAllow)
@@ -129,8 +142,14 @@ TEST(Unit_IsolationDocument, FilesystemDocumentRefusesWhatTheSchemaDoesNotAllow)
               "a filesystem isolation file entry has no 'path' member");
     EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "path": 7 } ] })"),
               "the 'path' member of a filesystem isolation file entry is not a string");
+
+    /* An entry without a path is the root of the view, which has to be a folder. */
     EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "path": "" } ] })"),
-              "a filesystem isolation file entry has an empty path");
+              "a filesystem isolation file entry has no 'kind' member");
+    EXPECT_EQ(
+        RefusalOf<Document>(R"({ "version": 1, "entries": [ { "path": "", "kind": "file", "isolation": "full" } ] })"),
+        "a filesystem isolation file entry without a path has to be a directory");
+
     EXPECT_EQ(
         RefusalOf<Document>(R"({ "version": 1, "entries": [ { "path": "a", "kind": "link", "isolation": "full" } ] })"),
         "unknown entry kind 'link' in the filesystem isolation file");
@@ -140,6 +159,9 @@ TEST(Unit_IsolationDocument, FilesystemDocumentRefusesWhatTheSchemaDoesNotAllow)
     EXPECT_EQ(RefusalOf<Document>(
                   R"({ "version": 1, "entries": [ { "path": "a", "kind": "file", "isolation": "write_copy" } ] })"),
               "the isolation mode 'write_copy' cannot be used for a file in the filesystem isolation file");
+    EXPECT_EQ(RefusalOf<Document>(
+                  R"({ "version": 1, "entries": [ { "path": "a", "kind": "file", "isolation": "merge" } ] })"),
+              "the isolation mode 'merge' cannot be used for a file in the filesystem isolation file");
 
     /* A document without a mode at all describes a file which sets none. */
     const auto empty = ParseOrFail<Document>(R"({ "version": 1 })");

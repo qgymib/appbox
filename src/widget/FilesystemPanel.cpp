@@ -1,4 +1,5 @@
 #include "FilesystemPanel.hpp"
+#include "FilesystemIsolationDialog.hpp"
 #include "FilesystemIsolationRenderer.hpp"
 #include "core/PresetDirectory.hpp"
 #include "WString.hpp"
@@ -32,6 +33,9 @@ const int kMenuSetStartupFile = wxNewId();
 /** Context menu command: add a row as a startup file without auto start. */
 const int kMenuAddStartupFile = wxNewId();
 
+/** Context menu command: set the isolation mode of a tree node. */
+const int kMenuIsolation = wxNewId();
+
 /** Minimum width of the tree pane. */
 constexpr int kTreePaneWidth = 260;
 
@@ -47,21 +51,28 @@ const char* const kIsolationColumnLead =
 
 /** Note about the modes a file cannot hold, appended to the tooltip of the column. */
 const char* const kIsolationFileNote =
-    "A file offers 'Full' and 'Whiteout' only: 'Write Copy' describes the merge of a folder with the host filesystem, "
-    "which a single file cannot express.";
+    "A file offers 'Full' and 'Whiteout' only: 'Write Copy' and 'Merge' describe the merge of a folder with the host "
+    "filesystem, which a single file cannot express. A file below a 'Merge' folder follows the rule of the folder.";
 
 /**
  * @brief Describe the modes the `Isolation` column offers.
+ *
+ * The names of the modes are ordered like the enumeration of the modes, so the
+ * description of every mode the column offers is appended in one loop instead
+ * of a list of its own, which keeps the text in step with the model.
+ *
  * @return The description of the column.
  */
 wxString IsolationColumnTooltip()
 {
     wxString text = kIsolationColumnLead;
-    for (const auto isolation : { appbox::FilesystemIsolation::Full, appbox::FilesystemIsolation::WriteCopy,
-                                  appbox::FilesystemIsolation::Whiteout })
+
+    const auto& names = appbox::FilesystemIsolationNames();
+    for (std::size_t index = 0; index < names.size(); ++index)
     {
         text += "\n\n";
-        text += wxString(appbox::FilesystemIsolationDescription(isolation, appbox::FilesystemEntryKind::Directory));
+        text += wxString(appbox::FilesystemIsolationDescription(static_cast<appbox::FilesystemIsolation>(index),
+                                                                appbox::FilesystemEntryKind::Directory));
     }
 
     text += "\n\n";
@@ -225,6 +236,7 @@ FilesystemPanel::FilesystemPanel(wxWindow* parent, appbox::PackModel& model,
     tree_->Bind(wxEVT_TREE_ITEM_RIGHT_CLICK, &FilesystemPanel::OnTreeItemContextMenu, this);
     Bind(wxEVT_MENU, &FilesystemPanel::OnAddFolder, this, kMenuImportFolder);
     Bind(wxEVT_MENU, &FilesystemPanel::OnRemoveImportFromTree, this, kMenuRemoveImport);
+    Bind(wxEVT_MENU, &FilesystemPanel::OnTreeIsolation, this, kMenuIsolation);
     Bind(wxEVT_MENU, &FilesystemPanel::OnSetStartupFile, this, kMenuSetStartupFile);
     Bind(wxEVT_MENU, &FilesystemPanel::OnAddToStartupFileList, this, kMenuAddStartupFile);
 
@@ -244,8 +256,9 @@ void FilesystemPanel::CreateList(wxWindow* parent)
 
     /*
      * The isolation column uses a dropdown whose options depend on the row: a
-     * folder offers `Full`, `Write Copy` and `Whiteout`, a file offers `Full`
-     * and `Whiteout` only. The renderer asks this panel for the options of the
+     * folder offers `Full`, `Write Copy`, `Merge` and `Whiteout`, a file offers
+     * `Full` and `Whiteout` only. The renderer asks this panel for the options
+     * of the
      * row which is edited, because the choice list of a choice renderer
      * belongs to the column and not to the row. The renderer is added through
      * AppendColumn() because it has to claim the model column explicitly.
@@ -1169,24 +1182,122 @@ void FilesystemPanel::OnTreeItemContextMenu(wxTreeEvent& event)
 {
     const auto item = event.GetItem();
     auto*      node = item.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(item)) : nullptr;
-    if (node == nullptr || node->preset_id.empty())
+    if (node == nullptr)
     {
-        /* The container holds the preset directories, which are fixed. */
         return;
     }
 
     tree_->SelectItem(item);
 
+    /*
+     * The isolation mode of every node is set through the dialog: the
+     * container is the root of the view, whose mode decides the paths no other
+     * entry covers, while the other nodes carry the mode of the folder they
+     * name.
+     */
     wxMenu menu;
-    if (node->import_name.empty())
+    menu.Append(kMenuIsolation, "Isolation Mode...");
+
+    if (!node->preset_id.empty())
     {
-        menu.Append(kMenuImportFolder, "Import Folder...");
+        menu.AppendSeparator();
+        if (node->import_name.empty())
+        {
+            menu.Append(kMenuImportFolder, "Import Folder...");
+        }
+        else
+        {
+            menu.Append(kMenuRemoveImport, "Remove Import");
+        }
+    }
+    PopupMenu(&menu);
+}
+
+bool FilesystemPanel::NodeViewPath(const TreeNode& node, std::wstring& view_path) const
+{
+    view_path.clear();
+
+    /* The container is the root of the view, which carries an empty path. */
+    if (node.preset_id.empty())
+    {
+        return true;
+    }
+
+    appbox::PresetDirectory preset;
+    if (!appbox::FindPresetDirectory(node.preset_id, preset))
+    {
+        return false;
+    }
+
+    /*
+     * A tree node names the same location as the row of the folder it shows:
+     * the imported folder first and the path below it, which is the target
+     * directory the rows of the folder carry. A preset node carries neither, so
+     * it resolves to the layer root itself.
+     */
+    const std::wstring target_dir =
+        node.relative_dir.empty() ? node.import_name : appbox::JoinViewPath(node.import_name, node.relative_dir);
+
+    view_path = VirtualPath(preset, target_dir, L"");
+    return true;
+}
+
+void FilesystemPanel::EditIsolation(const TreeNode& node)
+{
+    std::wstring view_path;
+    if (!NodeViewPath(node, view_path))
+    {
+        return;
+    }
+
+    /*
+     * The dialog opens with the mode which applies to the node today, so a
+     * folder which inherits the mode of a folder above it shows that mode
+     * until the user picks one of its own.
+     */
+    const auto initial = isolation_.EffectiveIsolation(view_path, appbox::FilesystemEntryKind::Directory);
+
+    wxString target;
+    if (node.preset_id.empty())
+    {
+        target = wxString(appbox::kFilesystemContainerLabel) + ": every path no other entry covers";
     }
     else
     {
-        menu.Append(kMenuRemoveImport, "Remove Import");
+        target = "Folder: " + wxString(view_path);
     }
-    PopupMenu(&menu);
+
+    FilesystemIsolationDialog dialog(this, target, initial);
+    if (dialog.ShowModal() != wxID_OK)
+    {
+        return;
+    }
+
+    std::string error;
+    const bool  applied =
+        dialog.ApplyToSubfolders()
+            ? isolation_.ApplyIsolationToSubtree(view_path, dialog.Isolation(), error)
+            : isolation_.SetIsolation(view_path, appbox::FilesystemEntryKind::Directory, dialog.Isolation(), error);
+    if (!applied)
+    {
+        wxMessageBox(wxString::FromUTF8(error), "Isolation", wxOK | wxICON_ERROR, this);
+        return;
+    }
+
+    /* The rows show the mode which applies to them, so the list is rebuilt. */
+    RefreshList();
+}
+
+void FilesystemPanel::OnTreeIsolation(wxCommandEvent&)
+{
+    const auto selection = tree_->GetSelection();
+    auto*      node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
+    if (node == nullptr)
+    {
+        return;
+    }
+
+    EditIsolation(*node);
 }
 
 void FilesystemPanel::OnAddFiles(wxCommandEvent&)

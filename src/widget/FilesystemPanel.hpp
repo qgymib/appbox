@@ -28,14 +28,22 @@ class wxSearchCtrl;
  * The list shows the filename, the isolation mode, the size and the virtual
  * source path of every entry, following the layout of the reference packaging
  * tool. The mode of a row is picked from a dropdown in the row itself: a
- * folder offers `Full`, `Write Copy` and `Whiteout`, a file offers `Full` and
- * `Whiteout`. A row which the user never touched shows the mode it inherits
+ * folder offers `Full`, `Write Copy`, `Merge` and `Whiteout`, a file offers
+ * `Full` and `Whiteout`. A row which the user never touched shows the mode it
+ * inherits
  * from the closest folder above it, so the mode of a folder reaches the
  * entries below it. The container lists the top level preset directories;
  * every preset directory is fixed, so it can neither be removed nor renamed.
  * A nested preset directory is offered by the same commands as a top level
  * one: it accepts imported folders and imported files, and it can be entered
  * from the list.
+ *
+ * The isolation mode of a folder is picked from the context menu of the tree,
+ * which reaches every node of the view: the dialog it opens offers the modes a
+ * folder accepts and the option to apply the chosen mode to the subfolders as
+ * well. The container is the root of the view, so the mode picked for it
+ * decides every path no other entry covers, including the locations outside
+ * the virtual filesystem.
  *
  * The header of the `Isolation` column explains the modes the column offers,
  * see `DataViewTooltip`; the cells of the list carry no tooltip of their own.
@@ -386,6 +394,32 @@ private:
     void ApplyIsolation(const RowInfo& row, appbox::FilesystemIsolation isolation);
 
     /**
+     * @brief Compose the virtual path of a tree node.
+     *
+     * The container is the root of the view, which is the folder every path no
+     * other entry covers belongs to, so it carries an empty path. A preset
+     * directory carries the layer key of its preset, an imported folder adds
+     * its name and a folder below an import adds its path relative to the
+     * import root.
+     *
+     * @param[in] node Data of the tree node.
+     * @param[out] view_path The virtual path of the node, empty for the root.
+     * @return true when the node names a path of the view.
+     */
+    bool NodeViewPath(const TreeNode& node, std::wstring& view_path) const;
+
+    /**
+     * @brief Set the isolation mode of a tree node through the dialog.
+     *
+     * The dialog is opened for the node the user picked in the tree. The mode
+     * it returns reaches the node itself, and it reaches the folders below the
+     * node as well while the recursion of the dialog was chosen.
+     *
+     * @param[in] node Data of the tree node.
+     */
+    void EditIsolation(const TreeNode& node);
+
+    /**
      * @brief Update the enabled state of the toolbar buttons.
      */
     void UpdateToolBarState();
@@ -429,6 +463,12 @@ private:
 
     /**
      * @brief Show the context menu of a tree item.
+     *
+     * Every item offers the isolation dialog, which reaches the container as
+     * well. The commands which import a folder or remove an import are offered
+     * for the items which carry the preset directory or the import they work
+     * on.
+     *
      * @param[in] event Tree context menu event.
      */
     void OnTreeItemContextMenu(wxTreeEvent& event);
@@ -456,6 +496,12 @@ private:
      * @param[in] event Command event.
      */
     void OnRemoveImportFromTree(wxCommandEvent& event);
+
+    /**
+     * @brief Set the isolation mode of the selected tree node.
+     * @param[in] event Command event.
+     */
+    void OnTreeIsolation(wxCommandEvent& event);
 
     /**
      * @brief Move the tree selection to the parent folder.

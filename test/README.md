@@ -298,13 +298,17 @@ The unit tests of the packer:
   kind accepts, the default of a kind, the fold of `Write Copy` to `Full` for a
   file) and the model of the packer: the path helpers of the virtual
   filesystem, the explicit mode of an entry, the inheritance of the closest
-  folder above an entry, the removal of a subtree and the order of the entries.
-  It also pins the isolation file the packer writes, including the round trip
-  through the table of the sandbox, so the two sides of the schema cannot drift
-  apart. The table itself is pinned as well: the files of the layers of a run
-  are applied in order, so the file of a later layer overrides the mode of the
-  path it names while a path it does not name keeps the mode of the layers below
-  it, and a document which cannot be used leaves the layers below it alone.
+  folder above an entry, the mode of the root of the view for the paths no
+  entry covers, the recursion which overwrites the folders below a folder, the
+  removal of a subtree and the order of the entries. It also pins the isolation
+  file the packer writes, including the root entry without a path and the round
+  trip through the table of the sandbox, so the two sides of the schema cannot
+  drift apart. The table itself is pinned as well: the files of the layers of a
+  run are applied in order, so the file of a later layer overrides the mode of
+  the path it names while a path it does not name keeps the mode of the layers
+  below it, the root entry of a document answers for every path no other entry
+  names, a document without a root entry answers no such path at all, and a
+  document which cannot be used leaves the layers below it alone.
 * `test/unit/ProjectDocument.cpp` — the document of a project file: the
   round trip of every member of the schema, the version and the order of the
   written members, the paths as UTF-8 bytes, the members an entry needs, the
@@ -453,11 +457,11 @@ executable carries itself:
 * `test/unit/IsolationDocument.cpp` — the schema of the five documents of
   `common/` (the four isolation files and the environment state file): the
   round trip of a document through its text, the refusal of a member which is
-  missing or of another type, of an unknown mode, of an empty path, of an empty
-  hostname, of a mode a kind cannot hold and of a name which carries an equals
-  sign, with the error text of every refusal, the lenient reading of the network
-  proxy, and the two documents the packer writes which the sandbox reads back
-  (network and environment).
+  missing or of another type, of an unknown mode, of a root entry which is not a
+  folder, of an empty hostname, of a mode a kind cannot hold and of a name which
+  carries an equals sign, with the error text of every refusal, the lenient
+  reading of the network proxy, and the two documents the packer writes which
+  the sandbox reads back (network and environment).
 * `test/unit/Log.cpp`, `test/unit/LogFile.cpp`, `test/unit/PipeClient.cpp` — the
   hook robustness contract: never read more than the caller declared, never
   throw. The abort sentinel of the parameter parsers is part of it
@@ -549,6 +553,12 @@ folder below `#USERPROFILE#` of the host as the entry of the host layer
 | `MalformedIsolationFile_FallsBack` | document which cannot be read | read a host file while the isolation file is not JSON, while it carries an unknown version and while it is the valid document which hides the folder | the host file stays visible for both refused documents and is hidden for the readable one, which is what makes the run a check of the fallback; the content of the lower layer is visible in every one of them |
 | `WriteLowerLayerFile_CopyUp` | file of a lower layer only | open the file for writing and write another content into it | the open copies the file up into the overlay, the write and the read back report the new content, and the layer it was copied from keeps its own content |
 | `Directory_CreateAndDelete` | folder of the host only | create a directory below the folder, query it, create a file inside it, remove the directory, remove the file, remove the directory again | the directory is created in the overlay and reported as a directory, the removal of a directory which still holds a visible entry reports `Directory Not Empty`, and the second removal succeeds and leaves neither the view nor the overlay with the entry; the host folder stays empty |
+| `Merge_WritesTheFileOfTheHost` | folder `Merge`, host file and packed file | open the file of the host for writing | the write is applied to the host file, which carries the new content, the overlay holds no copy of it, and the packed file is not carried into the host |
+| `Merge_KeepsThePackedFileInTheSandbox` | folder `Merge`, packed file which the host does not hold | open the packed file for writing | the file is copied up into the overlay and the copy carries the new content, while the host gains no entry and the lower layer keeps its own content |
+| `Merge_CreatesTheFoldersOfANewFileInTheHost` | folder `Merge`, packed folder which the host does not hold | create `fresh\new.txt`, which no layer holds | the host gains the folder `fresh` and the file, the overlay holds neither of them, and the lower layer keeps its content |
+| `Merge_DeletesTheFileOfTheHost` | folder `Merge`, host file which no layer holds | delete the file | the file is really removed from the host filesystem and the lower layer keeps its content |
+| `Merge_DeletesThePackedFileInTheSandbox` | folder `Merge`, packed file which the host does not hold | delete the file | the whiteout marker lands in the overlay, while the host gains no entry and the lower layer keeps its content |
+| `RootIsolation_MergeWritesTheFileOfTheHost` | root of the view `Merge`, host file, no entry names the folder | open the file of the host for writing | the mode of the root reaches the write, so the host file carries the new content |
 
 ### Registry isolation cases
 
@@ -846,6 +856,7 @@ header comment.
 | --- | --- | --- |
 | `ContentOverridesTheApp` | `app` carries a file both packages carry as well and a file of its own; `00-foo.zip` carries the shared file with a content of its own and a file of its own; `01-bar.zip` carries the shared file with a third content | the shared file holds the content of `01-bar.zip`, the listing of the folder holds the file of `app` and the file of `00-foo.zip`, both packages were extracted into `cache`, and the resources of `app` are untouched |
 | `IsolationModeOfTheLastLayerWins` | two folders of the host exist; the archive keeps the first visible and hides the second; `01-bar.zip` hides the first | both reads report `File Not Found`, because the mode of the folder the package names is the mode of the package while the mode of the folder it does not name stays the mode of the archive, and the host folders are untouched |
+| `MergeOfTheLastLayerWins` | the host holds the file of the folder; the archive isolates the folder with `Full` and `01-bar.zip` names the same path with `Merge` | the write reaches the file of the host filesystem, so the mode of the package replaced the mode of the archive and the file carries the new content |
 | `CacheIsReusedAndRefreshed` | four runs: with the package as it is, with a file placed inside its cache entry, after the package was replaced and after the cache directory was deleted | the first run reads `one` and records the digest of the package, the second run reads `one` and keeps the placed file, so the extraction was reused, the third run reads `two` and drops the placed file, so a package whose digest changed is extracted again, and the fourth run reads `two` as well and extracts the package again, so deleting the cache only costs the extraction |
 | `BrokenPackageIsSkipped` | `00-bad.zip` is not an archive and `01-good.zip` carries the file of the case | the read returns the content of the good package, the run succeeds, and the package which cannot be read left no cache entry behind |
 | `NoPackageKeepsTheCacheEmpty` | the user created the `patch` directory, but it holds a file which is not a package | the read returns the content of the archive, and the `cache` directory was not created |
@@ -919,11 +930,12 @@ header comment.
   folder of the host, so a case which needs an entry of the host filesystem
   leaves nothing behind.
 * `test/utils/FsIsolationBuilder.*` — writes the isolation file of a test
-  case (`<case root>/app/filesystem/isolation.json`) from the modes of the case.
-  `WriteRawFsIsolationFile()` writes a text which is not the document of the
-  builder, which is what a case about a refused document needs, and
-  `BuildFsIsolationText()` returns the text without writing it, which is what
-  the builder of a patch package needs.
+  case (`<case root>/app/filesystem/isolation.json`) from the modes of the case;
+  an entry without a path is the root of the view, which decides the mode of the
+  paths no other entry covers. `WriteRawFsIsolationFile()` writes a text which
+  is not the document of the builder, which is what a case about a refused
+  document needs, and `BuildFsIsolationText()` returns the text without writing
+  it, which is what the builder of a patch package needs.
 * `test/utils/PatchBuilder.*` — writes a patch package
   (`<case root>/patch/00-foo.zip`) from the files, the filesystem isolation
   modes and the four domains of a case. The package holds the resource tree of a

@@ -124,14 +124,16 @@ bool BuildSampleRegistry(appbox::RegistryModel& registry)
 }
 
 /**
- * @brief Build filesystem modes with a hidden folder and a hidden file.
+ * @brief Build filesystem modes with a root mode, a hidden folder and a hidden file.
  * @param[out] isolation Isolation model to fill.
  * @return true when every entry was accepted.
  */
 bool BuildSampleIsolation(appbox::FilesystemIsolationModel& isolation)
 {
     std::string detail;
-    return isolation.SetIsolation(L"#ProgramFiles#\\MyApp\\data", appbox::FilesystemEntryKind::Directory,
+    return isolation.SetIsolation(L"", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Merge,
+                                  detail) &&
+           isolation.SetIsolation(L"#ProgramFiles#\\MyApp\\data", appbox::FilesystemEntryKind::Directory,
                                   appbox::FilesystemIsolation::Whiteout, detail) &&
            isolation.SetIsolation(L"#ProgramFiles#\\MyApp\\app.exe", appbox::FilesystemEntryKind::File,
                                   appbox::FilesystemIsolation::Whiteout, detail);
@@ -912,21 +914,33 @@ TEST(Unit_ProjectFile, RoundTripKeepsTheFilesystemModes)
 
     /* The entries come back in path order, with their kind and their mode. */
     const auto& entries = loaded_isolation.Entries();
-    ASSERT_EQ(entries.size(), 2u);
-    EXPECT_EQ(entries[0].path, L"#ProgramFiles#\\MyApp\\app.exe");
-    EXPECT_EQ(entries[0].kind, appbox::FilesystemEntryKind::File);
-    EXPECT_EQ(entries[0].isolation, appbox::FilesystemIsolation::Whiteout);
-    EXPECT_EQ(entries[1].path, L"#ProgramFiles#\\MyApp\\data");
-    EXPECT_EQ(entries[1].kind, appbox::FilesystemEntryKind::Directory);
+    ASSERT_EQ(entries.size(), 3u);
+
+    /* The root of the view is the first entry, because its path is empty. */
+    EXPECT_EQ(entries[0].path, L"");
+    EXPECT_EQ(entries[0].kind, appbox::FilesystemEntryKind::Directory);
+    EXPECT_EQ(entries[0].isolation, appbox::FilesystemIsolation::Merge);
+
+    EXPECT_EQ(entries[1].path, L"#ProgramFiles#\\MyApp\\app.exe");
+    EXPECT_EQ(entries[1].kind, appbox::FilesystemEntryKind::File);
     EXPECT_EQ(entries[1].isolation, appbox::FilesystemIsolation::Whiteout);
+    EXPECT_EQ(entries[2].path, L"#ProgramFiles#\\MyApp\\data");
+    EXPECT_EQ(entries[2].kind, appbox::FilesystemEntryKind::Directory);
+    EXPECT_EQ(entries[2].isolation, appbox::FilesystemIsolation::Whiteout);
 
     /* The inheritance of the restored model works like before the round trip. */
     EXPECT_EQ(loaded_isolation.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\data\\settings.ini",
                                                   appbox::FilesystemEntryKind::File),
               appbox::FilesystemIsolation::Whiteout);
+
+    /* A file which no folder of its own covers follows the root mode. */
     EXPECT_EQ(
         loaded_isolation.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\bin\\tool.exe", appbox::FilesystemEntryKind::File),
-        appbox::FilesystemIsolation::Full);
+        appbox::FilesystemIsolation::Merge);
+
+    /* The root mode reaches a path which no entry of the view names. */
+    EXPECT_EQ(loaded_isolation.EffectiveIsolation(L"#Windows#\\System32", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Merge);
 }
 
 TEST(Unit_ProjectFile, ApplyOfADocumentWithoutAFilesystemRestoresAnEmptyModel)
@@ -965,6 +979,10 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenFilesystemMember)
     const auto file_mode = temp.File(L"fs-file-mode.json");
     WriteBytes(file_mode, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\\\\a.dll\", "
                           "\"kind\": \"file\", \"isolation\": \"write_copy\" } ] }");
+
+    const auto file_merge = temp.File(L"fs-file-merge.json");
+    WriteBytes(file_merge, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\\\\a.dll\", "
+                           "\"kind\": \"file\", \"isolation\": \"merge\" } ] }");
 
     const auto duplicate = temp.File(L"fs-duplicate.json");
     WriteBytes(duplicate, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\", \"kind\": "
@@ -1006,6 +1024,12 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenFilesystemMember)
     EXPECT_FALSE(ApplyDocument(document, model, registry, isolation, output, error));
     EXPECT_NE(error.find("filesystem[0]"), std::string::npos);
     EXPECT_NE(error.find("write_copy"), std::string::npos);
+
+    /* `Merge` is a mode of a folder as well, so a file refuses it too. */
+    ASSERT_TRUE(appbox::LoadProject(file_merge.wstring(), document, error)) << error;
+    EXPECT_FALSE(ApplyDocument(document, model, registry, isolation, output, error));
+    EXPECT_NE(error.find("filesystem[0]"), std::string::npos);
+    EXPECT_NE(error.find("merge"), std::string::npos);
 
     ASSERT_TRUE(appbox::LoadProject(duplicate.wstring(), document, error)) << error;
     EXPECT_FALSE(ApplyDocument(document, model, registry, isolation, output, error));

@@ -37,23 +37,26 @@ void SetMode(appbox::FilesystemIsolationModel& model, const std::wstring& path, 
 TEST(Unit_FilesystemIsolation, NamesAreOrderedLikeTheEnumeration)
 {
     const auto& names = appbox::FilesystemIsolationNames();
-    ASSERT_EQ(names.size(), 3u);
+    ASSERT_EQ(names.size(), 4u);
     EXPECT_EQ(names[0], L"Full");
     EXPECT_EQ(names[1], L"Write Copy");
-    EXPECT_EQ(names[2], L"Whiteout");
+    EXPECT_EQ(names[2], L"Merge");
+    EXPECT_EQ(names[3], L"Whiteout");
 
     EXPECT_EQ(appbox::FilesystemIsolationName(appbox::FilesystemIsolation::Full), L"Full");
     EXPECT_EQ(appbox::FilesystemIsolationName(appbox::FilesystemIsolation::WriteCopy), L"Write Copy");
+    EXPECT_EQ(appbox::FilesystemIsolationName(appbox::FilesystemIsolation::Merge), L"Merge");
     EXPECT_EQ(appbox::FilesystemIsolationName(appbox::FilesystemIsolation::Whiteout), L"Whiteout");
 }
 
-TEST(Unit_FilesystemIsolation, NamesOfAKindDropTheFolderOnlyMode)
+TEST(Unit_FilesystemIsolation, NamesOfAKindDropTheFolderOnlyModes)
 {
     const auto& folders = appbox::FilesystemIsolationNamesFor(appbox::FilesystemEntryKind::Directory);
-    ASSERT_EQ(folders.size(), 3u);
+    ASSERT_EQ(folders.size(), 4u);
     EXPECT_EQ(folders[0], L"Full");
     EXPECT_EQ(folders[1], L"Write Copy");
-    EXPECT_EQ(folders[2], L"Whiteout");
+    EXPECT_EQ(folders[2], L"Merge");
+    EXPECT_EQ(folders[3], L"Whiteout");
 
     const auto& files = appbox::FilesystemIsolationNamesFor(appbox::FilesystemEntryKind::File);
     ASSERT_EQ(files.size(), 2u);
@@ -71,6 +74,9 @@ TEST(Unit_FilesystemIsolation, ParseNameIgnoresTheCase)
     EXPECT_TRUE(appbox::ParseFilesystemIsolationName(L"WRITE COPY", isolation));
     EXPECT_EQ(isolation, appbox::FilesystemIsolation::WriteCopy);
 
+    EXPECT_TRUE(appbox::ParseFilesystemIsolationName(L"merge", isolation));
+    EXPECT_EQ(isolation, appbox::FilesystemIsolation::Merge);
+
     EXPECT_TRUE(appbox::ParseFilesystemIsolationName(L"whiteout", isolation));
     EXPECT_EQ(isolation, appbox::FilesystemIsolation::Whiteout);
 
@@ -81,7 +87,7 @@ TEST(Unit_FilesystemIsolation, ParseNameIgnoresTheCase)
 TEST(Unit_FilesystemIsolation, TokensRoundTrip)
 {
     for (const auto isolation : { appbox::FilesystemIsolation::Full, appbox::FilesystemIsolation::WriteCopy,
-                                  appbox::FilesystemIsolation::Whiteout })
+                                  appbox::FilesystemIsolation::Merge, appbox::FilesystemIsolation::Whiteout })
     {
         const std::string token = appbox::filesystem_isolation::IsolationToken(isolation);
 
@@ -89,6 +95,8 @@ TEST(Unit_FilesystemIsolation, TokensRoundTrip)
         EXPECT_TRUE(appbox::filesystem_isolation::ParseIsolationToken(token, parsed));
         EXPECT_EQ(parsed, isolation);
     }
+
+    EXPECT_STREQ(appbox::filesystem_isolation::IsolationToken(appbox::FilesystemIsolation::Merge), "merge");
 
     appbox::FilesystemIsolation parsed = appbox::FilesystemIsolation::Full;
     EXPECT_TRUE(appbox::filesystem_isolation::ParseIsolationToken("Write-Copy", parsed));
@@ -113,17 +121,18 @@ TEST(Unit_FilesystemIsolation, EntryKindTokensRoundTrip)
     EXPECT_FALSE(appbox::filesystem_isolation::ParseEntryKindToken("link", kind));
 }
 
-TEST(Unit_FilesystemIsolation, OnlyAFolderAcceptsWriteCopy)
+TEST(Unit_FilesystemIsolation, OnlyAFolderAcceptsTheFolderOnlyModes)
 {
     using appbox::FilesystemEntryKind;
     using appbox::FilesystemIsolation;
 
     EXPECT_TRUE(appbox::filesystem_isolation::IsAllowed(FilesystemIsolation::Full, FilesystemEntryKind::File));
     EXPECT_FALSE(appbox::filesystem_isolation::IsAllowed(FilesystemIsolation::WriteCopy, FilesystemEntryKind::File));
+    EXPECT_FALSE(appbox::filesystem_isolation::IsAllowed(FilesystemIsolation::Merge, FilesystemEntryKind::File));
     EXPECT_TRUE(appbox::filesystem_isolation::IsAllowed(FilesystemIsolation::Whiteout, FilesystemEntryKind::File));
 
-    for (const auto isolation :
-         { FilesystemIsolation::Full, FilesystemIsolation::WriteCopy, FilesystemIsolation::Whiteout })
+    for (const auto isolation : { FilesystemIsolation::Full, FilesystemIsolation::WriteCopy, FilesystemIsolation::Merge,
+                                  FilesystemIsolation::Whiteout })
     {
         EXPECT_TRUE(appbox::filesystem_isolation::IsAllowed(isolation, FilesystemEntryKind::Directory));
     }
@@ -147,6 +156,16 @@ TEST(Unit_FilesystemIsolation, WriteCopyIsExpressedAsFullForAFile)
               FilesystemIsolation::Whiteout);
     EXPECT_EQ(appbox::FilesystemIsolationForKind(FilesystemIsolation::WriteCopy, FilesystemEntryKind::Directory),
               FilesystemIsolation::WriteCopy);
+
+    /*
+     * `Merge` stays `Merge` for a file as well: a file below a `Merge` folder
+     * is written to the host filesystem whenever the host holds it, which
+     * `Full` would not tell the user.
+     */
+    EXPECT_EQ(appbox::FilesystemIsolationForKind(FilesystemIsolation::Merge, FilesystemEntryKind::File),
+              FilesystemIsolation::Merge);
+    EXPECT_EQ(appbox::FilesystemIsolationForKind(FilesystemIsolation::Merge, FilesystemEntryKind::Directory),
+              FilesystemIsolation::Merge);
 }
 
 TEST(Unit_FilesystemIsolation, PathHelpersNormalizeAndSplit)
@@ -234,11 +253,7 @@ TEST(Unit_FilesystemIsolation, SetIsolationRefusesInvalidInput)
     appbox::FilesystemIsolationModel model;
     std::string                      error;
 
-    EXPECT_FALSE(
-        model.SetIsolation(L"", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full, error));
-    EXPECT_FALSE(error.empty());
-
-    error.clear();
+    /* A path which leaves the view names no entry. */
     EXPECT_FALSE(model.SetIsolation(L"#ProgramFiles#\\..\\Windows", appbox::FilesystemEntryKind::Directory,
                                     appbox::FilesystemIsolation::Full, error));
     EXPECT_FALSE(error.empty());
@@ -249,8 +264,124 @@ TEST(Unit_FilesystemIsolation, SetIsolationRefusesInvalidInput)
     EXPECT_FALSE(error.empty());
     EXPECT_NE(error.find("write_copy"), std::string::npos);
 
+    /* `Merge` is a mode of a folder, so a file refuses it as well. */
+    error.clear();
+    EXPECT_FALSE(
+        model.SetIsolation(kAppFile, appbox::FilesystemEntryKind::File, appbox::FilesystemIsolation::Merge, error));
+    EXPECT_FALSE(error.empty());
+    EXPECT_NE(error.find("merge"), std::string::npos);
+
     /* A refused call never changes the model. */
     EXPECT_TRUE(model.IsEmpty());
+}
+
+/**
+ * @brief The root of the view decides the paths no other entry covers.
+ *
+ * The root is the entry which carries an empty path. It is the folder a
+ * location outside the recorded paths belongs to, which includes the locations
+ * which are not part of the virtual filesystem at all, so its mode is the mode
+ * of every path no listed folder names.
+ */
+TEST(Unit_FilesystemIsolation, TheRootOfTheViewIsAnEntryOfItsOwn)
+{
+    appbox::FilesystemIsolationModel model;
+    std::string                      error;
+
+    /* Without a root entry a path no entry covers follows the default of its kind. */
+    EXPECT_FALSE(model.HasExplicitIsolation(L""));
+    EXPECT_EQ(model.EffectiveIsolation(L"#Windows#\\System32", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::WriteCopy);
+
+    ASSERT_TRUE(
+        model.SetIsolation(L"", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full, error))
+        << error;
+
+    EXPECT_TRUE(model.HasExplicitIsolation(L""));
+    ASSERT_EQ(model.Entries().size(), 1u);
+    EXPECT_EQ(model.Entries()[0].path, L"");
+    EXPECT_EQ(model.Entries()[0].kind, appbox::FilesystemEntryKind::Directory);
+    EXPECT_EQ(model.Entries()[0].isolation, appbox::FilesystemIsolation::Full);
+
+    /* The root covers the paths of the view and the paths outside of it. */
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\data", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(model.EffectiveIsolation(L"#Windows#\\System32\\kernel32.dll", appbox::FilesystemEntryKind::File),
+              appbox::FilesystemIsolation::Full);
+
+    /* A folder below the root overrides it. */
+    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Merge);
+    EXPECT_EQ(model.EffectiveIsolation(kDataFolder, appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Merge);
+    EXPECT_EQ(model.EffectiveIsolation(L"#Windows#\\System32", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Full);
+
+    /* The root is updated in place like every other entry. */
+    ASSERT_TRUE(
+        model.SetIsolation(L"", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Whiteout, error))
+        << error;
+    ASSERT_EQ(model.Entries().size(), 2u);
+    EXPECT_EQ(model.Entries()[0].isolation, appbox::FilesystemIsolation::Whiteout);
+}
+
+/**
+ * @brief The recursion of the isolation dialog overwrites the folders below.
+ *
+ * The dialog applies a mode to the folder the user picked and, while the
+ * recursion was chosen, to the folders below it. The files below the folder
+ * keep their own modes: a file cannot hold every folder mode, and a file which
+ * carries none of its own follows the folder above it anyway.
+ */
+TEST(Unit_FilesystemIsolation, ApplyIsolationToSubtreeOverwritesTheFoldersBelow)
+{
+    appbox::FilesystemIsolationModel model;
+    std::string                      error;
+
+    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Whiteout);
+    SetMode(model, kDataFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
+    SetMode(model, L"#ProgramFiles#\\MyApp\\data\\logs", appbox::FilesystemEntryKind::Directory,
+            appbox::FilesystemIsolation::Full);
+    SetMode(model, L"#ProgramFiles#\\MyApp\\data\\app.ini", appbox::FilesystemEntryKind::File,
+            appbox::FilesystemIsolation::Whiteout);
+    SetMode(model, L"#ProgramFiles#\\Other", appbox::FilesystemEntryKind::Directory,
+            appbox::FilesystemIsolation::Whiteout);
+
+    ASSERT_TRUE(model.ApplyIsolationToSubtree(kAppFolder, appbox::FilesystemIsolation::Merge, error)) << error;
+
+    EXPECT_EQ(model.EffectiveIsolation(kAppFolder, appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Merge);
+    EXPECT_EQ(model.EffectiveIsolation(kDataFolder, appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Merge);
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\data\\logs", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Merge);
+
+    /* A folder outside the subtree and a file inside it keep their own modes. */
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\Other", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Whiteout);
+    EXPECT_TRUE(model.HasExplicitIsolation(L"#ProgramFiles#\\MyApp\\data\\app.ini"));
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\data\\app.ini", appbox::FilesystemEntryKind::File),
+              appbox::FilesystemIsolation::Whiteout);
+
+    /* The recursion creates the folder it was asked for. */
+    ASSERT_TRUE(model.ApplyIsolationToSubtree(L"#ProgramFiles#\\New", appbox::FilesystemIsolation::Full, error))
+        << error;
+    EXPECT_TRUE(model.HasExplicitIsolation(L"#ProgramFiles#\\New"));
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\New\\sub", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Full);
+
+    /* The root reaches every folder the model holds. */
+    ASSERT_TRUE(model.ApplyIsolationToSubtree(L"", appbox::FilesystemIsolation::Merge, error)) << error;
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\Other", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Merge);
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\New", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Merge);
+
+    /* A path which leaves the view is refused without changing the model. */
+    const auto count = model.Entries().size();
+    EXPECT_FALSE(
+        model.ApplyIsolationToSubtree(L"#ProgramFiles#\\..\\Windows", appbox::FilesystemIsolation::Full, error));
+    EXPECT_FALSE(error.empty());
+    EXPECT_EQ(model.Entries().size(), count);
 }
 
 TEST(Unit_FilesystemIsolation, AChildOverridesTheFolderAbove)
@@ -298,6 +429,18 @@ TEST(Unit_FilesystemIsolation, AMergedFolderShowsFullForAFile)
     SetMode(model, kAppFile, appbox::FilesystemEntryKind::File, appbox::FilesystemIsolation::Whiteout);
     EXPECT_EQ(model.EffectiveIsolation(kAppFile, appbox::FilesystemEntryKind::File),
               appbox::FilesystemIsolation::Whiteout);
+
+    /*
+     * A file below a `Merge` folder reports the mode of the folder: the mode
+     * tells the user that a write of the file reaches the host filesystem,
+     * which the fold to `Full` would hide. The file above keeps the mode it
+     * was given.
+     */
+    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Merge);
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\other.exe", appbox::FilesystemEntryKind::File),
+              appbox::FilesystemIsolation::Merge);
+    EXPECT_EQ(model.EffectiveIsolation(kAppFile, appbox::FilesystemEntryKind::File),
+              appbox::FilesystemIsolation::Whiteout);
 }
 
 TEST(Unit_FilesystemIsolation, RemoveSubtreeDropsTheEntryAndItsDescendants)
@@ -330,11 +473,15 @@ TEST(Unit_FilesystemIsolation, EntriesAreOrderedByPath)
     SetMode(model, L"#appdata#", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
     SetMode(model, L"#Windows#\\System32", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
 
+    /* The root of the view comes first, because its path is the shortest one. */
+    SetMode(model, L"", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Merge);
+
     const auto& entries = model.Entries();
-    ASSERT_EQ(entries.size(), 3u);
-    EXPECT_EQ(entries[0].path, L"#appdata#");
-    EXPECT_EQ(entries[1].path, L"#Windows#");
-    EXPECT_EQ(entries[2].path, L"#Windows#\\System32");
+    ASSERT_EQ(entries.size(), 4u);
+    EXPECT_EQ(entries[0].path, L"");
+    EXPECT_EQ(entries[1].path, L"#appdata#");
+    EXPECT_EQ(entries[2].path, L"#Windows#");
+    EXPECT_EQ(entries[3].path, L"#Windows#\\System32");
 }
 
 TEST(Unit_FilesystemIsolation, AddEntryRefusesDuplicatesAndInvalidModes)
@@ -366,6 +513,23 @@ TEST(Unit_FilesystemIsolation, AddEntryRefusesDuplicatesAndInvalidModes)
     appbox::FilesystemIsolationEntry empty_entry;
     empty_entry.path = L"#ProgramFiles#\\..";
     EXPECT_FALSE(model.AddEntry(empty_entry, error));
+    EXPECT_FALSE(error.empty());
+
+    /*
+     * An entry without a path is the root of the view, which is a folder: the
+     * document of a session may list it, a file may not.
+     */
+    error.clear();
+    appbox::FilesystemIsolationEntry root_entry;
+    root_entry.path = L"";
+    root_entry.kind = appbox::FilesystemEntryKind::Directory;
+    root_entry.isolation = appbox::FilesystemIsolation::Merge;
+    ASSERT_TRUE(model.AddEntry(root_entry, error)) << error;
+    EXPECT_TRUE(model.HasExplicitIsolation(L""));
+
+    error.clear();
+    root_entry.isolation = appbox::FilesystemIsolation::Full;
+    EXPECT_FALSE(model.AddEntry(root_entry, error));
     EXPECT_FALSE(error.empty());
 }
 
@@ -466,6 +630,59 @@ TEST(Unit_FilesystemIsolation, TheIsolationFileOfThePackerIsReadByTheSandbox)
 }
 
 /**
+ * @brief The root entry of the isolation file covers the whole view.
+ *
+ * The root is the entry without a path: the packer writes it for the container
+ * of the filesystem tree, and the sandbox applies it to every path no other
+ * entry covers, including the locations outside the layers of the run.
+ */
+TEST(Unit_FilesystemIsolation, TheRootEntryTravelsThroughTheIsolationFile)
+{
+    appbox::FilesystemIsolationModel model;
+    SetMode(model, L"", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Merge);
+    SetMode(model, kAppFile, appbox::FilesystemEntryKind::File, appbox::FilesystemIsolation::Whiteout);
+
+    std::string text;
+    std::string error;
+    ASSERT_TRUE(appbox::BuildFilesystemIsolationFile(model, text, error)) << error;
+
+    const auto  document = nlohmann::json::parse(text);
+    const auto& entries = document[appbox::filesystem_isolation::kEntriesKey];
+    ASSERT_EQ(entries.size(), 2u);
+
+    /* The root of the view is written as an entry without a path. */
+    EXPECT_EQ(entries[0][appbox::filesystem_isolation::kPathKey].get<std::string>(), "");
+    EXPECT_EQ(entries[0][appbox::filesystem_isolation::kKindKey].get<std::string>(), "directory");
+    EXPECT_EQ(entries[0][appbox::filesystem_isolation::kIsolationKey].get<std::string>(), "merge");
+
+    const std::vector<appbox::filesystem::IsolationLayer> layers = {
+        { L"#ProgramFiles#", L"\\??\\C:\\Program Files" },
+    };
+
+    appbox::filesystem::IsolationTable table;
+    std::vector<std::wstring>          unmapped;
+    ASSERT_TRUE(table.Parse(text, layers, unmapped, error)) << error;
+    EXPECT_TRUE(unmapped.empty());
+    EXPECT_EQ(table.Count(), 2u);
+
+    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::Full;
+    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
+
+    /* The root covers a path of a layer, a path outside every layer and the entries. */
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\data", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::Merge);
+    EXPECT_EQ(kind, appbox::FilesystemEntryKind::Directory);
+
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Windows\\System32\\kernel32.dll", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::Merge);
+
+    /* An entry of the document still wins over the root. */
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::Whiteout);
+    EXPECT_EQ(kind, appbox::FilesystemEntryKind::File);
+}
+
+/**
  * @brief Every mode of the table is explained by a description.
  *
  * The description is the text the workspace shows for the mode of a row and for
@@ -475,7 +692,7 @@ TEST(Unit_FilesystemIsolation, TheIsolationFileOfThePackerIsReadByTheSandbox)
 TEST(Unit_FilesystemIsolation, EveryModeIsDescribedForATooltip)
 {
     for (const auto isolation : { appbox::FilesystemIsolation::Full, appbox::FilesystemIsolation::WriteCopy,
-                                  appbox::FilesystemIsolation::Whiteout })
+                                  appbox::FilesystemIsolation::Merge, appbox::FilesystemIsolation::Whiteout })
     {
         const std::wstring description =
             appbox::FilesystemIsolationDescription(isolation, appbox::FilesystemEntryKind::Directory);
@@ -491,6 +708,10 @@ TEST(Unit_FilesystemIsolation, EveryModeIsDescribedForATooltip)
     EXPECT_NE(appbox::FilesystemIsolationDescription(appbox::FilesystemIsolation::WriteCopy,
                                                      appbox::FilesystemEntryKind::Directory)
                   .find(L"default mode of a folder"),
+              std::wstring::npos);
+    EXPECT_NE(appbox::FilesystemIsolationDescription(appbox::FilesystemIsolation::Merge,
+                                                     appbox::FilesystemEntryKind::Directory)
+                  .find(L"host filesystem"),
               std::wstring::npos);
 }
 
@@ -615,4 +836,33 @@ TEST(Unit_FilesystemIsolation, ABrokenFileKeepsTheLayersBelowIt)
     appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
     ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp", mode, kind));
     EXPECT_EQ(mode, appbox::FilesystemIsolation::Full);
+}
+
+/**
+ * @brief A path no entry covers follows no mode while the file lists none.
+ *
+ * The table answers with the root entry only when the document lists one, so a
+ * sandbox whose file sets no root mode keeps the defaults of the view.
+ */
+TEST(Unit_FilesystemIsolation, ATableWithoutARootEntryAnswersNoUnlistedPath)
+{
+    const std::vector<appbox::filesystem::IsolationLayer> layers = {
+        { L"#ProgramFiles#", L"\\??\\C:\\Program Files" },
+    };
+
+    appbox::filesystem::IsolationTable table;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Merge), layers,
+                            unmapped, error))
+        << error;
+
+    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::Full;
+    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
+    EXPECT_FALSE(table.Lookup(L"\\??\\C:\\Windows\\System32", mode, kind));
+    EXPECT_FALSE(table.Lookup(L"\\??\\C:\\Program Files\\Other", mode, kind));
+
+    /* A path below the listed folder still follows it. */
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\data", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::Merge);
 }

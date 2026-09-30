@@ -471,6 +471,10 @@ TEST(Unit_PackService, PackWritesFilesystemIsolationFile)
     ASSERT_TRUE(isolation.SetIsolation(L"#ProgramFiles#\\MyApp\\app.exe", appbox::FilesystemEntryKind::File,
                                        appbox::FilesystemIsolation::Whiteout, error))
         << error;
+    /* The root of the view is the entry without a path. */
+    ASSERT_TRUE(
+        isolation.SetIsolation(L"", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Merge, error))
+        << error;
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-fs-isolation.zip");
     const auto result = appbox::Pack(model, registry, isolation, appbox::NetworkModel(), appbox::EnvironmentModel(),
@@ -493,13 +497,19 @@ TEST(Unit_PackService, PackWritesFilesystemIsolationFile)
     EXPECT_EQ(document["version"].get<int>(), 1);
 
     const auto& entries = document["entries"];
-    ASSERT_EQ(entries.size(), 2u);
-    EXPECT_EQ(entries[0]["path"].get<std::string>(), "#ProgramFiles#\\MyApp");
+    ASSERT_EQ(entries.size(), 3u);
+
+    /* The entries are written in path order, so the root comes first. */
+    EXPECT_EQ(entries[0]["path"].get<std::string>(), "");
     EXPECT_EQ(entries[0]["kind"].get<std::string>(), "directory");
-    EXPECT_EQ(entries[0]["isolation"].get<std::string>(), "full");
-    EXPECT_EQ(entries[1]["path"].get<std::string>(), "#ProgramFiles#\\MyApp\\app.exe");
-    EXPECT_EQ(entries[1]["kind"].get<std::string>(), "file");
-    EXPECT_EQ(entries[1]["isolation"].get<std::string>(), "whiteout");
+    EXPECT_EQ(entries[0]["isolation"].get<std::string>(), "merge");
+
+    EXPECT_EQ(entries[1]["path"].get<std::string>(), "#ProgramFiles#\\MyApp");
+    EXPECT_EQ(entries[1]["kind"].get<std::string>(), "directory");
+    EXPECT_EQ(entries[1]["isolation"].get<std::string>(), "full");
+    EXPECT_EQ(entries[2]["path"].get<std::string>(), "#ProgramFiles#\\MyApp\\app.exe");
+    EXPECT_EQ(entries[2]["kind"].get<std::string>(), "file");
+    EXPECT_EQ(entries[2]["isolation"].get<std::string>(), "whiteout");
 }
 
 TEST(Unit_PackService, PackWritesNetworkIsolationFile)

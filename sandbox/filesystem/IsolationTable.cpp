@@ -170,8 +170,17 @@ bool appbox::filesystem::IsolationTable::Parse(const std::string& text, const st
         for (const auto& item : document.entries)
         {
             const std::wstring virtual_path = UTF8ToWide(item.path);
-            const std::wstring view_path = MapVirtualPathToView(virtual_path, layers);
-            if (view_path.empty())
+
+            /*
+             * An entry without a path is the root of the view, which is the
+             * folder every path no other entry covers belongs to. It has no
+             * layer key to translate, so it is stored under the empty key the
+             * lookup falls back to; every other entry is translated into the
+             * view path of the layer it names.
+             */
+            const std::wstring view_path =
+                virtual_path.empty() ? std::wstring() : MapVirtualPathToView(virtual_path, layers);
+            if (view_path.empty() && !virtual_path.empty())
             {
                 skipped.push_back(virtual_path);
                 continue;
@@ -227,10 +236,12 @@ bool appbox::filesystem::IsolationTable::Lookup(const std::wstring& view_path, F
     /*
      * Walk the path upwards: the closest listed entry covers its whole
      * subtree, which is what makes the mode of a folder reach the entries
-     * below it and what lets a folder below override the folder above.
+     * below it and what lets a folder below override the folder above. The
+     * walk ends on the root of the view, which is the entry stored under the
+     * empty key and which covers every path no listed folder names.
      */
     std::wstring probe = NormalizeViewPath(view_path);
-    while (!probe.empty())
+    for (;;)
     {
         const auto it = entries_.find(probe);
         if (it != entries_.end())
@@ -240,10 +251,16 @@ bool appbox::filesystem::IsolationTable::Lookup(const std::wstring& view_path, F
             return true;
         }
 
+        if (probe.empty())
+        {
+            break;
+        }
+
         const auto separator = probe.find_last_of(L'\\');
         if (separator == std::wstring::npos)
         {
-            break;
+            probe.clear();
+            continue;
         }
         probe.erase(separator);
     }

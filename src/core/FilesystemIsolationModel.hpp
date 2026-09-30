@@ -55,9 +55,9 @@ std::wstring FilesystemIsolationDescription(FilesystemIsolation isolation, Files
 /**
  * @brief Get the display names of the modes an entry kind accepts.
  *
- * A folder accepts `Full`, `Write Copy` and `Whiteout`; a file accepts `Full`
- * and `Whiteout` only, so the dropdown of a file row never offers a mode the
- * entry cannot hold.
+ * A folder accepts `Full`, `Write Copy`, `Merge` and `Whiteout`; a file
+ * accepts `Full` and `Whiteout` only, so the dropdown of a file row never
+ * offers a mode the entry cannot hold.
  *
  * @param[in] kind The kind of the entry.
  * @return The display names in display order.
@@ -91,7 +91,11 @@ FilesystemIsolation DefaultFilesystemIsolation(FilesystemEntryKind kind);
  * `WriteCopy` describes the merge of a folder with the host filesystem, which
  * a single file cannot express: for a file it behaves like `Full`, because
  * both keep the host content visible and send every write into the sandbox.
- * Every other mode is returned unchanged.
+ * `Merge` describes the merge of a folder as well, yet a file cannot express
+ * it as `Full`: it is returned unchanged, because a file below a `Merge`
+ * folder is written to the host filesystem whenever the host holds it, which
+ * the mode has to keep telling the user. Every other mode is returned
+ * unchanged as well.
  *
  * @param[in] isolation The mode to express.
  * @param[in] kind The kind of the entry.
@@ -201,8 +205,14 @@ struct FilesystemIsolationEntry
  * The model holds the modes the user picked for the files and folders of the
  * filesystem workspace and resolves the mode of every other entry by
  * inheritance: an entry without a mode of its own follows the closest folder
- * above it which carries one, and an entry without any such folder follows the
- * default of its kind (`WriteCopy` for a folder, `Full` for a file).
+ * above it which carries one, then the entry of the root of the view, and
+ * falls back to the default of its kind (`WriteCopy` for a folder, `Full` for
+ * a file).
+ *
+ * The entry of the root of the view carries an empty path and is the folder
+ * every path no other entry covers belongs to, including the locations which
+ * are not part of the virtual filesystem at all, so its mode decides the
+ * behaviour of the sandboxed process outside the recorded paths.
  *
  * The class holds no wxWidgets dependency and never touches the host
  * filesystem, so the inheritance rules are unit testable.
@@ -234,6 +244,10 @@ public:
      * modes and follow the new one only when they carry none of their own.
      * An entry which already holds a mode is updated in place.
      *
+     * An empty path names the root of the view, whose mode decides the
+     * behaviour outside the recorded paths; every other path has to name an
+     * entry of the view.
+     *
      * The call fails when the path does not name an entry of the view or when
      * the mode cannot be used for the kind of the entry.
      *
@@ -245,6 +259,27 @@ public:
      */
     bool SetIsolation(const std::wstring& view_path, FilesystemEntryKind kind, FilesystemIsolation isolation,
                       std::string& error);
+
+    /**
+     * @brief Overwrite the isolation mode of a folder and of every folder below it.
+     *
+     * The call is the recursion of the isolation dialog of the tree: the
+     * folder the user picked a mode for is set to the new mode, and so is
+     * every folder the model holds below it, no matter which mode they held
+     * before. The files below the folder keep their own modes, because the
+     * dialog applies the mode to the subfolders and a file cannot hold every
+     * folder mode; a file which carries no mode of its own follows the folder
+     * above it anyway.
+     *
+     * An empty path names the root of the view, which reaches every folder the
+     * model holds.
+     *
+     * @param[in] view_path Path of the folder inside the virtual filesystem.
+     * @param[in] isolation New isolation mode.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool ApplyIsolationToSubtree(const std::wstring& view_path, FilesystemIsolation isolation, std::string& error);
 
     /**
      * @brief Add one entry exactly as it is recorded.
@@ -273,7 +308,8 @@ public:
 
     /**
      * @brief Whether a path carries a mode of its own.
-     * @param[in] view_path Path of the entry inside the virtual filesystem.
+     * @param[in] view_path Path of the entry inside the virtual filesystem,
+     *                     empty for the root of the view.
      * @return true when the model holds an entry for the path.
      */
     bool HasExplicitIsolation(const std::wstring& view_path) const;
@@ -282,11 +318,12 @@ public:
      * @brief Get the isolation mode which applies to an entry.
      *
      * The mode of the entry itself wins; without one the closest folder above
-     * it which carries a mode decides, and without any such folder the default
-     * of the kind is returned. A folder above which is hidden by a `Whiteout`
-     * hides the entry as well, which is why a file below it reports
-     * `Whiteout`; a folder which is merged with the host (`Full` or
-     * `WriteCopy`) reports `Full` for a file.
+     * it which carries a mode decides, then the mode of the root of the view,
+     * and without any of them the default of the kind is returned. A folder
+     * above which is hidden by a `Whiteout` hides the entry as well, which is
+     * why a file below it reports `Whiteout`; a folder which is merged with
+     * the host (`Full`, `WriteCopy` or `Merge`) reports `Full` or `Merge` for
+     * a file.
      *
      * @param[in] view_path Path of the entry inside the virtual filesystem.
      * @param[in] kind Kind of the entry.
@@ -305,6 +342,22 @@ public:
     const std::vector<FilesystemIsolationEntry>& Entries() const;
 
 private:
+    /**
+     * @brief Get the path an entry is stored under.
+     *
+     * An empty path names the root of the view and stays empty, because the
+     * root is the folder every path no other entry covers belongs to. Every
+     * other path is normalized to the shape the model stores; a path which
+     * normalizes to nothing, because it refers to a parent of the view, is
+     * refused.
+     *
+     * @param[in] view_path Path of the entry inside the virtual filesystem,
+     *                     empty for the root of the view.
+     * @param[out] path The normalized path, empty for the root of the view.
+     * @return true when the path is usable.
+     */
+    static bool NormalizeEntryPath(const std::wstring& view_path, std::wstring& path);
+
     /**
      * @brief Find the position of an entry.
      * @param[in] normalized_path Normalized path to look for.

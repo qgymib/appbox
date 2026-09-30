@@ -317,6 +317,22 @@ TEST(Unit_ProjectDocument, WritesOneRecordAtATime)
     EXPECT_EQ(back.path, record.path);
     EXPECT_EQ(back.kind, record.kind);
     EXPECT_EQ(back.isolation, record.isolation);
+
+    /* A record without a path is the root of the view, which is a folder. */
+    appbox::ProjectFilesystemRecord root;
+    root.path = L"";
+    root.kind = appbox::FilesystemEntryKind::Directory;
+    root.isolation = appbox::FilesystemIsolation::Merge;
+
+    const auto root_json = nlohmann::ordered_json(root);
+    EXPECT_EQ(root_json.at("path").get<std::string>(), "");
+    EXPECT_EQ(root_json.at("kind").get<std::string>(), "directory");
+    EXPECT_EQ(root_json.at("isolation").get<std::string>(), "merge");
+
+    const auto root_back = root_json.get<appbox::ProjectFilesystemRecord>();
+    EXPECT_EQ(root_back.path, root.path);
+    EXPECT_EQ(root_back.kind, root.kind);
+    EXPECT_EQ(root_back.isolation, root.isolation);
 }
 
 TEST(Unit_ProjectDocument, WritesTheStartupFilesAsAnArray)

@@ -86,6 +86,46 @@ struct ResolveResult
     std::vector<Path> hPath;
 
     /**
+     * @brief Index of the host layer inside Path::layer.
+     *
+     * The candidate list holds the upper layer first, then the lower layers
+     * and the host layer last, so the index is the one the host layer of the
+     * path carries.
+     */
+    size_t hostLayer = 0;
+
+    /**
+     * @brief Actual file path in the host filesystem.
+     *
+     * The path is the one a modification of the entry has to be applied to
+     * when the isolation of the path writes to the host filesystem, see
+     * `WritesToHost()`. The entry may not exist, so the field is set for every
+     * resolved path.
+     */
+    std::wstring hostPath;
+
+    /**
+     * @brief The size of base host filesystem path that cannot be changed.
+     *
+     * The base is the root of the drive of the host path with its separator:
+     * the drive root always exists, so a caller which creates the folders above
+     * an entry of the host filesystem starts below it.
+     *
+     * @note Calculated with std::wstring.
+     */
+    size_t hostPathBaseSize = 0;
+
+    /**
+     * @brief True if the host layer holds the file.
+     */
+    bool bHostHolds = false;
+
+    /**
+     * @brief True if the upper layer or a lower layer holds the file.
+     */
+    bool bSandboxHolds = false;
+
+    /**
      * @brief Whiteout file path in host filesystem.
      */
     std::wstring whiteoutPath;

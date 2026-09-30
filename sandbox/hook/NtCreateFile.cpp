@@ -1,6 +1,7 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "filesystem/CreateDirectory.hpp"
 #include "filesystem/DirName.hpp"
+#include "filesystem/IsolationPolicy.hpp"
 #include "filesystem/Resolve.hpp"
 #include "filesystem/RemoveAll.hpp"
 #include "hook/NtClose.hpp"
@@ -222,6 +223,20 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
     {
         appbox::filesystem::RemoveAll(resolve_result->whiteoutPath, ObjectAttributes->Attributes);
 
+        /*
+         * The whiteout hid every layer below the upper one, so the layers
+         * which hold the entry have to be looked up again before the layer of
+         * the creation is picked: `Merge` writes to the host filesystem when
+         * the host holds the entry or when no layer holds it, and the entry
+         * the whiteout hid may be a packed entry which only a lower layer
+         * holds.
+         */
+        if (resolve_result->bIsolationListed && resolve_result->isolation == appbox::FilesystemIsolation::Merge)
+        {
+            resolve_result = appbox::filesystem::Resolve(nativate_fs_path);
+            LOG_T("resolve after whiteout: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
+        }
+
         /* If want to create directory, search again to check if we need to create opaque file */
         if (CreateOptions & FILE_DIRECTORY_FILE)
         {
@@ -244,21 +259,52 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
             }
         }
     }
+
+    /*
+     * The layer the call is applied to. `Merge` writes to the host filesystem
+     * whenever the host holds the entry or when no layer holds it at all,
+     * while every other mode and every entry only the sandbox holds stays in
+     * the upper layer. A call which neither creates nor writes the entry is no
+     * modification, so it keeps reading the layer the view prefers.
+     */
+    const bool modifies =
+        want_edit || (want_create && resolve_result->status != appbox::filesystem::ResolveResult::Status::Exists);
+    const bool target_host =
+        modifies && appbox::filesystem::WritesToHost(resolve_result->isolation, resolve_result->bHostHolds,
+                                                     resolve_result->bSandboxHolds);
+    LOG_T(L"create: target={}", target_host ? L"host" : L"view");
+
     if (want_create || want_edit)
     {
-        auto dir = appbox::filesystem::DirName(resolve_result->uPath);
-        appbox::filesystem::CreateDirectories(dir, resolve_result->uPathBaseSize);
+        /*
+         * The folders above the entry have to exist in the layer the entry is
+         * created in. The call which creates them uses the original entry
+         * point of the process, so a folder of the host filesystem is created
+         * without being redirected into the view again.
+         */
+        const std::wstring& parent = target_host ? resolve_result->hostPath : resolve_result->uPath;
+        const size_t parent_base = target_host ? resolve_result->hostPathBaseSize : resolve_result->uPathBaseSize;
+        appbox::filesystem::CreateDirectories(appbox::filesystem::DirName(parent), parent_base);
     }
-    if (want_edit)
+    if (want_edit && !target_host && resolve_result->status == appbox::filesystem::ResolveResult::Status::Exists &&
+        !resolve_result->bInUpper)
     {
-        if (resolve_result->status == appbox::filesystem::ResolveResult::Status::Exists && !resolve_result->bInUpper)
-        {
-            appbox::CopyFileNt(resolve_result->hPath[0].fPath, resolve_result->uPath);
-        }
+        appbox::CopyFileNt(resolve_result->hPath[0].fPath, resolve_result->uPath);
     }
-    std::wstring open_path = (want_edit || resolve_result->status != appbox::filesystem::ResolveResult::Status::Exists)
-                                 ? resolve_result->uPath
-                                 : resolve_result->hPath[0].fPath;
+
+    std::wstring open_path;
+    if (target_host)
+    {
+        open_path = resolve_result->hostPath;
+    }
+    else if (want_edit || resolve_result->status != appbox::filesystem::ResolveResult::Status::Exists)
+    {
+        open_path = resolve_result->uPath;
+    }
+    else
+    {
+        open_path = resolve_result->hPath[0].fPath;
+    }
 
     return NtCreateFileOpenFS(open_path, ObjectAttributes->Attributes, FileHandle, DesiredAccess, IoStatusBlock,
                               AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer,

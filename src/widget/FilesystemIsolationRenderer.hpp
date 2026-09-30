@@ -15,7 +15,8 @@
  *
  * The cell is edited through a dropdown, like the isolation column of the
  * registry table, but the options depend on the row: a folder offers `Full`,
- * `Write Copy` and `Whiteout` while a file offers `Full` and `Whiteout` only.
+ * `Write Copy`, `Merge` and `Whiteout` while a file offers `Full` and
+ * `Whiteout` only.
  *
  * The choice list of a wxDataViewChoiceRenderer belongs to the column and not
  * to the row, so the renderer asks the panel for the options of the row which
