@@ -91,7 +91,7 @@ std::filesystem::path MakeFile(const std::filesystem::path& parent, const std::w
 TEST(Unit_PresetDirectory, ProvidesExpectedPresets)
 {
     const auto& presets = appbox::PresetDirectories();
-    ASSERT_EQ(presets.size(), static_cast<std::size_t>(6));
+    ASSERT_EQ(presets.size(), static_cast<std::size_t>(7));
 
     EXPECT_EQ(presets[0].id, "program_files");
     EXPECT_EQ(presets[0].parent_id, "");
@@ -130,6 +130,13 @@ TEST(Unit_PresetDirectory, ProvidesExpectedPresets)
     EXPECT_EQ(presets[5].layer_key, L"#System32#");
     EXPECT_TRUE(std::filesystem::path(presets[5].real_path).is_absolute());
 
+    /* The font directory hangs below the Windows folder like the system one. */
+    EXPECT_EQ(presets[6].id, "fonts");
+    EXPECT_EQ(presets[6].parent_id, "windows");
+    EXPECT_EQ(presets[6].display_name, L"Fonts");
+    EXPECT_EQ(presets[6].layer_key, L"#Fonts#");
+    EXPECT_TRUE(std::filesystem::path(presets[6].real_path).is_absolute());
+
     /*
      * The nesting mirrors the host filesystem: the system directory is the
      * subdirectory of the Windows directory. The comparison resolves both
@@ -167,14 +174,17 @@ TEST(Unit_PresetDirectory, ChildPresetsNestThePresetTree)
     EXPECT_EQ(nested[1].layer_key, L"#Desktop#");
 
     const auto system = appbox::ChildPresets("windows");
-    ASSERT_EQ(system.size(), static_cast<std::size_t>(1));
+    ASSERT_EQ(system.size(), static_cast<std::size_t>(2));
     EXPECT_EQ(system[0].id, "system32");
     EXPECT_EQ(system[0].layer_key, L"#System32#");
+    EXPECT_EQ(system[1].id, "fonts");
+    EXPECT_EQ(system[1].layer_key, L"#Fonts#");
 
     /* A preset without nested presets and an unknown preset hold nothing. */
     EXPECT_TRUE(appbox::ChildPresets("program_files").empty());
     EXPECT_TRUE(appbox::ChildPresets("documents").empty());
     EXPECT_TRUE(appbox::ChildPresets("system32").empty());
+    EXPECT_TRUE(appbox::ChildPresets("fonts").empty());
     EXPECT_TRUE(appbox::ChildPresets("does_not_exist").empty());
 
     /*
@@ -204,6 +214,8 @@ TEST(Unit_PresetDirectory, FindsKnownAndRejectsUnknownIds)
     EXPECT_EQ(preset.layer_key, L"#Windows#");
     EXPECT_TRUE(appbox::FindPresetDirectory("system32", preset));
     EXPECT_EQ(preset.layer_key, L"#System32#");
+    EXPECT_TRUE(appbox::FindPresetDirectory("fonts", preset));
+    EXPECT_EQ(preset.layer_key, L"#Fonts#");
     EXPECT_FALSE(appbox::FindPresetDirectory("does_not_exist", preset));
 }
 

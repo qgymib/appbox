@@ -7,6 +7,7 @@
 #include "hook/NtCreateFile.hpp"
 #include "environment/Isolation.hpp"
 #include "filesystem/Isolation.hpp"
+#include "fonts/Isolation.hpp"
 #include "network/Isolation.hpp"
 #include "registry/__init__.hpp"
 #include "utils/CrashReport.hpp"
@@ -22,6 +23,7 @@ static const appbox::ModuleInitializer s_module[] = {
     { appbox::HandleInfo::Init,             appbox::HandleInfo::Exit             },
     { appbox::registry::Hive::Init,         appbox::registry::Hive::Exit         },
     { appbox::filesystem::Isolation::Init,  appbox::filesystem::Isolation::Exit  },
+    { appbox::fonts::Isolation::Init,       appbox::fonts::Isolation::Exit       },
     { appbox::network::Isolation::Init,     appbox::network::Isolation::Exit     },
     { appbox::environment::Isolation::Init, appbox::environment::Isolation::Exit },
     { appbox::InitHook,                     appbox::ExitHook                     },
@@ -296,6 +298,7 @@ void appbox::to_json(nlohmann::json& j, const Sandbox& r)
     j["registry_isolation_dos_paths"] = r.wRegistryIsolationDOSPaths.size();
     j["filesystem_isolation_dos_paths"] = r.wFilesystemIsolationDOSPaths.size();
     j["fs_isolation_entries"] = r.fs_isolation.Count();
+    j["font_files"] = r.wFontPaths.size();
     j["network_isolation_dos_paths"] = r.wNetworkIsolationDOSPaths.size();
     j["dns_entries"] = r.dns_table.Count();
     j["environment_isolation_dos_paths"] = r.wEnvironmentIsolationDOSPaths.size();

@@ -85,6 +85,9 @@ add_executable(AppBoxTests
     "e2e/Env_WriteCopy_Host.cpp"
     "e2e/Env_WriteCopy_Prepend.cpp"
     "e2e/Env_WriteCopy_Replace.cpp"
+    "e2e/Font_AddFontResourceEx_ViewPath.cpp"
+    "e2e/Font_HostIsNotModified.cpp"
+    "e2e/Font_PackedFontIsUsable.cpp"
     "e2e/Fs_DeleteFile_LowerLayer.cpp"
     "e2e/Fs_DeleteFile_LowerLayerAndUpper.cpp"
     "e2e/Fs_DeleteFile_NonExists.cpp"
@@ -143,6 +146,7 @@ add_executable(AppBoxTests
     "e2e/Patch_EnvironmentFullDropsTheLayersBelow.cpp"
     "e2e/Patch_EnvironmentHostPassesBelowThrough.cpp"
     "e2e/Patch_EnvironmentLayersComposeInOrder.cpp"
+    "e2e/Patch_FontOfTheLastLayerWins.cpp"
     "e2e/Patch_IsolationModeOfTheLastLayerWins.cpp"
     "e2e/Patch_MergeOverridesTheArchive.cpp"
     "e2e/Patch_NetworkDnsOfTheLastLayerWins.cpp"
@@ -191,6 +195,7 @@ add_executable(AppBoxTests
     "probe/DeleteFileW.cpp"
     "probe/EnvironmentRead.cpp"
     "probe/EnvironmentWrite.cpp"
+    "probe/Fonts.cpp"
     "probe/LaunchProcess.cpp"
     "probe/ListDir.cpp"
     "probe/ListDirNt.cpp"
@@ -234,6 +239,7 @@ add_executable(AppBoxTests
     "utils/RegistryRootKey.cpp"
     "utils/Semaphore.cpp"
     "utils/Socks5Server.cpp"
+    "utils/TestFont.cpp"
     "utils/TestKnownFolder.cpp"
     "utils/TestTimeout.cpp"
     "utils/WriteFileFull.cpp"
@@ -344,6 +350,10 @@ target_link_libraries(AppBoxTests PRIVATE base64)
 
 # The probe of the name resolution calls the DNS client of the system.
 target_link_libraries(AppBoxTests PRIVATE dnsapi)
+
+# The font probe and the helper which builds a test font use the font API of the
+# system (EnumFontFamiliesExW, CreateFontIndirectW, AddFontResourceExW).
+target_link_libraries(AppBoxTests PRIVATE gdi32)
 
 find_package(CLI11 REQUIRED)
 target_link_libraries(AppBoxTests PRIVATE CLI11::CLI11)

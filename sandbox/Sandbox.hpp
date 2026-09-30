@@ -70,6 +70,18 @@ struct Sandbox
     filesystem::IsolationTable fs_isolation;
 
     /**
+     * @brief The font files of the view which are loaded into this process.
+     *
+     * The module of the fonts loads every font file the view shows in the font
+     * directory of the system with `AddFontResourceExW(..., FR_PRIVATE, ...)`,
+     * so the packaged application creates and enumerates them as if they were
+     * installed while the font table, the font directory and the registry of
+     * the host stay untouched. The list carries the DOS path of every file
+     * which was loaded and is reported with the configuration of the run.
+     */
+    std::vector<std::wstring> wFontPaths;
+
+    /**
      * @brief The variables the sandbox expands in the values of the workspace.
      *
      * The table holds one entry per known folder of the machine which runs the

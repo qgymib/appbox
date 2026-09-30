@@ -760,6 +760,28 @@ value the probe reads is therefore the environment the sandbox handed over to a
 child, and a composition which ran twice would report `bar;bar;foo` for the
 `Prepend` case.
 
+### Fonts isolation cases
+
+The font cases (`test/e2e/Font_*.cpp`) put a font into the `#Fonts#` layer of the
+resources, which the launcher maps to the font folder of the machine
+(`FOLDERID_Fonts`, resolved by `test/utils/TestKnownFolder.*`), and read the font
+table of the sandboxed process with the probe `Fonts`, which enumerates the families,
+creates a font for a family and reports the face it chose, reads the file of the view
+and adds it with the path of the view and `FR_PRIVATE`. The domain itself is
+documented in [FontsIsolation.md](../docs/FontsIsolation.md).
+
+The font of a case has to carry a family the host does not carry, otherwise the
+family would be enumerated without the sandbox as well. `test/utils/TestFont.*`
+builds it from an installed font by rewriting the family strings of its `name` table
+in place and recomputing the checksums of the file, and every case pins that the
+family is not installed before it runs.
+
+| Case | Steps | Expected |
+| --- | --- | --- |
+| `Font_PackedFontIsUsable` | enumerate the families, create a font for the family of the packed font, read the file of the view | the family is enumerated, the face of the created font is the family, so the packed font is usable like an installed one, and the file of the view carries the content of the layer |
+| `Font_AddFontResourceEx_ViewPath` | add the file of the view with `AddFontResourceExW(path of the view, FR_PRIVATE, 0)`, while the file is not a file of the font folder of the host | the call reports the font, so the sandbox resolved the path of the view to the file of the layer: the font driver of the system opens the file without passing the file hooks |
+| `Font_HostIsNotModified` | run the sandbox, then check the host and the font table of the test process | the font folder of the host carries no file of the layer, the font registry of the host carries no entry of the font, and the family is gone once the sandboxed process ended |
+
 ### Launcher startup cases
 
 The startup cases (`test/e2e/Launcher_Startup.cpp`) describe three startup files in
@@ -877,6 +899,7 @@ header comment.
 | `EnvironmentFullDropsTheLayersBelow` | the host holds both variables; `00-foo.zip` prepends `v0` to the first one; `01-bar.zip` isolates both as `Full` | both report the value of `01-bar.zip` alone, so `Full` drops the value of the layer below it as well as the value of the host |
 | `EnvironmentHostPassesBelowThrough` | the host holds the first variable and not the second one; `00-foo.zip` replaces the first one with `v0`; `01-bar.zip` lists both with the merge mode `Host` | the first reports `v0`, so the mode passes the value below the layer through, and the second is not part of the environment at all |
 | `BrokenEnvironmentResourcesAreSkipped` | `00-foo.zip` configures a variable, `01-bar.zip` carries an environment document which is not valid JSON, `02-baz.zip` configures another variable | both variables report their value, so the layers below and above the broken package stay in place |
+| `FontOfTheLastLayerWins` | the archive and `00-foo.zip` carry a font of their own under the same name in the `#Fonts#` layer of the resources, and the two fonts carry different families | the sandboxed process enumerates both families: the family of the package is the one of the font table and the family of the archive is not loaded at all, because the layer of the package comes first in the view |
 
 ## Test helpers
 
@@ -930,6 +953,13 @@ header comment.
 * `test/utils/TestKnownFolder.*` — path of a known folder. The helper is named
   `TestKnownFolder` because the launcher ships a header of the name `KnownFolder`
   with a different API, and the single test executable carries both.
+* `test/utils/TestFont.*` — a font whose family the host does not carry, which the
+  cases of the font isolation need. The helper copies an installed font of
+  `%windir%\Fonts`, rewrites the family strings of its `name` table in place — the
+  replacement has the same length, so no offset of the file moves — recomputes the
+  checksum of the table and the adjustment of the `head` table, and reports the
+  family it built. `HostCarriesFamily()` answers whether the font table of the test
+  process, which is the one of the host, carries a family.
 * `test/utils/RealFsFolder.*` — RAII helper which owns a folder below a known
   folder of the host, so a case which needs an entry of the host filesystem
   leaves nothing behind.
@@ -999,6 +1029,12 @@ header comment.
 * `test/probe/ResolveName.*` — resolves hostnames inside the sandbox with one
   of the seven entry points the sandbox hooks and reports the return code and
   the addresses of every answer.
+* `test/probe/Fonts.*` — the font table and the font files of the view inside the
+  sandbox: it enumerates the families of the process, creates a font for a family
+  and reports the face the system chose, reads a file of the view and adds it with
+  `AddFontResourceExW` and `FR_PRIVATE`. A request names the family the case
+  expects, an optional family which must not be carried and the path of the view,
+  so one call answers the whole case.
 * `test/probe/__init__.hpp` — the probe registry: a probe registers itself by
   name on start and `ProbeInit` registers the command which the launcher starts.
   `--startup_marker` carries the marker of the startup file a probe process was

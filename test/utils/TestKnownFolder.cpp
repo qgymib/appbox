@@ -21,6 +21,7 @@ static const KnownFolderMap KnownFolders[] = {
     { L"#Desktop#",     FOLDERID_Desktop   },
     { L"#Windows#",     FOLDERID_Windows   },
     { L"#System32#",    FOLDERID_System    },
+    { L"#Fonts#",       FOLDERID_Fonts     },
 };
 
 std::wstring appbox::test::GetKnownFolderPath(const std::wstring& folder_id, bool pure)

@@ -1,5 +1,6 @@
 #include "utils/Winsock.hpp" /* Must be first include file */
 #include "utils/Log.hpp"
+#include "utils/FontApi.hpp"
 #include "utils/GetPEB.hpp"
 #include "utils/NameResolution.hpp"
 #include "utils/ProxyHook.hpp"
@@ -16,6 +17,8 @@
 #include "hook/NtEnumerateKey.hpp"
 #include "hook/NtEnumerateValueKey.hpp"
 #include "hook/NtFsControlFile.hpp"
+#include "hook/NtGdiAddFontResourceW.hpp"
+#include "hook/NtGdiRemoveFontResourceW.hpp"
 #include "hook/NtOpenFile.hpp"
 #include "hook/NtOpenKey.hpp"
 #include "hook/NtOpenKeyEx.hpp"
@@ -105,6 +108,8 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtEnumerateKey,
     &appbox::HookNtEnumerateValueKey,
     &appbox::HookNtFsControlFile,
+    &appbox::HookNtGdiAddFontResourceW,
+    &appbox::HookNtGdiRemoveFontResourceW,
     &appbox::HookNtOpenFile,
     &appbox::HookNtOpenKey,
     &appbox::HookNtOpenKeyEx,
@@ -171,6 +176,20 @@ NTSTATUS appbox::InitHook()
     if (!appbox::network::LoadNameResolutionModules())
     {
         LOG_E("failed to load the modules of the name resolution");
+        return STATUS_DLL_NOT_FOUND;
+    }
+
+    /*
+     * The entry point of the font resource call lives in the window manager
+     * module, which a process loads on demand as well: it is loaded before the
+     * entry points are resolved, because a hook which carries a detour and
+     * cannot be resolved is fatal in isolation mode. Outside isolation mode the
+     * modules are left alone, so a process which is not sandboxed does not load
+     * the graphics modules because of the sandbox.
+     */
+    if (appbox::sandbox->bIsolationMode && !appbox::fonts::LoadFontModules())
+    {
+        LOG_E("failed to load the modules of the font resources");
         return STATUS_DLL_NOT_FOUND;
     }
 

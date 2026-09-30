@@ -131,9 +131,10 @@ See [Tracer](docs/Tracer.md) for the usage, the mechanism and the measured cost.
 
 ### Sandbox
 
-Windows DLL providing runtime isolation: filesystem, registry and network
-redirection via API hooks, an overlay filesystem for non-destructive testing,
-and named pipe communication with the launcher.
+Windows DLL providing runtime isolation: filesystem, registry, network and
+environment redirection via API hooks, the fonts of the packaged application
+loaded into the font table of a sandboxed process, an overlay filesystem for
+non-destructive testing, and named pipe communication with the launcher.
 
 ## Variable Expansion
 
@@ -156,6 +157,7 @@ compared ignoring the case, so `%appbox:documents%` names the same folder as
 | `Desktop` | `FOLDERID_Desktop` | `C:\Users\Alice\Desktop` |
 | `Windows` | `FOLDERID_Windows` | `C:\Windows` |
 | `System32` | `FOLDERID_System` | `C:\Windows\System32` |
+| `Fonts` | `FOLDERID_Fonts` | `C:\Windows\Fonts` |
 
 The list follows the preset directories of the Filesystem workspace: the name of
 a variable is the layer key of a preset directory without its `#` delimiters, so
@@ -199,6 +201,7 @@ pure function `appbox::ExpandVariables()` of
 - [Registry Isolation](docs/RegistryIsolation.md) - Registry isolation architecture
 - [Network Isolation](docs/NetworkIsolation.md) - Network isolation architecture
 - [Environment Isolation](docs/EnvironmentIsolation.md) - Environment isolation architecture
+- [Fonts Isolation](docs/FontsIsolation.md) - Fonts isolation architecture
 - [Patch Layers](docs/PatchLayer.md) - Patch packages: layout, merge rules and the launcher side
 - [Tracer](docs/Tracer.md) - API tracer: usage, mechanism and measured cost
 - [Tests](test/README.md) - Unit tests and end-to-end tests of the sandbox

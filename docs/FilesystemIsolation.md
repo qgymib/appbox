@@ -201,7 +201,8 @@ followed by a path separator, so `...\AppData\RoamingX` does not match the
 `...\AppData\Roaming` mapping.
 
 A layer key is a `#Name#` delimited token (`#ProgramFiles#`, `#USERPROFILE#`,
-`#Documents#`, `#Desktop#`, `#Windows#`, `#System32#`, a single drive letter);
+`#Documents#`, `#Desktop#`, `#Windows#`, `#System32#`, `#Fonts#`, a single drive
+letter);
 `#REGISTRY#` and `#NETWORK#` are reserved for the other isolation domains. The packer offers one
 layer per preset directory of its filesystem workspace and names it after the
 layer key of that preset, so the launcher knows exactly the keys the packer
@@ -260,14 +261,16 @@ directory, so renaming the extracted launcher program requires renaming the
 configuration file as well. Running the extracted launcher program shows the
 imported folders at their preset locations (`#ProgramFiles#\<import>`,
 `#USERPROFILE#\<import>`, `#Documents#\<import>`, `#Desktop#\<import>`,
-`#Windows#\<import>`, `#System32#\<import>`) and starts the selected startup
-files inside the isolation. The folders of the user hang below
+`#Windows#\<import>`, `#System32#\<import>`, `#Fonts#\<import>`) and starts the
+selected startup files inside the isolation. The folders of the user hang below
 `Current User Directory` in the tree of the packer and the system directory
 hangs below `Windows`, yet every preset directory owns a layer of its own:
 `Documents` and `Desktop` are resolved from their own known folder id, which
 keeps them correct when the shell redirects them (for example into OneDrive),
 and `System32` is resolved from its own id instead of being a subdirectory of
-the `Windows` layer.
+the `Windows` layer. The `Fonts` folder of the same section is the layer of the
+fonts domain, whose fonts are loaded into the font table of a sandboxed process:
+see [Fonts Isolation](FontsIsolation.md).
 
 ## Key behavior rules
 

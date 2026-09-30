@@ -32,6 +32,7 @@ static const FolderMapping s_known_folders[] = {
     { L"#Desktop#",      FOLDERID_Desktop      }, /* the Desktop folder of the user (may be redirected) */
     { L"#Windows#",      FOLDERID_Windows      }, /* the system directory, %SystemRoot% */
     { L"#System32#",     FOLDERID_System       }, /* the 32 bit system directory, %SystemRoot%\system32 */
+    { L"#Fonts#",        FOLDERID_Fonts        }, /* the font directory of the system, %SystemRoot%\Fonts */
 };
 
 static std::wstring GetFolderPath(const GUID& guid)

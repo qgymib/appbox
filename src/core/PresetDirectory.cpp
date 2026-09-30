@@ -27,6 +27,7 @@ const PresetDefinition s_preset_definitions[] = {
     { "desktop",       L"Desktop",                L"#Desktop#",      "user_profile" },
     { "windows",       L"Windows",                L"#Windows#",      nullptr        },
     { "system32",      L"System32",               L"#System32#",     "windows"      },
+    { "fonts",         L"Fonts",                  L"#Fonts#",        "windows"      },
 };
 
 /**

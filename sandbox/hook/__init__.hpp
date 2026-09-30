@@ -75,6 +75,17 @@ struct Sys
     /**
      * @}
      */
+
+    /**
+     * @brief Handles of the modules which carry the font resources.
+     *
+     * The entry point of the font resource call lives in `win32u.dll` and the
+     * documented wrapper of the system lives in `gdi32.dll`, which brings the
+     * other module with it. Both are loaded on demand, so the sandbox loads
+     * them itself before it resolves the entry points of those hooks.
+     */
+    HMODULE h_gdi32;
+    HMODULE h_win32u;
 };
 extern Sys sys;
 
