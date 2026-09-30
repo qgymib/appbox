@@ -62,6 +62,7 @@ appbox::CommandLineOptions::CommandLineOptions()
     hide_console = false;
     has_startup_trigger = false;
     shell = false;
+    log_level = "info";
 }
 
 appbox::CommandLineOptions::~CommandLineOptions()
@@ -73,7 +74,19 @@ bool appbox::CommandLineOptions::ParseOptions()
 {
     CLI::App app;
     app.prefix_command();
-    app.add_option_function<std::wstring>("--X-AppBox-LogLevel", appbox::SetLogLevel, "Set application log level");
+    app.add_option_function<std::wstring>(
+        "--X-AppBox-LogLevel",
+        [this](const std::wstring& level) {
+            /*
+             * The level describes the whole run: the loader reports it and the
+             * sandbox of every process it starts reports it as well, so a run
+             * which asks for `info` never writes the trace of every kernel
+             * call of the sandboxed application.
+             */
+            this->log_level = appbox::WideToUTF8(level);
+            appbox::SetLogLevel(level);
+        },
+        "Set application log level");
     app.add_option_function<std::wstring>("--X-AppBox-LogFile", SetupFileLog, "Set application log file");
     app.add_option_function<std::wstring>(
         "--X-AppBox-ConfigFile", [this](const std::wstring& arg) { SetupConfigFile(*this, arg); },

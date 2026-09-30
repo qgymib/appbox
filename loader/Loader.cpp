@@ -175,7 +175,7 @@ static void ApplyPatchHives(const std::wstring& state_hive, const std::vector<ap
     }
 }
 
-AppBoxLoaderRuntime::AppBoxLoaderRuntime()
+AppBoxLoaderRuntime::AppBoxLoaderRuntime(const std::string& log_level)
 {
     std::time_t timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     auto        random_str = appbox::RandomString(16);
@@ -283,6 +283,16 @@ AppBoxLoaderRuntime::AppBoxLoaderRuntime()
     }
 
     inject_data.environment_state_dos_path = appbox::WideToUTF8(paths.StateEnvironmentFile());
+
+    /*
+     * Every process the sandbox is injected into writes a log file of its own
+     * into the directory of the configuration of the run, which is the
+     * directory the loader itself writes its log into: the logs of a run stay
+     * together and a process which crashes leaves its own log behind, because
+     * no other process writes that file.
+     */
+    inject_data.log_dir = appbox::WideToUTF8(paths.root);
+    inject_data.log_level = log_level;
 
     /*
      * The environment state file is written by the RPC method of the loader

@@ -5,12 +5,13 @@
 #include <spdlog/spdlog.h>
 #include "hook/__init__.hpp"
 #include "hook/NtCreateFile.hpp"
-#include "hook/NtCurrentTeb.hpp"
 #include "environment/Isolation.hpp"
 #include "filesystem/Isolation.hpp"
 #include "network/Isolation.hpp"
 #include "registry/__init__.hpp"
+#include "utils/CrashReport.hpp"
 #include "utils/Defines.hpp"
+#include "utils/GetPEB.hpp"
 #include "utils/HandleInfo.hpp"
 #include "utils/Log.hpp"
 #include "ModuleTable.hpp"
@@ -74,21 +75,27 @@ static void ParseInjectData(const std::string& data)
     appbox::sandbox->wEnvironmentStateDOSPath = appbox::UTF8ToWide(inject_data.environment_state_dos_path);
     appbox::sandbox->bEnvironmentComposed = inject_data.environment_is_composed;
 
+    /*
+     * The log of the process is written by the process itself into a file of
+     * its own: the loader is not part of the log path any more, so the
+     * messages of two processes of one run cannot interleave and the tail of
+     * the log survives a crash of the process which wrote it.
+     */
+    if (!inject_data.log_level.empty() && !appbox::SetLogLevelFromName(inject_data.log_level))
+    {
+        SPDLOG_WARN("the log level of the run is unknown: {}", inject_data.log_level);
+    }
+
+    if (!appbox::OpenLogFile(appbox::UTF8ToWide(inject_data.log_dir), appbox::GetImagePathFromPeb()))
+    {
+        SPDLOG_WARN("the log file of the process cannot be created in '{}'", inject_data.log_dir);
+    }
+
     appbox::sandbox->client = std::make_shared<appbox::PipeClient>(appbox::sandbox->wPipePath);
     if (!appbox::sandbox->client->Start())
     {
         throw std::runtime_error("failed to start rpc client");
     }
-
-    /* Forward every log message to the loader over the RPC pipe. */
-    appbox::SetLogSink([](const appbox::MsgLog::Req& req, nlohmann::json& rsp) {
-        if (appbox::sandbox == nullptr || appbox::sandbox->client == nullptr)
-        {
-            return false;
-        }
-
-        return appbox::sandbox->client->Call(appbox::MsgLog::Method, req, rsp);
-    });
 }
 
 static void LoadInjectData()
@@ -115,17 +122,9 @@ static void LoadInjectData()
     ParseInjectData(appbox::sandbox->inject_data);
 }
 
-static std::string GetImagePathFromPeb()
-{
-    auto         peb = sys_NtCurrentTeb()->ProcessEnvironmentBlock;
-    auto&        path = peb->ProcessParameters->ImagePathName;
-    std::wstring name(path.Buffer, path.Length / sizeof(wchar_t));
-    return appbox::WideToUTF8(name);
-}
-
 static void SayHello()
 {
-    LOG_I("AppBox Sandbox initialized for {} with config: {}", GetImagePathFromPeb(),
+    LOG_I("AppBox Sandbox initialized for {} with config: {}", appbox::WideToUTF8(appbox::GetImagePathFromPeb()),
           appbox::DumpJson(nlohmann::json(*appbox::sandbox)));
 }
 
@@ -198,6 +197,14 @@ static bool OnDllAttach()
         if (appbox::sandbox->bIsolationMode)
         {
             LoadInjectData();
+
+            /*
+             * The report of a crash is installed once the log file of the
+             * process is open and before the hooks are attached: it collects
+             * the modules through the original entry points of the process and
+             * it covers the whole life of the process, including the attach.
+             */
+            appbox::InstallCrashHandler();
         }
 
         if (!appbox::InitModuleTable(s_module, std::size(s_module)))
@@ -229,11 +236,39 @@ static bool OnDllAttach()
 
 /**
  * @brief Handle the DLL_PROCESS_DETACH notification.
+ *
+ * @param[in] process_terminating Whether the notification comes from the exit
+ *                                sequence of the process instead of a
+ *                                `FreeLibrary` call.
  */
-static void OnDllDetach()
+static void OnDllDetach(bool process_terminating)
 {
-    /* The log sink refers to the sandbox instance, uninstall it first. */
-    appbox::SetLogSink(nullptr);
+    /*
+     * Nothing of the sandbox is torn down while the process is terminating.
+     *
+     * The kernel reclaims every resource of a process which exits, so the
+     * teardown adds no value and it adds risk: detaching the hooks patches
+     * code which the threads the process still runs may be executing, and
+     * releasing the objects the sandbox owns — the mounted hive, the
+     * environment blocks it handed out, the handle table — can be observed by
+     * the runtime of the application, which releases its own references to
+     * them while it exits. A process which is killed by such a step during its
+     * exit sequence dies with an access violation and reports no reason,
+     * because the log of the exit sequence is gone as well.
+     *
+     * The log is switched off, so the exit sequence neither writes nor waits
+     * for anything the sandbox owns. The file itself stays open: the kernel
+     * closes it, and everything which was written before is already in it.
+     */
+    appbox::LogEnable(false);
+
+    if (process_terminating)
+    {
+        return;
+    }
+
+    /* The log sink refers to the log file, release it first. */
+    appbox::CloseLogFile();
 
     if (s_modules_initialized)
     {
@@ -269,7 +304,7 @@ void appbox::to_json(nlohmann::json& j, const Sandbox& r)
     j["environment_modifications"] = r.env_state.Count();
 }
 
-BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
 {
     (void)hinstDLL;
     try
@@ -282,7 +317,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
         case DLL_THREAD_DETACH:
             break;
         case DLL_PROCESS_DETACH:
-            OnDllDetach();
+            OnDllDetach(lpvReserved != nullptr);
             break;
         default:
             throw std::runtime_error("unknown fdwReason");

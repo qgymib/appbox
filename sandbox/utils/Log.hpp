@@ -114,15 +114,14 @@ struct LogGuard
 /**
  * @brief Log sink.
  *
- * The sandbox installs a sink which forwards the log message to the loader over
- * the RPC pipe. An empty sink means that log messages are dropped, which is the
- * case outside isolation mode.
+ * The sink receives every message the sandbox reports, for example the sink
+ * which appends it to the log file of the process. An empty sink means that
+ * the messages are dropped, which is the case outside isolation mode.
  *
  * @param[in] req Log request.
- * @param[out] rsp Log response.
  * @return true when the message was delivered, otherwise false.
  */
-using LogSink = std::function<bool(const MsgLog::Req& req, nlohmann::json& rsp)>;
+using LogSink = std::function<bool(const MsgLog::Req& req)>;
 
 /**
  * @brief Install or uninstall the log sink.
@@ -144,6 +143,45 @@ void Log(MsgLogLevel level, const char* file, int line, const std::wstring& msg)
  * @param[in] enable Enable flag.
  */
 void LogEnable(bool enable);
+
+/**
+ * @brief Set the lowest level the sandbox reports.
+ *
+ * The level is the level of the run: the loader names it with
+ * `--X-AppBox-LogLevel` and the injected configuration carries it, so a run
+ * which asks for `info` never writes the trace of every kernel call of the
+ * application into its log file.
+ *
+ * @param[in] level Lowest level which is reported.
+ */
+void SetLogLevel(MsgLogLevel level);
+
+/**
+ * @brief Set the lowest level the sandbox reports from its name.
+ * @param[in] name Name of the level: `trace`, `debug`, `info`, `warn`, `err`,
+ *                 `critical` or `off`.
+ * @return true when the name is a level, false when it is not.
+ */
+bool SetLogLevelFromName(const std::string& name);
+
+/**
+ * @brief Open the log file of this process and report into it.
+ *
+ * The file is named after the process and is written by the process itself, so
+ * its content survives a crash and the processes of one run never share a
+ * file. A log file which cannot be created leaves the sandbox without a sink:
+ * the messages are dropped, the process keeps running.
+ *
+ * @param[in] dir Directory of the log files of the run.
+ * @param[in] image_path Path of the executable of this process.
+ * @return true when the log file is open.
+ */
+bool OpenLogFile(const std::wstring& dir, const std::wstring& image_path);
+
+/**
+ * @brief Close the log file of this process, the messages are dropped afterwards.
+ */
+void CloseLogFile();
 
 std::string    PointerToString(const void* ptr);
 nlohmann::json ToJson(const POBJECT_ATTRIBUTES ObjectAttributes);

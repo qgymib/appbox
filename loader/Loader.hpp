@@ -15,7 +15,15 @@ struct AppBoxLoaderRuntime
 {
     typedef std::shared_ptr<AppBoxLoaderRuntime> Ptr;
 
-    AppBoxLoaderRuntime();
+    /**
+     * @brief Build the runtime of one run.
+     *
+     * @param[in] log_level Level the run reports: `trace`, `debug`, `info`,
+     *                      `warn`, `err`, `critical` or `off`. It is handed to
+     *                      the sandbox of every process the run starts, so the
+     *                      processes of a run report the same levels.
+     */
+    explicit AppBoxLoaderRuntime(const std::string& log_level);
     ~AppBoxLoaderRuntime();
 
     appbox::SandboxConfig     inject_data; /* Inject data information */

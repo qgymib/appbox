@@ -35,6 +35,7 @@ struct SandboxPaths
         const std::filesystem::path root(config_dir);
 
         SandboxPaths paths;
+        paths.root = config_dir;
         paths.app = (root / layout::kAppDirNameW).wstring();
         paths.state = (root / layout::kStateDirNameW).wstring();
         paths.patch = (root / layout::kPatchDirNameW).wstring();
@@ -308,6 +309,17 @@ struct SandboxPaths
         return (std::filesystem::path(PatchCacheDir(name)) / layout::kEnvironmentDirNameW / layout::kIsolationFileNameW)
             .wstring();
     }
+
+    /**
+     * @brief Directory the layout was resolved against.
+     *
+     * It is the directory of the configuration of the run, which is the
+     * directory of the loader program unless the configuration was given with
+     * `--X-AppBox-ConfigFile`. The directory carries the configuration itself,
+     * the state of the sandbox and the logs of the run: every process the
+     * sandbox is injected into writes its own log file there.
+     */
+    std::wstring root;
 
     std::wstring app;   /* Absolute path of the read-only resource root. */
     std::wstring state; /* Absolute path of the writable state root. */

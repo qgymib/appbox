@@ -43,6 +43,18 @@ void appbox::HandleInfo::Exit()
 
 appbox::HandleInfo::Ptr appbox::HandleInfo::Create(HANDLE handle, Fn fn)
 {
+    if (s_handle_info_ctx == nullptr)
+    {
+        /*
+         * The module is not initialized yet or its context is released
+         * already. A hook which runs in either state must report that it has
+         * no information about the handle instead of reading a null pointer:
+         * the hooks are attached for the whole life of the process, which
+         * includes the moments the module table is built and released.
+         */
+        return nullptr;
+    }
+
     Ptr info(new appbox::HandleInfo);
     info->handle = handle;
     fn(info);
@@ -61,6 +73,11 @@ appbox::HandleInfo::Ptr appbox::HandleInfo::Create(HANDLE handle, Fn fn)
 
 appbox::HandleInfo::Ptr appbox::HandleInfo::Find(HANDLE handle)
 {
+    if (s_handle_info_ctx == nullptr)
+    {
+        return nullptr;
+    }
+
     std::lock_guard<std::mutex> guard(s_handle_info_ctx->info_map_mutex);
     auto                        it = s_handle_info_ctx->info_map.find(handle);
     if (it == s_handle_info_ctx->info_map.end())
@@ -73,6 +90,11 @@ appbox::HandleInfo::Ptr appbox::HandleInfo::Find(HANDLE handle)
 
 appbox::HandleInfo::Ptr appbox::HandleInfo::Pop(HANDLE handle)
 {
+    if (s_handle_info_ctx == nullptr)
+    {
+        return nullptr;
+    }
+
     std::lock_guard<std::mutex> guard(s_handle_info_ctx->info_map_mutex);
     auto                        it = s_handle_info_ctx->info_map.find(handle);
     if (it == s_handle_info_ctx->info_map.end())

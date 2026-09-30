@@ -1,11 +1,18 @@
 #ifndef APPBOX_COMMON_MSG_LOG_HPP
 #define APPBOX_COMMON_MSG_LOG_HPP
 
-#include <nlohmann/json.hpp>
+#include <cstdint>
+#include <string>
 
 namespace appbox
 {
 
+/**
+ * @brief Level of a message the sandbox reports.
+ *
+ * The levels are ordered: a level which is not lower than the level of the run
+ * is reported, so `LOG_LEVEL_OFF` reports nothing at all.
+ */
 enum MsgLogLevel
 {
     LOG_LEVEL_TRACE,
@@ -13,26 +20,25 @@ enum MsgLogLevel
     LOG_LEVEL_INFO,
     LOG_LEVEL_WARN,
     LOG_LEVEL_ERROR,
+    LOG_LEVEL_OFF,
 };
 
+/**
+ * @brief One message the sandbox reports.
+ *
+ * The message is written to the log file of the process which produced it (see
+ * `sandbox/utils/LogFile.hpp`), so the record carries the level, the time and
+ * the place the message was raised at.
+ */
 struct MsgLog
 {
-    static constexpr const char* Method = "Log";
-
     struct Req
     {
-        MsgLogLevel level;
-        int64_t     time;
-        std::string file;
-        int         line;
-        std::string payload;
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(Req, level, time, file, line, payload);
-    };
-
-    struct Rsp
-    {
-        int _ = 0; /* Ignore */
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, _)
+        MsgLogLevel level;   /* Level of the message. */
+        int64_t     time;    /* Time the message was raised at, in milliseconds since the epoch. */
+        std::string file;    /* Name of the source file the message was raised in. */
+        int         line;    /* Line of the source file the message was raised at. */
+        std::string payload; /* Text of the message. */
     };
 };
 

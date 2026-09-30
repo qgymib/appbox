@@ -46,3 +46,21 @@ appbox::PEB appbox::GetPEB()
 
     return p;
 }
+
+std::wstring appbox::GetImagePathFromPeb()
+{
+    const auto peb = reinterpret_cast<PPEB>(GET_ADDR_OF_PEB);
+    if (peb == nullptr || peb->ProcessParameters == nullptr)
+    {
+        return {};
+    }
+
+    const UNICODE_STRING& name = peb->ProcessParameters->ImagePathName;
+    if (name.Buffer == nullptr || name.Length == 0)
+    {
+        return {};
+    }
+
+    /* The buffer is counted, so it is read by its length and never as a text. */
+    return std::wstring(name.Buffer, static_cast<std::size_t>(name.Length) / sizeof(wchar_t));
+}

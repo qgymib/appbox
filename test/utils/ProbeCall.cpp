@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <map>
 #include <mutex>
@@ -348,11 +349,44 @@ static DWORD RunLoaderForProbe(const std::string& key, const std::wstring& cwd, 
     return RunLoader(cwd, config, args);
 }
 
+/**
+ * @brief Report the log files the processes of a case wrote.
+ *
+ * Every process the sandbox is injected into writes a log file of its own into
+ * the directory of the case, named after the program, the UTC time it started
+ * at and its process id. A run which fails names those files, so a reader of
+ * the artifact of a failed run knows which file belongs to which process
+ * without guessing.
+ *
+ * @param[in] cwd Directory of the case.
+ */
+static void ReportSandboxLogs(const std::wstring& cwd)
+{
+    std::error_code                    ec;
+    std::vector<std::filesystem::path> logs;
+
+    for (const auto& entry : std::filesystem::directory_iterator(cwd, ec))
+    {
+        if (entry.is_regular_file(ec) && entry.path().extension() == L".log")
+        {
+            logs.push_back(entry.path());
+        }
+    }
+
+    std::sort(logs.begin(), logs.end());
+    for (const auto& log : logs)
+    {
+        SPDLOG_ERROR("log of the run: {}", appbox::WideToUTF8(log.filename().wstring()));
+    }
+}
+
 static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, const appbox::LoaderConfig& config)
 {
     const auto exit_code = RunLoaderForProbe(key, cwd, config, std::string());
     if (exit_code != 0)
     {
+        ReportSandboxLogs(cwd);
+
         auto msg = fmt::format("Probe exited with code {}", exit_code);
         SPDLOG_ERROR(msg);
         throw std::runtime_error(msg);

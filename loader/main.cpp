@@ -434,7 +434,7 @@ bool AppBoxLoader::OnInit()
          */
         CheckSandboxModules(wxGetApp().startup_error);
 
-        wxGetApp().runtime = std::make_shared<AppBoxLoaderRuntime>();
+        wxGetApp().runtime = std::make_shared<AppBoxLoaderRuntime>(opt.log_level);
     }
     catch (const std::exception& e)
     {

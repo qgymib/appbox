@@ -71,13 +71,6 @@
   ],
   "packagePresets": [
     {
-      "name": "Debug",
-      "configurePreset": "Debug",
-      "generators": [
-        "ZIP"
-      ]
-    },
-    {
       "name": "Release",
       "configurePreset": "Release",
       "generators": [
@@ -99,10 +92,6 @@
         },
         {
           "type": "test",
-          "name": "Debug"
-        },
-        {
-          "type": "package",
           "name": "Debug"
         }
       ]

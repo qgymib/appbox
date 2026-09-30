@@ -36,6 +36,7 @@ add_executable(AppBoxTests
     "unit/HookTransaction.cpp"
     "unit/IsolationDocument.cpp"
     "unit/Log.cpp"
+    "unit/LogFile.cpp"
     "unit/Md5.cpp"
     "unit/MiniLauncher.cpp"
     "unit/ModuleTable.cpp"
@@ -282,8 +283,10 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/RootMap.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/registry/Whiteout.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/BitParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/CrashReport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/HookTransaction.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/Log.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/LogFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/PipeClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/VariableExpansion.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/ArmPlan.cpp

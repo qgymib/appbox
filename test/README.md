@@ -167,6 +167,76 @@ The limits which are worth knowing:
   tree have no automated coverage, because the test suite does not test itself;
   they are verified by hand.
 
+## Logs of a case
+
+Every case runs in a working directory of its own, and a case which fails keeps
+it: the fixture of the cases asks for the cleanup only when the case passed
+(`appbox::test::CommonWD::NoCleanup`). The directory holds the configuration of
+the run and the logs of every process the run started.
+
+| File | Writer | Content |
+| --- | --- | --- |
+| `log.txt` | the loader | The messages of the loader itself: the configuration it loaded, the layers it mapped, the processes it started and their exit codes. |
+| `<program>.<time utc>.<pid>.log` | one sandboxed process | The messages of one process the sandbox is injected into, in the order that process produced them. |
+
+The loader does not carry the messages of the sandbox: every process the sandbox
+is injected into writes a log file of its own, named after the program, the UTC
+time it started at and its process id. A run of one end-to-end case therefore
+leaves one file per process — the launcher and the probe of a case, plus the
+processes a case starts itself — and no two processes ever write the same file.
+The file is written by the process which produces it, so its content survives a
+crash of that process, and the name tells which process it belongs to:
+
+```
+AppBoxLoader.20260930T021157Z.76696.log
+AppBoxTests.20260930T021157Z.77784.log
+```
+
+The level of the messages is the level of the run (`--log-level`), and it is the
+level of the loader and of every sandboxed process at once. `trace` reports
+every kernel call the sandbox intercepts, so a run which is started with
+`APPBOX_TEST_LOG_LEVEL=trace`, like the presets of `CMakePresets.json` do,
+writes the whole path of the case into the logs of its processes.
+
+### The report of a crash
+
+The sandbox installs a handler of fatal exceptions into every process it is
+injected into (`sandbox/utils/CrashReport.*`). The handler writes the exception,
+the registers, the parameters of the exception and the stack of the process into
+the log file of that process, and every address is named with the module it
+belongs to, so a report can be read without a debugger:
+
+```
+=== crash === first chance
+process=77784 thread=70456 code=0xc0000005 exception=0x7ff9f8010a40 flags=0x0
+params=0x0,0xffffffffffffffff
+rip=0x7ff9f8010a40 rsp=0x86948fd0f8 rbp=0x0 rax=0x543a7961646e6f4d ...
+stack=32
+  0x7ff9cdd4b67f sandbox64.dll+0x5b67f
+  0x7ff9f8010a40 MSVCP140.dll+0x60a40
+  ...
+=== end crash ===
+```
+
+The handler also reports the modules of the process with their base addresses
+once, when it is installed, so `module+offset` of a report can be resolved
+against the modules of the build of the run. A module of the build has its
+debug information next to it, and `cdb` resolves an offset of a module without a
+running process:
+
+```bash
+"C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe" -z <dump of a process> -c "ln <module>+0x<offset>; q"
+```
+
+A run which fails names the log files it left behind, so the file of the process
+which died is the first one to open:
+
+```
+[error] log of the run: AppBoxLoader.20260930T021157Z.76696.log
+[error] log of the run: AppBoxTests.20260930T021157Z.77784.log
+[error] Probe exited with code 3221225477
+```
+
 ## Layout
 
 | Path | Content |
@@ -175,6 +245,7 @@ The limits which are worth knowing:
 | `test/e2e/` | The end-to-end cases, one file per case (`<Domain>_<Case>.cpp`); the suite of a file is named `E2E_<Domain>`. |
 | `test/probe/` | The operations which are executed **inside** the sandbox. A probe registers itself by name (`test/probe/__init__.hpp`) and is called from a case through `ProbeCall`. |
 | `test/utils/` | The builders and helpers which the cases share, see [Test helpers](#test-helpers). |
+| `test/utils/ProbeCall.*` | The call of a probe: it starts the loader for the case, serves the probe over the pipe and reports the logs of the processes of the run when the case fails. |
 | `test/utils/TestTimeout.*` | The timeout of a test case: the GoogleTest hook, the watchdog thread and the options of a run. |
 | `test/utils/Coredump.*` | The coredump writer: the full memory dump of a process, the walk of a process tree and the termination of its processes. |
 | `test/utils/CommandLine.*` | The command line and the environment of a run, which the coredump writer reads before GoogleTest and CLI11 look at them. |
@@ -387,10 +458,14 @@ executable carries itself:
   sign, with the error text of every refusal, the lenient reading of the network
   proxy, and the two documents the packer writes which the sandbox reads back
   (network and environment).
-* `test/unit/Log.cpp`, `test/unit/PipeClient.cpp` — the hook
-  robustness contract: never read more than the caller declared, never throw.
-  The abort sentinel of the parameter parsers is part of it
-  (`Unit_Log.LoggerAbortsWhenAParameterParserThrows`).
+* `test/unit/Log.cpp`, `test/unit/LogFile.cpp`, `test/unit/PipeClient.cpp` — the
+  hook robustness contract: never read more than the caller declared, never
+  throw. The abort sentinel of the parameter parsers is part of it
+  (`Unit_Log.LoggerAbortsWhenAParameterParserThrows`). The level of a run and
+  the log file of a process are covered as well: the name of the file, the
+  directory which is created for it, the level which suppresses a message, and
+  the report a fatal exception leaves in the file of the process which raised
+  it (`Unit_LogFile.CrashReportNamesTheExceptionOfTheProcess`).
 * `test/unit/RemoteClient.cpp`, `test/unit/RpcCodec.cpp` — the RPC
   layer which carries the requests of the probes.
 * `test/unit/WString.cpp` — the UTF-8 and UTF-16 conversions of `common/`.

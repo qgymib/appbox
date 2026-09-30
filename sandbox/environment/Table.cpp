@@ -67,8 +67,15 @@ appbox::environment::Table::~Table()
 {
     /*
      * A block which the application did not release is freed here: the table
-     * owns every block it handed out, and the end of the process is the last
-     * moment they can be released.
+     * owns every block it handed out, so the last owner of a block which is
+     * still outstanding releases it.
+     *
+     * The destructor runs while the process keeps running (the sandbox is
+     * released with `FreeLibrary`), and only then: a process which is
+     * terminating never tears its sandbox down, because the runtime of the
+     * application releases its own references to the environment while it
+     * exits, and a block which was freed here would be freed a second time by
+     * that release. See `OnDllDetach()` of `sandbox/Sandbox.cpp`.
      */
     for (auto* block : blocks_)
     {

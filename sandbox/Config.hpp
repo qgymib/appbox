@@ -139,11 +139,37 @@ struct SandboxConfig
 
     std::string environment_state_dos_path; /* Environment state file path. Encoding in UTF-8. */
 
+    /**
+     * @brief Directory the log file of a sandboxed process is written to.
+     *
+     * Every process the sandbox is injected into writes a log file of its own
+     * into this directory, named after the program, the UTC time it started at
+     * and its process id (see `sandbox/utils/LogFile.hpp`). The loader names
+     * the directory of the run, so the logs of a run land next to the
+     * configuration of that run and a crash of a process leaves its log
+     * behind. An empty directory leaves the sandbox without a log file.
+     *
+     * @note encoding in UTF-8
+     */
+    std::string log_dir;
+
+    /**
+     * @brief Lowest level the sandbox reports: `trace`, `debug`, `info`,
+     *        `warn`, `err`, `critical` or `off`.
+     *
+     * The loader fills it from `--X-AppBox-LogLevel`, which is the level of
+     * the run, so the sandbox and the loader of a run report the same levels.
+     * A name the sandbox does not know reports every level.
+     *
+     * @note encoding in UTF-8
+     */
+    std::string log_level;
+
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(SandboxConfig, environment_is_composed, pipe_path, sandbox32_dos_path,
                                    sandbox64_dos_path, fs_upper, fs_lower, variables, registry_hive_dos_path,
                                    registry_isolation_dos_paths, filesystem_isolation_dos_paths,
                                    network_isolation_dos_paths, environment_isolation_dos_paths,
-                                   environment_state_dos_path)
+                                   environment_state_dos_path, log_dir, log_level)
 };
 
 } // namespace appbox

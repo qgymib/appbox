@@ -46,7 +46,7 @@ void InstallCountingSink(bool result)
     ResetReceived();
     g_sink_result = result;
 
-    appbox::SetLogSink([](const appbox::MsgLog::Req&, nlohmann::json&) {
+    appbox::SetLogSink([](const appbox::MsgLog::Req&) {
         ++g_received;
         return g_sink_result.load();
     });
@@ -116,8 +116,7 @@ TEST(Unit_Log, FailingSinkDoesNotThrowAndCountsDrop)
 TEST(Unit_Log, ThrowingSinkDoesNotThrowAndCountsDrop)
 {
     appbox::LogEnable(true);
-    appbox::SetLogSink(
-        [](const appbox::MsgLog::Req&, nlohmann::json&) -> bool { throw std::runtime_error("broken transport"); });
+    appbox::SetLogSink([](const appbox::MsgLog::Req&) -> bool { throw std::runtime_error("broken transport"); });
 
     const uint64_t before = appbox::DroppedLogCount();
 
@@ -183,6 +182,63 @@ TEST(Unit_Log, LogGuardSuppressesOutput)
     appbox::Log(appbox::LOG_LEVEL_INFO, __FILE__, __LINE__, std::string("restored"));
     EXPECT_EQ(g_received.load(), 1);
 
+    appbox::SetLogSink(nullptr);
+}
+
+/**
+ * @brief A message below the level of the run is not delivered and does not
+ *        count as dropped: the level decides what the log holds, so a run which
+ *        asks for `info` never writes the trace of every kernel call.
+ */
+TEST(Unit_Log, LogLevelSuppressesLowerLevels)
+{
+    InstallCountingSink(true);
+    appbox::LogEnable(true);
+    appbox::SetLogLevel(appbox::LOG_LEVEL_INFO);
+
+    const uint64_t before = appbox::DroppedLogCount();
+
+    appbox::Log(appbox::LOG_LEVEL_TRACE, __FILE__, __LINE__, std::string("suppressed"));
+    EXPECT_EQ(g_received.load(), 0);
+
+    appbox::Log(appbox::LOG_LEVEL_INFO, __FILE__, __LINE__, std::string("reported"));
+    appbox::Log(appbox::LOG_LEVEL_ERROR, __FILE__, __LINE__, std::string("reported as well"));
+    EXPECT_EQ(g_received.load(), 2);
+    EXPECT_EQ(appbox::DroppedLogCount(), before);
+
+    /* The level is a state of the process, so the test restores it. */
+    appbox::SetLogLevel(appbox::LOG_LEVEL_TRACE);
+    appbox::SetLogSink(nullptr);
+}
+
+/**
+ * @brief The name of a level is the name the option of the loader accepts, and
+ *        `off` reports nothing at all.
+ */
+TEST(Unit_Log, SetLogLevelFromNameReadsTheNamesOfTheRun)
+{
+    EXPECT_TRUE(appbox::SetLogLevelFromName("trace"));
+    EXPECT_TRUE(appbox::SetLogLevelFromName("debug"));
+    EXPECT_TRUE(appbox::SetLogLevelFromName("info"));
+    EXPECT_TRUE(appbox::SetLogLevelFromName("warn"));
+    EXPECT_TRUE(appbox::SetLogLevelFromName("err"));
+    EXPECT_TRUE(appbox::SetLogLevelFromName("critical"));
+    EXPECT_FALSE(appbox::SetLogLevelFromName("verbose"));
+    EXPECT_FALSE(appbox::SetLogLevelFromName(""));
+
+    InstallCountingSink(true);
+    appbox::LogEnable(true);
+
+    const bool off = appbox::SetLogLevelFromName("off");
+    EXPECT_TRUE(off);
+    if (off)
+    {
+        appbox::Log(appbox::LOG_LEVEL_ERROR, __FILE__, __LINE__, std::string("off"));
+        EXPECT_EQ(g_received.load(), 0);
+    }
+
+    /* The level is a state of the process, so the test restores it. */
+    appbox::SetLogLevel(appbox::LOG_LEVEL_TRACE);
     appbox::SetLogSink(nullptr);
 }
 

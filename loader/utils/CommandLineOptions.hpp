@@ -30,6 +30,7 @@ struct CommandLineOptions
     std::string              startup_trigger;     /* Trigger of the startup file to run, encoding in UTF-8 */
     bool                     has_startup_trigger; /* True if a startup trigger was given */
     bool                     shell;               /* True to run the shell of the host inside the sandbox */
+    std::string              log_level;           /* Level of the run, encoding in UTF-8 */
 };
 
 } // namespace appbox
