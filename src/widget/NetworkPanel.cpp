@@ -1,5 +1,5 @@
 #include "NetworkPanel.hpp"
-#include "NetworkTabBar.hpp"
+#include "TabBar.hpp"
 #include "PlaceholderPanel.hpp"
 #include <wx/button.h>
 #include <wx/checkbox.h>
@@ -69,7 +69,7 @@ const wxColour kWarningTextColour(0xB4, 0x23, 0x18);
 
 NetworkPanel::NetworkPanel(wxWindow* parent, appbox::NetworkModel& model) : wxPanel(parent, wxID_ANY), model_(model)
 {
-    tab_bar_ = new NetworkTabBar(this, wxID_ANY);
+    tab_bar_ = new TabBar(this, wxID_ANY);
     tab_bar_->AddTab("Proxy");
     tab_bar_->AddTab("DNS");
     tab_bar_->AddTab("IP Restrictions");
@@ -88,7 +88,7 @@ NetworkPanel::NetworkPanel(wxWindow* parent, appbox::NetworkModel& model) : wxPa
     sizer->Add(pages_, 1, wxEXPAND);
     SetSizer(sizer);
 
-    Bind(APPBOX_NETWORK_TAB, &NetworkPanel::OnTabChanged, this);
+    Bind(APPBOX_TAB, &NetworkPanel::OnTabChanged, this);
 
     RefreshList();
     RefreshProxy();

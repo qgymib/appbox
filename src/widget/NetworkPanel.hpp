@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-class NetworkTabBar;
+class TabBar;
 class wxCheckBox;
 class wxChoice;
 class wxSimplebook;
@@ -242,7 +242,7 @@ private:
      */
     bool updating_ = false;
 
-    NetworkTabBar*      tab_bar_ = nullptr;
+    TabBar*             tab_bar_ = nullptr;
     wxSimplebook*       pages_ = nullptr;
     wxDataViewListCtrl* list_ = nullptr;
     wxButton*           add_ = nullptr;

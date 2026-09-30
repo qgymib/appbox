@@ -202,17 +202,18 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/widget/FilesystemPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/MainFrame.cpp"
     "${APPBOX_SOURCE_DIR}/widget/NetworkPanel.cpp"
-    "${APPBOX_SOURCE_DIR}/widget/NetworkTabBar.cpp"
     "${APPBOX_SOURCE_DIR}/widget/PlaceholderPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/RegistryIsolationDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/RegistryKeyDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/RegistryPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/RegistryValueDialog.cpp"
-    "${APPBOX_SOURCE_DIR}/widget/RibbonBar.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/SettingsPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/SideNav.cpp"
     "${APPBOX_SOURCE_DIR}/widget/StartupCheckRenderer.cpp"
     "${APPBOX_SOURCE_DIR}/widget/StartupFilesDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/StartupTreeModel.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/TabBar.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/Toolbar.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/loader/utils/KnownFolder.cpp"
     "${APPBOX_SOURCE_DIR}/main.cpp"
     "${APPBOX_SOURCE_DIR}/resource.rc"
@@ -263,7 +264,7 @@ target_link_libraries(AppBox PRIVATE spdlog::spdlog)
 target_compile_options(AppBox PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
 
 find_package(wxWidgets REQUIRED)
-target_link_libraries(AppBox PRIVATE wx::core wx::base wx::adv wx::ribbon)
+target_link_libraries(AppBox PRIVATE wx::core wx::base wx::adv)
 
 # Known folder resolution of the loader helper (SHGetKnownFolderPath).
 target_link_libraries(AppBox PRIVATE shell32 ole32)

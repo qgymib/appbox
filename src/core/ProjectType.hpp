@@ -10,9 +10,9 @@ namespace appbox
 /**
  * @brief Kind of product a pack run writes.
  *
- * The type is chosen by the `Project Type` box of the ribbon and travels with
- * the project file, so it is a property of the session and not of the models
- * of the workspaces.
+ * The type is chosen by the `Project Type` box of the `Output` tab of the
+ * Settings workspace and travels with the project file, so it is a property of
+ * the session and not of the models of the workspaces.
  *
  * - `Standalone` - the self-contained archive of `Pack()`: the loader program
  *   named after the first startup file, its configuration and the read-only

@@ -1,9 +1,9 @@
-#include "NetworkTabBar.hpp"
+#include "TabBar.hpp"
 #include <wx/dcbuffer.h>
 #include <algorithm>
 #include <utility>
 
-wxDEFINE_EVENT(APPBOX_NETWORK_TAB, wxCommandEvent);
+wxDEFINE_EVENT(APPBOX_TAB, wxCommandEvent);
 
 namespace
 {
@@ -56,19 +56,19 @@ wxFont TabFont()
 
 } // namespace
 
-NetworkTabBar::NetworkTabBar(wxWindow* parent, wxWindowID id)
+TabBar::TabBar(wxWindow* parent, wxWindowID id)
     : wxPanel(parent, id, wxDefaultPosition, wxSize(-1, kTabBarHeight), wxBORDER_NONE)
 {
     SetBackgroundStyle(wxBG_STYLE_PAINT);
     SetMinSize(wxSize(-1, kTabBarHeight));
 
-    Bind(wxEVT_PAINT, &NetworkTabBar::OnPaint, this);
-    Bind(wxEVT_LEFT_DOWN, &NetworkTabBar::OnLeftDown, this);
-    Bind(wxEVT_MOTION, &NetworkTabBar::OnMotion, this);
-    Bind(wxEVT_LEAVE_WINDOW, &NetworkTabBar::OnLeaveWindow, this);
+    Bind(wxEVT_PAINT, &TabBar::OnPaint, this);
+    Bind(wxEVT_LEFT_DOWN, &TabBar::OnLeftDown, this);
+    Bind(wxEVT_MOTION, &TabBar::OnMotion, this);
+    Bind(wxEVT_LEAVE_WINDOW, &TabBar::OnLeaveWindow, this);
 }
 
-void NetworkTabBar::AddTab(const wxString& label)
+void TabBar::AddTab(const wxString& label)
 {
     Tab tab;
     tab.label = label;
@@ -89,12 +89,12 @@ void NetworkTabBar::AddTab(const wxString& label)
     Refresh();
 }
 
-int NetworkTabBar::GetSelection() const
+int TabBar::GetSelection() const
 {
     return tabs_.empty() ? wxNOT_FOUND : static_cast<int>(selection_);
 }
 
-void NetworkTabBar::SetSelection(int index)
+void TabBar::SetSelection(int index)
 {
     if (index == wxNOT_FOUND || static_cast<std::size_t>(index) >= tabs_.size() ||
         static_cast<std::size_t>(index) == selection_)
@@ -106,7 +106,7 @@ void NetworkTabBar::SetSelection(int index)
     Refresh();
 }
 
-std::vector<wxRect> NetworkTabBar::TabRects() const
+std::vector<wxRect> TabBar::TabRects() const
 {
     std::vector<wxRect> rects;
     rects.reserve(tabs_.size());
@@ -120,7 +120,7 @@ std::vector<wxRect> NetworkTabBar::TabRects() const
     return rects;
 }
 
-int NetworkTabBar::HitTest(const wxPoint& position) const
+int TabBar::HitTest(const wxPoint& position) const
 {
     const auto rects = TabRects();
     for (std::size_t index = 0; index < rects.size(); ++index)
@@ -133,7 +133,7 @@ int NetworkTabBar::HitTest(const wxPoint& position) const
     return wxNOT_FOUND;
 }
 
-void NetworkTabBar::OnPaint(wxPaintEvent&)
+void TabBar::OnPaint(wxPaintEvent&)
 {
     wxAutoBufferedPaintDC dc(this);
     dc.SetBackground(wxBrush(kBarBackgroundColour));
@@ -180,13 +180,13 @@ void NetworkTabBar::OnPaint(wxPaintEvent&)
     }
 }
 
-void NetworkTabBar::OnLeftDown(wxMouseEvent& event)
+void TabBar::OnLeftDown(wxMouseEvent& event)
 {
     Select(HitTest(event.GetPosition()));
     event.Skip();
 }
 
-void NetworkTabBar::OnMotion(wxMouseEvent& event)
+void TabBar::OnMotion(wxMouseEvent& event)
 {
     const auto hovered = HitTest(event.GetPosition());
     if (hovered != hovered_)
@@ -197,7 +197,7 @@ void NetworkTabBar::OnMotion(wxMouseEvent& event)
     event.Skip();
 }
 
-void NetworkTabBar::OnLeaveWindow(wxMouseEvent& event)
+void TabBar::OnLeaveWindow(wxMouseEvent& event)
 {
     if (hovered_ != wxNOT_FOUND)
     {
@@ -207,7 +207,7 @@ void NetworkTabBar::OnLeaveWindow(wxMouseEvent& event)
     event.Skip();
 }
 
-void NetworkTabBar::Select(int index)
+void TabBar::Select(int index)
 {
     if (index == wxNOT_FOUND || static_cast<std::size_t>(index) >= tabs_.size() ||
         static_cast<std::size_t>(index) == selection_)
@@ -218,7 +218,7 @@ void NetworkTabBar::Select(int index)
     selection_ = static_cast<std::size_t>(index);
     Refresh();
 
-    wxCommandEvent changed(APPBOX_NETWORK_TAB, GetId());
+    wxCommandEvent changed(APPBOX_TAB, GetId());
     changed.SetEventObject(this);
     changed.SetInt(index);
     GetParent()->GetEventHandler()->ProcessEvent(changed);

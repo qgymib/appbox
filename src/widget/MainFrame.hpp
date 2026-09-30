@@ -19,8 +19,9 @@ class EnvironmentPanel;
 class FilesystemPanel;
 class NetworkPanel;
 class RegistryPanel;
-class RibbonBar;
+class SettingsPanel;
 class SideNav;
+class Toolbar;
 class wxProgressDialog;
 class wxSimplebook;
 class wxTimer;
@@ -62,7 +63,7 @@ struct PackOutcome
  * @brief Main window of the packer.
  *
  * The window follows the three part layout of the reference packaging tool:
- * the ribbon bar on top, the vertical icon navigation on the left and the
+ * the toolbar on top, the vertical icon navigation on the left and the
  * workspace on the right. The pack run itself executes on a background thread
  * and reports back through thread events.
  */
@@ -86,7 +87,7 @@ private:
     void CreateMenuBar();
 
     /**
-     * @brief Create the ribbon, the navigation and the workspace.
+     * @brief Create the toolbar, the navigation and the workspace.
      */
     void CreateLayout();
 
@@ -135,7 +136,7 @@ private:
     void OnSideNavChanged(wxCommandEvent& event);
 
     /**
-     * @brief Adopt the project type the Output group shows.
+     * @brief Adopt the project type the Settings workspace shows.
      * @param[in] event Command event of the project type box.
      */
     void OnProjectTypeChanged(wxCommandEvent& event);
@@ -325,20 +326,21 @@ private:
     /**
      * @brief Kind of product the `Build` command writes.
      *
-     * The type is picked in the `Project Type` box of the ribbon and travels
-     * with the project file: a standalone project is packed into a
+     * The type is picked in the `Project Type` box of the Settings workspace
+     * and travels with the project file: a standalone project is packed into a
      * self-contained archive, a patch project into a package of the resources
      * without a loader.
      */
     appbox::ProjectType project_type_ = appbox::ProjectType::Standalone;
 
-    RibbonBar*        ribbon_ = nullptr;
+    Toolbar*          toolbar_ = nullptr;
     SideNav*          side_nav_ = nullptr;
     wxSimplebook*     workspace_ = nullptr;
     FilesystemPanel*  filesystem_panel_ = nullptr;
     RegistryPanel*    registry_panel_ = nullptr;
     NetworkPanel*     network_panel_ = nullptr;
     EnvironmentPanel* environment_panel_ = nullptr;
+    SettingsPanel*    settings_panel_ = nullptr;
 
     bool output_path_edited_ = false;
 

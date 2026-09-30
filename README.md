@@ -75,116 +75,46 @@ generator adds below it:
 ### AppBox
 
 The main product of the repository: a wxWidgets-based GUI application which
-packages an installed application into a portable zip archive. The window
-follows the three part layout of a packaging tool: a ribbon toolbar on top, a
-vertical icon navigation on the left and the workspace on the right.
+packages an installed application into a portable zip archive and edits the
+isolation the packaged application runs with. The window follows the three part
+layout of a packaging tool: a toolbar on top, a vertical icon navigation on the
+left and the workspace on the right.
 
 The navigation offers the Filesystem, Registry, Network and Environment
-workspaces, which edit the isolation the packaged application runs with, and the
-Settings page, which is an empty state. The table of the Environment workspace
-holds one row per variable with its name, its value, its isolation mode, its
-merge mode and the text which joins the value with the value of the host; the
-name of the search path variable is filled in with the merge mode `Prepend` and
-the separator `;`, and the two values can be changed afterwards. A value of the
-Environment and of the Registry workspace may reference a known folder of the
-machine which runs the sandbox (see [Variable Expansion](#variable-expansion)). The tables
-explain themselves while the mouse rests on them: the header of the `Isolation`
-column of the three workspaces lists the modes it offers with their meaning, and
-the mode columns of the Environment workspace describe the mode of the row below
-the cursor. The directory
-tree of the Filesystem workspace starts
-at the `Sandbox Filesystem` container and holds the preset directories below
-it: `Program Files` and `Current User Directory` at the top level, with
-`Documents` and `Desktop` below the profile of the user. Every preset directory
-owns a layer of the archive and accepts imported folders and files, so
-`Documents` and `Desktop` are packed into `app/filesystem/#Documents#` and
-`app/filesystem/#Desktop#` and are mapped back to the real folders of the user
-when the sandbox runs; both are resolved from their own known folder id, which
-keeps them correct when the shell redirects them.
-
-The tree names the host folder behind a node while the mouse rests on it: a
-preset directory shows its real host directory, an imported folder shows the
-folder it was imported from, and a folder below an import shows that folder
-extended by the relative path of the folder. The Home page of the ribbon builds
-the archive to the path of the `Output File` box; the configuration of a
-session — imported folders, startup files, the project type and the three
+workspaces, which edit the four isolation domains of the sandbox, and the
+Settings workspace, whose `Output` tab holds the destination archive of the
+`Build` command and the project type; a value of the Environment and of the
+Registry workspace may reference a known folder of the machine which runs the
+sandbox (see [Variable Expansion](#variable-expansion)). The configuration of a
+session — imported folders, startup files, the project type and the four
 workspaces — travels with the JSON project file of `File -> Export
-Configuration...` and is restored by `File -> Import Configuration...`, which
-replaces the whole configuration after a confirmation. Imported folders and
-files do not have to exist on the machine which imports the project, so a
-project can be exchanged before the packaged application is installed.
+Configuration...` and is restored by `File -> Import Configuration...`.
 
-The `Project Type` box of the Output group selects the product of the `Build`
-command. `Standalone (ZIP)` writes the self-contained archive described above:
-the loader named after the first startup file, its configuration, the two
-sandbox injection modules and the resources of the application below `app`.
-`Patch (ZIP)` writes a patch package
-instead, which holds the very same resources rooted at the archive root: the
-loader, its configuration, the injection modules and the `app` directory itself
-do not travel, so the
-package can be dropped into the `patch` directory next to a standalone archive,
-where the loader of that archive merges it on top of the resources of `app`.
-A patch project needs no startup file, and `Build and Run` is offered for a
-standalone project only, because a patch package carries no loader which could
-start a program (see [Patch Layers](docs/PatchLayer.md)).
-
-The loader applies the packages of that directory in ascending name order, so a
-later package overrides an earlier one and every package overrides the resources
-of `app`, per resource: a package which carries a single file keeps every other
-file of the layers below it, and a package which carries a single registry value
-keeps every other entry of the virtual registry below it. Every domain is merged
-this way: the filesystem layers and the isolation modes of the filesystem and of
-the registry, the DNS redirections of the network — a package which names no
-proxy keeps the proxy below it — and the environment variables, which every
-layer composes with the value the layers below it composed. To speed up the
-start of the next run, the loader extracts a package into the `cache` directory
-beside the `patch` directory and reuses the extraction while the digest recorded
-in `cache/<name>/md5.txt` matches the package, so a package which the user
-replaced is extracted again. Neither directory travels in the archive: the user
-creates `patch`, the loader creates `cache` as soon as that directory holds a
-package, and deleting `cache` only costs the extraction of the next run.
+The `Project Type` box of the `Output` tab selects the product of the `Build`
+command. `Standalone (ZIP)` writes a self-contained archive which carries the
+loader, its configuration, the two sandbox injection modules and the resources
+of the application below `app`; `Patch (ZIP)` writes a patch package which holds
+the same resources rooted at the archive root, so it can be dropped into the
+`patch` directory next to a standalone archive, where the loader merges it on
+top of the resources of `app` (see [Patch Layers](docs/PatchLayer.md)).
 
 ### Loader
 
-wxWidgets-based GUI application for managing sandboxed processes:
+wxWidgets-based GUI application for managing sandboxed processes: it injects
+the sandbox DLLs the archive carries below `app` (`sandbox32.dll` and
+`sandbox64.dll`) and starts the startup files of its configuration. The loader
+keeps the read-only resources of the packed application below `app` and the
+state of the sandbox below `data`, both beside the loader program: the state
+directory is created at run time and carries the writable overlay of the
+filesystem and the registry hive the sandbox mounts. Deleting it resets the
+sandbox to the state the archive was packed with.
 
-- Injects the sandbox DLLs the archive carries below `app` (`sandbox32.dll` and
-  `sandbox64.dll`) and starts the sandboxed processes. The loader keeps no copy
-  of its own, so a run copies no module, and a run whose modules are missing is
-  refused with the path which was looked for instead of starting anything.
-- Keeps the read-only resources of the packed application below `app` and the
-  state of the sandbox below `data`, both beside the loader program: the state
-  directory is created at run time and carries the writable overlay of the
-  filesystem and the registry hive the sandbox mounts (seeded from
-  `app/registry/user.hiv` on the first run). Deleting it resets the sandbox to
-  the state the archive was packed with.
-- Starts every startup file of its configuration which is marked for auto
-  start; `--X-AppBox-Startup <trigger>` starts the single startup file with
-  that trigger instead and suppresses the auto start of the other files. An
-  unknown trigger starts nothing and turns into a non zero exit code.
-- Starts the startup files without a console window when the configuration
-  sets `hide_console`: the loader is a GUI program without a console, so a
-  console program it starts would otherwise open a console window of its own.
-  The window is created hidden instead of being shown, which is what an
-  unattended run needs; the program keeps its console and therefore its
-  standard streams. The switch is off by default and does not affect a GUI
-  program, which never owns a console window.
-- Runs the `cmd.exe` of the machine which runs the sandbox inside the isolation
-  when `--X-AppBox-Shell` is given: without a command the shell runs
-  interactively, with a command it runs `cmd /c <command>`, so
-  `--X-AppBox-Shell start powershell` runs `cmd /c start powershell`. The shell
-  replaces the application of the configuration, so no startup file is started
-  and a configuration without one is not an error; the option cannot be
-  combined with `--X-AppBox-Startup`, which names another program to run. The
-  shell always opens a console window of its own, because it is meant to be
-  used interactively — `hide_console` keeps describing the startup files only.
-  The loader exits with the exit code of the shell. The shell is resolved
-  outside of the isolation from `%COMSPEC%`, with
-  `%SystemRoot%\System32\cmd.exe` as the fallback, and the command is the
-  remaining command line, so the options of the loader have to precede it.
-- Offers a read-only sandbox registry browser in its admin UI, which mounts
-  the hive of the overlay directly and never touches the host registry
-  (see [Registry Isolation](docs/RegistryIsolation.md)).
+`--X-AppBox-Shell` runs the `cmd.exe` of the machine which runs the sandbox
+inside the isolation instead of the application of the configuration: without a
+command the shell runs interactively, with a command it runs
+`cmd /c <command>`. The admin UI also offers a read-only sandbox registry
+browser, which mounts the hive of the overlay directly and never touches the
+host registry (see [Registry Isolation](docs/RegistryIsolation.md)).
 
 ### Tracer
 

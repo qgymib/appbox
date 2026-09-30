@@ -1,5 +1,5 @@
-#ifndef APPBOX_PACKER_WIDGET_NETWORK_TAB_BAR_HPP
-#define APPBOX_PACKER_WIDGET_NETWORK_TAB_BAR_HPP
+#ifndef APPBOX_PACKER_WIDGET_TAB_BAR_HPP
+#define APPBOX_PACKER_WIDGET_TAB_BAR_HPP
 
 #include <wx/wx.h>
 #include <vector>
@@ -9,10 +9,10 @@
  *
  * The event identifier carries the zero based index of the activated tab.
  */
-wxDECLARE_EVENT(APPBOX_NETWORK_TAB, wxCommandEvent);
+wxDECLARE_EVENT(APPBOX_TAB, wxCommandEvent);
 
 /**
- * @brief Flat tab strip of the Network workspace.
+ * @brief Flat tab strip of a workspace.
  *
  * The control draws one tab per added label, starting at the left edge of the
  * client area. The selected tab uses a white background with an accent bar
@@ -23,7 +23,7 @@ wxDECLARE_EVENT(APPBOX_NETWORK_TAB, wxCommandEvent);
  * The width of a tab is derived from its label once and then reused by the
  * painting and by the hit test, so both agree on the position of a tab.
  */
-class NetworkTabBar : public wxPanel
+class TabBar : public wxPanel
 {
 public:
     /**
@@ -31,7 +31,7 @@ public:
      * @param[in] parent Parent window.
      * @param[in] id Window identifier.
      */
-    NetworkTabBar(wxWindow* parent, wxWindowID id);
+    TabBar(wxWindow* parent, wxWindowID id);
 
     /**
      * @brief Append one tab.
@@ -114,4 +114,4 @@ private:
     int              hovered_ = wxNOT_FOUND;
 };
 
-#endif // APPBOX_PACKER_WIDGET_NETWORK_TAB_BAR_HPP
+#endif // APPBOX_PACKER_WIDGET_TAB_BAR_HPP

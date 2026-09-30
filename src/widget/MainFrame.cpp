@@ -4,10 +4,10 @@
 #include "FilesystemPanel.hpp"
 #include "StartupFilesDialog.hpp"
 #include "NetworkPanel.hpp"
-#include "PlaceholderPanel.hpp"
 #include "RegistryPanel.hpp"
-#include "RibbonBar.hpp"
+#include "SettingsPanel.hpp"
 #include "SideNav.hpp"
+#include "Toolbar.hpp"
 #include "core/BuildReport.hpp"
 #include "core/EmbeddedResource.hpp"
 #include "core/EmbeddedResourceIds.h"
@@ -117,7 +117,7 @@ MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox", wxDefaultPosition,
     CreateStatusBar(1);
     UpdateStatusBar();
 
-    ribbon_->SetOutputPath(DefaultOutputPath());
+    settings_panel_->SetOutputPath(DefaultOutputPath());
     UpdateTitle();
 
     /* The controls follow the project type of the session. */
@@ -129,12 +129,12 @@ MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox", wxDefaultPosition,
     Bind(wxEVT_MENU, &MainFrame::OnExportConfiguration, this, kMenuExportConfiguration);
     Bind(wxEVT_MENU, &MainFrame::OnImportRegistry, this, kMenuImportRegistry);
     Bind(APPBOX_SIDE_NAV, &MainFrame::OnSideNavChanged, this);
-    Bind(wxEVT_RIBBONBUTTONBAR_CLICKED, &MainFrame::OnStartupFiles, this, kRibbonStartupFiles);
-    Bind(wxEVT_RIBBONBUTTONBAR_CLICKED, &MainFrame::OnBuild, this, kRibbonBuild);
-    Bind(wxEVT_RIBBONBUTTONBAR_CLICKED, &MainFrame::OnBuildAndRun, this, kRibbonBuildAndRun);
-    Bind(wxEVT_BUTTON, &MainFrame::OnBrowseOutput, this, kRibbonBrowseOutput);
-    Bind(wxEVT_TEXT, &MainFrame::OnOutputPathEdited, this, kRibbonOutputPath);
-    Bind(wxEVT_COMBOBOX, &MainFrame::OnProjectTypeChanged, this, kRibbonProjectType);
+    Bind(wxEVT_TOOL, &MainFrame::OnStartupFiles, this, kToolbarStartupFiles);
+    Bind(wxEVT_TOOL, &MainFrame::OnBuild, this, kToolbarBuild);
+    Bind(wxEVT_TOOL, &MainFrame::OnBuildAndRun, this, kToolbarBuildAndRun);
+    Bind(wxEVT_BUTTON, &MainFrame::OnBrowseOutput, this, kSettingsBrowseOutput);
+    Bind(wxEVT_TEXT, &MainFrame::OnOutputPathEdited, this, kSettingsOutputPath);
+    Bind(wxEVT_COMBOBOX, &MainFrame::OnProjectTypeChanged, this, kSettingsProjectType);
     Bind(APPBOX_PACK_PROGRESS, &MainFrame::OnPackProgress, this);
     Bind(APPBOX_PACK_FINISHED, &MainFrame::OnPackFinished, this);
 }
@@ -182,7 +182,7 @@ void MainFrame::CreateMenuBar()
 
 void MainFrame::CreateLayout()
 {
-    ribbon_ = new RibbonBar(this, wxID_ANY);
+    toolbar_ = new Toolbar(this, wxID_ANY);
 
     /*
      * The order of the navigation items is the order of the pages of the
@@ -197,7 +197,7 @@ void MainFrame::CreateLayout()
                        "Name resolution and proxy the packaged application uses inside the sandbox");
     side_nav_->AddItem("Environment", wxART_LIST_VIEW,
                        "Environment variables the packaged application sees inside the sandbox");
-    side_nav_->AddItem("Settings", wxART_HELP, "Launch configuration of the packaged application");
+    side_nav_->AddItem("Settings", wxART_HELP, "Archive the Build command writes and the type of the product");
 
     workspace_ = new wxSimplebook(this, wxID_ANY);
 
@@ -212,8 +212,9 @@ void MainFrame::CreateLayout()
 
     environment_panel_ = new EnvironmentPanel(workspace_, environment_);
     workspace_->AddPage(environment_panel_, "Environment");
-    workspace_->AddPage(
-        new PlaceholderPanel(workspace_, "Settings", "Launch configuration of the packaged application."), "Settings");
+
+    settings_panel_ = new SettingsPanel(workspace_);
+    workspace_->AddPage(settings_panel_, "Settings");
     workspace_->SetSelection(static_cast<size_t>(0));
 
     auto* body = new wxBoxSizer(wxHORIZONTAL);
@@ -221,7 +222,7 @@ void MainFrame::CreateLayout()
     body->Add(workspace_, 1, wxEXPAND);
 
     auto* sizer = new wxBoxSizer(wxVERTICAL);
-    sizer->Add(ribbon_, 0, wxEXPAND);
+    sizer->Add(toolbar_, 0, wxEXPAND);
     sizer->Add(body, 1, wxEXPAND);
     SetSizer(sizer);
 }
@@ -279,9 +280,9 @@ void MainFrame::UpdateTitle()
 
 wxString MainFrame::OutputPath() const
 {
-    if (ribbon_ != nullptr)
+    if (settings_panel_ != nullptr)
     {
-        const auto edited = ribbon_->GetOutputPath();
+        const auto edited = settings_panel_->GetOutputPath();
         if (!edited.empty())
         {
             return edited;
@@ -320,7 +321,7 @@ void MainFrame::OnSideNavChanged(wxCommandEvent& event)
 
 void MainFrame::OnProjectTypeChanged(wxCommandEvent& event)
 {
-    ApplyProjectType(ribbon_->GetProjectType());
+    ApplyProjectType(settings_panel_->GetProjectType());
     event.Skip();
 }
 
@@ -332,18 +333,18 @@ void MainFrame::ApplyProjectType(appbox::ProjectType type)
      * The box is written back as well: the type of an imported configuration
      * has to be shown, and a value the session refused must not stay visible.
      */
-    ribbon_->SetProjectType(type);
+    settings_panel_->SetProjectType(type);
 
     /*
      * A patch package carries no loader, so there is no program to extract and
      * start: the run command is offered for a standalone project only.
      */
-    ribbon_->SetBuildAndRunEnabled(type == appbox::ProjectType::Standalone);
+    toolbar_->SetBuildAndRunEnabled(type == appbox::ProjectType::Standalone);
 
     /* Keep following the startup files until the user edits the path. */
     if (!output_path_edited_)
     {
-        ribbon_->SetOutputPath(DefaultOutputPath());
+        settings_panel_->SetOutputPath(DefaultOutputPath());
     }
 
     UpdateStatusBar();
@@ -434,12 +435,12 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     if (!output_path.empty())
     {
         output_path_edited_ = true;
-        ribbon_->SetOutputPath(wxString(output_path));
+        settings_panel_->SetOutputPath(wxString(output_path));
     }
     else
     {
         output_path_edited_ = false;
-        ribbon_->SetOutputPath(DefaultOutputPath());
+        settings_panel_->SetOutputPath(DefaultOutputPath());
     }
 
     /* The type of the document decides which product the next Build writes. */
@@ -536,7 +537,7 @@ void MainFrame::OnStartupFiles(wxCommandEvent&)
     /* Keep following the startup files until the user edits the path. */
     if (!output_path_edited_)
     {
-        ribbon_->SetOutputPath(DefaultOutputPath());
+        settings_panel_->SetOutputPath(DefaultOutputPath());
     }
     UpdateTitle();
 }
@@ -553,7 +554,7 @@ void MainFrame::OnBrowseOutput(wxCommandEvent&)
     }
 
     output_path_edited_ = true;
-    ribbon_->SetOutputPath(dialog.GetPath());
+    settings_panel_->SetOutputPath(dialog.GetPath());
     UpdateTitle();
 }
 
