@@ -62,8 +62,8 @@ std::string BuildRegistryIsolationText(const std::vector<RegistryIsolationEntry>
  * The builder writes the hive file and the isolation file of a case directly,
  * so an end-to-end test owns the artifacts the sandbox mounts instead of
  * depending on the packer. Both land in the registry domain of the resources
- * of the case (`<case root>/app/registry`), which is where the loader looks for
- * them: the hive is a read-only resource which the loader seeds into the state
+ * of the case (`<case root>/app/registry`), which is where the launcher looks for
+ * them: the hive is a read-only resource which the launcher seeds into the state
  * directory of the sandbox, the isolation file is handed to the sandbox as it
  * is. The hive holds one sub key per root key of the view, exactly like the
  * hive the packer writes, so the artifacts are interchangeable.
@@ -119,7 +119,7 @@ public:
      * @brief Write the hive and the isolation file into the resources.
      *
      * Both files land in the registry domain of the case, which is where the
-     * loader looks for them. An existing hive is replaced.
+     * launcher looks for them. An existing hive is replaced.
      *
      * @param[out] error Error description on failure.
      * @return true on success.

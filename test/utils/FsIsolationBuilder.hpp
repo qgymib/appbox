@@ -50,7 +50,7 @@ std::string BuildFsIsolationText(const std::vector<FsIsolationEntry>& entries);
  * @brief Write the filesystem isolation file of a test sandbox.
  *
  * The file describes the modes of the virtual filesystem and lives in the
- * filesystem domain of the resources of the case, which is where the loader
+ * filesystem domain of the resources of the case, which is where the launcher
  * looks for it (`<case root>/app/filesystem/isolation.json`). The document is
  * built from the schema structure of `common/FilesystemIsolation.hpp` instead
  * of through the packer, so a case also pins that the sandbox accepts a file

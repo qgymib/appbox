@@ -41,7 +41,7 @@ public:
     /**
      * @brief Enable or disable the "Build and Run" tool.
      *
-     * A patch package carries no loader, so the run command is only offered for
+     * A patch package carries no launcher, so the run command is only offered for
      * a standalone project.
      *
      * @param[in] enabled Whether the tool accepts input.

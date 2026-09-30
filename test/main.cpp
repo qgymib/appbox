@@ -14,7 +14,7 @@
  * The executable runs both sides of the test suite of the project: the
  * in-process unit tests below `test/unit` and the end-to-end cases below
  * `test/e2e`. The `--mode` option selects the side; the end-to-end cases
- * start the real loader, which injects the sandbox DLL and starts this
+ * start the real launcher, which injects the sandbox DLL and starts this
  * executable again as the probe process of the case.
  *
  * @param[in] argc Number of command line arguments.

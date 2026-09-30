@@ -15,7 +15,7 @@ namespace network
  * The module loads the isolation file the packer wrote into the overlay of the
  * archive (see `common/NetworkIsolation.hpp` for the schema) and fills the
  * table of the sandbox instance with the redirections of the workspace. The
- * loader passes the path of the file in the injected configuration.
+ * launcher passes the path of the file in the injected configuration.
  *
  * A missing file, a missing configuration or a malformed document is not an
  * error: the sandbox then behaves like one without an isolation file, in which

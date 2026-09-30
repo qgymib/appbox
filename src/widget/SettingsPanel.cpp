@@ -67,8 +67,8 @@ const char* const kBrowseTooltip = "Choose the destination archive of the Build 
 
 /** Tooltip of the project type box. */
 const char* const kProjectTypeTooltip =
-    "Standalone writes a self-contained archive with the loader; Patch writes the resources "
-    "of the app directory without a loader, for the patch directory next to it";
+    "Standalone writes a self-contained archive with the launcher; Patch writes the resources "
+    "of the app directory without a launcher, for the patch directory next to it";
 
 } // namespace
 

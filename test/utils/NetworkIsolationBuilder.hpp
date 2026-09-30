@@ -78,7 +78,7 @@ struct NetworkIsolationProxy
  * @brief Write the network isolation file of a test sandbox.
  *
  * The file describes the DNS redirections of the packaged application and lives
- * in the network domain of the resources of the case, which is where the loader
+ * in the network domain of the resources of the case, which is where the launcher
  * looks for it (`<case root>/app/network/isolation.json`). The document is
  * built from the schema structure of `common/NetworkIsolation.hpp` instead of
  * through the packer, so a case also pins that the sandbox accepts a file which

@@ -7,15 +7,15 @@ namespace appbox
 /**
  * @brief Layout of a packed application and of the sandbox it runs in.
  *
- * A packed archive carries the loader program, its configuration and the
+ * A packed archive carries the launcher program, its configuration and the
  * read-only resources of the packaged application below `app`. The writable
- * state of the sandbox never travels in the archive: the loader creates the
+ * state of the sandbox never travels in the archive: the launcher creates the
  * `data` directory at run time, next to `app`, so deleting it resets the
  * sandbox to the state the archive was packed with.
  *
  * ```
- * <startup>.exe                        loader payload
- * <startup>.exe.json                   loader configuration
+ * <startup>.exe                        launcher payload
+ * <startup>.exe.json                   launcher configuration
  * app/sandbox32.dll                    injected sandbox DLL (32 bit)
  * app/sandbox64.dll                    injected sandbox DLL (64 bit)
  * app/filesystem/isolation.json        isolation modes of the filesystem
@@ -27,10 +27,10 @@ namespace appbox
  * ```
  *
  * A patch package carries the very same resources without the program which
- * starts them: the loader program, its configuration, the two sandbox
+ * starts them: the launcher program, its configuration, the two sandbox
  * injection modules and the `app` directory itself do not travel, so the tree
  * of `app` is rooted at the archive root instead. The
- * package is dropped into the `patch` directory next to the loader of a
+ * package is dropped into the `patch` directory next to the launcher of a
  * standalone archive, which merges every patch of that directory in ascending
  * name order on top of the resources of `app`.
  *
@@ -43,7 +43,7 @@ namespace appbox
  * environment/isolation.json           environment variables of the workspace
  * ```
  *
- * Everything below `app` is read-only while the sandbox runs, and the loader
+ * Everything below `app` is read-only while the sandbox runs, and the launcher
  * only creates the writable state directory `data` at run time:
  *
  * ```
@@ -55,20 +55,20 @@ namespace appbox
  * ```
  *
  * A patch package is consumed next to those directories: the user creates
- * `patch` and drops the packages into it, the loader extracts a package into
+ * `patch` and drops the packages into it, the launcher extracts a package into
  * `cache` to reuse the extraction of the runs which follow.
  *
  * ```
  * patch/00-foo.zip                     patch package, created by the user
- * cache/00-foo/filesystem/...          extracted package, created by the loader
+ * cache/00-foo/filesystem/...          extracted package, created by the launcher
  * cache/00-foo/md5.txt                 digest of the extracted package
  * ```
  *
  * Neither directory travels in the archive, and deleting `cache` only costs
  * the extraction of the next run.
  *
- * The names live in `common/` because the packer, the loader and the tests
- * share them: the packer builds the entry names of the archive, the loader
+ * The names live in `common/` because the packer, the launcher and the tests
+ * share them: the packer builds the entry names of the archive, the launcher
  * resolves the paths below the directory of its configuration file, and the
  * tests materialize the same layout on disk.
  */
@@ -109,7 +109,7 @@ inline constexpr const char* kEnvironmentDirName = "environment";
  * @brief Name of the 32 bit sandbox injection module below `app`.
  *
  * The module is a resource of the archive and not a state of the sandbox: it
- * travels in `app` and the loader injects it from there, so a run of the
+ * travels in `app` and the launcher injects it from there, so a run of the
  * extracted archive copies no module of its own.
  */
 inline constexpr const char* kSandbox32DllName = "sandbox32.dll";
@@ -133,7 +133,7 @@ inline constexpr const char* kRegistryHiveFileName = "user.hiv";
  * @brief Name of the state file which carries the environment of the sandbox.
  *
  * The file lives in the state directory, because the sandboxed process writes
- * to it while it runs; it is created by the loader, which owns the state
+ * to it while it runs; it is created by the launcher, which owns the state
  * directory, from the state document the sandbox sends over the RPC pipe.
  */
 inline constexpr const char* kEnvironmentStateFileName = "state.json";
@@ -142,7 +142,7 @@ inline constexpr const char* kEnvironmentStateFileName = "state.json";
  * @brief Name of the directory which carries the patch packages.
  *
  * The directory does not travel in the archive: the user of a packaged
- * application creates it next to the loader of a standalone archive and drops
+ * application creates it next to the launcher of a standalone archive and drops
  * the patch packages into it. A package takes effect while it is inside that
  * directory; the packages are applied in ascending name order, so a later
  * package overrides an earlier one.
@@ -152,7 +152,7 @@ inline constexpr const char* kPatchDirName = "patch";
 /**
  * @brief Name of the directory which carries the extracted patch packages.
  *
- * The directory is created by the loader as soon as the patch directory holds
+ * The directory is created by the launcher as soon as the patch directory holds
  * at least one package. Every package has a directory of its own inside it,
  * which holds the extracted resources and the digest of the package they were
  * extracted from.
@@ -162,7 +162,7 @@ inline constexpr const char* kCacheDirName = "cache";
 /**
  * @brief Name of the file which records the digest of a cache entry.
  *
- * The file is the last entry the loader writes into the directory of a
+ * The file is the last entry the launcher writes into the directory of a
  * package, so its presence marks a complete extraction, and its content is
  * the digest the package had when it was extracted.
  */
@@ -180,7 +180,7 @@ inline constexpr const char* kPatchPackageExtension = ".zip";
  * @brief The names above, for the consumers which work with wide strings.
  *
  * The names are pure ASCII, so the wide and the narrow spelling describe the
- * very same entry; the duplicates exist because the loader and the archive
+ * very same entry; the duplicates exist because the launcher and the archive
  * reader hold wide paths while the packer builds narrow entry names.
  */
 inline constexpr const wchar_t* kAppDirNameW = L"app";
@@ -304,9 +304,9 @@ inline constexpr const char* kEnvironmentIsolationRelative = "app/environment/is
 inline constexpr const char* kEnvironmentIsolationAppRelative = "environment/isolation.json";
 
 /**
- * @brief Hive the sandbox mounts, relative to the directory of the loader.
+ * @brief Hive the sandbox mounts, relative to the directory of the launcher.
  *
- * The file does not travel in the archive: the loader seeds it from
+ * The file does not travel in the archive: the launcher seeds it from
  * `kRegistryHiveRelative` on the first run and keeps every modification the
  * sandboxed process makes afterwards.
  */
@@ -314,7 +314,7 @@ inline constexpr const char* kStateRegistryHiveRelative = "data/registry/user.hi
 
 /**
  * @brief Environment variables the packaged application changed, relative to
- *        the directory of the loader.
+ *        the directory of the launcher.
  *
  * The file does not travel in the archive: the sandbox creates it while the
  * application changes its environment and reads it back on the next run, so a

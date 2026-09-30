@@ -20,7 +20,7 @@
 // the default frame icon.
 IDI_ICON1 ICON DISCARDABLE "../docs/icon.ico"
 
-// The payloads a pack run needs: the loader program and the two sandbox
+// The payloads a pack run needs: the launcher program and the two sandbox
 // injection modules, declared as RCDATA resources of this executable. The
 // identifiers are shared with the code which reads the payloads back, and the
 // statements themselves live in a file which CMake generates at configure time,

@@ -245,7 +245,7 @@ void MainFrame::UpdateStatusBar()
 {
     if (project_type_ == appbox::ProjectType::Patch)
     {
-        /* A patch package carries no loader, so it needs no startup file. */
+        /* A patch package carries no launcher, so it needs no startup file. */
         const auto files = appbox::ContentFileCount(model_);
         SetStatusText(wxString::Format("Patch project: %llu files", static_cast<unsigned long long>(files)));
         return;
@@ -336,7 +336,7 @@ void MainFrame::ApplyProjectType(appbox::ProjectType type)
     settings_panel_->SetProjectType(type);
 
     /*
-     * A patch package carries no loader, so there is no program to extract and
+     * A patch package carries no launcher, so there is no program to extract and
      * start: the run command is offered for a standalone project only.
      */
     toolbar_->SetBuildAndRunEnabled(type == appbox::ProjectType::Standalone);
@@ -576,7 +576,7 @@ void MainFrame::StartPack(bool run_after)
     }
 
     /*
-     * A patch package carries no loader, so there is nothing to extract and
+     * A patch package carries no launcher, so there is nothing to extract and
      * start. The command is not offered for a patch project; a caller which
      * asks for it anyway is refused here.
      */
@@ -587,7 +587,7 @@ void MainFrame::StartPack(bool run_after)
 
     const bool standalone = project_type_ == appbox::ProjectType::Standalone;
 
-    /* Only a standalone archive carries a loader which starts a startup file. */
+    /* Only a standalone archive carries a launcher which starts a startup file. */
     if (standalone && !model_.HasStartupFiles())
     {
         wxMessageBox("Select at least one startup file before building.", "Build", wxOK | wxICON_INFORMATION, this);
@@ -603,7 +603,7 @@ void MainFrame::StartPack(bool run_after)
 
     /*
      * The payloads of a standalone archive are the resources of this
-     * executable: the loader program and the two sandbox injection modules,
+     * executable: the launcher program and the two sandbox injection modules,
      * which the archive carries below `app`. A patch package holds none of
      * them, so its payloads stay empty.
      */
@@ -611,10 +611,10 @@ void MainFrame::StartPack(bool run_after)
     if (standalone)
     {
         std::string      error;
-        std::string_view loader;
+        std::string_view launcher;
         std::string_view sandbox32;
         std::string_view sandbox64;
-        if (!appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_LOADER, loader, error) ||
+        if (!appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_LAUNCHER, launcher, error) ||
             !appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_SANDBOX32, sandbox32, error) ||
             !appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_SANDBOX64, sandbox64, error))
         {
@@ -622,8 +622,8 @@ void MainFrame::StartPack(bool run_after)
             return;
         }
 
-        payloads.loader_bytes = loader.data();
-        payloads.loader_size = loader.size();
+        payloads.launcher_bytes = launcher.data();
+        payloads.launcher_size = launcher.size();
         payloads.sandbox32_bytes = sandbox32.data();
         payloads.sandbox32_size = sandbox32.size();
         payloads.sandbox64_bytes = sandbox64.data();
@@ -709,7 +709,7 @@ void MainFrame::StartPack(bool run_after)
         PackOutcome outcome;
         if (project_type == appbox::ProjectType::Patch)
         {
-            /* A patch package holds the resources without a loader. */
+            /* A patch package holds the resources without a launcher. */
             outcome.error = appbox::PackPatch(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
                                               environment_snapshot, zip_wide, report_progress);
         }
@@ -722,12 +722,12 @@ void MainFrame::StartPack(bool run_after)
         if (outcome.error.empty())
         {
             /*
-             * The loader is named after the main program of the snapshot; a
+             * The launcher is named after the main program of the snapshot; a
              * patch package has none, because it is not started on its own.
              */
             if (project_type == appbox::ProjectType::Standalone)
             {
-                outcome.loader_entry = appbox::LoaderEntryName(snapshot);
+                outcome.launcher_entry = appbox::LauncherEntryName(snapshot);
             }
             outcome.archive_path = zip_wide;
         }
@@ -848,14 +848,14 @@ void MainFrame::OnPackFinished(wxThreadEvent& event)
     else if (run_after && !outcome.extract_dir.empty())
     {
         /*
-         * The loader carries the file name of the main program, so it is
+         * The launcher carries the file name of the main program, so it is
          * started through the name the pack run resolved.
          */
         long pid = 0;
-        if (!outcome.loader_entry.empty())
+        if (!outcome.launcher_entry.empty())
         {
-            const auto loader = std::filesystem::path(outcome.extract_dir) / outcome.loader_entry;
-            pid = wxExecute("\"" + wxString(loader.wstring()) + "\"", wxEXEC_ASYNC);
+            const auto launcher = std::filesystem::path(outcome.extract_dir) / outcome.launcher_entry;
+            pid = wxExecute("\"" + wxString(launcher.wstring()) + "\"", wxEXEC_ASYNC);
         }
 
         if (pid <= 0)

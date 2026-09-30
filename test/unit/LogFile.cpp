@@ -108,7 +108,8 @@ TEST(Unit_LogFile, FileNameNamesTheProgramTheTimeAndTheProcess)
               L"AppBoxTests.20260930T002019Z.5576.log");
 
     /* The extension of a program is dropped whatever its case. */
-    EXPECT_EQ(appbox::LogFile::FileNameOf(L"C:\\a\\AppBoxLoader.EXE", utc, 1), L"AppBoxLoader.20260930T002019Z.1.log");
+    EXPECT_EQ(appbox::LogFile::FileNameOf(L"C:\\a\\AppBoxLauncher.EXE", utc, 1),
+              L"AppBoxLauncher.20260930T002019Z.1.log");
 
     /* A program without an extension keeps its name. */
     EXPECT_EQ(appbox::LogFile::FileNameOf(L"tool", utc, 2), L"tool.20260930T002019Z.2.log");

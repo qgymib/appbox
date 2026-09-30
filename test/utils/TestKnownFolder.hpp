@@ -10,7 +10,7 @@ namespace appbox::test
  * @brief Get the path of the known folder
  *
  * The helper belongs to the end-to-end cases. It is named `TestKnownFolder`
- * instead of `KnownFolder` because the loader ships a header of that name with
+ * instead of `KnownFolder` because the launcher ships a header of that name with
  * a different API (`appbox::SearchFolderID` and `appbox::ExpandKnownFolder`),
  * and the single test executable compiles both sides.
  *

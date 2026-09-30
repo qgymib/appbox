@@ -1,0 +1,19 @@
+#include "Launcher.hpp"
+#include "__init__.hpp"
+
+struct RpcMethodRecord
+{
+    void (*fn)(appbox::RemoteServer::Ptr);
+};
+
+#define EXPAND_AS_METHOD(NAME) { appbox::RegisterRpcMethod_##NAME },
+static const RpcMethodRecord s_methods[] = { APPBOX_LAUNCHER_RPC_METHODS(EXPAND_AS_METHOD) };
+#undef EXPAND_AS_METHOD
+
+void appbox::RpcInit(appbox::RemoteServer::Ptr srv)
+{
+    for (auto m : s_methods)
+    {
+        m.fn(srv);
+    }
+}

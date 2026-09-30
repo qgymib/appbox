@@ -91,7 +91,7 @@ std::filesystem::path MakeFile(const std::filesystem::path& parent, const std::w
 TEST(Unit_PresetDirectory, ProvidesExpectedPresets)
 {
     const auto& presets = appbox::PresetDirectories();
-    ASSERT_EQ(presets.size(), static_cast<std::size_t>(4));
+    ASSERT_EQ(presets.size(), static_cast<std::size_t>(6));
 
     EXPECT_EQ(presets[0].id, "program_files");
     EXPECT_EQ(presets[0].parent_id, "");
@@ -117,6 +117,29 @@ TEST(Unit_PresetDirectory, ProvidesExpectedPresets)
     EXPECT_EQ(presets[3].layer_key, L"#Desktop#");
     EXPECT_TRUE(std::filesystem::path(presets[3].real_path).is_absolute());
 
+    /* The system directories: the system folder hangs below the Windows folder. */
+    EXPECT_EQ(presets[4].id, "windows");
+    EXPECT_EQ(presets[4].parent_id, "");
+    EXPECT_EQ(presets[4].display_name, L"Windows");
+    EXPECT_EQ(presets[4].layer_key, L"#Windows#");
+    EXPECT_TRUE(std::filesystem::path(presets[4].real_path).is_absolute());
+
+    EXPECT_EQ(presets[5].id, "system32");
+    EXPECT_EQ(presets[5].parent_id, "windows");
+    EXPECT_EQ(presets[5].display_name, L"System32");
+    EXPECT_EQ(presets[5].layer_key, L"#System32#");
+    EXPECT_TRUE(std::filesystem::path(presets[5].real_path).is_absolute());
+
+    /*
+     * The nesting mirrors the host filesystem: the system directory is the
+     * subdirectory of the Windows directory. The comparison resolves both
+     * paths, so it does not depend on the spelling of a component.
+     */
+    std::error_code ec;
+    EXPECT_TRUE(std::filesystem::equivalent(presets[4].real_path,
+                                            std::filesystem::path(presets[5].real_path).parent_path(), ec))
+        << ec.message();
+
     /* Every preset owns a layer of its own, so the keys are unique. */
     for (std::size_t i = 0; i < presets.size(); ++i)
     {
@@ -128,12 +151,13 @@ TEST(Unit_PresetDirectory, ProvidesExpectedPresets)
     }
 }
 
-TEST(Unit_PresetDirectory, ChildPresetsNestTheUserFolders)
+TEST(Unit_PresetDirectory, ChildPresetsNestThePresetTree)
 {
     const auto top = appbox::ChildPresets("");
-    ASSERT_EQ(top.size(), static_cast<std::size_t>(2));
+    ASSERT_EQ(top.size(), static_cast<std::size_t>(3));
     EXPECT_EQ(top[0].id, "program_files");
     EXPECT_EQ(top[1].id, "user_profile");
+    EXPECT_EQ(top[2].id, "windows");
 
     const auto nested = appbox::ChildPresets("user_profile");
     ASSERT_EQ(nested.size(), static_cast<std::size_t>(2));
@@ -142,9 +166,15 @@ TEST(Unit_PresetDirectory, ChildPresetsNestTheUserFolders)
     EXPECT_EQ(nested[1].id, "desktop");
     EXPECT_EQ(nested[1].layer_key, L"#Desktop#");
 
+    const auto system = appbox::ChildPresets("windows");
+    ASSERT_EQ(system.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(system[0].id, "system32");
+    EXPECT_EQ(system[0].layer_key, L"#System32#");
+
     /* A preset without nested presets and an unknown preset hold nothing. */
     EXPECT_TRUE(appbox::ChildPresets("program_files").empty());
     EXPECT_TRUE(appbox::ChildPresets("documents").empty());
+    EXPECT_TRUE(appbox::ChildPresets("system32").empty());
     EXPECT_TRUE(appbox::ChildPresets("does_not_exist").empty());
 
     /*
@@ -170,6 +200,10 @@ TEST(Unit_PresetDirectory, FindsKnownAndRejectsUnknownIds)
     EXPECT_EQ(preset.layer_key, L"#Documents#");
     EXPECT_TRUE(appbox::FindPresetDirectory("desktop", preset));
     EXPECT_EQ(preset.layer_key, L"#Desktop#");
+    EXPECT_TRUE(appbox::FindPresetDirectory("windows", preset));
+    EXPECT_EQ(preset.layer_key, L"#Windows#");
+    EXPECT_TRUE(appbox::FindPresetDirectory("system32", preset));
+    EXPECT_EQ(preset.layer_key, L"#System32#");
     EXPECT_FALSE(appbox::FindPresetDirectory("does_not_exist", preset));
 }
 

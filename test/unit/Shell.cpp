@@ -27,7 +27,7 @@ TEST(Unit_Shell, WithoutACommandTheShellRunsInteractively)
 }
 
 /**
- * @brief The command of the loader arrives in UTF-8 and is converted to the
+ * @brief The command of the launcher arrives in UTF-8 and is converted to the
  *        wide characters the process creation of Windows expects.
  */
 TEST(Unit_Shell, CommandIsConvertedFromUtf8)
@@ -92,8 +92,8 @@ TEST(Unit_Shell, AComspecWhichNamesAFolderIsRefused)
 }
 
 /**
- * @brief A machine which offers neither value leaves the loader without a
- *        shell, which the loader reports instead of starting something.
+ * @brief A machine which offers neither value leaves the launcher without a
+ *        shell, which the launcher reports instead of starting something.
  */
 TEST(Unit_Shell, WithoutAnyUsableValueThereIsNoShell)
 {

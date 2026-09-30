@@ -25,6 +25,8 @@ const PresetDefinition s_preset_definitions[] = {
     { "user_profile",  L"Current User Directory", L"#USERPROFILE#",  nullptr        },
     { "documents",     L"Documents",              L"#Documents#",    "user_profile" },
     { "desktop",       L"Desktop",                L"#Desktop#",      "user_profile" },
+    { "windows",       L"Windows",                L"#Windows#",      nullptr        },
+    { "system32",      L"System32",               L"#System32#",     "windows"      },
 };
 
 /**

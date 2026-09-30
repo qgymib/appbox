@@ -153,7 +153,7 @@ TEST(Unit_HiveReader, OpenMissingFile)
     ASSERT_FALSE(reader.IsOpen());
     ASSERT_TRUE(reader.IsMissing());
 
-    /* The loader must not create the file of the sandbox owned hive. */
+    /* The launcher must not create the file of the sandbox owned hive. */
     ASSERT_FALSE(std::filesystem::exists(TestHivePath()));
 }
 

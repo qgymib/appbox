@@ -114,7 +114,7 @@ add_custom_target(appbox_build_info
 ###############################################################################
 # Payloads embedded as Windows resources
 #
-# The packer carries the loader program and the two sandbox injection modules
+# The packer carries the launcher program and the two sandbox injection modules
 # as RCDATA resources of its own executable, so a pack run needs no file beside
 # the executable. The three payloads are build products of this build tree, so
 # the resource script which names them cannot be checked in: it is generated
@@ -127,7 +127,7 @@ add_custom_target(appbox_build_info
 # character inside a string literal, so every separator is doubled before the
 # path is substituted.
 ###############################################################################
-set(APPBOX_RESOURCE_LOADER "${CMAKE_BINARY_DIR}/resource/appbox/AppBoxLoader.exe")
+set(APPBOX_RESOURCE_LAUNCHER "${CMAKE_BINARY_DIR}/resource/appbox/AppBoxLauncher.exe")
 set(APPBOX_RESOURCE_SANDBOX32 "${CMAKE_BINARY_DIR}/resource/lib/AppBoxSandbox32.dll")
 set(APPBOX_RESOURCE_SANDBOX64 "${CMAKE_BINARY_DIR}/resource/lib/AppBoxSandbox64.dll")
 
@@ -137,7 +137,7 @@ function(appbox_escape_resource_path out_var path)
     set(${out_var} "${escaped}" PARENT_SCOPE)
 endfunction()
 
-appbox_escape_resource_path(APPBOX_RESOURCE_LOADER_RC "${APPBOX_RESOURCE_LOADER}")
+appbox_escape_resource_path(APPBOX_RESOURCE_LAUNCHER_RC "${APPBOX_RESOURCE_LAUNCHER}")
 appbox_escape_resource_path(APPBOX_RESOURCE_SANDBOX32_RC "${APPBOX_RESOURCE_SANDBOX32}")
 appbox_escape_resource_path(APPBOX_RESOURCE_SANDBOX64_RC "${APPBOX_RESOURCE_SANDBOX64}")
 
@@ -150,14 +150,14 @@ configure_file(
 ###############################################################################
 # Project products
 ###############################################################################
-add_subdirectory(loader)
+add_subdirectory(launcher)
 
 ###############################################################################
 # Tracer
 #
 # A console tool which drives cdb.exe to report the file, registry and network
 # functions a program uses. It is a build time helper, not a product of the
-# sandbox, so it stays a separate subdirectory next to loader/.
+# sandbox, so it stays a separate subdirectory next to launcher/.
 ###############################################################################
 add_subdirectory(tracer)
 
@@ -215,7 +215,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/widget/StartupTreeModel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/TabBar.cpp"
     "${APPBOX_SOURCE_DIR}/widget/Toolbar.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/loader/utils/KnownFolder.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/launcher/utils/KnownFolder.cpp"
     "${APPBOX_SOURCE_DIR}/main.cpp"
     "${APPBOX_SOURCE_DIR}/resource.rc"
 )
@@ -224,7 +224,7 @@ appbox_setup_target_wall(AppBox)
 target_include_directories(AppBox
     PRIVATE
         "${APPBOX_SOURCE_DIR}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/loader"
+        "${CMAKE_CURRENT_SOURCE_DIR}/launcher"
         "${APPBOX_GENERATED_DIR}"
 )
 
@@ -267,7 +267,7 @@ target_compile_options(AppBox PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
 find_package(wxWidgets REQUIRED)
 target_link_libraries(AppBox PRIVATE wx::core wx::base wx::adv)
 
-# Known folder resolution of the loader helper (SHGetKnownFolderPath).
+# Known folder resolution of the launcher helper (SHGetKnownFolderPath).
 target_link_libraries(AppBox PRIVATE shell32 ole32)
 
 # Registry access of the packer core, which writes the virtual registry into a
@@ -283,16 +283,16 @@ target_link_libraries(AppBox PRIVATE libzip::zip)
 ###############################################################################
 # Embed the payloads
 #
-# The loader and the two sandbox injection modules are RCDATA resources of this
+# The launcher and the two sandbox injection modules are RCDATA resources of this
 # executable (see the `Payloads embedded as Windows resources` section above),
 # so a pack run needs no file beside the executable. The resource compiler reads
 # the payloads from the build tree, which is why the target depends on the
-# builds which produce them: the loader copies itself below the build resource
-# tree (POST_BUILD command of AppBoxLoader) and the sandbox builds install their
+# builds which produce them: the launcher copies itself below the build resource
+# tree (POST_BUILD command of AppBoxLauncher) and the sandbox builds install their
 # modules there.
 ###############################################################################
 add_dependencies(AppBox
-    AppBoxLoader
+    AppBoxLauncher
     sandbox_x86_build
     sandbox_x64_build
 )

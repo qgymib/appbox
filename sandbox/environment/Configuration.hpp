@@ -97,7 +97,7 @@ struct Modification
  * and not the number of writes it performed. The modifications are kept in the
  * order the variables were touched in, which keeps the state document stable.
  *
- * The state is written to `data/environment/state.json` by the loader, which
+ * The state is written to `data/environment/state.json` by the launcher, which
  * receives the document over the RPC pipe, and it is read back while the
  * environment of the next run is composed.
  */

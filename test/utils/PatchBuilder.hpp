@@ -86,7 +86,7 @@ struct PatchRegistry
     /**
      * @brief Text written as the hive of the package instead of a built hive.
      *
-     * A case which pins how the loader treats a hive it cannot mount writes
+     * A case which pins how the launcher treats a hive it cannot mount writes
      * the bytes itself with this member, for example a file which is not a
      * hive at all.
      */
@@ -95,7 +95,7 @@ struct PatchRegistry
     /**
      * @brief Text written as the isolation file instead of the modes.
      *
-     * A case which pins how the loader and the sandbox treat a document they
+     * A case which pins how the launcher and the sandbox treat a document they
      * cannot use writes the text itself with this member, for example a
      * document which is not valid JSON.
      */
@@ -161,7 +161,7 @@ struct PatchEnvironment
  *
  * The package is the product of the `Patch (ZIP)` project type: the resource
  * tree a standalone archive keeps below `app`, rooted at the archive root and
- * without the loader. The helper writes the resources a case describes, so a
+ * without the launcher. The helper writes the resources a case describes, so a
  * case does not need the packer to build a package; the packer writes the very
  * same entry names, which `Unit_PackService` pins.
  *

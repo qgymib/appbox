@@ -5,7 +5,7 @@
 #include <string_view>
 #include "src/core/EmbeddedResource.hpp"
 #include "src/core/EmbeddedResourceIds.h"
-#include "utils/LoaderPath.hpp"
+#include "utils/LauncherPath.hpp"
 #include "utils/ReadFileFull.hpp"
 #include "utils/SandboxDll.hpp"
 #include "Test.hpp"
@@ -101,7 +101,7 @@ void ExpectPayloadMatchesFile(const std::string_view& payload, const std::wstrin
 
 /**
  * Condition:
- * 1. The packer of the build carries the loader program and the two sandbox
+ * 1. The packer of the build carries the launcher program and the two sandbox
  *    injection modules as RCDATA resources.
  * 2. The resources are read with the module opened as a data file, which is the
  *    lookup the packer performs at run time.
@@ -131,11 +131,11 @@ TEST(Unit_EmbeddedResource, PayloadsMatchTheBuildTree)
     ExpectPayloadMatchesFile(payload, appbox::test::Sandbox64DllPath());
 
     /*
-     * The embedded loader is the loader of this build, which is the program the
+     * The embedded launcher is the launcher of this build, which is the program the
      * end-to-end cases start.
      */
-    ASSERT_TRUE(appbox::ReadEmbeddedResource(module.get(), IDR_APPBOX_LOADER, payload, error)) << error;
-    ExpectPayloadMatchesFile(payload, appbox::test::LoaderPath());
+    ASSERT_TRUE(appbox::ReadEmbeddedResource(module.get(), IDR_APPBOX_LAUNCHER, payload, error)) << error;
+    ExpectPayloadMatchesFile(payload, appbox::test::LauncherPath());
 }
 
 /**

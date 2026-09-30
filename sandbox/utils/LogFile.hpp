@@ -14,7 +14,7 @@ namespace appbox
  *
  * Every process the sandbox is injected into writes a log file of its own,
  * named after the program, the UTC time it started at and its process id, and
- * placed in the log directory of the run. The loader never carries the
+ * placed in the log directory of the run. The launcher never carries the
  * messages of a process: the process writes them itself, so the tail of the
  * log survives a crash of that process and the logs of two processes of one
  * run never interleave in the same file.

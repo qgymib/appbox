@@ -291,7 +291,7 @@ TEST(Unit_HiveMerge, AppliesTheContentOfTheSourceHive)
 /**
  * @brief The entries the source names override the entries of the target.
  *
- * The merge is the loader side of a patch layer: the entries of the package
+ * The merge is the launcher side of a patch layer: the entries of the package
  * win over the entries of the same name of the layers below it, while an entry
  * no package names keeps the content below it.
  */

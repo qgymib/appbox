@@ -33,12 +33,12 @@ struct Probe
      * The probe function is called in subprocess hooked by sandbox.
      * @param[in] data The data to be passed to the probe function.
      * @param[in] cwd The current working directory.
-     * @param[in] loader_config The loader configuration.
+     * @param[in] launcher_config The launcher configuration.
      * @return The result of the probe function.
      */
-    nlohmann::json Call(const nlohmann::json& data, const std::wstring& cwd, const LoaderConfig& loader_config)
+    nlohmann::json Call(const nlohmann::json& data, const std::wstring& cwd, const LauncherConfig& launcher_config)
     {
-        return ProbeCall(name, data, cwd, loader_config);
+        return ProbeCall(name, data, cwd, launcher_config);
     }
 
     static Map& GetMap()
@@ -59,9 +59,9 @@ void ProbeInit(CLI::App& app);
 /**
  * @brief Get the startup marker given on the command line of this process.
  *
- * The end-to-end cases of the loader put the marker of a startup file into the
+ * The end-to-end cases of the launcher put the marker of a startup file into the
  * arguments of that file, so the probe process can tell which startup file the
- * loader started it for.
+ * launcher started it for.
  *
  * @return The marker, empty when the process was not started as a startup
  *         file.

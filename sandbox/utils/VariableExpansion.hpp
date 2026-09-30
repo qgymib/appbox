@@ -18,7 +18,7 @@ namespace appbox
  * the name is the layer key of a preset directory of the packer without its
  * `#` delimiters (`#ProgramFiles#` names the variable `ProgramFiles`).
  *
- * The loader resolves the paths of the known folders of the machine and hands
+ * The launcher resolves the paths of the known folders of the machine and hands
  * the list to the sandbox, so the expansion never depends on the machine which
  * packed the archive: the archive keeps the references and the sandbox
  * replaces them while it runs.

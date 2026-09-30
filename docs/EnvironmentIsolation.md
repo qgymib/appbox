@@ -14,7 +14,7 @@ sandbox share.
 
 > **State of the implementation.** The workspace, the model, the project file and
 > the runtime are implemented: the packer writes the isolation file into the
-> archive, the loader hands its path to the sandbox, and the sandbox composes the
+> archive, the launcher hands its path to the sandbox, and the sandbox composes the
 > environment of the packaged application and keeps its modifications in the
 > state directory of the sandbox. See [Runtime](#runtime).
 
@@ -155,11 +155,11 @@ The file belongs to the resources of the archive, so it is part of the content
 of a session and not of its state: `common/SandboxLayout.hpp` lists it together
 with the other domain directories.
 
-### Loader
+### Launcher
 
-`loader/utils/SandboxPaths.hpp` resolves the isolation file of the archive
+`launcher/utils/SandboxPaths.hpp` resolves the isolation file of the archive
 (`<root>/app/environment/isolation.json`) and the state file of the sandbox
-(`<root>/data/environment/state.json`). `Loader.cpp` hands both paths to the
+(`<root>/data/environment/state.json`). `Launcher.cpp` hands both paths to the
 sandbox through the injected `SandboxConfig` and creates the state directory.
 
 The path of the archive is the first entry of
@@ -169,9 +169,9 @@ package of the `patch` directory after it in ascending name order. A package
 which carries no `environment/isolation.json` contributes no entry, so it keeps
 the environment of the layers below it.
 
-The state directory belongs to the loader, which is the owner of `data/`: the
+The state directory belongs to the launcher, which is the owner of `data/`: the
 sandbox never writes it itself, it sends the document of its modifications over
-the RPC pipe (`MsgEnvironment`, see `loader/rpc/Environment.cpp`) and the loader
+the RPC pipe (`MsgEnvironment`, see `launcher/rpc/Environment.cpp`) and the launcher
 writes it to disk. The answer of the call is sent after the document is on disk,
 so a sandbox which received the answer knows that its state survives the end of
 the process which made it.
@@ -253,7 +253,7 @@ stays correct on a machine whose folders are somewhere else. The reference is
 replaced by `appbox::ExpandVariables()` (`sandbox/utils/VariableExpansion.*`)
 **before** the value is composed with the value below the layer, so `Prepend` and
 `Append` join the expanded text; the list of the names is the known folder
-table of the loader, which is handed to the sandbox through the injected
+table of the launcher, which is handed to the sandbox through the injected
 configuration.
 
 Only the values of the archive are expanded: the modifications of the state
@@ -270,7 +270,7 @@ configuration is not applied to it a second time. A value the merge modes join
 would be joined twice otherwise, because the environment of the child is the
 composed view of the parent and not the environment of the host.
 
-The loader starts the relay process, which starts the packaged application, so
+The launcher starts the relay process, which starts the packaged application, so
 every sandboxed process of a run is a child of a sandboxed process: the
 end-to-end cases below pin the hand over of the environment with the value they
 read, which is the composed one.
@@ -278,7 +278,7 @@ read, which is the composed one.
 ### State and reset
 
 Every modification the application makes is recorded once per variable — the
-last one wins — and the whole document is sent to the loader, so the number of
+last one wins — and the whole document is sent to the launcher, so the number of
 writes an application performs does not grow the state. The state is read while
 the environment of the next run is composed, which is what makes a modification
 survive the end of the process which made it.
@@ -337,7 +337,7 @@ The runtime side is covered by:
   insensitive names, the order of the table, the round trip of a block, the ANSI
   block, the refusal of a malformed isolation file without a partial result, and
   the state with its one modification per variable.
-- `test/e2e/Env_*.cpp` — the whole chain with the real loader and a probe
+- `test/e2e/Env_*.cpp` — the whole chain with the real launcher and a probe
   process inside the sandbox: every isolation and merge combination, a variable
   the host does not hold, the enumeration of the block and the expansion of a
   reference, a modification which stays in the sandbox, the state of an earlier

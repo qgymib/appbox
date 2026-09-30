@@ -14,7 +14,7 @@ namespace filesystem
  *
  * The module loads the isolation file the packer wrote into the overlay of the
  * archive (see `common/FilesystemIsolation.hpp` for the schema) and fills the
- * table of the sandbox instance with the modes of the workspace. The loader
+ * table of the sandbox instance with the modes of the workspace. The launcher
  * passes the path of the file in the injected configuration.
  *
  * A missing file, a missing configuration or a malformed document is not an

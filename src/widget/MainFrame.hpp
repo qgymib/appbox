@@ -51,12 +51,12 @@ struct PackOutcome
     std::wstring extract_dir;
 
     /**
-     * @brief File name of the loader program inside the archive.
+     * @brief File name of the launcher program inside the archive.
      *
-     * The loader carries the file name of the main program, so the extracted
+     * The launcher carries the file name of the main program, so the extracted
      * archive has to be started through this name instead of a fixed one.
      */
-    std::wstring loader_entry;
+    std::wstring launcher_entry;
 };
 
 /**
@@ -329,7 +329,7 @@ private:
      * The type is picked in the `Project Type` box of the Settings workspace
      * and travels with the project file: a standalone project is packed into a
      * self-contained archive, a patch project into a package of the resources
-     * without a loader.
+     * without a launcher.
      */
     appbox::ProjectType project_type_ = appbox::ProjectType::Standalone;
 

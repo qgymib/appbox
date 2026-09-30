@@ -38,7 +38,7 @@ enum class BuildOutcome
     Failed,
 
     /**
-     * @brief The archive was written but the packaged loader did not start.
+     * @brief The archive was written but the packaged launcher did not start.
      */
     LaunchFailed,
 };
@@ -49,7 +49,7 @@ enum class BuildOutcome
 enum class BuildStage
 {
     /**
-     * @brief The archive is prepared: the loader payload and its configuration
+     * @brief The archive is prepared: the launcher payload and its configuration
      *        are added before the first imported file is packed.
      */
     Preparing,

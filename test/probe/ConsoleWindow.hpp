@@ -21,8 +21,8 @@ struct ProtocolConsoleWindow
 /**
  * @brief Probe which reports the console window of the probe process.
  *
- * The loader is a GUI program without a console, so a console program it
- * starts gets a console window of its own. The end-to-end cases of the loader
+ * The launcher is a GUI program without a console, so a console program it
+ * starts gets a console window of its own. The end-to-end cases of the launcher
  * use this probe to pin that the window of the probe process stays hidden
  * while the console itself is still there.
  */

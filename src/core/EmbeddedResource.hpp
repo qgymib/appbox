@@ -10,7 +10,7 @@ namespace appbox
 /**
  * @brief Read a payload which an executable carries as a resource.
  *
- * The packer carries the loader program and the two sandbox injection modules
+ * The packer carries the launcher program and the two sandbox injection modules
  * as RCDATA resources of its own executable (see
  * `src/core/EmbeddedResourceIds.h` for the identifiers and
  * `cmake/EmbeddedResources.rc.in` for the declarations), so a pack run needs no

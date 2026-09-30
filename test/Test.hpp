@@ -21,7 +21,7 @@ inline constexpr const char* kUnitSuitePrefix = "Unit_";
 /**
  * @brief The prefix of the suite name of an end-to-end case.
  *
- * An end-to-end case starts the real loader and is defined below `test/e2e`, so
+ * An end-to-end case starts the real launcher and is defined below `test/e2e`, so
  * its suite name starts with this prefix. `ApplyTestModeFilter` refuses a suite
  * whose prefix does not match the directory of its file, so a case which was
  * put in the wrong directory or which was spelled without its prefix stops the
@@ -39,7 +39,7 @@ enum class TestMode
 
 struct TestConfig
 {
-    std::wstring      loader_path;          /* Path to loader */
+    std::wstring      launcher_path;        /* Path to launcher */
     std::wstring      sandbox32_path;       /* Path to the 32 bit sandbox injection module */
     std::wstring      sandbox64_path;       /* Path to the 64 bit sandbox injection module */
     std::wstring      packer_path;          /* Path to the packer */

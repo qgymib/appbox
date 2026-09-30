@@ -222,9 +222,9 @@ void SetModeFromString(const std::wstring& text)
 void SetConfigFromEnv()
 {
     std::wstring val;
-    if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_LOADER", val))
+    if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_LAUNCHER", val))
     {
-        appbox::test::config.loader_path = val;
+        appbox::test::config.launcher_path = val;
     }
     if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_SANDBOX32", val))
     {
@@ -301,8 +301,8 @@ int appbox::test::SetupTestConfig(CLI::App& app)
 {
     SetConfigFromEnv();
 
-    app.add_option("--loader", appbox::test::config.loader_path,
-                   "Path to loader. Environment variable: APPBOX_TEST_LOADER.");
+    app.add_option("--launcher", appbox::test::config.launcher_path,
+                   "Path to launcher. Environment variable: APPBOX_TEST_LAUNCHER.");
     app.add_option("--sandbox32", appbox::test::config.sandbox32_path,
                    "Path to the 32 bit sandbox injection module. Environment variable: APPBOX_TEST_SANDBOX32.");
     app.add_option("--sandbox64", appbox::test::config.sandbox64_path,

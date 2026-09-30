@@ -194,7 +194,7 @@ void RunCoredumpWriter(const appbox::test::CoredumpRequest& request)
 
     RunCoredumpWriter(request);
 
-    /* The child processes of the test (the loader and the probe of an
+    /* The child processes of the test (the launcher and the probe of an
      * end-to-end case) must not outlive it. */
     appbox::test::TerminateProcessTree(::GetCurrentProcessId(), 0);
 

@@ -14,7 +14,7 @@
 #include "src/core/ApplicationIcon.hpp"
 #include "src/core/PackService.hpp"
 #include "src/core/ZipReader.hpp"
-#include "utils/LoaderPath.hpp"
+#include "utils/LauncherPath.hpp"
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -37,17 +37,17 @@ constexpr std::size_t kGroupIconHeaderSize = 6;
 constexpr std::size_t kGroupIconEntrySize = 14;
 
 /**
- * @brief Name of the icon group which the loader carries for its own window.
+ * @brief Name of the icon group which the launcher carries for its own window.
  *
- * The real loader embeds it with resource.rc; the test fixtures add a group
+ * The real launcher embeds it with resource.rc; the test fixtures add a group
  * with the same name to stand in for it.
  */
-constexpr const wchar_t* kLoaderIconGroup = L"IDI_ICON1";
+constexpr const wchar_t* kLauncherIconGroup = L"IDI_ICON1";
 
 /**
  * @brief Resource name of the icon group which the packer adds.
  *
- * The name has to sort before every group of the loader, because the shell
+ * The name has to sort before every group of the launcher, because the shell
  * shows the first group of the resource directory order for a file.
  */
 constexpr const wchar_t* kApplicationIconGroup = L"!AppBoxIcon";
@@ -347,7 +347,7 @@ bool AddIconGroupOnce(const std::wstring& path, LPCWSTR group, WORD first_id,
  * @brief Add an icon group to an image with the Windows resource API.
  *
  * The helper builds the fixtures of the tests: the application which donates
- * the icon and the loader which already carries its own icon group.
+ * the icon and the launcher which already carries its own icon group.
  *
  * The update is attempted several times, because the image is a freshly copied
  * executable and a virus scanner which inspects it can hold the file for a
@@ -557,13 +557,13 @@ TEST(Unit_ApplicationIcon, KeepsThePayloadWithoutAPeImage)
 TEST(Unit_ApplicationIcon, KeepsThePayloadWhenTheApplicationHasNoIcon)
 {
     TempDir    temp;
-    const auto loader = temp.Get() / L"loader.exe";
-    ASSERT_TRUE(CopyFileTo(SelfPath(), loader.wstring()));
+    const auto launcher = temp.Get() / L"launcher.exe";
+    ASSERT_TRUE(CopyFileTo(SelfPath(), launcher.wstring()));
 
     /* The test executable is built without resources, so it carries no icon. */
     ASSERT_TRUE(ResourceEntries(SelfPath(), RT_GROUP_ICON).empty());
 
-    const auto payload = ReadAllBytes(loader.wstring());
+    const auto payload = ReadAllBytes(launcher.wstring());
     ASSERT_FALSE(payload.empty());
 
     std::string warning;
@@ -576,10 +576,10 @@ TEST(Unit_ApplicationIcon, KeepsThePayloadWhenTheApplicationHasNoIcon)
 TEST(Unit_ApplicationIcon, KeepsThePayloadWhenTheApplicationCannotBeRead)
 {
     TempDir    temp;
-    const auto loader = temp.Get() / L"loader.exe";
-    ASSERT_TRUE(CopyFileTo(SelfPath(), loader.wstring()));
+    const auto launcher = temp.Get() / L"launcher.exe";
+    ASSERT_TRUE(CopyFileTo(SelfPath(), launcher.wstring()));
 
-    const auto payload = ReadAllBytes(loader.wstring());
+    const auto payload = ReadAllBytes(launcher.wstring());
     ASSERT_FALSE(payload.empty());
 
     std::string warning;
@@ -595,9 +595,9 @@ TEST(Unit_ApplicationIcon, AppendsTheIconGroupOfTheApplication)
     TempDir temp;
 
     const auto application = temp.Get() / L"app.exe";
-    const auto loader = temp.Get() / L"loader.exe";
+    const auto launcher = temp.Get() / L"launcher.exe";
     ASSERT_TRUE(CopyFileTo(SelfPath(), application.wstring()));
-    ASSERT_TRUE(CopyFileTo(SelfPath(), loader.wstring()));
+    ASSERT_TRUE(CopyFileTo(SelfPath(), launcher.wstring()));
 
     std::string error;
     const auto  application_large = MakeIconImage(32, 0x0000FF); /* Red. */
@@ -606,11 +606,11 @@ TEST(Unit_ApplicationIcon, AppendsTheIconGroupOfTheApplication)
         AddIconGroup(application.wstring(), MAKEINTRESOURCEW(1), 1, { application_large, application_small }, error))
         << error;
 
-    /* The loader stands in with the icon group which resource.rc embeds. */
-    const auto loader_icon = MakeIconImage(32, 0x00FF00); /* Green. */
-    ASSERT_TRUE(AddIconGroup(loader.wstring(), kLoaderIconGroup, 1, { loader_icon }, error)) << error;
+    /* The launcher stands in with the icon group which resource.rc embeds. */
+    const auto launcher_icon = MakeIconImage(32, 0x00FF00); /* Green. */
+    ASSERT_TRUE(AddIconGroup(launcher.wstring(), kLauncherIconGroup, 1, { launcher_icon }, error)) << error;
 
-    const auto payload = ReadAllBytes(loader.wstring());
+    const auto payload = ReadAllBytes(launcher.wstring());
     ASSERT_FALSE(payload.empty());
 
     std::string warning;
@@ -631,10 +631,10 @@ TEST(Unit_ApplicationIcon, AppendsTheIconGroupOfTheApplication)
     EXPECT_EQ(ReadResource(patched_path.wstring(), RT_ICON, MAKEINTRESOURCEW(2)), application_large);
     EXPECT_EQ(ReadResource(patched_path.wstring(), RT_ICON, MAKEINTRESOURCEW(3)), application_small);
 
-    /* The icon group of the loader and its image survive unchanged. */
-    EXPECT_EQ(ReadResource(patched_path.wstring(), RT_GROUP_ICON, kLoaderIconGroup),
-              ReadResource(loader.wstring(), RT_GROUP_ICON, kLoaderIconGroup));
-    EXPECT_EQ(ReadResource(patched_path.wstring(), RT_ICON, MAKEINTRESOURCEW(1)), loader_icon);
+    /* The icon group of the launcher and its image survive unchanged. */
+    EXPECT_EQ(ReadResource(patched_path.wstring(), RT_GROUP_ICON, kLauncherIconGroup),
+              ReadResource(launcher.wstring(), RT_GROUP_ICON, kLauncherIconGroup));
+    EXPECT_EQ(ReadResource(patched_path.wstring(), RT_ICON, MAKEINTRESOURCEW(1)), launcher_icon);
 
     /* The added group points at the images of the application. */
     const auto group = ReadResource(patched_path.wstring(), RT_GROUP_ICON, kApplicationIconGroup);
@@ -650,7 +650,7 @@ TEST(Unit_ApplicationIcon, AppendsTheIconGroupOfTheApplication)
     EXPECT_EQ(entries[1].bytes_in_res, static_cast<DWORD>(application_small.size()));
 
     /* The file icon of the patched program is the icon of the application. */
-    EXPECT_NE(RenderFileIcon(loader.wstring(), true, 32), RenderFileIcon(patched_path.wstring(), true, 32));
+    EXPECT_NE(RenderFileIcon(launcher.wstring(), true, 32), RenderFileIcon(patched_path.wstring(), true, 32));
     EXPECT_EQ(RenderFileIcon(application.wstring(), true, 32), RenderFileIcon(patched_path.wstring(), true, 32));
     EXPECT_EQ(RenderFileIcon(application.wstring(), false, 16), RenderFileIcon(patched_path.wstring(), false, 16));
 }
@@ -672,20 +672,20 @@ TEST(Unit_ApplicationIcon, PackWritesTheIconOfTheStartupFile)
     ASSERT_TRUE(model.ImportFolder("program_files", application.wstring(), error)) << error;
     ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
 
-    /* The test executable stands in for the loader payload. */
+    /* The test executable stands in for the launcher payload. */
     const auto payload = ReadAllBytes(SelfPath());
     ASSERT_FALSE(payload.empty());
 
     /*
-     * The case describes the icon of the loader entry, so the injection modules
+     * The case describes the icon of the launcher entry, so the injection modules
      * only have to be present for the run.
      */
     constexpr char kSandbox32[] = "SANDBOX32";
     constexpr char kSandbox64[] = "SANDBOX64";
 
     appbox::PackPayloads payloads;
-    payloads.loader_bytes = payload.data();
-    payloads.loader_size = payload.size();
+    payloads.launcher_bytes = payload.data();
+    payloads.launcher_size = payload.size();
     payloads.sandbox32_bytes = kSandbox32;
     payloads.sandbox32_size = sizeof(kSandbox32) - 1;
     payloads.sandbox64_bytes = kSandbox64;
@@ -707,12 +707,12 @@ TEST(Unit_ApplicationIcon, PackWritesTheIconOfTheStartupFile)
     EXPECT_EQ(RenderFileIcon(entry.wstring(), true, 32), RenderFileIcon(program.wstring(), true, 32));
 }
 
-TEST(Unit_ApplicationIcon, AppliesTheIconToTheRealLoaderPayload)
+TEST(Unit_ApplicationIcon, AppliesTheIconToTheRealLauncherPayload)
 {
-    const auto loader = appbox::test::LoaderPath();
-    if (loader.empty())
+    const auto launcher = appbox::test::LauncherPath();
+    if (launcher.empty())
     {
-        GTEST_SKIP() << "the loader path was not passed with --loader=<path>";
+        GTEST_SKIP() << "the launcher path was not passed with --launcher=<path>";
     }
 
     TempDir    temp;
@@ -726,7 +726,7 @@ TEST(Unit_ApplicationIcon, AppliesTheIconToTheRealLoaderPayload)
         AddIconGroup(application.wstring(), MAKEINTRESOURCEW(1), 1, { application_large, application_small }, error))
         << error;
 
-    const auto payload = ReadAllBytes(loader);
+    const auto payload = ReadAllBytes(launcher);
     ASSERT_FALSE(payload.empty());
 
     std::string warning;
@@ -734,35 +734,35 @@ TEST(Unit_ApplicationIcon, AppliesTheIconToTheRealLoaderPayload)
     ASSERT_TRUE(warning.empty()) << warning;
     ASSERT_FALSE(patched.empty());
 
-    const auto patched_path = temp.Get() / L"loader.exe";
+    const auto patched_path = temp.Get() / L"launcher.exe";
     ASSERT_TRUE(WriteAllBytes(patched_path.wstring(), patched));
 
-    /* The added group precedes every icon group of the real loader. */
+    /* The added group precedes every icon group of the real launcher. */
     const auto patched_groups = ResourceEntries(patched_path.wstring(), RT_GROUP_ICON);
     ASSERT_FALSE(patched_groups.empty());
     EXPECT_FALSE(patched_groups.front().numeric);
     EXPECT_TRUE(SameResourceName(patched_groups.front().name, kApplicationIconGroup));
 
-    /* Every icon resource of the loader survives the update byte for byte. */
-    const auto groups = ResourceEntries(loader, RT_GROUP_ICON);
+    /* Every icon resource of the launcher survives the update byte for byte. */
+    const auto groups = ResourceEntries(launcher, RT_GROUP_ICON);
     ASSERT_FALSE(groups.empty());
     for (const auto& group : groups)
     {
         EXPECT_EQ(ReadResource(patched_path.wstring(), RT_GROUP_ICON, ResourceName(group)),
-                  ReadResource(loader, RT_GROUP_ICON, ResourceName(group)))
+                  ReadResource(launcher, RT_GROUP_ICON, ResourceName(group)))
             << group.id;
     }
 
-    const auto images = ResourceEntries(loader, RT_ICON);
+    const auto images = ResourceEntries(launcher, RT_ICON);
     ASSERT_FALSE(images.empty());
     for (const auto& image : images)
     {
         EXPECT_EQ(ReadResource(patched_path.wstring(), RT_ICON, MAKEINTRESOURCEW(image.id)),
-                  ReadResource(loader, RT_ICON, MAKEINTRESOURCEW(image.id)))
+                  ReadResource(launcher, RT_ICON, MAKEINTRESOURCEW(image.id)))
             << image.id;
     }
 
-    /* The file icon of the patched loader is the icon of the application. */
-    EXPECT_NE(RenderFileIcon(loader, true, 48), RenderFileIcon(patched_path.wstring(), true, 48));
+    /* The file icon of the patched launcher is the icon of the application. */
+    EXPECT_NE(RenderFileIcon(launcher, true, 48), RenderFileIcon(patched_path.wstring(), true, 48));
     EXPECT_EQ(RenderFileIcon(application.wstring(), true, 48), RenderFileIcon(patched_path.wstring(), true, 48));
 }

@@ -28,10 +28,11 @@ inline constexpr const wchar_t* kFilesystemContainerLabel = L"Sandbox Filesystem
  *
  * The preset directories form a tree: a preset which names another preset as
  * its parent is shown below that preset (the folders of the user profile are
- * offered below `Current User Directory`), while a preset without a parent is
- * a direct child of the container of the filesystem view. Every preset owns a
- * layer of its own, so the nesting only shapes the tree and never shares a
- * layer between two presets.
+ * offered below `Current User Directory` and the system directory is offered
+ * below `Windows`), while a preset without a parent is a direct child of the
+ * container of the filesystem view. Every preset owns a layer of its own, so
+ * the nesting only shapes the tree and never shares a layer between two
+ * presets.
  */
 struct PresetDirectory
 {

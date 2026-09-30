@@ -77,7 +77,7 @@ bool WriteExactly(HANDLE pipe, const void* data, size_t size)
 }
 
 /**
- * @brief Builder of a canned answer of the fake loader side.
+ * @brief Builder of a canned answer of the fake launcher side.
  *
  * The request payload is handed over, the returned text is written back as the
  * payload of the response frame.
@@ -85,20 +85,20 @@ bool WriteExactly(HANDLE pipe, const void* data, size_t size)
 using ReplyBuilder = std::function<std::string(const std::string& request)>;
 
 /**
- * @brief Serve exactly one RPC request like the loader does.
+ * @brief Serve exactly one RPC request like the launcher does.
  *
  * The pipe instance is created before the client connects, so the client can
  * not race the server. The worker thread reads one request, writes the canned
  * reply and leaves. The destructor unblocks a worker which is still waiting,
  * so a failing assertion can not hang the test run.
  */
-struct FakeLoader
+struct FakeLauncher
 {
     std::wstring path; /* Pipe path of this instance. */
     HANDLE       pipe = INVALID_HANDLE_VALUE;
     std::thread  worker;
 
-    FakeLoader(const std::wstring& pipe_path, ReplyBuilder reply, bool correct_magic = true) : path(pipe_path)
+    FakeLauncher(const std::wstring& pipe_path, ReplyBuilder reply, bool correct_magic = true) : path(pipe_path)
     {
         pipe = CreateNamedPipeW(path.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1,
                                 4096, 4096, 0, nullptr);
@@ -145,7 +145,7 @@ struct FakeLoader
         });
     }
 
-    ~FakeLoader()
+    ~FakeLauncher()
     {
         if (pipe != INVALID_HANDLE_VALUE)
         {
@@ -164,8 +164,8 @@ struct FakeLoader
         }
     }
 
-    FakeLoader(const FakeLoader&) = delete;
-    FakeLoader& operator=(const FakeLoader&) = delete;
+    FakeLauncher(const FakeLauncher&) = delete;
+    FakeLauncher& operator=(const FakeLauncher&) = delete;
 };
 
 /**
@@ -198,9 +198,9 @@ std::string AnswerTo(const std::string& request, uint64_t id_offset, bool with_r
  */
 TEST(Unit_PipeClient, MalformedResponseIsRejected)
 {
-    FakeLoader loader(MakePipePath(), [](const std::string&) { return std::string("{ not json"); });
+    FakeLauncher launcher(MakePipePath(), [](const std::string&) { return std::string("{ not json"); });
 
-    appbox::PipeClient client(loader.path);
+    appbox::PipeClient client(launcher.path);
     ASSERT_TRUE(client.Start());
 
     nlohmann::json rsp;
@@ -215,9 +215,9 @@ TEST(Unit_PipeClient, MalformedResponseIsRejected)
  */
 TEST(Unit_PipeClient, NonObjectResponseIsRejected)
 {
-    FakeLoader loader(MakePipePath(), [](const std::string&) { return std::string("[1,2,3]"); });
+    FakeLauncher launcher(MakePipePath(), [](const std::string&) { return std::string("[1,2,3]"); });
 
-    appbox::PipeClient client(loader.path);
+    appbox::PipeClient client(launcher.path);
     ASSERT_TRUE(client.Start());
 
     nlohmann::json rsp;
@@ -231,9 +231,9 @@ TEST(Unit_PipeClient, NonObjectResponseIsRejected)
  */
 TEST(Unit_PipeClient, ResponseWithAForeignIdIsRejected)
 {
-    FakeLoader loader(MakePipePath(), [](const std::string& request) { return AnswerTo(request, 1, true); });
+    FakeLauncher launcher(MakePipePath(), [](const std::string& request) { return AnswerTo(request, 1, true); });
 
-    appbox::PipeClient client(loader.path);
+    appbox::PipeClient client(launcher.path);
     ASSERT_TRUE(client.Start());
 
     nlohmann::json rsp;
@@ -247,9 +247,9 @@ TEST(Unit_PipeClient, ResponseWithAForeignIdIsRejected)
  */
 TEST(Unit_PipeClient, ResponseWithoutAResultIsRejected)
 {
-    FakeLoader loader(MakePipePath(), [](const std::string& request) { return AnswerTo(request, 0, false); });
+    FakeLauncher launcher(MakePipePath(), [](const std::string& request) { return AnswerTo(request, 0, false); });
 
-    appbox::PipeClient client(loader.path);
+    appbox::PipeClient client(launcher.path);
     ASSERT_TRUE(client.Start());
 
     nlohmann::json rsp;
@@ -263,9 +263,9 @@ TEST(Unit_PipeClient, ResponseWithoutAResultIsRejected)
  */
 TEST(Unit_PipeClient, WrongMagicIsRejected)
 {
-    FakeLoader loader(MakePipePath(), [](const std::string& request) { return AnswerTo(request, 0, true); }, false);
+    FakeLauncher launcher(MakePipePath(), [](const std::string& request) { return AnswerTo(request, 0, true); }, false);
 
-    appbox::PipeClient client(loader.path);
+    appbox::PipeClient client(launcher.path);
     ASSERT_TRUE(client.Start());
 
     nlohmann::json rsp;
@@ -279,7 +279,7 @@ TEST(Unit_PipeClient, WrongMagicIsRejected)
  */
 TEST(Unit_PipeClient, ValidResponseIsDelivered)
 {
-    FakeLoader loader(MakePipePath(), [](const std::string& request) {
+    FakeLauncher launcher(MakePipePath(), [](const std::string& request) {
         nlohmann::json req = nlohmann::json::parse(request);
 
         nlohmann::json rsp;
@@ -291,7 +291,7 @@ TEST(Unit_PipeClient, ValidResponseIsDelivered)
         return rsp.dump();
     });
 
-    appbox::PipeClient client(loader.path);
+    appbox::PipeClient client(launcher.path);
     ASSERT_TRUE(client.Start());
 
     nlohmann::json rsp;

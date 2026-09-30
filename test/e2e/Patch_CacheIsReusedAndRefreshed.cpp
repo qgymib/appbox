@@ -44,7 +44,7 @@ bool WritePackage(const std::filesystem::path& path, const char* content)
  * @param[in] config Configuration of the case.
  * @return The content the view holds for the file.
  */
-std::string ReadPatchFile(const std::wstring& folder, const std::filesystem::path& cwd, appbox::LoaderConfig& config)
+std::string ReadPatchFile(const std::wstring& folder, const std::filesystem::path& cwd, appbox::LauncherConfig& config)
 {
     ProtocolReadFileFull::Req req;
     req.FileName = appbox::WideToUTF8(folder + L"\\" + kName);

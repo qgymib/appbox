@@ -5,8 +5,8 @@ The repository has one test executable, registered with CTest in
 
 | CTest entry | Mode | What it runs |
 | --- | --- | --- |
-| `AppBoxUnitTests` | `--mode=unit` | The in-process unit tests below `test/unit`. They do not start the loader and do not inject the sandbox DLL, so they run on their own in about a minute. |
-| `AppBoxTests` | `--mode=e2e` | The end-to-end cases below `test/e2e`. Every case owns a private working directory, writes the artifacts of the sandbox it runs and drives a probe process through the real loader. |
+| `AppBoxUnitTests` | `--mode=unit` | The in-process unit tests below `test/unit`. They do not start the launcher and do not inject the sandbox DLL, so they run on their own in about a minute. |
+| `AppBoxTests` | `--mode=e2e` | The end-to-end cases below `test/e2e`. Every case owns a private working directory, writes the artifacts of the sandbox it runs and drives a probe process through the real launcher. |
 
 Both entries run the same executable and only differ in the range of the run,
 so a failure of one side is still reported on its own. `--mode=all` runs both
@@ -32,18 +32,18 @@ The presets of `CMakePresets.json` wrap the same steps:
 `APPBOX_TEST_LOG_LEVEL=trace`, stop at the first failure and fail when no test
 is registered at all.
 
-CTest passes `--loader=$<TARGET_FILE:AppBoxLoader>` to both entries, the two
+CTest passes `--launcher=$<TARGET_FILE:AppBoxLauncher>` to both entries, the two
 injection modules the build installed below `resource/lib` and the packer
 executable `$<TARGET_FILE:AppBox>`.
 
 A test executable which is started by hand needs those arguments as well:
-without the loader the end-to-end cases cannot start it, without the modules the
+without the launcher the end-to-end cases cannot start it, without the modules the
 cases skip themselves (see `appbox::test::CommonFixture::SetUp()`), and without
 the packer the unit test of the embedded resources skips itself.
 
 ```bash
 build/Debug/test/Debug/AppBoxTests.exe --mode=e2e \
-    --loader=<absolute path of AppBoxLoader.exe> \
+    --launcher=<absolute path of AppBoxLauncher.exe> \
     --sandbox32=<absolute path of AppBoxSandbox32.dll> \
     --sandbox64=<absolute path of AppBoxSandbox64.dll> \
     --packer=<absolute path of AppBox.exe>
@@ -54,7 +54,7 @@ variable counterpart:
 
 | Option | Environment variable | Meaning |
 | --- | --- | --- |
-| `--loader` | `APPBOX_TEST_LOADER` | Path of the loader executable the cases start. |
+| `--launcher` | `APPBOX_TEST_LAUNCHER` | Path of the launcher executable the cases start. |
 | `--sandbox32` | `APPBOX_TEST_SANDBOX32` | Path of the 32 bit sandbox injection module the cases put into the resource root of their directory. |
 | `--sandbox64` | `APPBOX_TEST_SANDBOX64` | Path of the 64 bit sandbox injection module. |
 | `--packer` | `APPBOX_TEST_PACKER` | Path of the packer executable, which carries the payloads as resources. |
@@ -85,10 +85,10 @@ keeps its usual meaning:
 
 ```bash
 # One case of the end-to-end mode:
-AppBoxTests.exe --mode=e2e --gtest_filter=E2E_Reg.Full_* --loader=<loader path>
+AppBoxTests.exe --mode=e2e --gtest_filter=E2E_Reg.Full_* --launcher=<launcher path>
 
 # Every unit test but the cases of one suite:
-AppBoxTests.exe --mode=unit --gtest_filter=*-Unit_AboutInfo.* --loader=<loader path>
+AppBoxTests.exe --mode=unit --gtest_filter=*-Unit_AboutInfo.* --launcher=<launcher path>
 ```
 
 Every other switch of GoogleTest keeps its usual meaning as well, so
@@ -128,7 +128,7 @@ A case which times out ends the run:
    itself (`test/utils/Coredump.*`). `MiniDumpWriteDump` suspends every thread
    of the process it dumps, so it must not run inside that process.
 2. The writer takes one snapshot of the process list, walks the tree below the
-   test process - the test process, the loader, the sandbox host and the probe
+   test process - the test process, the launcher, the sandbox host and the probe
    of an end-to-end case - and writes one full memory dump per process.
 3. The watchdog terminates the child processes of the test and then the test
    process itself with the exit code `124`, so CTest reports the failure at
@@ -176,10 +176,10 @@ the run and the logs of every process the run started.
 
 | File | Writer | Content |
 | --- | --- | --- |
-| `log.txt` | the loader | The messages of the loader itself: the configuration it loaded, the layers it mapped, the processes it started and their exit codes. |
+| `log.txt` | the launcher | The messages of the launcher itself: the configuration it loaded, the layers it mapped, the processes it started and their exit codes. |
 | `<program>.<time utc>.<pid>.log` | one sandboxed process | The messages of one process the sandbox is injected into, in the order that process produced them. |
 
-The loader does not carry the messages of the sandbox: every process the sandbox
+The launcher does not carry the messages of the sandbox: every process the sandbox
 is injected into writes a log file of its own, named after the program, the UTC
 time it started at and its process id. A run of one end-to-end case therefore
 leaves one file per process — the launcher and the probe of a case, plus the
@@ -188,12 +188,12 @@ The file is written by the process which produces it, so its content survives a
 crash of that process, and the name tells which process it belongs to:
 
 ```
-AppBoxLoader.20260930T021157Z.76696.log
+AppBoxLauncher.20260930T021157Z.76696.log
 AppBoxTests.20260930T021157Z.77784.log
 ```
 
 The level of the messages is the level of the run (`--log-level`), and it is the
-level of the loader and of every sandboxed process at once. `trace` reports
+level of the launcher and of every sandboxed process at once. `trace` reports
 every kernel call the sandbox intercepts, so a run which is started with
 `APPBOX_TEST_LOG_LEVEL=trace`, like the presets of `CMakePresets.json` do,
 writes the whole path of the case into the logs of its processes.
@@ -232,7 +232,7 @@ A run which fails names the log files it left behind, so the file of the process
 which died is the first one to open:
 
 ```
-[error] log of the run: AppBoxLoader.20260930T021157Z.76696.log
+[error] log of the run: AppBoxLauncher.20260930T021157Z.76696.log
 [error] log of the run: AppBoxTests.20260930T021157Z.77784.log
 [error] Probe exited with code 3221225477
 ```
@@ -245,26 +245,26 @@ which died is the first one to open:
 | `test/e2e/` | The end-to-end cases, one file per case (`<Domain>_<Case>.cpp`); the suite of a file is named `E2E_<Domain>`. |
 | `test/probe/` | The operations which are executed **inside** the sandbox. A probe registers itself by name (`test/probe/__init__.hpp`) and is called from a case through `ProbeCall`. |
 | `test/utils/` | The builders and helpers which the cases share, see [Test helpers](#test-helpers). |
-| `test/utils/ProbeCall.*` | The call of a probe: it starts the loader for the case, serves the probe over the pipe and reports the logs of the processes of the run when the case fails. |
+| `test/utils/ProbeCall.*` | The call of a probe: it starts the launcher for the case, serves the probe over the pipe and reports the logs of the processes of the run when the case fails. |
 | `test/utils/TestTimeout.*` | The timeout of a test case: the GoogleTest hook, the watchdog thread and the options of a run. |
 | `test/utils/Coredump.*` | The coredump writer: the full memory dump of a process, the walk of a process tree and the termination of its processes. |
 | `test/utils/CommandLine.*` | The command line and the environment of a run, which the coredump writer reads before GoogleTest and CLI11 look at them. |
-| `test/utils/LoaderPath.hpp` | The loader path of a run: `LoaderPath()` answers the `--loader` value of the configuration. |
-| `test/utils/SandboxDll.hpp` | The injection modules of a run: `Sandbox32DllPath()` and `Sandbox64DllPath()` answer the `--sandbox32` and `--sandbox64` values, and `SandboxModulesAvailable()` tells whether the run can start the loader at all. |
-| `test/Test.cpp` / `test/Test.hpp` | The configuration of the run: `--loader`, `--sandbox32`, `--sandbox64`, `--packer`, `--log-level`, `--mode`, `--no-cleanup`, the timeout options, the prefixes which tell the mode of a suite, the guard which keeps the prefix and the directory of a suite together and the mode filter. |
-| `test/main.cpp` | The entry point of the test executable. It serves both sides, and it also handles the coredump writer, the name resolution probe of the tracer and the `probe` subcommand the loader starts. |
+| `test/utils/LauncherPath.hpp` | The launcher path of a run: `LauncherPath()` answers the `--launcher` value of the configuration. |
+| `test/utils/SandboxDll.hpp` | The injection modules of a run: `Sandbox32DllPath()` and `Sandbox64DllPath()` answer the `--sandbox32` and `--sandbox64` values, and `SandboxModulesAvailable()` tells whether the run can start the launcher at all. |
+| `test/Test.cpp` / `test/Test.hpp` | The configuration of the run: `--launcher`, `--sandbox32`, `--sandbox64`, `--packer`, `--log-level`, `--mode`, `--no-cleanup`, the timeout options, the prefixes which tell the mode of a suite, the guard which keeps the prefix and the directory of a suite together and the mode filter. |
+| `test/main.cpp` | The entry point of the test executable. It serves both sides, and it also handles the coredump writer, the name resolution probe of the tracer and the `probe` subcommand the launcher starts. |
 
 The source files of the executable are an explicit list in
 `test/CMakeLists.txt`, not a glob, so a new test file has to be registered
 there. The include directories put the project directories first, because
-`test/utils` holds headers with the same name as the loader ones and the loader
+`test/utils` holds headers with the same name as the launcher ones and the launcher
 headers have to win; the known folder helper of the cases is called
 `TestKnownFolder` for that reason.
 
 ## Unit tests
 
 The unit tests cover the modules the end-to-end cases cannot reach: the packer
-(`src/core`), the loader helpers, the modules of the sandbox which run in the
+(`src/core`), the launcher helpers, the modules of the sandbox which run in the
 process of the test executable and the tracer. No case includes a header of
 `src/core`, so the packer has no end-to-end coverage of its own; the only
 contact of the end-to-end suite with it is the helper
@@ -278,7 +278,7 @@ isolation tables and decision tables of the three domains
 `Unit_RegistryWhiteout`, `Unit_RegistryKeyPath`, `Unit_RegistryRootMap`,
 `Unit_RegistryIsolation`, `Unit_FilesystemIsolationPolicy`,
 `Unit_FilesystemIsolationTable`, `Unit_DnsTable`, `Unit_NetworkIsolation`) and
-the base filesystem mapping (`Unit_LoaderPath`). The boundaries which matter are
+the base filesystem mapping (`Unit_LauncherPath`). The boundaries which matter are
 covered by the end-to-end cases which were added with them, see
 [End-to-end tests](#end-to-end-tests).
 
@@ -334,7 +334,7 @@ The unit tests of the packer:
   between the entries of the box and the enumeration, including the fallback of
   an index which is outside of the box.
 * `test/unit/EmbeddedResource.cpp` — the payloads the packer carries as RCDATA
-  resources of its own executable: the loader program and the two sandbox
+  resources of its own executable: the launcher program and the two sandbox
   injection modules are read from the executable opened as a data file and
   compared byte for byte with the files of the build tree they were embedded
   from, and a resource which an executable does not carry is reported instead of
@@ -345,7 +345,7 @@ The unit tests of the packer:
   isolation file of the network workspace, the isolation file of the
   environment workspace and the two sandbox injection modules below `app`; the
   patch package carries the very same resources
-  rooted at the archive root, without the loader, without the injection modules
+  rooted at the archive root, without the launcher, without the injection modules
   and without an `app`
   directory, and needs neither a startup file nor the payloads, which is
   what the patch cases of the suite pin: the root layout, the layer tree, the
@@ -402,14 +402,14 @@ The unit tests of the packer:
   and the members of the entries, the mode the model was given, the name and the
   value as UTF-8 bytes and the refusal of an entry the model refuses.
 
-The unit tests of the loader and of the sandbox modules which the test
+The unit tests of the launcher and of the sandbox modules which the test
 executable carries itself:
 
 * `test/unit/HiveReader.cpp` — the mounting, the enumeration and the
-  formatting of the loader registry browser, including the root of the hive
+  formatting of the launcher registry browser, including the root of the hive
   which hides the whiteout store of the sandbox.
 * `test/unit/HiveMerge.cpp` — the merge of a hive into another, which is the
-  loader side of the registry domain of a patch layer: a target which does not
+  launcher side of the registry domain of a patch layer: a target which does not
   exist yet is created, the entries of the source override the entries of the
   same name while the other entries of the target stay, every value type and
   the default value of a key are copied, nested keys are merged, an empty
@@ -423,8 +423,8 @@ executable carries itself:
   values of the workspace as well: one per known folder, named after the layer
   key without its `#` delimiters, with the real path of the folder of this
   machine.
-* `test/unit/GetExecutableDir.cpp`, `test/unit/MiniLauncher.cpp`,
-  `test/unit/ProcessJob.cpp`, `test/unit/Shell.cpp` — the loader helpers which
+* `test/unit/GetExecutableDir.cpp`, `test/unit/ProcessLauncher.cpp`,
+  `test/unit/ProcessJob.cpp`, `test/unit/Shell.cpp` — the launcher helpers which
   locate the executable, start it, own the job of a started process and resolve
   the shell of the host together with the arguments of the command it runs. The
   resolver falls back from `%COMSPEC%` to the command processor of the system
@@ -478,7 +478,7 @@ executable carries itself:
 * `test/unit/BuildReport.cpp` — the progress and the result texts of the
   build report.
 * `test/unit/ApplicationIcon.cpp` — the icon the packer writes into the first
-  startup file of an archive, including the round trip through the real loader
+  startup file of an archive, including the round trip through the real launcher
   payload.
 * `test/unit/StartupTree.cpp` — the startup file tree of the packer: the rows
   of the imports, the default trigger of a file, the uniqueness of a trigger
@@ -498,8 +498,8 @@ The timeout and the coredumps of a run have a unit test of their own:
 ## End-to-end tests
 
 `AppBoxTests` runs every case through the real chain: the case writes its
-`LoaderConfig`, `test/utils/ProbeCall.*` starts the **loader** with
-`--X-AppBox-ConfigFile`, the loader launches the test binary as a probe process
+`LauncherConfig`, `test/utils/ProbeCall.*` starts the **launcher** with
+`--X-AppBox-ConfigFile`, the launcher launches the test binary as a probe process
 with the sandbox DLL injected, and the probe asks the test process for its task
 over a named pipe and reports the result back. One probe call costs about two
 seconds, so a case which asks several questions of one sandbox asks them in one
@@ -530,11 +530,14 @@ comment.
 | `QueryAttributes_LowerLayer` | – | `data.txt` | query the attributes of `data.txt` | success, a regular file is reported |
 | `QueryAttributes_NonExists` | – | `other.txt` | query the attributes of `data.txt` | failure with `File Not Found` |
 
-Two cases are not part of the matrices above:
+Three cases are not part of the matrices above:
 `test/e2e/Fs_LaunchProcess_FromLower.cpp` starts an executable which only a
-lower layer holds, and `test/e2e/Fs_ListDir_UserPresetLayers.cpp` mounts one
-layer per folder of the user (`#Documents#`, `#Desktop#`) and checks that each
-of them is mapped to the real folder its layer key names.
+lower layer holds, `test/e2e/Fs_ListDir_UserPresetLayers.cpp` mounts one layer
+per folder of the user (`#Documents#`, `#Desktop#`) and checks that each of them
+is mapped to the real folder its layer key names, and
+`test/e2e/Fs_QueryAttributes_SystemPresetLayers.cpp` does the same for the
+system folders (`#Windows#`, `#System32#`), including that the file of one layer
+is not visible in the folder of the other one.
 
 The cases which exercise the isolation modes of the workspace write the
 isolation file of the case into the filesystem domain of the resources
@@ -672,7 +675,8 @@ folder below `#USERPROFILE#` of the host as the entry of the host layer
   and the real registry never gains the key.
 * `test/e2e/Reg_VariableExpansion.cpp` — the values of the packed hive which
   reference a known folder of this machine with `%APPBOX:<NAME>%` are read
-  inside the sandbox with the real path of the folder: the `REG_SZ`, the
+  inside the sandbox with the real path of the folder: the `REG_SZ`, a second
+  `REG_SZ` which references the system folder of the machine, the
   `REG_EXPAND_SZ` and every item of a `REG_MULTI_SZ` value, while a `REG_DWORD`
   and a `REG_BINARY` value whose bytes spell the same reference keep their own
   bytes. The hive of the resources is byte identical afterwards, so the archive
@@ -686,7 +690,7 @@ into the network domain of the resources
 resolve a hostname
 inside the sandbox with the probe `ResolveName`, which calls the name resolution
 of winsock and the one of the DNS client. The probe answers a list of questions
-in one probe process, so a case pays for the chain of the loader and of the
+in one probe process, so a case pays for the chain of the launcher and of the
 sandbox once.
 
 The proxy cases use the probe `SocketTraffic`, which performs the socket calls
@@ -728,8 +732,8 @@ entries of the block which enumerates the environment, and the expansion of a
 reads them back.
 
 The value of the host of a case is set in the environment of the test process
-before the loader starts, because the environment of the sandboxed application is
-the environment of the loader, which the test process passes to it
+before the launcher starts, because the environment of the sandboxed application is
+the environment of the launcher, which the test process passes to it
 (`test/utils/EnvironmentIsolationBuilder.*`, `HostEnvironmentVariable`, which
 removes the variable again when the case ends). The names the cases use are
 prefixed with `APPBOX_ENV_`, so they cannot collide with a variable of the
@@ -746,69 +750,69 @@ machine the cases run on.
 | `Env_ModificationStaysInTheSandbox` | `Replace` | store the variable, remove a variable of the host, read both back | the stored value is read back, the removed variable is gone, and the environment of the test process still holds the values it set |
 | `Env_StateIsKeptAcrossRuns` | `Replace` | store the variable in one run, read it in the next one | the second run sees the stored value, which is what the state directory of the sandbox carries |
 | `Env_StateFileIsApplied` | – | read the variables while the state directory carries the document of an earlier run | the stored value is seen and the removed variable is gone |
-| `Env_VariableExpansion` | `Write Copy` + `Replace`, one row with `Prepend` and a value of the host | read variables whose values reference a known folder of this machine with `%APPBOX:<NAME>%`, a name the sandbox does not know and `%PATH%` | the known references carry the real path of the folder of this machine (also in another spelling of the prefix and of the name), the merged row carries `<path>;<host>`, the unknown reference and the reference of the shell keep their spelling, and the block which enumerates the environment reports the expanded value |
+| `Env_VariableExpansion` | `Write Copy` + `Replace`, one row with `Prepend` and a value of the host | read variables whose values reference a known folder of this machine with `%APPBOX:<NAME>%`, a name the sandbox does not know and `%PATH%` | the known references carry the real path of the folder of this machine (also in another spelling of the prefix and of the name, and for the system folder of the machine), the merged row carries `<path>;<host>`, the unknown reference and the reference of the shell keep their spelling, and the block which enumerates the environment reports the expanded value |
 | `Env_MalformedIsolationFile_FallsBack` | document which cannot be read | read the variable | the value of the host stays visible and the sandbox still runs |
 
 The child of a sandboxed process sees the view of its parent, which every one of
-the cases above pins: the loader starts the relay process, the relay is a
+the cases above pins: the launcher starts the relay process, the relay is a
 sandboxed process, and the probe process of a case is started by that relay. The
 value the probe reads is therefore the environment the sandbox handed over to a
 child, and a composition which ran twice would report `bar;bar;foo` for the
 `Prepend` case.
 
-### Loader startup cases
+### Launcher startup cases
 
-The startup cases (`test/e2e/Loader_Startup.cpp`) describe three startup files in
-one `LoaderConfig`: `one` and `two` are marked for auto start, `manual` is not.
+The startup cases (`test/e2e/Launcher_Startup.cpp`) describe three startup files in
+one `LauncherConfig`: `one` and `two` are marked for auto start, `manual` is not.
 The arguments of every startup file carry its own marker, and the probe
 `test/probe/StartupStarted.cpp` reports the marker of the file which started it,
-so a case can tell which of the files the loader started; the file name of the
-first startup file decides the loader entry of a packed archive. Each case is
+so a case can tell which of the files the launcher started; the file name of the
+first startup file decides the launcher entry of a packed archive. Each case is
 documented in its own header comment.
 
 | Case | `--X-AppBox-Startup` | Expected |
 | --- | --- | --- |
-| `AutoStartAll` | – | `one` and `two` start, `manual` does not, the loader exits with zero |
-| `SelectedByTrigger` | `manual` | only `manual` starts, the auto start files do not, the loader exits with zero |
-| `UnknownTrigger` | `missing` | nothing starts, not even the auto start files, and the loader reports a non zero exit code |
+| `AutoStartAll` | – | `one` and `two` start, `manual` does not, the launcher exits with zero |
+| `SelectedByTrigger` | `manual` | only `manual` starts, the auto start files do not, the launcher exits with zero |
+| `UnknownTrigger` | `missing` | nothing starts, not even the auto start files, and the launcher reports a non zero exit code |
 
-### Loader shell cases
+### Launcher shell cases
 
-The shell cases (`test/e2e/Loader_Shell.cpp`) run the loader with
+The shell cases (`test/e2e/Launcher_Shell.cpp`) run the launcher with
 `--X-AppBox-Shell`, which starts the `cmd.exe` of the host inside the sandbox
 instead of the application of the configuration: without a command the shell
 runs interactively, with a command it runs `cmd /c <command>`. The cases use
 `ProbeShellRun()` of `test/utils/ProbeCall.*`, which points the startup files of
 the configuration at the probe process and collects the markers of the probes
-which reported until the loader left, so a marker proves that the loader started
+which reported until the launcher left, so a marker proves that the launcher started
 a startup file although the run had to ignore it. The command of a case has to
-return on its own, because the call waits for the loader: the run without a
+return on its own, because the call waits for the launcher: the run without a
 command waits for the input of a user, so it has no automated coverage and is
 verified by hand. Each case is documented in its own header comment.
 
 | Case | Command | Expected |
 | --- | --- | --- |
-| `CommandRunsAndStartupsAreIgnored` | `exit 42` | the shell runs the command and the loader exits with `42`; no startup file is started, not even an auto start one |
+| `CommandRunsAndStartupsAreIgnored` | `exit 42` | the shell runs the command and the launcher exits with `42`; no startup file is started, not even an auto start one |
 | `CommandRunsInsideTheSandbox` | `echo hello> <known folder>\AppBoxTest_Shell\shell.txt` | the file is written into the overlay of the sandbox and never into the folder of the host, so the command ran inside the isolation, and the resources of the application are untouched |
-| `ShellAndStartupAreMutuallyExclusive` | `exit 0` together with `--X-AppBox-Startup manual` | nothing runs, because the two options name different programs, and the loader reports a non zero exit code |
+| `ShellAndStartupAreMutuallyExclusive` | `exit 0` together with `--X-AppBox-Startup manual` | nothing runs, because the two options name different programs, and the launcher reports a non zero exit code |
 
-### Loader console case
+### Launcher console case
 
-The loader is a GUI program without a console, so a console program it starts
+The launcher is a GUI program without a console, so a console program it starts
 gets a console window of its own: without a countermeasure the probe process of
 every case would pop up on the desktop of the machine the cases run on. The
 harness therefore enables `hide_console` in the configuration it writes, and
-`test/e2e/Loader_HideConsole.cpp` pins the result. The case asks the probe
+`test/e2e/Launcher_HideConsole.cpp` pins the result. The case asks the probe
 `ConsoleWindow` for the console of the probe process: the console is still
 attached, so the standard streams of the probe keep working, while its window
 is not visible.
 
-### Loader registry state cases
+### Launcher registry state cases
 
-The registry state cases (`test/e2e/Loader_RegistryState*.cpp`) pin what the
-loader does with the hive of the resources. The packed hive is a read-only
+The registry state cases (`test/e2e/Launcher_RegistryState*.cpp`) pin what the
+launcher does with the hive of the resources. The packed hive is a read-only
 resource, while the sandbox mounts a hive which it modifies (copy-up, whiteouts
-and the transaction log files), so the loader seeds a copy into the state
+and the transaction log files), so the launcher seeds a copy into the state
 directory of the sandbox on the first run and mounts that copy. Every case
 builds the resources with `test/utils/HiveBuilder.*` and reads the value inside
 the sandbox with the probe `RegReadValue`, which is the only way to tell which
@@ -820,11 +824,11 @@ hive the sandbox mounted.
 | `RegistryStateIsKept` | the resources carry `packed`, the first run writes `sandbox` into the key | the second run returns `sandbox`, so the state of the first run survives the next one |
 | `RegistryStateIsReset` | the resources carry `packed`, the first run writes `sandbox`, then the state directory is deleted | the second run returns `packed`, so deleting the state directory resets the sandbox to the registry of the archive |
 
-### Loader sandbox module cases
+### Launcher sandbox module cases
 
-The module cases (`test/e2e/Loader_MissingSandboxDll.cpp` and
-`test/e2e/Loader_SandboxDllFromTheApp.cpp`) pin the contract of the injection
-modules: they are resources of the archive below `app`, so the loader injects
+The module cases (`test/e2e/Launcher_MissingSandboxDll.cpp` and
+`test/e2e/Launcher_SandboxDllFromTheApp.cpp`) pin the contract of the injection
+modules: they are resources of the archive below `app`, so the launcher injects
 them from there and writes no copy into the state directory, and a run without
 them is refused before anything starts. The harness links the modules of the run
 into the resource root of every case, so a case which describes a run without
@@ -832,7 +836,7 @@ them removes them again.
 
 | Case | Steps | Expected |
 | --- | --- | --- |
-| `MissingSandboxDll.BothModulesAreMissing` | the resource root carries neither module, the configuration holds an auto start file | the loader reports the module which is missing, starts nothing and exits with a non zero code |
+| `MissingSandboxDll.BothModulesAreMissing` | the resource root carries neither module, the configuration holds an auto start file | the launcher reports the module which is missing, starts nothing and exits with a non zero code |
 | `MissingSandboxDll.The32BitModuleIsMissing` | the resource root carries the 64 bit module only | the run is refused as well, because a packaged application may start a 32 bit process which has to be injected |
 | `SandboxDllFromTheApp.TheRunInjectsFromTheResourceRoot` | the resource root carries both modules, the state root is empty | the startup file runs inside the sandbox, so the modules of the resource root were injected, and the state root carries no module afterwards |
 
@@ -841,14 +845,14 @@ them removes them again.
 The patch cases (`test/e2e/Patch_*.cpp`) run the layout of the filesystem cases
 and add a `patch` directory which carries the packages of the case;
 `test/utils/PatchBuilder.*` writes a package with the resources a case
-describes. The loader validates a package against the `cache` directory of the
+describes. The launcher validates a package against the `cache` directory of the
 case, mounts its filesystem layers on top of the layers of `app`, merges its
 hive into the hive the sandbox mounts and hands the isolation files of the four
 domains to the sandbox, which merges them in layer order, which is the contract
 of [PatchLayer.md](../docs/PatchLayer.md): the layers, the hives and the
-isolation files of a run are consumed by the loader and by the sandbox only, so
-the cases of this suite are the coverage of `loader/utils/PatchLayer.cpp`, of
-`loader/utils/HiveMerge.cpp` and of the layer handling of the four modules of
+isolation files of a run are consumed by the launcher and by the sandbox only, so
+the cases of this suite are the coverage of `launcher/utils/PatchLayer.cpp`, of
+`launcher/utils/HiveMerge.cpp` and of the layer handling of the four modules of
 `sandbox/` which apply an isolation file. Each case is documented in its own
 header comment.
 
@@ -877,40 +881,40 @@ header comment.
 ## Test helpers
 
 * `test/utils/FsBuilder.*` — declarative tree builder. `FsRoot(root, {dirs})`
-  materializes the directories of the case and returns the `LoaderConfig` of the case,
-  which carries no path: the loader resolves the state directory `data` and the resource
+  materializes the directories of the case and returns the `LauncherConfig` of the case,
+  which carries no path: the launcher resolves the state directory `data` and the resource
   directory `app` against the directory of its configuration file, which is the working
   directory of the case. The resource directories are named after the known folder token
   (`app\filesystem\#USERPROFILE#`) so that `MapBaseFS` resolves them. The builder also
   links the sandbox injection modules of the run into the resource root of the case,
-  because every case which starts the loader needs them there. `Verify()` re-reads
+  because every case which starts the launcher needs them there. `Verify()` re-reads
   everything a case declared and fails if the content changed; the isolation files which
   the helpers of the suite write and the injection modules are not part of the declared
   content.
 * `test/utils/CommonFixture.*` — gives every case a private working directory, and
-  skips the case when the run provided no sandbox injection modules, because the loader
+  skips the case when the run provided no sandbox injection modules, because the launcher
   of a case cannot inject anything without them.
 * `test/utils/SandboxDll.hpp` — the injection modules of a run:
   `Sandbox32DllPath()` and `Sandbox64DllPath()` answer the paths of the run and
   `SandboxModulesAvailable()` tells whether both of them exist.
 * `test/utils/CWD.*` — the working directory itself: `Create()` makes it,
   `NoCleanup()` keeps it after the case.
-* `test/utils/ProbeCall.*` — writes the `LoaderConfig` to `config.json`, starts the
-  **loader** with `--X-AppBox-ConfigFile`, which launches the test binary as a probe
+* `test/utils/ProbeCall.*` — writes the `LauncherConfig` to `config.json`, starts the
+  **launcher** with `--X-AppBox-ConfigFile`, which launches the test binary as a probe
   process with the sandbox DLL injected; the probe asks the test process for its task
   over a named pipe and reports the result back. Every configuration it hands to the
-  loader enables `hide_console`, so the probe process of a case does not open a console
-  window (see [Loader console case](#loader-console-case)). `ProbeStartupRun()` runs the
-  loader for a startup file selection instead: it passes `--X-AppBox-Startup` when a
-  trigger is given and reports the markers of the startup files the loader started
+  launcher enables `hide_console`, so the probe process of a case does not open a console
+  window (see [Launcher console case](#launcher-console-case)). `ProbeStartupRun()` runs the
+  launcher for a startup file selection instead: it passes `--X-AppBox-Startup` when a
+  trigger is given and reports the markers of the startup files the launcher started
   together with its exit code. `ProbeShellRun()` passes `--X-AppBox-Shell` with the
-  command of the case and collects the markers which arrived until the loader left; it
+  command of the case and collects the markers which arrived until the launcher left; it
   does not wait for a probe, because the shell runs the command of the case instead of
-  the probe (see [Loader shell cases](#loader-shell-cases)).
+  the probe (see [Launcher shell cases](#launcher-shell-cases)).
 * `test/utils/HiveBuilder.*` — builds the registry artifacts of a case, so an
   end-to-end test owns what the sandbox mounts. The builder writes the hive file and
   the isolation file into the registry domain of the resources of the case
-  (`app/registry`), which is where the loader looks for them: it seeds the hive into
+  (`app/registry`), which is where the launcher looks for them: it seeds the hive into
   the state directory of the sandbox, so a case exercises the seeding as well. The
   content of the hive and the isolation modes are tracked apart, so a mode can be
   listed for a key which the hive does not hold. `WriteRawIsolation()` writes a text
@@ -924,7 +928,7 @@ header comment.
 * `test/utils/RegistryRootKey.*` — resolves the predefined handle of a registry
   root key, which is what a probe passes to the registry API.
 * `test/utils/TestKnownFolder.*` — path of a known folder. The helper is named
-  `TestKnownFolder` because the loader ships a header of the name `KnownFolder`
+  `TestKnownFolder` because the launcher ships a header of the name `KnownFolder`
   with a different API, and the single test executable carries both.
 * `test/utils/RealFsFolder.*` — RAII helper which owns a folder below a known
   folder of the host, so a case which needs an entry of the host filesystem
@@ -963,8 +967,8 @@ header comment.
   `HostEnvironmentVariable` stores a variable in the environment of the test
   process for the length of a case, which is the environment of the host of the
   run.
-* `test/utils/LoaderPath.hpp` — the loader path of a run, which the tests of
-  the real loader payload read from the configuration.
+* `test/utils/LauncherPath.hpp` — the launcher path of a run, which the tests of
+  the real launcher payload read from the configuration.
 * `test/utils/ReadFileFull.*` / `test/utils/WriteFileFull.*` — file I/O
   helpers.
 * `test/utils/Semaphore.*` — synchronization between the test process and the
@@ -983,7 +987,7 @@ header comment.
 * `test/probe/RegReadValues.cpp` — several values of one key in one call, with
   the type, the text, the items of a list and the raw bytes of every value, so a
   case which pins a string type next to a `REG_DWORD` and a `REG_BINARY` pays
-  for the chain of the loader and of the sandbox once.
+  for the chain of the launcher and of the sandbox once.
 * `test/probe/RegEnumKey.cpp` / `RegEnumValue.cpp` — sub key and value
   enumeration inside the sandbox.
 * `test/probe/RegShadowRead.cpp` / `RegQueryKeyName.cpp` — shadow key value
@@ -996,7 +1000,7 @@ header comment.
   of the seven entry points the sandbox hooks and reports the return code and
   the addresses of every answer.
 * `test/probe/__init__.hpp` — the probe registry: a probe registers itself by
-  name on start and `ProbeInit` registers the command which the loader starts.
+  name on start and `ProbeInit` registers the command which the launcher starts.
   `--startup_marker` carries the marker of the startup file a probe process was
   started for, which `StartupMarker()` returns.
 
@@ -1028,7 +1032,7 @@ header comment.
 * **Two packages which share a cache entry are not covered.** Two package names
   can only name one cache entry when they differ in the case of their extension
   (`00-foo.zip` and `00-foo.ZIP`), and a directory of a case-insensitive
-  filesystem cannot hold both, so the rule of `loader/utils/PatchLayer.cpp`
+  filesystem cannot hold both, so the rule of `launcher/utils/PatchLayer.cpp`
   which logs and skips the second one is defensive and has no case.
 * **A value mode needs a key of the hive.** A value mode of an isolation file
   only reaches the merged view of a key the hive holds; the values of a key
@@ -1049,6 +1053,6 @@ header comment.
 * [EnvironmentIsolation.md](../docs/EnvironmentIsolation.md) — environment
   isolation architecture.
 * [PatchLayer.md](../docs/PatchLayer.md) — patch packages: layout, merge rules
-  and the loader side.
+  and the launcher side.
 * [Tracer.md](../docs/Tracer.md) — API tracer: usage, mechanism and measured
   cost.

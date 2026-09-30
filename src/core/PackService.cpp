@@ -203,7 +203,7 @@ std::string ResourceEntry(const std::string& root, const char* app_relative)
  * the entries and the progress reports are shared.
  *
  * The `data` directory of the sandbox never travels in either product: the
- * loader creates it at run time, so deleting it resets the sandbox to the
+ * launcher creates it at run time, so deleting it resets the sandbox to the
  * state the archive carries.
  *
  * @param[in,out] writer The zip writer.
@@ -252,7 +252,7 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
 
     /*
      * The virtual registry of the workspace travels as a hive file next to its
-     * isolation file. The loader seeds the hive into the state directory of the
+     * isolation file. The launcher seeds the hive into the state directory of the
      * sandbox on the first run, because mounting a hive writes to the file and
      * the resources stay read-only; the isolation file holds the modes which
      * decide which host entries stay visible.
@@ -281,9 +281,9 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
 
     /*
      * The isolation modes of the virtual filesystem travel in the filesystem
-     * domain, next to the layers they describe: the loader hands the file to
+     * domain, next to the layers they describe: the launcher hands the file to
      * the sandbox, which redirects the filesystem of the packaged application
-     * through the modes. The loader skips the file while it enumerates the
+     * through the modes. The launcher skips the file while it enumerates the
      * layers of that folder.
      */
     std::string filesystem_isolation;
@@ -299,7 +299,7 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
 
     /*
      * The network configuration of the workspace travels in the network domain:
-     * the loader hands the file to the sandbox, which answers a name resolution
+     * the launcher hands the file to the sandbox, which answers a name resolution
      * of the packaged application from the DNS redirections of the file instead
      * of asking the host and sends the traffic of the application through the
      * proxy of the file.
@@ -317,7 +317,7 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
 
     /*
      * The environment variables of the workspace travel in the environment
-     * domain: the loader hands the file to the sandbox, which composes the
+     * domain: the launcher hands the file to the sandbox, which composes the
      * environment of the packaged application from the entries while it starts
      * and keeps the modifications of the application inside the sandbox.
      */
@@ -455,7 +455,7 @@ std::size_t ContentFileCount(const PackModel& model)
     return count;
 }
 
-std::wstring LoaderEntryName(const PackModel& model)
+std::wstring LauncherEntryName(const PackModel& model)
 {
     if (!model.HasStartupFiles())
     {
@@ -463,7 +463,7 @@ std::wstring LoaderEntryName(const PackModel& model)
     }
 
     /*
-     * Only the file name is used: the loader lives in the archive root, which
+     * Only the file name is used: the launcher lives in the archive root, which
      * is the single base filesystem of the extracted application.
      */
     return std::filesystem::path(model.StartupFiles().front().relative_path).filename().wstring();
@@ -481,9 +481,9 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
     {
         return "at least one startup file must start automatically";
     }
-    if (payloads.loader_bytes == nullptr || payloads.loader_size == 0)
+    if (payloads.launcher_bytes == nullptr || payloads.launcher_size == 0)
     {
-        return "the embedded loader payload is empty";
+        return "the embedded launcher payload is empty";
     }
     if (payloads.sandbox32_bytes == nullptr || payloads.sandbox32_size == 0)
     {
@@ -498,7 +498,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
     const std::size_t total = kNonContentArchiveEntries + ContentFileCount(model);
 
     /*
-     * The loader payload and its configuration are added before the first
+     * The launcher payload and its configuration are added before the first
      * imported file, which is the preparing stage of the run.
      */
     if (progress && !progress(BuildProgress{ BuildStage::Preparing, 0, total, {} }))
@@ -512,51 +512,51 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         std::string error;
 
         /*
-         * The loader executable itself, named after the first startup file:
+         * The launcher executable itself, named after the first startup file:
          * the extracted archive shows the packaged application under its own
-         * name instead of the loader name.
+         * name instead of the launcher name.
          */
-        const auto loader_entry = WideToUTF8(LoaderEntryName(model));
-        if (loader_entry.empty())
+        const auto launcher_entry = WideToUTF8(LauncherEntryName(model));
+        if (launcher_entry.empty())
         {
             return "no startup file selected";
         }
 
         /*
-         * The loader carries the file icon of the first startup file, so
+         * The launcher carries the file icon of the first startup file, so
          * Explorer shows the icon of the packaged application for the
          * extracted program. A program without an icon never fails the pack
-         * run: the loader then keeps its own icon and the reason is logged.
+         * run: the launcher then keeps its own icon and the reason is logged.
          */
         std::wstring      startup_path;
-        std::vector<char> patched_loader;
+        std::vector<char> patched_launcher;
         if (model.StartupFilePath(model.StartupFiles().front(), startup_path))
         {
             std::string icon_warning;
-            patched_loader =
-                ApplyApplicationIcon(payloads.loader_bytes, payloads.loader_size, startup_path, icon_warning);
+            patched_launcher =
+                ApplyApplicationIcon(payloads.launcher_bytes, payloads.launcher_size, startup_path, icon_warning);
             if (!icon_warning.empty())
             {
-                spdlog::warn("the loader keeps its own icon: {}", icon_warning);
+                spdlog::warn("the launcher keeps its own icon: {}", icon_warning);
             }
         }
 
-        const void* const payload = patched_loader.empty() ? payloads.loader_bytes : patched_loader.data();
-        const auto        payload_size = patched_loader.empty() ? payloads.loader_size : patched_loader.size();
-        if (!writer.AddFileBuffer(loader_entry, payload, payload_size, error))
+        const void* const payload = patched_launcher.empty() ? payloads.launcher_bytes : patched_launcher.data();
+        const auto        payload_size = patched_launcher.empty() ? payloads.launcher_size : patched_launcher.size();
+        if (!writer.AddFileBuffer(launcher_entry, payload, payload_size, error))
         {
             return error;
         }
 
         /*
-         * Loader configuration: the layout of the archive is a fixed
+         * Launcher configuration: the layout of the archive is a fixed
          * convention, so the file only carries the startup files and the
          * environment of the packaged application. Every executable path
-         * starts with the layer key token of its preset, which the loader
-         * expands. The config file carries the name of the loader executable,
+         * starts with the layer key token of its preset, which the launcher
+         * expands. The config file carries the name of the launcher executable,
          * which loads `<own file name>.json` from its own directory.
          */
-        LoaderConfig config;
+        LauncherConfig config;
 
         for (const auto& file : model.StartupFiles())
         {
@@ -570,7 +570,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
             launch /= file.import_name;
             launch /= file.relative_path;
 
-            LoaderStartup startup;
+            LauncherStartup startup;
             startup.trigger = WideToUTF8(file.trigger);
             startup.auto_start = file.auto_start;
             startup.executable = WideToUTF8(launch.wstring());
@@ -578,7 +578,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         }
 
         const auto json = nlohmann::json(config).dump(2);
-        if (!writer.AddFileBuffer(loader_entry + ".json", json.data(), json.size(), error))
+        if (!writer.AddFileBuffer(launcher_entry + ".json", json.data(), json.size(), error))
         {
             return error;
         }
@@ -588,7 +588,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
          * `app`, one directory per isolation domain: the filesystem layers and
          * their isolation modes, the virtual registry and its isolation modes,
          * the network configuration and the environment variables. The `data`
-         * directory of the sandbox never travels in the archive: the loader
+         * directory of the sandbox never travels in the archive: the launcher
          * creates it at run time, so deleting it resets the sandbox to the
          * state this archive carries.
          */
@@ -602,7 +602,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         /*
          * The sandbox injection modules are resources of the archive, so they
          * land beside the four isolation domains instead of in the state
-         * directory of the sandbox: the loader injects the module of the
+         * directory of the sandbox: the launcher injects the module of the
          * bitness of the process it starts from `app`, which keeps a run of the
          * extracted archive from copying a module of its own.
          */
@@ -640,7 +640,7 @@ std::string PackPatch(const PackModel& model, const RegistryModel& registry, con
                       const BuildProgressCallback& progress)
 {
     /*
-     * A patch package carries no loader, so neither a startup file nor the
+     * A patch package carries no launcher, so neither a startup file nor the
      * embedded payload is needed: the resources of the model are the whole
      * content of the package.
      */
@@ -658,7 +658,7 @@ std::string PackPatch(const PackModel& model, const RegistryModel& registry, con
         std::string error;
 
         /*
-         * The resources are rooted at the archive root: the loader of a
+         * The resources are rooted at the archive root: the launcher of a
          * standalone archive merges the package into the resources below
          * `app`, so the package must not carry a resource directory of its own.
          */

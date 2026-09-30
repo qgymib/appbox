@@ -22,7 +22,7 @@ namespace appbox
  * hostname with the address the name has to resolve to inside the sandbox, and
  * its `Proxy` page holds the SOCKS5 proxy which carries the TCP traffic, the
  * UDP traffic or both. The packer writes both into the network isolation file
- * of the archive (see the schema below), the loader hands the path of the file
+ * of the archive (see the schema below), the launcher hands the path of the file
  * to the sandbox, and the sandbox answers a matching name resolution with the
  * configured address instead of asking the host and sends the traffic of the
  * application through the configured proxy.

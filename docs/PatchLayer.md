@@ -7,7 +7,7 @@ the resources of `app` stay the base image of the sandbox, and every patch of
 the `patch` directory is applied on top of them in ascending name order.
 
 > **Implementation status**: the `Patch (ZIP)` project type of the packer and
-> the patch package it writes are implemented, and the loader consumes all four
+> the patch package it writes are implemented, and the launcher consumes all four
 > domains of the packages of the `patch` directory: it validates every package
 > against the `cache` directory, mounts the filesystem layers of a package on
 > top of the layers of `app`, merges the hive of a package into the hive the
@@ -19,8 +19,8 @@ the `patch` directory is applied on top of them in ascending name order.
 A patch package is a zip archive written by the `Patch (ZIP)` project type of
 the `Project Type` box of the packer. It holds the very same resource tree a
 standalone archive keeps below `app`, rooted at the archive root instead: the
-loader program, its configuration, the two sandbox injection modules and the
-`app` directory itself do not travel, because a patch is applied by the loader
+launcher program, its configuration, the two sandbox injection modules and the
+`app` directory itself do not travel, because a patch is applied by the launcher
 of a standalone archive and not started on its own.
 
 ```
@@ -36,9 +36,9 @@ of a standalone archive and not started on its own.
 The entry names are the resource relative names of
 [`common/SandboxLayout.hpp`](../common/SandboxLayout.hpp): the archive relative
 name of a standalone archive is the name of `app`, a slash and the resource
-relative name, which is what the packer and the loader share.
+relative name, which is what the packer and the launcher share.
 
-A patch project needs no startup file: a patch package carries no loader, so it
+A patch project needs no startup file: a patch package carries no launcher, so it
 cannot start a program. The `Build and Run` command is offered for a standalone
 project only.
 
@@ -46,24 +46,24 @@ project only.
 
 ```
 .
-├── <startup>.exe            loader payload of the standalone archive
-├── <startup>.exe.json       loader configuration of the standalone archive
+├── <startup>.exe            launcher payload of the standalone archive
+├── <startup>.exe.json       launcher configuration of the standalone archive
 ├── app/                     read-only resources, the base image of the sandbox
-├── cache/                   extracted patches, created by the loader
+├── cache/                   extracted patches, created by the launcher
 │   ├── 00-foo/
 │   │   ├── filesystem/...   extracted resources of the package
 │   │   └── md5.txt          digest of the package they were extracted from
 │   └── 01-bar/
 │       └── md5.txt
-├── data/                    writable state of the sandbox, created by the loader
+├── data/                    writable state of the sandbox, created by the launcher
 └── patch/                   patch packages, created by the user
     ├── 00-foo.zip
     └── 01-bar.zip
 ```
 
 - `patch` is created by the user. A package only takes effect while it is
-  inside that directory, next to the loader of the standalone archive.
-- `cache` is created by the loader as soon as the `patch` directory holds at
+  inside that directory, next to the launcher of the standalone archive.
+- `cache` is created by the launcher as soon as the `patch` directory holds at
   least one package. Neither directory travels in the archive: the packer writes
   the resources only.
 - The patches of the directory are applied in ascending name order of their file
@@ -72,17 +72,17 @@ project only.
   replaced as long as its name keeps its place in that order.
 - The cache entry of a package is its file name without the extension, so
   `00-foo.zip` is extracted into `cache/00-foo`. Two packages which only differ
-  in the case of their extension would share an entry, so the loader logs the
+  in the case of their extension would share an entry, so the launcher logs the
   second one and skips it.
 - The digest of the package an entry was extracted from is recorded in
-  `cache/<name>/md5.txt`, and the file is the last file the loader writes into
+  `cache/<name>/md5.txt`, and the file is the last file the launcher writes into
   the entry: an entry whose digest is missing or does not match the package is
   dropped and extracted again, so a run which was interrupted half way cannot
   look like a complete extraction.
-- Deleting `cache` only costs the extraction of the next run. The loader does
+- Deleting `cache` only costs the extraction of the next run. The launcher does
   not delete the entry of a package which the user removed from `patch`: the
   directory holds what the runs so far extracted, and deleting it resets that.
-- `app` carries the injection modules the loader injects (`app/sandbox32.dll`
+- `app` carries the injection modules the launcher injects (`app/sandbox32.dll`
   and `app/sandbox64.dll`) beside the four domains, so the modules belong to the
   archive which is started. A patch package carries none of them: a package
   never replaces the modules of the archive it is applied to.
@@ -96,7 +96,7 @@ single isolation file keeps every other resource of the layers below it.
 
 ### Filesystem
 
-The loader mounts the layers of the packages **before** the layers of `app`,
+The launcher mounts the layers of the packages **before** the layers of `app`,
 the last package of the ascending order first, because the resolution of the
 sandbox prefers the layer which was mounted first: a file which exists in a
 package and in `app` is the file of the package, and the file of `01-bar.zip`
@@ -122,10 +122,10 @@ entry.
 
 ### Registry
 
-The virtual registry of `app` is the hive the loader seeds into the state
+The virtual registry of `app` is the hive the launcher seeds into the state
 directory of the sandbox, and the sandbox mounts exactly that hive: a package
 does not become a layer of its own, its hive is **merged into** the hive the
-sandbox mounts. The loader applies the hives of the packages in ascending name
+sandbox mounts. The launcher applies the hives of the packages in ascending name
 order, so the keys and the values of the last package which names an entry are
 the ones the sandboxed process observes, while an entry no package names keeps
 the content of `app` and of the earlier runs. The merge works per key and per
@@ -194,9 +194,9 @@ A file which is not a network isolation file of the supported version is skipped
 with everything it carries, so neither its redirections nor its proxy take part
 in the run.
 
-## Loader side
+## Launcher side
 
-The loader consumes the `patch` directory of the standalone archive it starts. A
+The launcher consumes the `patch` directory of the standalone archive it starts. A
 run
 
 1. enumerates `patch/*.zip` next to its configuration file, sorted by name in
@@ -216,13 +216,13 @@ run
 5. logs and skips a package which cannot be read, which keeps a broken package
    from failing the run. A package which carries no `filesystem` directory
    contributes no layer at all, a layer whose directory is named after a key the
-   loader does not know is skipped with the layers of that package, a hive which
+   launcher does not know is skipped with the layers of that package, a hive which
    cannot be mounted is skipped with the registry of that package, and a
    malformed isolation file is skipped by the sandbox for that domain and that
    layer alone.
 
 The four domains travel through the same injected configuration as one ordered
-list of paths per domain, so the loader itself carries no merge logic: the list
+list of paths per domain, so the launcher itself carries no merge logic: the list
 of a domain holds the file of the archive first and the file of every package
 after it, and the sandbox applies the list in that order.
 
@@ -231,7 +231,7 @@ after it, and the sandbox applies the list in that order.
 - **MD5 through CNG.** `bcrypt.dll` computes the digest without a session:
   `BCryptOpenAlgorithmProvider(BCRYPT_MD5_ALGORITHM)`, `BCryptHashData` and
   `BCryptFinishHash`. It avoids the legacy CryptoAPI of `advapi32`, which the
-  loader and the sandbox do not link, and it needs no `CryptAcquireContext`.
+  launcher and the sandbox do not link, and it needs no `CryptAcquireContext`.
   MD5 is a change detector here, not a security boundary: a package is replaced
   by the user of the application, so a fast digest of the archive is enough.
   The file is read in blocks, so a package of any size is hashed without being
@@ -268,17 +268,17 @@ after it, and the sandbox applies the list in that order.
   which is not an archive and a malformed isolation file of a package are
   logged and skipped, exactly like a malformed isolation file of the archive
   is: the resources of the layers below them stay in place.
-- **The loader reads the packages of the archive.** A patch package is written
-  by the `ZipWriter` of the packer, so the loader extracts it with the
+- **The launcher reads the packages of the archive.** A patch package is written
+  by the `ZipWriter` of the packer, so the launcher extracts it with the
   `ExtractArchive` of `src/core/ZipReader.cpp`, which is the read half of the
   same layout: the entry names of a package are sanitized by the very rules the
   packer writes them with.
-- **The sandbox merges the four domains, not the loader.** A domain travels as
+- **The sandbox merges the four domains, not the launcher.** A domain travels as
   the ordered list of the isolation files of the layers of the run, exactly like
-  the filesystem and the registry domain do, so the loader carries no merge
+  the filesystem and the registry domain do, so the launcher carries no merge
   logic and a malformed document is skipped for the layer which carries it
   without touching the layers below and above it. Composing the four domains
-  into one document in the loader would move the rules of a domain out of the
+  into one document in the launcher would move the rules of a domain out of the
   module which owns them.
 - **The state of the sandbox is applied after the layers.** The modifications
   the packaged application made to its environment (`data/environment/state.json`)

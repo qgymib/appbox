@@ -42,7 +42,7 @@ std::wstring VirtualPathOf(const wchar_t* name)
  * @return The response of the probe.
  */
 ProtocolReadFileFull::Rsp ReadHostFile(const std::wstring& folder, const wchar_t* name,
-                                       const std::filesystem::path& cwd, appbox::LoaderConfig& config)
+                                       const std::filesystem::path& cwd, appbox::LauncherConfig& config)
 {
     ProtocolReadFileFull::Req req;
     req.FileName = appbox::WideToUTF8(folder + L"\\" + name + L"\\host.txt");

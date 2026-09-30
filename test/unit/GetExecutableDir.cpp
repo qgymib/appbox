@@ -37,7 +37,7 @@ TEST(Unit_GetExecutableDir, DefaultConfigPathKeepsARelativePath)
 }
 
 /**
- * @brief The loader derives its configuration from the name of the running
+ * @brief The launcher derives its configuration from the name of the running
  *        binary: the file name carries the extension and the configuration
  *        appends the json suffix to it.
  */

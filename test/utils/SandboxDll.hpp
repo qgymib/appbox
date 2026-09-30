@@ -11,9 +11,9 @@ namespace appbox::test
 /**
  * @brief Get the path of the 32 bit sandbox injection module under test.
  *
- * The modules are resources of a packed archive and the loader injects them
+ * The modules are resources of a packed archive and the launcher injects them
  * from the resource root instead of writing a copy into its state directory,
- * so a case which starts the loader has to put the real modules into the
+ * so a case which starts the launcher has to put the real modules into the
  * resource root of its directory. The paths are the ones the run was started
  * with: `ctest` passes `--sandbox32=` and `--sandbox64=`, and the environment
  * variables `APPBOX_TEST_SANDBOX32` and `APPBOX_TEST_SANDBOX64` are the
@@ -38,7 +38,7 @@ inline const std::wstring& Sandbox64DllPath()
 /**
  * @brief Whether the injection modules of a run are available.
  *
- * A run without them cannot start the loader, so the cases which need the
+ * A run without them cannot start the launcher, so the cases which need the
  * sandbox skip themselves instead of failing: see
  * `appbox::test::CommonFixture::SetUp()`.
  *

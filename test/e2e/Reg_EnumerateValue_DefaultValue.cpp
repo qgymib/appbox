@@ -75,10 +75,10 @@ static std::string ReadRealValue(const std::wstring& subkey, const wchar_t* valu
  * @param[in] value The value name, empty for the default value of the key.
  * @param[in] data The value data.
  * @param[in] cwd The working directory of the test.
- * @param[in] config The loader configuration of the sandbox.
+ * @param[in] config The launcher configuration of the sandbox.
  */
 static void WriteSandboxValue(const std::wstring& subkey, const std::string& value, const std::string& data,
-                              const std::filesystem::path& cwd, const appbox::LoaderConfig& config)
+                              const std::filesystem::path& cwd, const appbox::LauncherConfig& config)
 {
     ProtocolRegWriteValue::Req req;
     req.Key = appbox::WideToUTF8(subkey);
@@ -99,11 +99,11 @@ static void WriteSandboxValue(const std::wstring& subkey, const std::string& val
  *
  * @param[in] subkey The key path relative to HKCU.
  * @param[in] cwd The working directory of the test.
- * @param[in] config The loader configuration of the sandbox.
+ * @param[in] config The launcher configuration of the sandbox.
  * @return The response of the probe.
  */
 static ProtocolRegEnumValue::Rsp EnumerateSandboxValues(const std::wstring& subkey, const std::filesystem::path& cwd,
-                                                        const appbox::LoaderConfig& config)
+                                                        const appbox::LauncherConfig& config)
 {
     ProtocolRegEnumValue::Req req;
     req.Key = appbox::WideToUTF8(subkey);

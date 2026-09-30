@@ -64,8 +64,8 @@ static bool IsLayoutEntry(const std::wstring& name)
 /**
  * @brief Put the sandbox injection modules into the resource root of a case.
  *
- * The modules are resources of a packed archive: the loader injects them from
- * `app` and keeps no copy of its own, so every case which starts the loader
+ * The modules are resources of a packed archive: the launcher injects them from
+ * `app` and keeps no copy of its own, so every case which starts the launcher
  * needs the real modules in its resource root. They are linked instead of
  * being copied, because a case only needs the files to be there and the
  * modules are megabytes large.
@@ -293,7 +293,7 @@ appbox::test::FsRoot::FsRoot(const std::filesystem::path& root, const FsDir::Vec
     }
 }
 
-appbox::LoaderConfig appbox::test::FsRoot::Build() const
+appbox::LauncherConfig appbox::test::FsRoot::Build() const
 {
     std::filesystem::create_directories(data_->root_);
 
@@ -307,12 +307,12 @@ appbox::LoaderConfig appbox::test::FsRoot::Build() const
 
     /*
      * The layout of the sandbox is a fixed convention which the case spells
-     * out itself, so the loader configuration carries no path at all: the
-     * loader resolves the state root and the resource root against the
+     * out itself, so the launcher configuration carries no path at all: the
+     * launcher resolves the state root and the resource root against the
      * directory of its configuration file, which is the working directory of
      * the case.
      */
-    return appbox::LoaderConfig{};
+    return appbox::LauncherConfig{};
 }
 
 bool appbox::test::FsRoot::Verify(size_t index, size_t n) const

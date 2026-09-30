@@ -3,7 +3,7 @@
 #
 # One executable runs both sides of the test suite of the project: the
 # in-process unit tests below `test/unit` and the end-to-end cases below
-# `test/e2e`, which start the real loader and let it inject the sandbox DLL
+# `test/e2e`, which start the real launcher and let it inject the sandbox DLL
 # into this executable started as the probe process of the case.
 #
 # The `--mode` option selects the side of a run; CTest registers one entry per
@@ -13,13 +13,13 @@
 # be registered here.
 #
 # The include directories put the project directories first: `test/utils` holds
-# headers with the same name as the loader ones and the loader headers have to
+# headers with the same name as the launcher ones and the launcher headers have to
 # win. The known folder helper of the cases is named `TestKnownFolder` for that
 # reason.
 ###############################################################################
 add_executable(AppBoxTests
     # Unit tests. They run in the process of the test executable and do not
-    # start the loader, so they are listed first and run first.
+    # start the launcher, so they are listed first and run first.
     "unit/AboutInfo.cpp"
     "unit/ApplicationIcon.cpp"
     "unit/BuildReport.cpp"
@@ -38,7 +38,7 @@ add_executable(AppBoxTests
     "unit/Log.cpp"
     "unit/LogFile.cpp"
     "unit/Md5.cpp"
-    "unit/MiniLauncher.cpp"
+    "unit/ProcessLauncher.cpp"
     "unit/ModuleTable.cpp"
     "unit/NetworkIsolationFile.cpp"
     "unit/NetworkModel.cpp"
@@ -107,20 +107,21 @@ add_executable(AppBoxTests
     "e2e/Fs_NewFile_WhiteoutInLower.cpp"
     "e2e/Fs_NewFile_WhiteoutInUpper.cpp"
     "e2e/Fs_QueryAttributes_LowerLayer.cpp"
+    "e2e/Fs_QueryAttributes_SystemPresetLayers.cpp"
     "e2e/Fs_ReadFile_WhiteoutInUpper.cpp"
     "e2e/Fs_RootIsolation_MergeWritesTheHostFile.cpp"
     "e2e/Fs_Whiteout_CreateInSandbox.cpp"
     "e2e/Fs_Whiteout_FileNotFound.cpp"
     "e2e/Fs_Whiteout_FolderHidesSubtree.cpp"
     "e2e/Fs_WriteLowerLayerFile_CopyUp.cpp"
-    "e2e/Loader_HideConsole.cpp"
-    "e2e/Loader_MissingSandboxDll.cpp"
-    "e2e/Loader_RegistryStateIsKept.cpp"
-    "e2e/Loader_RegistryStateIsReset.cpp"
-    "e2e/Loader_RegistryStateIsSeeded.cpp"
-    "e2e/Loader_SandboxDllFromTheApp.cpp"
-    "e2e/Loader_Shell.cpp"
-    "e2e/Loader_Startup.cpp"
+    "e2e/Launcher_HideConsole.cpp"
+    "e2e/Launcher_MissingSandboxDll.cpp"
+    "e2e/Launcher_RegistryStateIsKept.cpp"
+    "e2e/Launcher_RegistryStateIsReset.cpp"
+    "e2e/Launcher_RegistryStateIsSeeded.cpp"
+    "e2e/Launcher_SandboxDllFromTheApp.cpp"
+    "e2e/Launcher_Shell.cpp"
+    "e2e/Launcher_Startup.cpp"
     "e2e/Net_Dns_EveryResolutionApiIsRedirected.cpp"
     "e2e/Net_Dns_FamilyOfTheRedirectIsHonoured.cpp"
     "e2e/Net_Dns_HostnameIsNormalized.cpp"
@@ -181,7 +182,7 @@ add_executable(AppBoxTests
     "e2e/Reg_WriteCopy_WriteOpen_CopyUp.cpp"
     "e2e/Reg_WriteValue_NewKey.cpp"
 
-    # The operations which are executed inside the sandbox. The loader starts
+    # The operations which are executed inside the sandbox. The launcher starts
     # this executable as the probe process of a case.
     "probe/__init__.cpp"
     "probe/ConsoleWindow.cpp"
@@ -243,17 +244,17 @@ add_executable(AppBoxTests
 
     # Code under test. The unit tests work on the modules directly, so they are
     # compiled into the test executable instead of being linked from a library.
-    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/registry/HiveReader.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ConvertDosPathToNtPath.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/GetExecutableDir.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/HiveMerge.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/KnownFolder.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/MapBaseFS.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/Md5.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/MiniLauncher.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/ProcessJob.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/Shell.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../loader/utils/WinCall.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/registry/HiveReader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/ConvertDosPathToNtPath.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/GetExecutableDir.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/HiveMerge.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/KnownFolder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/MapBaseFS.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/Md5.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/ProcessJob.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/ProcessLauncher.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/Shell.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/WinCall.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/AboutInfo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationIcon.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
@@ -313,18 +314,18 @@ appbox_setup_target_wall(AppBoxTests)
 target_include_directories(AppBoxTests
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/..
-        ${CMAKE_CURRENT_SOURCE_DIR}/../loader
+        ${CMAKE_CURRENT_SOURCE_DIR}/../launcher
         ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${APPBOX_GENERATED_DIR}
 )
 
 # The build information header has to exist before the sources are compiled,
-# and the loader has to be built: the end-to-end cases start it.
+# and the launcher has to be built: the end-to-end cases start it.
 add_dependencies(AppBoxTests appbox_build_info)
-add_dependencies(AppBoxTests AppBoxLoader)
+add_dependencies(AppBoxTests AppBoxLauncher)
 
-# The end-to-end cases start the loader, which injects the modules below
+# The end-to-end cases start the launcher, which injects the modules below
 # `resource/lib`, and the unit test of the embedded resources reads the
 # resources of the packer.
 add_dependencies(AppBoxTests
@@ -362,7 +363,7 @@ target_compile_options(AppBoxTests PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TR
 find_package(Detours REQUIRED)
 target_link_libraries(AppBoxTests PRIVATE Detours)
 
-# Used by the known folder helper of the loader.
+# Used by the known folder helper of the launcher.
 target_link_libraries(AppBoxTests PRIVATE shell32 ole32)
 
 # Registry access of the sandbox hive reader (RegLoadAppKeyW and friends).
@@ -384,11 +385,11 @@ target_link_libraries(AppBoxTests PRIVATE libzip::zip)
 # Test entries
 #
 # Both entries run the same executable with a different mode, so the unit tests
-# stay a run of their own which does not start the loader.
+# stay a run of their own which does not start the launcher.
 ###############################################################################
 add_test(NAME AppBoxUnitTests
     COMMAND AppBoxTests
-        --loader=$<TARGET_FILE:AppBoxLoader>
+        --launcher=$<TARGET_FILE:AppBoxLauncher>
         --sandbox32=${APPBOX_RESOURCE_SANDBOX32}
         --sandbox64=${APPBOX_RESOURCE_SANDBOX64}
         --packer=$<TARGET_FILE:AppBox>
@@ -397,7 +398,7 @@ add_test(NAME AppBoxUnitTests
 
 add_test(NAME AppBoxTests
     COMMAND AppBoxTests
-        --loader=$<TARGET_FILE:AppBoxLoader>
+        --launcher=$<TARGET_FILE:AppBoxLauncher>
         --sandbox32=${APPBOX_RESOURCE_SANDBOX32}
         --sandbox64=${APPBOX_RESOURCE_SANDBOX64}
         --packer=$<TARGET_FILE:AppBox>

@@ -57,7 +57,7 @@ struct ProtocolResolveName
      * @brief The questions of one probe call.
      *
      * A call answers every question of its list inside the probe process the
-     * case started, so the cost of the chain - one loader start and one
+     * case started, so the cost of the chain - one launcher start and one
      * injection of the sandbox - is paid once per case instead of once per
      * question.
      */

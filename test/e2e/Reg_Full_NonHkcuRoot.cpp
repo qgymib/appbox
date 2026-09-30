@@ -29,12 +29,12 @@ std::vector<BYTE> StringData(const std::wstring& text)
  * @param[in] key_path Path of the key below the root key.
  * @param[in] value_name Name of the value.
  * @param[in] cwd Working directory of the test.
- * @param[in] config Loader configuration of the test.
+ * @param[in] config Launcher configuration of the test.
  * @return The response of the probe.
  */
 ProtocolRegReadValue::Rsp ReadValue(const std::string& root_name, const std::wstring& key_path,
                                     const std::string& value_name, const std::wstring& cwd,
-                                    const appbox::LoaderConfig& config)
+                                    const appbox::LauncherConfig& config)
 {
     ProtocolRegReadValue::Req req;
     req.Root = root_name;

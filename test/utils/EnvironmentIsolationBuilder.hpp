@@ -66,7 +66,7 @@ struct EnvironmentStateEntry
  *
  * The file describes the environment variables of the packaged application and
  * lives in the environment domain of the resources of the case, which is where
- * the loader looks for it (`<case root>/app/environment/isolation.json`). The
+ * the launcher looks for it (`<case root>/app/environment/isolation.json`). The
  * document is built from the schema structure of
  * `common/EnvironmentIsolation.hpp` instead of through the packer, so a case
  * also pins that the sandbox accepts a file which the workspace did not write.
@@ -109,7 +109,7 @@ std::string BuildEnvironmentIsolationText(const std::vector<EnvironmentIsolation
  * @brief Write the environment state file of a test sandbox.
  *
  * The file describes the modifications an earlier run made and lives in the
- * state directory of the sandbox, which the loader owns
+ * state directory of the sandbox, which the launcher owns
  * (`<case root>/data/environment/state.json`). A case which writes the document
  * itself pins what a run reads back without a run which wrote it first.
  *
@@ -124,9 +124,9 @@ bool WriteEnvironmentStateFile(const std::filesystem::path&              case_ro
 /**
  * @brief One variable of the environment of the test process.
  *
- * The environment of the packaged application is the environment of the loader,
+ * The environment of the packaged application is the environment of the launcher,
  * which the test process passes to it: a case which needs a value of the host
- * sets the variable before it starts the loader and the variable is removed
+ * sets the variable before it starts the launcher and the variable is removed
  * again when the case leaves.
  */
 class HostEnvironmentVariable

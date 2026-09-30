@@ -40,7 +40,7 @@ and so does a document whose proxy names another protocol, whose server is
 missing or whose port is not a port. The schema version therefore stays `1`, so
 an archive which was written before the member existed is still accepted.
 
-The loader derives the path of the file inside the extracted resources and hands
+The launcher derives the path of the file inside the extracted resources and hands
 it to the sandbox, together with the file of every patch package of the run (see
 [Patch layers](#patch-layers)). A missing file, a missing configuration or a
 malformed document is not an error: the sandbox then behaves like one without an
@@ -170,7 +170,7 @@ layer which does.
 
 ## Tests
 
-The end-to-end cases of the domain run the real loader with a probe process
+The end-to-end cases of the domain run the real launcher with a probe process
 inside the sandbox. The cases of the layers of a run which applies patch
 packages are:
 

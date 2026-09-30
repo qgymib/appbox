@@ -11,7 +11,7 @@ namespace appbox
 /**
  * @brief Header of one RPC frame exchanged over the named pipe transport.
  *
- * The structure is shared by the loader side and the sandbox side of the RPC
+ * The structure is shared by the launcher side and the sandbox side of the RPC
  * link, so it belongs to the common module and must stay layout compatible in
  * both the 32 bit and the 64 bit build.
  */

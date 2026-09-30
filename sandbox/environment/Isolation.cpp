@@ -108,9 +108,9 @@ void ApplyModifications(const std::vector<appbox::environment::Modification>& mo
 }
 
 /**
- * @brief Send the state of the sandbox to the loader.
+ * @brief Send the state of the sandbox to the launcher.
  *
- * The loader owns the state directory of the sandbox and writes the document
+ * The launcher owns the state directory of the sandbox and writes the document
  * the sandbox sends over the RPC pipe. A failure is not fatal: the environment
  * of the running process is the table, which stays correct, and only the next
  * run would miss the modification.
@@ -138,7 +138,7 @@ void PersistState()
         nlohmann::json response;
         if (!appbox::sandbox->client->Call(appbox::MsgEnvironment::Method, request, response))
         {
-            LOG_W("the loader did not keep the environment of the sandbox");
+            LOG_W("the launcher did not keep the environment of the sandbox");
         }
     }
     catch (const std::exception& e)

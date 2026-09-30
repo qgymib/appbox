@@ -243,7 +243,7 @@ TEST(Unit_ZipReader, ReportsEveryExtractedFile)
         ASSERT_TRUE(writer.AddDirectory("app/filesystem/#ProgramFiles#", error)) << error;
         ASSERT_TRUE(writer.AddDirectory("app/filesystem/#ProgramFiles#/MyApp", error)) << error;
         ASSERT_TRUE(writer.AddDirectory("app/filesystem/#ProgramFiles#/MyApp/data", error)) << error;
-        ASSERT_TRUE(writer.AddFileBuffer("MyApp.exe", "LOADER", 6, error)) << error;
+        ASSERT_TRUE(writer.AddFileBuffer("MyApp.exe", "LAUNCHER", 8, error)) << error;
         ASSERT_TRUE(writer.AddFileBuffer("MyApp.exe.json", "{}", 2, error)) << error;
         ASSERT_TRUE(writer.AddFileBuffer("app/filesystem/#ProgramFiles#/MyApp/app.exe", "EXE", 3, error)) << error;
         ASSERT_TRUE(writer.AddFileBuffer("app/filesystem/#ProgramFiles#/MyApp/data/config.txt", "CFG", 3, error))

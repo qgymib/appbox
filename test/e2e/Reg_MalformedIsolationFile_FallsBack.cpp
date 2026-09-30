@@ -70,11 +70,11 @@ bool WriteRealValue(const std::wstring& subkey, const std::wstring& name, const 
  * @param[in] subkey Path of the key below HKCU.
  * @param[in] name Name of the value.
  * @param[in] cwd Working directory of the case.
- * @param[in] config Loader configuration of the sandbox.
+ * @param[in] config Launcher configuration of the sandbox.
  * @return The response of the probe.
  */
 ProtocolRegReadValue::Rsp ReadSandboxValue(const std::wstring& subkey, const std::wstring& name,
-                                           const std::filesystem::path& cwd, const appbox::LoaderConfig& config)
+                                           const std::filesystem::path& cwd, const appbox::LauncherConfig& config)
 {
     ProtocolRegReadValue::Req req;
     req.Key = appbox::WideToUTF8(subkey);

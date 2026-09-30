@@ -15,7 +15,7 @@ namespace appbox
  * schema): every variable is listed with the value the user entered, its
  * isolation mode, its merge mode and the text which joins the two values. The
  * packer writes the file into the environment domain of the archive as
- * `app/environment/isolation.json`, the loader hands its path to the sandbox,
+ * `app/environment/isolation.json`, the launcher hands its path to the sandbox,
  * and the sandbox composes the environment of the packaged application from
  * the entries while it starts.
  *

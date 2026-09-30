@@ -70,7 +70,7 @@ struct ImportedFile
  * A startup file is an executable of an imported folder. The sandbox starts
  * every startup file whose `auto_start` flag is set; a startup file which is
  * not marked for auto start can be started by naming its `trigger` on the
- * `--X-AppBox-Startup` command line of the packaged loader.
+ * `--X-AppBox-Startup` command line of the packaged launcher.
  */
 struct StartupFile
 {
@@ -147,7 +147,7 @@ std::wstring FreeStartupTrigger(const std::vector<StartupFile>& files, const std
  * free of business rules.
  *
  * The startup file list keeps the order the files were added in, which is the
- * order the sandbox starts them in. The first entry also names the loader
+ * order the sandbox starts them in. The first entry also names the launcher
  * program inside the archive.
  */
 class PackModel

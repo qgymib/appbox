@@ -112,7 +112,7 @@ std::string BuildProgressMessage(const BuildProgress& progress, std::chrono::mil
 
     if (progress.stage == BuildStage::Preparing)
     {
-        /* No single file is handled while the loader payload is prepared. */
+        /* No single file is handled while the launcher payload is prepared. */
         return "Preparing the archive... - " + time;
     }
 
@@ -163,7 +163,7 @@ std::string BuildResultMessage(BuildOutcome outcome, const std::wstring& archive
         return error.empty() ? std::string("The build run failed.") : "The build run failed: " + error;
 
     case BuildOutcome::LaunchFailed:
-        return AppendArchivePath("The archive was written, but the packaged loader could not be started.", path);
+        return AppendArchivePath("The archive was written, but the packaged launcher could not be started.", path);
     }
 
     return "The build run finished.";

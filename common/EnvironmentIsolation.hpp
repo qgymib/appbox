@@ -79,7 +79,7 @@ namespace environment_isolation
  *
  * The file is the JSON document which carries the environment configuration
  * from the packer to the sandbox. The packer writes it into the environment
- * domain of the archive as `app/environment/isolation.json`, the loader hands
+ * domain of the archive as `app/environment/isolation.json`, the launcher hands
  * its path to the sandbox, and the sandbox composes the environment of the
  * packaged application from its entries.
  *

@@ -151,9 +151,9 @@ deleted:
 ```
 
 The hive of the resources is a read-only resource: mounting a hive writes to the
-file, so the loader copies it into the state directory of the sandbox on the
+file, so the launcher copies it into the state directory of the sandbox on the
 first run and the sandbox mounts that copy. A patch package carries a hive of
-its own, which the loader merges into that copy before the sandbox mounts it
+its own, which the launcher merges into that copy before the sandbox mounts it
 (see [Patch layers](#patch-layers)). The mounted hive is a real registry file:
 it grows as the sandboxed process writes keys and values and survives process
 restarts, so a sandbox can be reused — a delete survives with it, because the
@@ -185,11 +185,11 @@ The isolation file is UTF-8 JSON:
   `WriteCopy` instead of failing to start.
 
 `Build` of the packer writes the two artifacts into the registry domain of the
-resources of the archive, which is where the loader looks for them.
+resources of the archive, which is where the launcher looks for them.
 
 ## Patch layers
 
-The `patch` directory next to the loader of a standalone archive carries patch
+The `patch` directory next to the launcher of a standalone archive carries patch
 packages, and the registry domain of a package takes effect at every start (see
 [PatchLayer.md](PatchLayer.md)):
 
@@ -273,14 +273,14 @@ Handles below the private hive mount run the merged logic; every other handle
 redirected handle is translated back into the view path wherever its name is
 queried, so it behaves exactly like the key it shadows.
 
-## Loader registry browser
+## Launcher registry browser
 
-The admin UI of the loader (`enable_admin_ui`) contains a read-only registry
+The admin UI of the launcher (`enable_admin_ui`) contains a read-only registry
 browser which mirrors the layout of the Windows registry editor. It mounts
-`data\registry\user.hiv` itself — the hive the loader seeded and the sandbox
+`data\registry\user.hiv` itself — the hive the launcher seeded and the sandbox
 mounts — and reads everything relative to the returned root handle — the host registry is never touched, and keys which only
 exist in the real registry (the read through of the sandbox) are not part of
-the view. The loader never writes to the hive, and the whiteout store stays
+the view. The launcher never writes to the hive, and the whiteout store stays
 hidden. `Refresh` (F5) releases and remounts the file, picking up everything
 the sandboxed process flushed to disk; when the sandbox has not created the
 hive yet, the browser shows an empty tree with a hint instead of an error.

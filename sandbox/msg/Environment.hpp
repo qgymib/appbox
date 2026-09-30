@@ -13,12 +13,12 @@ namespace appbox
  * The sandbox composes the environment of the packaged application and keeps
  * every modification the application makes to it. The document which describes
  * those modifications lives in the state directory of the sandbox, which the
- * loader owns: the sandbox sends the document over the RPC pipe and the loader
+ * launcher owns: the sandbox sends the document over the RPC pipe and the launcher
  * writes it to `data/environment/state.json`.
  *
  * The message carries the text of the document instead of its parts, so the
  * schema of the state file (`common/EnvironmentIsolation.hpp`) is known to the
- * sandbox alone and the loader stays a writer of bytes.
+ * sandbox alone and the launcher stays a writer of bytes.
  *
  * The response is sent after the file is on disk, so a sandbox which received
  * the answer knows that its state survives the end of the process.

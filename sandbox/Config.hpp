@@ -62,7 +62,7 @@ struct SandboxConfig
     /**
      * @brief Whether the environment of the process is composed already.
      *
-     * A process the loader starts directly composes its environment from the
+     * A process the launcher starts directly composes its environment from the
      * environment of the host, the isolation file of the archive and the state
      * of an earlier run. A process a sandboxed application starts inherits the
      * environment of its parent, which is composed already: the flag tells the
@@ -144,7 +144,7 @@ struct SandboxConfig
      *
      * Every process the sandbox is injected into writes a log file of its own
      * into this directory, named after the program, the UTC time it started at
-     * and its process id (see `sandbox/utils/LogFile.hpp`). The loader names
+     * and its process id (see `sandbox/utils/LogFile.hpp`). The launcher names
      * the directory of the run, so the logs of a run land next to the
      * configuration of that run and a crash of a process leaves its log
      * behind. An empty directory leaves the sandbox without a log file.
@@ -157,8 +157,8 @@ struct SandboxConfig
      * @brief Lowest level the sandbox reports: `trace`, `debug`, `info`,
      *        `warn`, `err`, `critical` or `off`.
      *
-     * The loader fills it from `--X-AppBox-LogLevel`, which is the level of
-     * the run, so the sandbox and the loader of a run report the same levels.
+     * The launcher fills it from `--X-AppBox-LogLevel`, which is the level of
+     * the run, so the sandbox and the launcher of a run report the same levels.
      * A name the sandbox does not know reports every level.
      *
      * @note encoding in UTF-8

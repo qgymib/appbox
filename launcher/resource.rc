@@ -1,0 +1,24 @@
+// wxUSE_RC_MANIFEST has to be defined explicitly for MSVC: wx/msw/wx.rc only
+// embeds the application manifest when it is set, and wx/msw/rcdefs.h defines
+// it for windres only.
+#define wxUSE_RC_MANIFEST 1
+
+#define wxUSE_DPI_AWARE_MANIFEST 2
+#include <wx/msw/wx.rc>
+
+// The icon is shared by every executable of the repository and lives in the
+// docs directory. The resource compiler resolves this relative path through its
+// search path, which contains the directory of this file (CMake passes the
+// include directories of the target to the resource compiler).
+//
+// IDI_ICON1 is a named resource and sorts before the wxICON_AAA icon embedded
+// by wx/msw/wx.rc, so Windows picks this icon group for the executable and for
+// the default frame icon. MainFrame::ApplyWindowIcon() loads it by name for
+// the window and the taskbar button of the launcher.
+//
+// A packed launcher carries a second icon group as well: the packer appends the
+// icon of the packaged application below a resource name which the resource
+// directory orders before this one (see src/core/ApplicationIcon.cpp), so
+// Explorer shows the icon of the packaged application for the extracted
+// program while this group stays the icon of the launcher.
+IDI_ICON1 ICON DISCARDABLE "../docs/icon.ico"

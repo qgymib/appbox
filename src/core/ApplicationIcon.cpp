@@ -40,13 +40,13 @@ constexpr std::uint32_t kFirstResourceId = 1;
 constexpr std::uint32_t kLastResourceId = 0xFFFF;
 
 /**
- * @brief Resource name of the icon group which is added to the loader payload.
+ * @brief Resource name of the icon group which is added to the launcher payload.
  *
  * The resource directory orders the named groups before the numeric ids and
  * sorts the named groups alphabetically, and the shell shows the first group
  * of that order for a file. The leading exclamation mark sorts before every
  * name a resource script can produce, so the added group wins over the icon
- * groups of the loader without touching them.
+ * groups of the launcher without touching them.
  */
 const wchar_t* const kApplicationIconGroup = L"!AppBoxIcon";
 
@@ -611,9 +611,9 @@ bool AddIconResources(const std::filesystem::path& path, const std::vector<char>
  * @brief Write the copied icon group into an image.
  *
  * The group is added below the resource name kApplicationIconGroup, which the
- * resource directory orders before the icon groups of the loader, so the shell
+ * resource directory orders before the icon groups of the launcher, so the shell
  * shows the icon of the application for the file. The images are added below
- * the ids which the image does not use yet, so the icon groups of the loader
+ * the ids which the image does not use yet, so the icon groups of the launcher
  * keep their own images.
  *
  * The resource update of an image which was written moments ago can be denied
@@ -664,7 +664,7 @@ bool WriteIconGroup(const std::filesystem::path& path, const std::vector<char>& 
             /*
              * The icon is only used when the group really is the first one of
              * the resource directory; otherwise the file keeps the icon of the
-             * loader.
+             * launcher.
              */
             if (!IsFirstIconGroup(path, kApplicationIconGroup))
             {
@@ -772,19 +772,19 @@ std::filesystem::path TemporaryPayloadPath()
 namespace appbox
 {
 
-std::vector<char> ApplyApplicationIcon(const void* loader_bytes, std::size_t loader_size,
+std::vector<char> ApplyApplicationIcon(const void* launcher_bytes, std::size_t launcher_size,
                                        const std::wstring& application_path, std::string& warning)
 {
     warning.clear();
 
-    if (loader_bytes == nullptr || loader_size == 0)
+    if (launcher_bytes == nullptr || launcher_size == 0)
     {
-        warning = "the loader payload is empty";
+        warning = "the launcher payload is empty";
         return {};
     }
-    if (!LooksLikePeImage(loader_bytes, loader_size))
+    if (!LooksLikePeImage(launcher_bytes, launcher_size))
     {
-        warning = "the loader payload is not a PE image";
+        warning = "the launcher payload is not a PE image";
         return {};
     }
     if (application_path.empty())
@@ -816,7 +816,7 @@ std::vector<char> ApplyApplicationIcon(const void* loader_bytes, std::size_t loa
 
         const auto          temporary_path = TemporaryPayloadPath();
         const TemporaryFile payload(temporary_path);
-        if (!WriteFileBytes(temporary_path, loader_bytes, loader_size, error))
+        if (!WriteFileBytes(temporary_path, launcher_bytes, launcher_size, error))
         {
             warning = error;
             return {};

@@ -404,7 +404,7 @@ inline void from_json(const nlohmann::json& json, Document& document)
  * ```
  *
  * The store is shared knowledge: the sandbox writes and reads it, and the
- * loader has to skip it while it enumerates the hive, so both sides use the
+ * launcher has to skip it while it enumerates the hive, so both sides use the
  * names below instead of a literal.
  */
 namespace registry_whiteout

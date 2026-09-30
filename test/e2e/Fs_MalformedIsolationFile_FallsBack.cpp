@@ -25,11 +25,11 @@ constexpr int kUnknownVersion = 99;
  * @brief Read a file inside the sandbox.
  * @param[in] file Path of the file in the view.
  * @param[in] cwd Working directory of the case.
- * @param[in] config Loader configuration of the sandbox.
+ * @param[in] config Launcher configuration of the sandbox.
  * @return The response of the probe.
  */
 ProtocolReadFileFull::Rsp ReadFile(const std::wstring& file, const std::filesystem::path& cwd,
-                                   const appbox::LoaderConfig& config)
+                                   const appbox::LauncherConfig& config)
 {
     ProtocolReadFileFull::Req req;
     req.FileName = appbox::WideToUTF8(file);

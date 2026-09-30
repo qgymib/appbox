@@ -28,7 +28,7 @@ constexpr wchar_t kName[] = L"AppBoxTest_Patch.NoPackage.txt";
  * Expected:
  * 1. The read returns the content of the archive, because a file without the
  *    extension of a package is not applied.
- * 2. The cache directory was not created, because the loader only creates it
+ * 2. The cache directory was not created, because the launcher only creates it
  *    while the patch directory holds a package.
  */
 TEST_F(E2E_Patch, NoPackageKeepsTheCacheEmpty)

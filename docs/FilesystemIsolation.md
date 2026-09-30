@@ -19,7 +19,7 @@ expressed with **marker files** created inside the upper layer, so the read-only
 stay untouched and can be shared between runs. Operations that are not redirected yet are
 listed in [Known gaps and limitations](#known-gaps-and-limitations).
 
-Isolation is active only when the sandbox DLL was injected by the loader
+Isolation is active only when the sandbox DLL was injected by the launcher
 (`appbox::Sandbox::bIsolationMode`). Outside isolation mode the hooks are never
 attached.
 
@@ -94,7 +94,7 @@ which no listed folder covers follows the **root of the view**, which is the
 entry whose path is empty: the mode picked for the `Sandbox Filesystem`
 container of the workspace decides the behaviour of every location outside the
 recorded paths, including the locations which are not part of the virtual
-filesystem at all (for example `C:\Windows`). A conflict between the virtual
+filesystem at all (for example `C:\Temp`). A conflict between the virtual
 filesystem and the host filesystem is resolved in favour of the virtual
 filesystem.
 
@@ -126,7 +126,7 @@ deleted inside the sandbox.
 
 The packer writes the modes of the workspace as a JSON document, which `Build`
 stores in the filesystem domain of the resources of the archive as
-`app/filesystem/isolation.json` — next to the layers it describes. The loader
+`app/filesystem/isolation.json` — next to the layers it describes. The launcher
 skips the file while it enumerates the layers of that folder, because every
 other child of the folder is a layer of the view:
 
@@ -162,7 +162,7 @@ which are of another type, or which names a mode its kind cannot hold is
 therefore refused while the file is read, which is what keeps the packer and the
 sandbox in step.
 
-The loader derives the path of the file from the resources of the archive and
+The launcher derives the path of the file from the resources of the archive and
 passes it to the sandbox. A missing file, a missing configuration or a malformed document is not
 an error: the sandbox then behaves like one without an isolation file, in which
 every entry keeps the default of its kind and the host filesystem stays visible.
@@ -201,18 +201,18 @@ followed by a path separator, so `...\AppData\RoamingX` does not match the
 `...\AppData\Roaming` mapping.
 
 A layer key is a `#Name#` delimited token (`#ProgramFiles#`, `#USERPROFILE#`,
-`#Documents#`, `#Desktop#`, a single drive letter); `#REGISTRY#` and
-`#NETWORK#` are reserved for the other isolation domains. The packer offers one
+`#Documents#`, `#Desktop#`, `#Windows#`, `#System32#`, a single drive letter);
+`#REGISTRY#` and `#NETWORK#` are reserved for the other isolation domains. The packer offers one
 layer per preset directory of its filesystem workspace and names it after the
-layer key of that preset, so the loader knows exactly the keys the packer
+layer key of that preset, so the launcher knows exactly the keys the packer
 produces: a directory which is named after any other key is rejected with
 `Unknown folder`. Layers are matched longest prefix first, so nested prefixes
 are matched before their parents. An archive which was packed with the former
-`%Name%` form has to be packed again: the loader rejects the unknown layer
+`%Name%` form has to be packed again: the launcher rejects the unknown layer
 name.
 
 A layer key can be held by several layers of one run, because a patch package
-carries layers of its own: the loader mounts the layers of the packages before
+carries layers of its own: the launcher mounts the layers of the packages before
 the layers of `app`, the last package of the ascending name order first, and the
 resolution prefers the layer which is mounted first. A file which exists in a
 package and in `app` is therefore the file of the package, and a file only `app`
@@ -236,12 +236,12 @@ filesystem.
 `AppBox` produces self-contained archives which double as a base filesystem.
 The layout is the fixed convention of `common/SandboxLayout.hpp`: the read-only
 resources of the packaged application travel below `app`, while the state of the
-sandbox does not travel at all — the loader creates the `data` directory at run
+sandbox does not travel at all — the launcher creates the `data` directory at run
 time, next to `app`, so deleting it resets the sandbox to the state the archive
 carries:
 
 ```
-<startup file name>                    embedded loader payload
+<startup file name>                    embedded launcher payload
 <startup file name>.json               startup configuration
 app/filesystem/isolation.json          isolation modes of the filesystem workspace
 app/filesystem/<layer key>/<import>/... imported folder content
@@ -255,16 +255,19 @@ applied on top of the archive: the layers and the isolation modes of a package
 override the resources it carries and keep the resources it does not carry (see
 [Patch Layers](PatchLayer.md)).
 
-The loader resolves its configuration as `<own file name>.json` in its own
-directory, so renaming the extracted loader program requires renaming the
-configuration file as well. Running the extracted loader program shows the
+The launcher resolves its configuration as `<own file name>.json` in its own
+directory, so renaming the extracted launcher program requires renaming the
+configuration file as well. Running the extracted launcher program shows the
 imported folders at their preset locations (`#ProgramFiles#\<import>`,
-`#USERPROFILE#\<import>`, `#Documents#\<import>`, `#Desktop#\<import>`) and
-starts the selected startup files inside the isolation. The folders of the user
-hang below `Current User Directory` in the tree of the packer, yet every preset
-directory owns a layer of its own: `Documents` and `Desktop` are resolved from
-their own known folder id, which keeps them correct when the shell redirects
-them (for example into OneDrive).
+`#USERPROFILE#\<import>`, `#Documents#\<import>`, `#Desktop#\<import>`,
+`#Windows#\<import>`, `#System32#\<import>`) and starts the selected startup
+files inside the isolation. The folders of the user hang below
+`Current User Directory` in the tree of the packer and the system directory
+hangs below `Windows`, yet every preset directory owns a layer of its own:
+`Documents` and `Desktop` are resolved from their own known folder id, which
+keeps them correct when the shell redirects them (for example into OneDrive),
+and `System32` is resolved from its own id instead of being a subdirectory of
+the `Windows` layer.
 
 ## Key behavior rules
 

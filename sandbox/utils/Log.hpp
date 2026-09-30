@@ -147,7 +147,7 @@ void LogEnable(bool enable);
 /**
  * @brief Set the lowest level the sandbox reports.
  *
- * The level is the level of the run: the loader names it with
+ * The level is the level of the run: the launcher names it with
  * `--X-AppBox-LogLevel` and the injected configuration carries it, so a run
  * which asks for `info` never writes the trace of every kernel call of the
  * application into its log file.

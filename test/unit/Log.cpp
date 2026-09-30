@@ -212,7 +212,7 @@ TEST(Unit_Log, LogLevelSuppressesLowerLevels)
 }
 
 /**
- * @brief The name of a level is the name the option of the loader accepts, and
+ * @brief The name of a level is the name the option of the launcher accepts, and
  *        `off` reports nothing at all.
  */
 TEST(Unit_Log, SetLogLevelFromNameReadsTheNamesOfTheRun)

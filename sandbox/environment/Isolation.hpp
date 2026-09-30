@@ -32,7 +32,7 @@ namespace environment
  *    of the application made and which win over the two sources above.
  *
  * Every modification the application makes afterwards is written back to the
- * state file through the RPC method of the loader, so it survives the end of
+ * state file through the RPC method of the launcher, so it survives the end of
  * the process which made it.
  *
  * A missing or malformed document is never fatal: the module logs the reason
@@ -188,8 +188,8 @@ std::string BuildChildInjectData();
  * @brief Resolve an entry point of the environment API of the process.
  *
  * The entry points live in `kernelbase.dll` on a current system and in
- * `kernel32.dll` on an older one, so both modules are asked. The loader of a
- * hook calls this while the hooks are attached.
+ * `kernel32.dll` on an older one, so both modules are asked. The load function
+ * of a hook calls this while the hooks are attached.
  *
  * @param[in] name Name of the export.
  * @return The address of the entry point, null when neither module exports it.

@@ -20,9 +20,9 @@ struct ProtocolStartupStarted
 /**
  * @brief Probe which reports the startup file which started this process.
  *
- * The end-to-end cases of the loader put a marker into the arguments of every
+ * The end-to-end cases of the launcher put a marker into the arguments of every
  * startup file, so the probe tells which of the startup files of a
- * configuration the loader really started.
+ * configuration the launcher really started.
  */
 extern Probe ProbeStartupStarted;
 

@@ -230,7 +230,7 @@ void appbox::SetLogLevel(MsgLogLevel level)
 bool appbox::SetLogLevelFromName(const std::string& name)
 {
     /*
-     * The names are the names of the option of the loader, so a run names its
+     * The names are the names of the option of the launcher, so a run names its
      * level once and the sandbox reports exactly the levels the run asked for.
      */
     static const struct

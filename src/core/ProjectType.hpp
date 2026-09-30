@@ -14,19 +14,19 @@ namespace appbox
  * Settings workspace and travels with the project file, so it is a property of
  * the session and not of the models of the workspaces.
  *
- * - `Standalone` - the self-contained archive of `Pack()`: the loader program
+ * - `Standalone` - the self-contained archive of `Pack()`: the launcher program
  *   named after the first startup file, its configuration and the read-only
  *   resources below `app`. The archive is extracted and started on its own.
  * - `Patch` - the patch package of `PackPatch()`: the very same resources,
- *   rooted at the archive root instead of below `app`, and without the loader
+ *   rooted at the archive root instead of below `app`, and without the launcher
  *   program and its configuration. The package is dropped into the `patch`
- *   directory next to the loader of a standalone archive, which merges every
+ *   directory next to the launcher of a standalone archive, which merges every
  *   patch of that directory in ascending name order.
  */
 enum class ProjectType
 {
-    Standalone, ///< Self-contained archive with the loader and the resources.
-    Patch       ///< Patch package with the resources of `app`, without a loader.
+    Standalone, ///< Self-contained archive with the launcher and the resources.
+    Patch       ///< Patch package with the resources of `app`, without a launcher.
 };
 
 /**

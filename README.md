@@ -12,7 +12,7 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 - **Registry Isolation**: Redirects all five root keys onto a private hive file inside the overlay and enforces three isolation modes (`Full`, `WriteCopy`, `Hide`); the host registry is never modified (see [Registry Isolation](docs/RegistryIsolation.md)).
 - **Network Isolation**: Answers the name resolution of the packaged application from the redirections of the workspace, and optionally carries its TCP and UDP traffic through a SOCKS5 proxy (see [Network Isolation](docs/NetworkIsolation.md)).
 - **Environment Isolation**: Collects the environment variables the packaged application sees inside the sandbox with the isolation mode and the merge mode of every variable; the composed environment lives in a private table of the sandbox, so the environment of the host is never modified and the modifications of the application survive in the state directory of the sandbox (see [Environment Isolation](docs/EnvironmentIsolation.md)).
-- **Patch Packages**: The `Project Type` box of the packer writes either a self-contained archive or a patch package which holds the resources of the packaged application without the loader and without the sandbox injection modules; the packages of the `patch` directory next to a standalone archive are merged into its resources in ascending name order — the filesystem layers, the virtual registry, the network configuration and the environment variables of a package included (see [Patch Layers](docs/PatchLayer.md)).
+- **Patch Packages**: The `Project Type` box of the packer writes either a self-contained archive or a patch package which holds the resources of the packaged application without the launcher and without the sandbox injection modules; the packages of the `patch` directory next to a standalone archive are merged into its resources in ascending name order — the filesystem layers, the virtual registry, the network configuration and the environment variables of a package included (see [Patch Layers](docs/PatchLayer.md)).
 
 ## Requirements
 
@@ -66,7 +66,7 @@ generator adds below it:
 | Product | Path |
 | --- | --- |
 | `AppBox.exe` (main product) | `build/<config>/<config>/AppBox.exe` |
-| `AppBoxLoader.exe` | `build/<config>/loader/<config>/AppBoxLoader.exe` |
+| `AppBoxLauncher.exe` | `build/<config>/launcher/<config>/AppBoxLauncher.exe` |
 | `AppBoxTracer.exe` (API tracer) | `build/<config>/tracer/<config>/AppBoxTracer.exe` |
 | `AppBoxTests.exe` (unit and end-to-end tests) | `build/<config>/test/<config>/AppBoxTests.exe` |
 
@@ -92,19 +92,19 @@ Configuration...` and is restored by `File -> Import Configuration...`.
 
 The `Project Type` box of the `Output` tab selects the product of the `Build`
 command. `Standalone (ZIP)` writes a self-contained archive which carries the
-loader, its configuration, the two sandbox injection modules and the resources
+launcher, its configuration, the two sandbox injection modules and the resources
 of the application below `app`; `Patch (ZIP)` writes a patch package which holds
 the same resources rooted at the archive root, so it can be dropped into the
-`patch` directory next to a standalone archive, where the loader merges it on
+`patch` directory next to a standalone archive, where the launcher merges it on
 top of the resources of `app` (see [Patch Layers](docs/PatchLayer.md)).
 
-### Loader
+### Launcher
 
 wxWidgets-based GUI application for managing sandboxed processes: it injects
 the sandbox DLLs the archive carries below `app` (`sandbox32.dll` and
-`sandbox64.dll`) and starts the startup files of its configuration. The loader
+`sandbox64.dll`) and starts the startup files of its configuration. The launcher
 keeps the read-only resources of the packed application below `app` and the
-state of the sandbox below `data`, both beside the loader program: the state
+state of the sandbox below `data`, both beside the launcher program: the state
 directory is created at run time and carries the writable overlay of the
 filesystem and the registry hive the sandbox mounts. Deleting it resets the
 sandbox to the state the archive was packed with.
@@ -133,7 +133,7 @@ See [Tracer](docs/Tracer.md) for the usage, the mechanism and the measured cost.
 
 Windows DLL providing runtime isolation: filesystem, registry and network
 redirection via API hooks, an overlay filesystem for non-destructive testing,
-and named pipe communication with the loader.
+and named pipe communication with the launcher.
 
 ## Variable Expansion
 
@@ -154,6 +154,8 @@ compared ignoring the case, so `%appbox:documents%` names the same folder as
 | `USERPROFILE` | `FOLDERID_Profile` | `C:\Users\Alice` |
 | `Documents` | `FOLDERID_Documents` | `C:\Users\Alice\Documents` |
 | `Desktop` | `FOLDERID_Desktop` | `C:\Users\Alice\Desktop` |
+| `Windows` | `FOLDERID_Windows` | `C:\Windows` |
+| `System32` | `FOLDERID_System` | `C:\Windows\System32` |
 
 The list follows the preset directories of the Filesystem workspace: the name of
 a variable is the layer key of a preset directory without its `#` delimiters, so
@@ -186,7 +188,7 @@ The rules of the expansion:
   while it runs is reported as the application spelled it for the rest of that
   run.
 
-The names are resolved by the loader (`loader/utils/KnownFolder.*`) and handed
+The names are resolved by the launcher (`launcher/utils/KnownFolder.*`) and handed
 to the sandbox through the injected configuration; the expansion itself is the
 pure function `appbox::ExpandVariables()` of
 `sandbox/utils/VariableExpansion.*`.
@@ -197,7 +199,7 @@ pure function `appbox::ExpandVariables()` of
 - [Registry Isolation](docs/RegistryIsolation.md) - Registry isolation architecture
 - [Network Isolation](docs/NetworkIsolation.md) - Network isolation architecture
 - [Environment Isolation](docs/EnvironmentIsolation.md) - Environment isolation architecture
-- [Patch Layers](docs/PatchLayer.md) - Patch packages: layout, merge rules and the loader side
+- [Patch Layers](docs/PatchLayer.md) - Patch packages: layout, merge rules and the launcher side
 - [Tracer](docs/Tracer.md) - API tracer: usage, mechanism and measured cost
 - [Tests](test/README.md) - Unit tests and end-to-end tests of the sandbox
 

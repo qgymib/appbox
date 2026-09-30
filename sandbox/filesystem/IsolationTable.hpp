@@ -177,7 +177,7 @@ public:
     /**
      * @brief Get the layer key of a mapped layer folder.
      *
-     * The loader maps a layer to `<base filesystem>\filesystem\<layer key>`,
+     * The launcher maps a layer to `<base filesystem>\filesystem\<layer key>`,
      * so the key is the last component of the host path of the layer, for
      * example `#ProgramFiles#` for
      * `\??\D:\Sandbox\filesystem\#ProgramFiles#`.

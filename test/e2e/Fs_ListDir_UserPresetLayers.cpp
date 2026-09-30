@@ -35,7 +35,7 @@ bool HoldsFile(const ProtocolListDir::Rsp& rsp, const std::string& name)
  * @return The listing of the folder inside the view of the sandbox.
  */
 ProtocolListDir::Rsp ListLayer(const std::wstring& layer, const std::filesystem::path& cwd,
-                               appbox::LoaderConfig& config)
+                               appbox::LauncherConfig& config)
 {
     ProtocolListDir::Req req;
     req.path = CLI::narrow(GetKnownFolderPath(layer, false));

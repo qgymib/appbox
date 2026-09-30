@@ -143,7 +143,7 @@ struct Sandbox
      *
      * The file carries the modifications the packaged application made to its
      * environment. The sandbox reads it while it composes the environment of
-     * the run and sends it back to the loader whenever the application changes
+     * the run and sends it back to the launcher whenever the application changes
      * a variable, so a modification survives the end of the process which made
      * it.
      */
@@ -165,7 +165,7 @@ struct Sandbox
      * @brief The modifications the packaged application made.
      *
      * The state is written back to the state file through the RPC method of
-     * the loader, so the environment of the next run carries them.
+     * the launcher, so the environment of the next run carries them.
      */
     environment::State env_state;
 

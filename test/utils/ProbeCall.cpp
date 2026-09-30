@@ -17,7 +17,7 @@
 #include <base64.hpp>
 #include <CLI/Encoding.hpp>
 #include "utils/Semaphore.hpp"
-#include "loader/Config.hpp"
+#include "launcher/Config.hpp"
 #include "Random.hpp"
 #include "WString.hpp"
 #include "BuildCommandLine.hpp"
@@ -112,7 +112,7 @@ static void OnProbeResponse(uint64_t id, const nlohmann::json& req)
 
     {
         /*
-         * Several probe processes may report for the same key: the loader
+         * Several probe processes may report for the same key: the launcher
          * starts one process per startup file, so the results are collected in
          * a list as well.
          */
@@ -211,7 +211,7 @@ ProbeKey::~ProbeKey()
  * the test executable instead of the program of the case.
  *
  * The console window of the probe is hidden as well: the probe is a console
- * program, while the loader and its launcher are GUI programs without a
+ * program, while the launcher and its process launcher are GUI programs without a
  * console, so Windows would open a console window for every probe process of
  * every case and that window would pop up on the desktop of the machine the
  * cases run on.
@@ -219,9 +219,9 @@ ProbeKey::~ProbeKey()
  * @param[in] config Configuration of the case.
  * @return The configuration of the probe run.
  */
-static appbox::LoaderConfig OverrideConfig(const appbox::LoaderConfig& config)
+static appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& config)
 {
-    appbox::LoaderConfig copy_config = config;
+    appbox::LauncherConfig copy_config = config;
 
     if (copy_config.startups.empty())
     {
@@ -230,7 +230,7 @@ static appbox::LoaderConfig OverrideConfig(const appbox::LoaderConfig& config)
          * starts the probe once, like the single main program of the packaged
          * application.
          */
-        appbox::LoaderStartup startup;
+        appbox::LauncherStartup startup;
         startup.trigger = "probe";
         startup.auto_start = true;
         copy_config.startups.push_back(std::move(startup));
@@ -251,19 +251,19 @@ static appbox::LoaderConfig OverrideConfig(const appbox::LoaderConfig& config)
 }
 
 /**
- * @brief Run the loader of a configuration and wait for it.
+ * @brief Run the launcher of a configuration and wait for it.
  *
  * The configuration is written beside the working directory of the case, which
- * is also the directory the loader resolves its sandbox layout against.
+ * is also the directory the launcher resolves its sandbox layout against.
  *
  * @param[in] cwd The current working directory.
- * @param[in] config The loader configuration.
- * @param[in] args Arguments of the loader, without the options which select
+ * @param[in] config The launcher configuration.
+ * @param[in] args Arguments of the launcher, without the options which select
  *                 and log the configuration.
- * @return The exit code of the loader.
+ * @return The exit code of the launcher.
  */
-static DWORD RunLoader(const std::wstring& cwd, const appbox::LoaderConfig& config,
-                       const std::vector<std::wstring>& args)
+static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& config,
+                         const std::vector<std::wstring>& args)
 {
     std::filesystem::path cfg_path;
     {
@@ -283,7 +283,7 @@ static DWORD RunLoader(const std::wstring& cwd, const appbox::LoaderConfig& conf
     };
     full_args.insert(full_args.end(), args.begin(), args.end());
 
-    auto cmd = appbox::BuildCommandLine(appbox::test::config.loader_path, full_args);
+    auto cmd = appbox::BuildCommandLine(appbox::test::config.launcher_path, full_args);
 
     STARTUPINFOW startup_info;
     ZeroMemory(&startup_info, sizeof(startup_info));
@@ -292,7 +292,7 @@ static DWORD RunLoader(const std::wstring& cwd, const appbox::LoaderConfig& conf
     PROCESS_INFORMATION process_info;
     ZeroMemory(&process_info, sizeof(process_info));
 
-    if (!CreateProcessW(appbox::test::config.loader_path.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr,
+    if (!CreateProcessW(appbox::test::config.launcher_path.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr,
                         nullptr, &startup_info, &process_info))
     {
         auto msg = fmt::format("CreateProcessW failed: {}", GetLastError());
@@ -322,16 +322,16 @@ static DWORD RunLoader(const std::wstring& cwd, const appbox::LoaderConfig& conf
 }
 
 /**
- * @brief Run the loader so it starts the probe process of a case.
+ * @brief Run the launcher so it starts the probe process of a case.
  * @param[in] key Probe key passed to the probe processes.
  * @param[in] cwd The current working directory.
- * @param[in] config The loader configuration.
+ * @param[in] config The launcher configuration.
  * @param[in] trigger Trigger for `--X-AppBox-Startup`, empty to omit the
- *                    option so the loader starts the auto start files.
- * @return The exit code of the loader.
+ *                    option so the launcher starts the auto start files.
+ * @return The exit code of the launcher.
  */
-static DWORD RunLoaderForProbe(const std::string& key, const std::wstring& cwd, const appbox::LoaderConfig& config,
-                               const std::string& trigger)
+static DWORD RunLauncherForProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config,
+                                 const std::string& trigger)
 {
     std::vector<std::wstring> args;
     if (!trigger.empty())
@@ -346,7 +346,7 @@ static DWORD RunLoaderForProbe(const std::string& key, const std::wstring& cwd, 
     args.push_back(L"--probe_key");
     args.push_back(CLI::widen(key));
 
-    return RunLoader(cwd, config, args);
+    return RunLauncher(cwd, config, args);
 }
 
 /**
@@ -380,9 +380,9 @@ static void ReportSandboxLogs(const std::wstring& cwd)
     }
 }
 
-static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, const appbox::LoaderConfig& config)
+static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config)
 {
-    const auto exit_code = RunLoaderForProbe(key, cwd, config, std::string());
+    const auto exit_code = RunLauncherForProbe(key, cwd, config, std::string());
     if (exit_code != 0)
     {
         ReportSandboxLogs(cwd);
@@ -394,12 +394,12 @@ static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, cons
 }
 
 nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::json& data, const std::wstring& cwd,
-                                       const LoaderConfig& loader_config)
+                                       const LauncherConfig& launcher_config)
 {
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
 
-    auto copy_config = OverrideConfig(loader_config);
+    auto copy_config = OverrideConfig(launcher_config);
 
     ProbeKey key(name, data);
     RunSelfAsProbe(key.key, cwd, copy_config);
@@ -408,18 +408,18 @@ nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::
     return key.ctx->result;
 }
 
-appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, const LoaderConfig& loader_config,
+appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launcher_config,
                                                        const std::string& trigger)
 {
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
 
-    auto copy_config = OverrideConfig(loader_config);
+    auto copy_config = OverrideConfig(launcher_config);
 
     ProbeKey key("StartupStarted", nlohmann::json::object());
 
     StartupRun run;
-    run.exit_code = static_cast<std::uint32_t>(RunLoaderForProbe(key.key, cwd, copy_config, trigger));
+    run.exit_code = static_cast<std::uint32_t>(RunLauncherForProbe(key.key, cwd, copy_config, trigger));
 
     {
         std::lock_guard<std::mutex> lock(key.ctx->result_mutex);
@@ -437,14 +437,14 @@ appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, 
     return run;
 }
 
-appbox::test::ShellRun appbox::test::ProbeShellRun(const std::wstring& cwd, const LoaderConfig& loader_config,
+appbox::test::ShellRun appbox::test::ProbeShellRun(const std::wstring& cwd, const LauncherConfig& launcher_config,
                                                    const std::vector<std::string>& shell_command,
                                                    const std::string&              trigger)
 {
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
 
-    auto copy_config = OverrideConfig(loader_config);
+    auto copy_config = OverrideConfig(launcher_config);
 
     ProbeKey key("StartupStarted", nlohmann::json::object());
 
@@ -456,7 +456,7 @@ appbox::test::ShellRun appbox::test::ProbeShellRun(const std::wstring& cwd, cons
     }
 
     /*
-     * The shell takes the remaining arguments of the loader as its command, so
+     * The shell takes the remaining arguments of the launcher as its command, so
      * the command follows the option itself and no probe process is added.
      */
     args.push_back(L"--X-AppBox-Shell");
@@ -466,12 +466,12 @@ appbox::test::ShellRun appbox::test::ProbeShellRun(const std::wstring& cwd, cons
     }
 
     ShellRun run;
-    run.exit_code = static_cast<std::uint32_t>(RunLoader(cwd, copy_config, args));
+    run.exit_code = static_cast<std::uint32_t>(RunLauncher(cwd, copy_config, args));
 
     /*
      * The command of the case is run by the shell instead of the probe, so no
-     * report is waited for: a report which arrived before the loader left was
-     * sent by a startup file the loader started although it had to ignore it.
+     * report is waited for: a report which arrived before the launcher left was
+     * sent by a startup file the launcher started although it had to ignore it.
      */
     {
         std::lock_guard<std::mutex> lock(key.ctx->result_mutex);

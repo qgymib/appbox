@@ -107,7 +107,7 @@ namespace filesystem_isolation
  *
  * The file is the JSON document which carries the isolation modes of the
  * virtual filesystem from the packer to the sandbox: the packer writes it into
- * the overlay of the archive, the loader hands its path to the sandbox, and
+ * the overlay of the archive, the launcher hands its path to the sandbox, and
  * the sandbox redirects the filesystem of the packaged application through the
  * modes. The packer lists the entries the user set a mode for; an entry which
  * is not listed follows the closest listed folder above it, then the root

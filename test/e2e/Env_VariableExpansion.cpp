@@ -18,8 +18,9 @@ using namespace appbox::test;
  *    of this machine with `%APPBOX:<NAME>%`, in the canonical spelling and in
  *    another one of the prefix and of the name.
  * 3. One of them is merged in front of the value of the host, one references a
- *    name the sandbox does not know and one references a `%NAME%` variable of
- *    the shell.
+ *    name the sandbox does not know, one references a `%NAME%` variable of the
+ *    shell and one references the system folder of the machine, which the
+ *    preset directories of the packer offer like the folders of the user.
  * 4. The sandboxed application reads every variable.
  *
  * Expected:
@@ -43,6 +44,7 @@ TEST_F(E2E_Env, VariableExpansion)
 
     const std::wstring documents = GetKnownFolderPath(L"#Documents#", false);
     const std::wstring profile = GetKnownFolderPath(L"#USERPROFILE#", false);
+    const std::wstring windows = GetKnownFolderPath(L"#Windows#", false);
 
     const HostEnvironmentVariable host(L"APPBOX_ENV_EXPAND_PREPEND", L"host");
 
@@ -59,12 +61,15 @@ TEST_F(E2E_Env, VariableExpansion)
                       { L"APPBOX_ENV_EXPAND_UNKNOWN",   L"%APPBOX:Unknown%\\Foo",        appbox::EnvironmentIsolation::WriteCopy,
                        appbox::EnvironmentMergeMode::Replace,                                                                                                            L""  },
                       { L"APPBOX_ENV_EXPAND_SHELL",     L"%PATH%",                       appbox::EnvironmentIsolation::WriteCopy,
+                       appbox::EnvironmentMergeMode::Replace,                                                                                                            L""  },
+                      { L"APPBOX_ENV_EXPAND_WINDOWS",   L"%APPBOX:Windows%\\Foo",        appbox::EnvironmentIsolation::WriteCopy,
                        appbox::EnvironmentMergeMode::Replace,                                                                                                            L""  }
     }));
 
     ProtocolEnvironmentRead::Req req;
     req.names = { "APPBOX_ENV_EXPAND_DOCUMENTS", "APPBOX_ENV_EXPAND_CASE",    "APPBOX_ENV_EXPAND_PROFILE",
-                  "APPBOX_ENV_EXPAND_PREPEND",   "APPBOX_ENV_EXPAND_UNKNOWN", "APPBOX_ENV_EXPAND_SHELL" };
+                  "APPBOX_ENV_EXPAND_PREPEND",   "APPBOX_ENV_EXPAND_UNKNOWN", "APPBOX_ENV_EXPAND_SHELL",
+                  "APPBOX_ENV_EXPAND_WINDOWS" };
 
     const auto rsp = ProbeEnvironmentRead.Call(req, GetCWD(), config).get<ProtocolEnvironmentRead::Rsp>();
     ASSERT_EQ(rsp.values.size(), req.names.size());
@@ -80,6 +85,10 @@ TEST_F(E2E_Env, VariableExpansion)
 
     EXPECT_EQ(rsp.values[4], "%APPBOX:Unknown%\\Foo");
     EXPECT_EQ(rsp.values[5], "%PATH%");
+
+    /* The system folder of the machine is referenced like the folders of the user. */
+    EXPECT_TRUE(rsp.found[6]);
+    EXPECT_EQ(rsp.values[6], appbox::WideToUTF8(windows + L"\\Foo"));
 
     /* The ANSI entry point and the block which enumerates report the same view. */
     EXPECT_EQ(rsp.ansi_values[0], rsp.values[0]);

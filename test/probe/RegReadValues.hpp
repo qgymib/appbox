@@ -14,7 +14,7 @@ namespace appbox::test
  * @brief Several values of one key, as the sandboxed application reads them.
  *
  * The probe answers every value of one call, so a case which pins the values
- * of a key pays for the chain of the loader and of the sandbox once. The raw
+ * of a key pays for the chain of the launcher and of the sandbox once. The raw
  * bytes of a value are reported as well, because the types which carry no text
  * (`REG_DWORD`, `REG_BINARY`, ...) can only be pinned that way, and a
  * `REG_MULTI_SZ` value is reported as the list it is instead of one text.

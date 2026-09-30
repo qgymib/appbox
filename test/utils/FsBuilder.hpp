@@ -5,7 +5,7 @@
 #include <vector>
 #include <memory>
 #include <filesystem>
-#include "loader/Config.hpp"
+#include "launcher/Config.hpp"
 
 namespace appbox::test
 {
@@ -62,9 +62,9 @@ struct FsDir : FsNode
  *
  * The sandbox injection modules are written by the builder instead of being
  * declared by the case: they belong to the fixed layout of the sandbox like
- * the isolation files, because every case which starts the loader needs them.
+ * the isolation files, because every case which starts the launcher needs them.
  *
- * The loader configuration carries no path at all: the loader resolves `app`
+ * The launcher configuration carries no path at all: the launcher resolves `app`
  * and `data` against the directory of its configuration file, which is the
  * working directory of the case.
  */
@@ -79,9 +79,9 @@ struct FsRoot
 
     /**
      * @brief Build the directories of the case under the root directory.
-     * @return The loader configuration of the case, which carries no path.
+     * @return The launcher configuration of the case, which carries no path.
      */
-    appbox::LoaderConfig Build() const;
+    appbox::LauncherConfig Build() const;
 
     /**
      * @brief Verify the directories of the case.

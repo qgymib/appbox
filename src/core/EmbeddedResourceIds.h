@@ -3,7 +3,7 @@
 
 /*
  * Identifiers of the payloads the packer carries as RCDATA resources of its own
- * executable: the loader program it writes into a standalone archive and the
+ * executable: the launcher program it writes into a standalone archive and the
  * two sandbox injection modules it writes into the resource root of that
  * archive (see `common/SandboxLayout.hpp`).
  *
@@ -16,8 +16,8 @@
  * CMake turns into the resource script of the executable.
  */
 
-/** @brief The loader program, the payload of a standalone archive. */
-#define IDR_APPBOX_LOADER 101
+/** @brief The launcher program, the payload of a standalone archive. */
+#define IDR_APPBOX_LAUNCHER 101
 
 /** @brief The 32 bit sandbox injection module below `app`. */
 #define IDR_APPBOX_SANDBOX32 102

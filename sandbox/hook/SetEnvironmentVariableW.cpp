@@ -11,7 +11,7 @@ T_SetEnvironmentVariableW sys_SetEnvironmentVariableW = nullptr;
  * The variable is written to the environment of the sandbox and never to the
  * environment of the host: the block of this process is not touched at all, so
  * the environment of the host keeps the value it had whatever the packaged
- * application does. The modification is handed to the loader, which keeps it in
+ * application does. The modification is handed to the launcher, which keeps it in
  * the state directory of the sandbox, so it survives the end of the process.
  *
  * The contract of the call is the one of the operating system: a value of null

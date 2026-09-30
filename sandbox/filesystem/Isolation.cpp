@@ -26,7 +26,7 @@ NTSTATUS appbox::filesystem::Isolation::Init()
     /*
      * The isolation file lists paths of the virtual filesystem, whose first
      * component is the layer key of a layer. The key of a layer is the name of
-     * its folder inside the base filesystem, which the loader mapped into the
+     * its folder inside the base filesystem, which the launcher mapped into the
      * view, so the table can translate the listed paths into view paths.
      */
     std::vector<IsolationLayer> layers;

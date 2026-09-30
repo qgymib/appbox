@@ -189,8 +189,8 @@ std::set<std::string> EntryNames(zip_t* archive)
     return names;
 }
 
-/** Payload the fake loader of a case carries. */
-constexpr char kFakeLoader[] = "FAKE-LOADER";
+/** Payload the fake launcher of a case carries. */
+constexpr char kFakeLauncher[] = "FAKE-LAUNCHER";
 
 /** Payload the fake 32 bit sandbox injection module of a case carries. */
 constexpr char kFakeSandbox32[] = "FAKE-SANDBOX32";
@@ -202,7 +202,7 @@ constexpr char kFakeSandbox64[] = "FAKE-SANDBOX64";
  * @brief Build the payloads of a standalone pack run.
  *
  * The payloads of the packer are resources of its own executable, so a case
- * hands over bytes of its own instead of reading a real loader. The strings
+ * hands over bytes of its own instead of reading a real launcher. The strings
  * live in the static storage of the test executable, so the byte ranges of the
  * returned structure stay valid for the whole run.
  *
@@ -211,8 +211,8 @@ constexpr char kFakeSandbox64[] = "FAKE-SANDBOX64";
 appbox::PackPayloads FakePayloads()
 {
     appbox::PackPayloads payloads;
-    payloads.loader_bytes = kFakeLoader;
-    payloads.loader_size = sizeof(kFakeLoader) - 1;
+    payloads.launcher_bytes = kFakeLauncher;
+    payloads.launcher_size = sizeof(kFakeLauncher) - 1;
     payloads.sandbox32_bytes = kFakeSandbox32;
     payloads.sandbox32_size = sizeof(kFakeSandbox32) - 1;
     payloads.sandbox64_bytes = kFakeSandbox64;
@@ -263,7 +263,7 @@ TEST(Unit_PackService, PackRequiresAnAutoStartStartupFile)
     EXPECT_NE(result.find("start automatically"), std::string::npos);
 }
 
-TEST(Unit_PackService, PackRequiresLoaderBytes)
+TEST(Unit_PackService, PackRequiresLauncherBytes)
 {
     TempDir temp;
     MakeFile(temp.Get(), L"app.exe", "EXE");
@@ -278,7 +278,7 @@ TEST(Unit_PackService, PackRequiresLoaderBytes)
     const auto result =
         appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
                      appbox::EnvironmentModel(), appbox::PackPayloads{}, (temp.Get() / L"out.zip").wstring(), nullptr);
-    EXPECT_NE(result.find("loader payload"), std::string::npos);
+    EXPECT_NE(result.find("launcher payload"), std::string::npos);
 }
 
 TEST(Unit_PackService, PackRequiresTheSandboxModules)
@@ -295,7 +295,7 @@ TEST(Unit_PackService, PackRequiresTheSandboxModules)
 
     /*
      * The archive carries the injection modules of the build which produced the
-     * packer, so a run without them would write a package the loader refuses.
+     * packer, so a run without them would write a package the launcher refuses.
      */
     const auto zip_path = temp.Get() / L"no-module.zip";
 
@@ -314,7 +314,7 @@ TEST(Unit_PackService, PackRequiresTheSandboxModules)
     EXPECT_NE(result64.find("64 bit sandbox module"), std::string::npos);
 }
 
-TEST(Unit_PackService, PackProducesLoaderConfigurationAndLayers)
+TEST(Unit_PackService, PackProducesLauncherConfigurationAndLayers)
 {
     TempDir    program_files;
     TempDir    user_profile;
@@ -340,17 +340,17 @@ TEST(Unit_PackService, PackProducesLoaderConfigurationAndLayers)
     zip_t*           archive = closer.archive;
     ASSERT_NE(archive, nullptr);
 
-    /* The loader payload is embedded under the name of the main program. */
-    EXPECT_EQ(appbox::LoaderEntryName(model), L"app.exe");
-    EXPECT_EQ(ReadEntry(archive, "app.exe"), "FAKE-LOADER");
+    /* The launcher payload is embedded under the name of the main program. */
+    EXPECT_EQ(appbox::LauncherEntryName(model), L"app.exe");
+    EXPECT_EQ(ReadEntry(archive, "app.exe"), "FAKE-LAUNCHER");
 
-    /* The archive carries a single naming, the loader name is gone. */
-    EXPECT_EQ(zip_name_locate(archive, "AppBoxLoader.exe", 0), -1);
-    EXPECT_EQ(zip_name_locate(archive, "AppBoxLoader.json", 0), -1);
+    /* The archive carries a single naming, the launcher name is gone. */
+    EXPECT_EQ(zip_name_locate(archive, "AppBoxLauncher.exe", 0), -1);
+    EXPECT_EQ(zip_name_locate(archive, "AppBoxLauncher.json", 0), -1);
 
     /*
      * The sandbox injection modules travel in the resource root of the archive,
-     * so the extracted application is sandboxed from there and the loader
+     * so the extracted application is sandboxed from there and the launcher
      * writes no module of its own.
      */
     const auto sandbox32_entry = std::string(appbox::layout::kAppDirName) + "/" + appbox::layout::kSandbox32DllName;
@@ -368,7 +368,7 @@ TEST(Unit_PackService, PackProducesLoaderConfigurationAndLayers)
     const auto document = nlohmann::json::parse(json_text);
     EXPECT_FALSE(document.contains("base_fs"));
     EXPECT_FALSE(document.contains("overlay_fs"));
-    const auto config = document.get<appbox::LoaderConfig>();
+    const auto config = document.get<appbox::LauncherConfig>();
     ASSERT_EQ(config.startups.size(), static_cast<std::size_t>(1));
     EXPECT_EQ(config.startups[0].trigger, "app");
     EXPECT_TRUE(config.startups[0].auto_start);
@@ -392,7 +392,7 @@ TEST(Unit_PackService, PackProducesLoaderConfigurationAndLayers)
     EXPECT_EQ(names.count("app/network/"), static_cast<std::size_t>(1));
 
     /*
-     * The state of the sandbox never travels in the archive: the loader creates
+     * The state of the sandbox never travels in the archive: the launcher creates
      * it at run time, so deleting it resets the sandbox to the packed state.
      */
     for (const auto& name : names)
@@ -487,7 +487,7 @@ TEST(Unit_PackService, PackWritesFilesystemIsolationFile)
 
     /*
      * The modes travel in the filesystem domain of the resources, next to the
-     * layers they describe: the loader skips the file while it enumerates the
+     * layers they describe: the launcher skips the file while it enumerates the
      * layers of that folder.
      */
     const auto text = ReadEntry(archive, "app/filesystem/isolation.json");
@@ -539,7 +539,7 @@ TEST(Unit_PackService, PackWritesNetworkIsolationFile)
 
     /*
      * The redirections travel in the network domain of the resources, which is
-     * where the loader looks for them.
+     * where the launcher looks for them.
      */
     const auto text = ReadEntry(archive, "app/network/isolation.json");
     ASSERT_FALSE(text.empty());
@@ -594,7 +594,7 @@ TEST(Unit_PackService, PackWritesEnvironmentIsolationFile)
 
     /*
      * The variables travel in the environment domain of the resources, which is
-     * where the loader looks for them.
+     * where the launcher looks for them.
      */
     const auto text = ReadEntry(archive, "app/environment/isolation.json");
     ASSERT_FALSE(text.empty());
@@ -667,15 +667,15 @@ TEST(Unit_PackService, PackWritesTheProxyOfTheNetworkWorkspace)
     EXPECT_EQ(item["password"].get<std::string>(), "secret");
 }
 
-TEST(Unit_PackService, LoaderEntryNameIsEmptyWithoutAStartupFile)
+TEST(Unit_PackService, LauncherEntryNameIsEmptyWithoutAStartupFile)
 {
     appbox::PackModel     model;
     appbox::RegistryModel registry;
 
-    EXPECT_TRUE(appbox::LoaderEntryName(model).empty());
+    EXPECT_TRUE(appbox::LauncherEntryName(model).empty());
 }
 
-TEST(Unit_PackService, LoaderEntryNameDropsTheDirectoryOfTheStartupFile)
+TEST(Unit_PackService, LauncherEntryNameDropsTheDirectoryOfTheStartupFile)
 {
     TempDir    temp;
     const auto my_app = temp.Get() / L"MyApp";
@@ -687,8 +687,8 @@ TEST(Unit_PackService, LoaderEntryNameDropsTheDirectoryOfTheStartupFile)
     ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
     ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"bin\\tool.exe", true, error)) << error;
 
-    /* Only the file name is used: the loader lives in the archive root. */
-    EXPECT_EQ(appbox::LoaderEntryName(model), L"tool.exe");
+    /* Only the file name is used: the launcher lives in the archive root. */
+    EXPECT_EQ(appbox::LauncherEntryName(model), L"tool.exe");
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-entry.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
@@ -699,11 +699,11 @@ TEST(Unit_PackService, LoaderEntryNameDropsTheDirectoryOfTheStartupFile)
     zip_t*           archive = closer.archive;
     ASSERT_NE(archive, nullptr);
 
-    EXPECT_EQ(ReadEntry(archive, "tool.exe"), "FAKE-LOADER");
+    EXPECT_EQ(ReadEntry(archive, "tool.exe"), "FAKE-LAUNCHER");
 
     const auto json_text = ReadEntry(archive, "tool.exe.json");
     ASSERT_FALSE(json_text.empty());
-    const auto config = nlohmann::json::parse(json_text).get<appbox::LoaderConfig>();
+    const auto config = nlohmann::json::parse(json_text).get<appbox::LauncherConfig>();
     ASSERT_EQ(config.startups.size(), static_cast<std::size_t>(1));
     EXPECT_EQ(config.startups[0].executable, "#ProgramFiles#\\MyApp\\bin\\tool.exe");
 
@@ -711,7 +711,7 @@ TEST(Unit_PackService, LoaderEntryNameDropsTheDirectoryOfTheStartupFile)
     EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/bin/tool.exe"), "EXE");
 }
 
-TEST(Unit_PackService, LoaderEntryNameFollowsTheFirstStartupFile)
+TEST(Unit_PackService, LauncherEntryNameFollowsTheFirstStartupFile)
 {
     TempDir    temp;
     const auto my_app = temp.Get() / L"MyApp";
@@ -725,7 +725,7 @@ TEST(Unit_PackService, LoaderEntryNameFollowsTheFirstStartupFile)
     ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"second.exe", true, error)) << error;
     ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"first.exe", false, error)) << error;
 
-    EXPECT_EQ(appbox::LoaderEntryName(model), L"second.exe");
+    EXPECT_EQ(appbox::LauncherEntryName(model), L"second.exe");
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-order.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
@@ -738,7 +738,7 @@ TEST(Unit_PackService, LoaderEntryNameFollowsTheFirstStartupFile)
 
     const auto json_text = ReadEntry(archive, "second.exe.json");
     ASSERT_FALSE(json_text.empty());
-    const auto config = nlohmann::json::parse(json_text).get<appbox::LoaderConfig>();
+    const auto config = nlohmann::json::parse(json_text).get<appbox::LauncherConfig>();
 
     /* Every startup file is written in the order of the model. */
     ASSERT_EQ(config.startups.size(), static_cast<std::size_t>(2));
@@ -968,7 +968,7 @@ TEST(Unit_PackService, ContentFileCountCountsTheImports)
     EXPECT_EQ(reports.front().total, appbox::kNonContentPatchEntries + appbox::ContentFileCount(model));
 }
 
-TEST(Unit_PackService, PatchDoesNotRequireAStartupFileOrTheLoader)
+TEST(Unit_PackService, PatchDoesNotRequireAStartupFileOrTheLauncher)
 {
     TempDir    temp;
     const auto my_app = temp.Get() / L"MyApp";
@@ -981,14 +981,14 @@ TEST(Unit_PackService, PatchDoesNotRequireAStartupFileOrTheLoader)
 
     /*
      * The very same model fails the standalone pack run, which needs a startup
-     * file and the embedded loader payload.
+     * file and the embedded launcher payload.
      */
     const auto standalone =
         appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
                      appbox::EnvironmentModel(), FakePayloads(), (temp.Get() / L"standalone.zip").wstring(), nullptr);
     EXPECT_NE(standalone.find("startup file"), std::string::npos);
 
-    /* A patch package carries no loader, so neither of them is needed. */
+    /* A patch package carries no launcher, so neither of them is needed. */
     const auto zip_path = temp.Get() / L"patch.zip";
     EXPECT_EQ(appbox::PackPatch(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
                                 appbox::EnvironmentModel(), zip_path.wstring(), nullptr),
@@ -1018,8 +1018,8 @@ TEST(Unit_PackService, PatchRootsTheResourceTreeAtTheArchiveRoot)
 
     /*
      * A patch project may hold startup files, a patch package simply ignores
-     * them: they name the programs a loader would start, and the package
-     * carries no loader.
+     * them: they name the programs a launcher would start, and the package
+     * carries no launcher.
      */
     ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
 
@@ -1058,7 +1058,7 @@ TEST(Unit_PackService, PatchRootsTheResourceTreeAtTheArchiveRoot)
     EXPECT_FALSE(ReadEntry(archive, "environment/isolation.json").empty());
 
     /*
-     * Neither the loader nor the resource directory of a standalone archive
+     * Neither the launcher nor the resource directory of a standalone archive
      * travels in a patch package, and the state of the sandbox never travels in
      * either product.
      */

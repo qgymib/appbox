@@ -70,7 +70,8 @@ TEST(Unit_ExpandKnownFolder, PercentDelimitedTokenIsNotALayerKey)
  */
 TEST(Unit_ExpandKnownFolder, LayerKeysUseTheHashDelimiter)
 {
-    const std::wstring keys[] = { L"#ProgramFiles#", L"#USERPROFILE#", L"#Documents#", L"#Desktop#" };
+    const std::wstring keys[] = { L"#ProgramFiles#", L"#USERPROFILE#", L"#Documents#",
+                                  L"#Desktop#",      L"#Windows#",     L"#System32#" };
 
     for (const auto& key : keys)
     {
@@ -92,9 +93,8 @@ TEST(Unit_ExpandKnownFolder, LayerKeysUseTheHashDelimiter)
  */
 TEST(Unit_ExpandKnownFolder, RemovedLayerKeysAreNotKnown)
 {
-    const std::wstring keys[] = { L"#APPDATA#",      L"#windir#",         L"#Windows#",
-                                  L"#Fonts#",        L"#Profile#",        L"#ProgramData#",
-                                  L"#LocalAppData#", L"#RoamingAppData#", L"#ALLUSERSPROFILE#" };
+    const std::wstring keys[] = { L"#APPDATA#",     L"#windir#",       L"#Fonts#",          L"#Profile#",
+                                  L"#ProgramData#", L"#LocalAppData#", L"#RoamingAppData#", L"#ALLUSERSPROFILE#" };
 
     for (const auto& key : keys)
     {
@@ -114,8 +114,9 @@ TEST(Unit_ExpandKnownFolder, RemovedLayerKeysAreNotKnown)
  */
 TEST(Unit_ExpandKnownFolder, VariablesFollowTheKnownFolderTable)
 {
-    const std::wstring keys[] = { L"#ProgramFiles#", L"#USERPROFILE#", L"#Documents#", L"#Desktop#" };
-    const char*        names[] = { "ProgramFiles", "USERPROFILE", "Documents", "Desktop" };
+    const std::wstring keys[] = { L"#ProgramFiles#", L"#USERPROFILE#", L"#Documents#",
+                                  L"#Desktop#",      L"#Windows#",     L"#System32#" };
+    const char*        names[] = { "ProgramFiles", "USERPROFILE", "Documents", "Desktop", "Windows", "System32" };
 
     const std::vector<appbox::KnownFolderVariable> variables = appbox::KnownFolderVariables();
     ASSERT_EQ(variables.size(), std::size(keys));

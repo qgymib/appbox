@@ -77,7 +77,7 @@ static void ParseInjectData(const std::string& data)
 
     /*
      * The log of the process is written by the process itself into a file of
-     * its own: the loader is not part of the log path any more, so the
+     * its own: the launcher is not part of the log path any more, so the
      * messages of two processes of one run cannot interleave and the tail of
      * the log survives a crash of the process which wrote it.
      */

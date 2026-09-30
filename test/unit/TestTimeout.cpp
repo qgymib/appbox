@@ -25,14 +25,14 @@ TEST(Unit_TestTimeout, TagIsSanitized)
 TEST(Unit_TestTimeout, CommandLineOptionIsFound)
 {
     const std::wstring command_line = L"\"C:\\Program Files\\AppBox\\AppBoxUnitTests.exe\" "
-                                      L"--loader=C:\\x\\AppBoxLoader.exe --test-timeout=7 --gtest_filter=A.*";
+                                      L"--launcher=C:\\x\\AppBoxLauncher.exe --test-timeout=7 --gtest_filter=A.*";
 
     std::wstring value;
     EXPECT_TRUE(appbox::test::FindCommandLineOption(command_line, L"test-timeout", value));
     EXPECT_EQ(value, L"7");
 
-    EXPECT_TRUE(appbox::test::FindCommandLineOption(command_line, L"loader", value));
-    EXPECT_EQ(value, L"C:\\x\\AppBoxLoader.exe");
+    EXPECT_TRUE(appbox::test::FindCommandLineOption(command_line, L"launcher", value));
+    EXPECT_EQ(value, L"C:\\x\\AppBoxLauncher.exe");
 
     /* A name which is only a part of another option is not a match. */
     EXPECT_FALSE(appbox::test::FindCommandLineOption(command_line, L"timeout", value));

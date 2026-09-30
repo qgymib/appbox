@@ -162,7 +162,7 @@ TEST(Unit_BuildReport, ResultMessageDescribesTheOutcome)
     EXPECT_EQ(appbox::BuildResultMessage(appbox::BuildOutcome::Cancelled, L"", ""),
               "The build run was cancelled; no archive was written.");
     EXPECT_EQ(appbox::BuildResultMessage(appbox::BuildOutcome::LaunchFailed, L"", ""),
-              "The archive was written, but the packaged loader could not be started.");
+              "The archive was written, but the packaged launcher could not be started.");
 }
 
 /**
@@ -179,7 +179,7 @@ TEST(Unit_BuildReport, ResultMessageCarriesTheArchivePath)
               "The archive was written successfully. The packaged application is starting.\n"
               "Saved to: C:\\out\\MyApp.zip");
     EXPECT_EQ(appbox::BuildResultMessage(appbox::BuildOutcome::LaunchFailed, path, ""),
-              "The archive was written, but the packaged loader could not be started.\n"
+              "The archive was written, but the packaged launcher could not be started.\n"
               "Saved to: C:\\out\\MyApp.zip");
 }
 
