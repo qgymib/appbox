@@ -70,8 +70,11 @@ TEST(Unit_ExpandKnownFolder, PercentDelimitedTokenIsNotALayerKey)
  */
 TEST(Unit_ExpandKnownFolder, LayerKeysUseTheHashDelimiter)
 {
-    const std::wstring keys[] = { L"#ProgramFiles#", L"#USERPROFILE#", L"#Documents#", L"#Desktop#",
-                                  L"#Windows#",      L"#System32#",    L"#Fonts#" };
+    const std::wstring keys[] = {
+        L"#ProgramFiles#", L"#ProgramFilesCommon#", L"#USERPROFILE#", L"#Documents#", L"#Desktop#",   L"#AppData#",
+        L"#LocalAppData#", L"#LocalAppDataLow#",    L"#Downloads#",   L"#Favorites#", L"#StartMenu#", L"#Programs#",
+        L"#Startup#",      L"#ProgramData#",        L"#Windows#",     L"#System32#",  L"#Fonts#"
+    };
 
     for (const auto& key : keys)
     {
@@ -89,12 +92,13 @@ TEST(Unit_ExpandKnownFolder, LayerKeysUseTheHashDelimiter)
  *
  * A mapping which no preset directory uses describes no layer of the archive,
  * so it was removed: a layer directory named after such a key is rejected by
- * `MapBaseFS`, and a startup file path which uses it is not expanded.
+ * `MapBaseFS`, and a startup file path which uses it is not expanded. A key is
+ * compared exactly, so the historical `#APPDATA#` is not the `#AppData#` of the
+ * current table.
  */
 TEST(Unit_ExpandKnownFolder, RemovedLayerKeysAreNotKnown)
 {
-    const std::wstring keys[] = { L"#APPDATA#",      L"#windir#",         L"#Profile#",        L"#ProgramData#",
-                                  L"#LocalAppData#", L"#RoamingAppData#", L"#ALLUSERSPROFILE#" };
+    const std::wstring keys[] = { L"#APPDATA#", L"#windir#", L"#Profile#", L"#RoamingAppData#", L"#ALLUSERSPROFILE#" };
 
     for (const auto& key : keys)
     {
@@ -114,12 +118,18 @@ TEST(Unit_ExpandKnownFolder, RemovedLayerKeysAreNotKnown)
  */
 TEST(Unit_ExpandKnownFolder, VariablesFollowTheKnownFolderTable)
 {
-    const std::wstring keys[] = { L"#ProgramFiles#", L"#USERPROFILE#", L"#Documents#", L"#Desktop#",
-                                  L"#Windows#",      L"#System32#",    L"#Fonts#" };
-    const char* names[] = { "ProgramFiles", "USERPROFILE", "Documents", "Desktop", "Windows", "System32", "Fonts" };
+    const std::wstring keys[] = {
+        L"#ProgramFiles#", L"#ProgramFilesCommon#", L"#USERPROFILE#", L"#Documents#", L"#Desktop#",   L"#AppData#",
+        L"#LocalAppData#", L"#LocalAppDataLow#",    L"#Downloads#",   L"#Favorites#", L"#StartMenu#", L"#Programs#",
+        L"#Startup#",      L"#ProgramData#",        L"#Windows#",     L"#System32#",  L"#Fonts#"
+    };
+    const char* names[] = { "ProgramFiles", "ProgramFilesCommon", "USERPROFILE", "Documents", "Desktop",   "AppData",
+                            "LocalAppData", "LocalAppDataLow",    "Downloads",   "Favorites", "StartMenu", "Programs",
+                            "Startup",      "ProgramData",        "Windows",     "System32",  "Fonts" };
 
     const std::vector<appbox::KnownFolderVariable> variables = appbox::KnownFolderVariables();
     ASSERT_EQ(variables.size(), std::size(keys));
+    ASSERT_EQ(variables.size(), static_cast<std::size_t>(17));
 
     for (std::size_t index = 0; index < std::size(keys); ++index)
     {

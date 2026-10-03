@@ -16,12 +16,22 @@ struct KnownFolderMap
  * case and the sandbox agree on the real directory behind a token.
  */
 static const KnownFolderMap KnownFolders[] = {
-    { L"#USERPROFILE#", FOLDERID_Profile   },
-    { L"#Documents#",   FOLDERID_Documents },
-    { L"#Desktop#",     FOLDERID_Desktop   },
-    { L"#Windows#",     FOLDERID_Windows   },
-    { L"#System32#",    FOLDERID_System    },
-    { L"#Fonts#",       FOLDERID_Fonts     },
+    { L"#USERPROFILE#",        FOLDERID_Profile            },
+    { L"#Documents#",          FOLDERID_Documents          },
+    { L"#Desktop#",            FOLDERID_Desktop            },
+    { L"#AppData#",            FOLDERID_RoamingAppData     },
+    { L"#LocalAppData#",       FOLDERID_LocalAppData       },
+    { L"#LocalAppDataLow#",    FOLDERID_LocalAppDataLow    },
+    { L"#Downloads#",          FOLDERID_Downloads          },
+    { L"#Favorites#",          FOLDERID_Favorites          },
+    { L"#StartMenu#",          FOLDERID_StartMenu          },
+    { L"#Programs#",           FOLDERID_Programs           },
+    { L"#Startup#",            FOLDERID_Startup            },
+    { L"#ProgramData#",        FOLDERID_ProgramData        },
+    { L"#ProgramFilesCommon#", FOLDERID_ProgramFilesCommon },
+    { L"#Windows#",            FOLDERID_Windows            },
+    { L"#System32#",           FOLDERID_System             },
+    { L"#Fonts#",              FOLDERID_Fonts              },
 };
 
 std::wstring appbox::test::GetKnownFolderPath(const std::wstring& folder_id, bool pure)

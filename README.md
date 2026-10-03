@@ -142,9 +142,19 @@ compared ignoring the case, so `%appbox:documents%` names the same folder as
 | Name | Known folder | Example path |
 | --- | --- | --- |
 | `ProgramFiles` | `FOLDERID_ProgramFiles` | `C:\Program Files` |
+| `ProgramFilesCommon` | `FOLDERID_ProgramFilesCommon` | `C:\Program Files\Common Files` |
 | `USERPROFILE` | `FOLDERID_Profile` | `C:\Users\Alice` |
 | `Documents` | `FOLDERID_Documents` | `C:\Users\Alice\Documents` |
 | `Desktop` | `FOLDERID_Desktop` | `C:\Users\Alice\Desktop` |
+| `AppData` | `FOLDERID_RoamingAppData` | `C:\Users\Alice\AppData\Roaming` |
+| `LocalAppData` | `FOLDERID_LocalAppData` | `C:\Users\Alice\AppData\Local` |
+| `LocalAppDataLow` | `FOLDERID_LocalAppDataLow` | `C:\Users\Alice\AppData\LocalLow` |
+| `Downloads` | `FOLDERID_Downloads` | `C:\Users\Alice\Downloads` |
+| `Favorites` | `FOLDERID_Favorites` | `C:\Users\Alice\Favorites` |
+| `StartMenu` | `FOLDERID_StartMenu` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu` |
+| `Programs` | `FOLDERID_Programs` | `...\Start Menu\Programs` |
+| `Startup` | `FOLDERID_Startup` | `...\Programs\Startup` |
+| `ProgramData` | `FOLDERID_ProgramData` | `C:\ProgramData` |
 | `Windows` | `FOLDERID_Windows` | `C:\Windows` |
 | `System32` | `FOLDERID_System` | `C:\Windows\System32` |
 | `Fonts` | `FOLDERID_Fonts` | `C:\Windows\Fonts` |

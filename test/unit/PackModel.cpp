@@ -90,61 +90,61 @@ std::filesystem::path MakeFile(const std::filesystem::path& parent, const std::w
 
 TEST(Unit_PresetDirectory, ProvidesExpectedPresets)
 {
+    /* The table of the preset directories, in the order it is resolved in. */
+    struct ExpectedPreset
+    {
+        const char*    id;
+        const char*    parent_id;
+        const wchar_t* display_name;
+        const wchar_t* layer_key;
+    };
+    const ExpectedPreset expected[] = {
+        { "program_files",              "",              L"Program Files",              L"#ProgramFiles#"       },
+        { "program_files_common",       "program_files", L"Common",                     L"#ProgramFilesCommon#" },
+        { "user_profile",               "",              L"Current User Directory",     L"#USERPROFILE#"        },
+        { "documents",                  "user_profile",  L"Documents",                  L"#Documents#"          },
+        { "desktop",                    "user_profile",  L"Desktop",                    L"#Desktop#"            },
+        { "application_data",           "user_profile",  L"Application Data",           L"#AppData#"            },
+        { "local_application_data",     "user_profile",  L"Local Application Data",     L"#LocalAppData#"       },
+        { "local_application_data_low", "user_profile",  L"Local Application Data Low", L"#LocalAppDataLow#"    },
+        { "downloads",                  "user_profile",  L"Downloads",                  L"#Downloads#"          },
+        { "favorites",                  "user_profile",  L"Favorites",                  L"#Favorites#"          },
+        { "start_menu",                 "user_profile",  L"Start Menu",                 L"#StartMenu#"          },
+        { "programs",                   "start_menu",    L"Programs",                   L"#Programs#"           },
+        { "startup",                    "programs",      L"Startup",                    L"#Startup#"            },
+        { "program_data",               "",              L"Program Data",               L"#ProgramData#"        },
+        { "windows",                    "",              L"Windows",                    L"#Windows#"            },
+        { "system32",                   "windows",       L"System32",                   L"#System32#"           },
+        { "fonts",                      "windows",       L"Fonts",                      L"#Fonts#"              },
+    };
+
     const auto& presets = appbox::PresetDirectories();
-    ASSERT_EQ(presets.size(), static_cast<std::size_t>(7));
+    ASSERT_EQ(presets.size(), std::size(expected));
 
-    EXPECT_EQ(presets[0].id, "program_files");
-    EXPECT_EQ(presets[0].parent_id, "");
-    EXPECT_EQ(presets[0].layer_key, L"#ProgramFiles#");
-    EXPECT_FALSE(presets[0].display_name.empty());
-    EXPECT_TRUE(std::filesystem::path(presets[0].real_path).is_absolute());
+    for (std::size_t index = 0; index < std::size(expected); ++index)
+    {
+        EXPECT_EQ(presets[index].id, expected[index].id);
+        EXPECT_EQ(presets[index].parent_id, expected[index].parent_id);
+        EXPECT_EQ(presets[index].display_name, expected[index].display_name);
+        EXPECT_EQ(presets[index].layer_key, expected[index].layer_key);
 
-    EXPECT_EQ(presets[1].id, "user_profile");
-    EXPECT_EQ(presets[1].parent_id, "");
-    EXPECT_EQ(presets[1].layer_key, L"#USERPROFILE#");
-    EXPECT_TRUE(std::filesystem::path(presets[1].real_path).is_absolute());
-
-    /* The folders of the user profile hang below the profile itself. */
-    EXPECT_EQ(presets[2].id, "documents");
-    EXPECT_EQ(presets[2].parent_id, "user_profile");
-    EXPECT_EQ(presets[2].display_name, L"Documents");
-    EXPECT_EQ(presets[2].layer_key, L"#Documents#");
-    EXPECT_TRUE(std::filesystem::path(presets[2].real_path).is_absolute());
-
-    EXPECT_EQ(presets[3].id, "desktop");
-    EXPECT_EQ(presets[3].parent_id, "user_profile");
-    EXPECT_EQ(presets[3].display_name, L"Desktop");
-    EXPECT_EQ(presets[3].layer_key, L"#Desktop#");
-    EXPECT_TRUE(std::filesystem::path(presets[3].real_path).is_absolute());
-
-    /* The system directories: the system folder hangs below the Windows folder. */
-    EXPECT_EQ(presets[4].id, "windows");
-    EXPECT_EQ(presets[4].parent_id, "");
-    EXPECT_EQ(presets[4].display_name, L"Windows");
-    EXPECT_EQ(presets[4].layer_key, L"#Windows#");
-    EXPECT_TRUE(std::filesystem::path(presets[4].real_path).is_absolute());
-
-    EXPECT_EQ(presets[5].id, "system32");
-    EXPECT_EQ(presets[5].parent_id, "windows");
-    EXPECT_EQ(presets[5].display_name, L"System32");
-    EXPECT_EQ(presets[5].layer_key, L"#System32#");
-    EXPECT_TRUE(std::filesystem::path(presets[5].real_path).is_absolute());
-
-    /* The font directory hangs below the Windows folder like the system one. */
-    EXPECT_EQ(presets[6].id, "fonts");
-    EXPECT_EQ(presets[6].parent_id, "windows");
-    EXPECT_EQ(presets[6].display_name, L"Fonts");
-    EXPECT_EQ(presets[6].layer_key, L"#Fonts#");
-    EXPECT_TRUE(std::filesystem::path(presets[6].real_path).is_absolute());
+        /* Every preset resolves to a real folder of this machine. */
+        EXPECT_TRUE(std::filesystem::path(presets[index].real_path).is_absolute());
+    }
 
     /*
      * The nesting mirrors the host filesystem: the system directory is the
      * subdirectory of the Windows directory. The comparison resolves both
      * paths, so it does not depend on the spelling of a component.
      */
+    appbox::PresetDirectory windows;
+    appbox::PresetDirectory system32;
+    ASSERT_TRUE(appbox::FindPresetDirectory("windows", windows));
+    ASSERT_TRUE(appbox::FindPresetDirectory("system32", system32));
+
     std::error_code ec;
-    EXPECT_TRUE(std::filesystem::equivalent(presets[4].real_path,
-                                            std::filesystem::path(presets[5].real_path).parent_path(), ec))
+    EXPECT_TRUE(
+        std::filesystem::equivalent(windows.real_path, std::filesystem::path(system32.real_path).parent_path(), ec))
         << ec.message();
 
     /* Every preset owns a layer of its own, so the keys are unique. */
@@ -160,41 +160,93 @@ TEST(Unit_PresetDirectory, ProvidesExpectedPresets)
 
 TEST(Unit_PresetDirectory, ChildPresetsNestThePresetTree)
 {
+    /* The siblings of every group are ordered by their label. */
     const auto top = appbox::ChildPresets("");
-    ASSERT_EQ(top.size(), static_cast<std::size_t>(3));
-    EXPECT_EQ(top[0].id, "program_files");
-    EXPECT_EQ(top[1].id, "user_profile");
-    EXPECT_EQ(top[2].id, "windows");
+    ASSERT_EQ(top.size(), static_cast<std::size_t>(4));
+    EXPECT_EQ(top[0].id, "user_profile");
+    EXPECT_EQ(top[0].display_name, L"Current User Directory");
+    EXPECT_EQ(top[1].id, "program_data");
+    EXPECT_EQ(top[1].display_name, L"Program Data");
+    EXPECT_EQ(top[2].id, "program_files");
+    EXPECT_EQ(top[2].display_name, L"Program Files");
+    EXPECT_EQ(top[3].id, "windows");
+    EXPECT_EQ(top[3].display_name, L"Windows");
 
-    const auto nested = appbox::ChildPresets("user_profile");
-    ASSERT_EQ(nested.size(), static_cast<std::size_t>(2));
-    EXPECT_EQ(nested[0].id, "documents");
-    EXPECT_EQ(nested[0].layer_key, L"#Documents#");
-    EXPECT_EQ(nested[1].id, "desktop");
-    EXPECT_EQ(nested[1].layer_key, L"#Desktop#");
+    const auto profile = appbox::ChildPresets("user_profile");
+    ASSERT_EQ(profile.size(), static_cast<std::size_t>(8));
+    EXPECT_EQ(profile[0].id, "application_data");
+    EXPECT_EQ(profile[0].layer_key, L"#AppData#");
+    EXPECT_EQ(profile[1].id, "desktop");
+    EXPECT_EQ(profile[1].layer_key, L"#Desktop#");
+    EXPECT_EQ(profile[2].id, "documents");
+    EXPECT_EQ(profile[2].layer_key, L"#Documents#");
+    EXPECT_EQ(profile[3].id, "downloads");
+    EXPECT_EQ(profile[3].layer_key, L"#Downloads#");
+    EXPECT_EQ(profile[4].id, "favorites");
+    EXPECT_EQ(profile[4].layer_key, L"#Favorites#");
+    EXPECT_EQ(profile[5].id, "local_application_data");
+    EXPECT_EQ(profile[5].layer_key, L"#LocalAppData#");
+    EXPECT_EQ(profile[6].id, "local_application_data_low");
+    EXPECT_EQ(profile[6].layer_key, L"#LocalAppDataLow#");
+    EXPECT_EQ(profile[7].id, "start_menu");
+    EXPECT_EQ(profile[7].layer_key, L"#StartMenu#");
+
+    const auto start_menu = appbox::ChildPresets("start_menu");
+    ASSERT_EQ(start_menu.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(start_menu[0].id, "programs");
+    EXPECT_EQ(start_menu[0].layer_key, L"#Programs#");
+
+    const auto programs = appbox::ChildPresets("programs");
+    ASSERT_EQ(programs.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(programs[0].id, "startup");
+    EXPECT_EQ(programs[0].layer_key, L"#Startup#");
+
+    const auto program_files = appbox::ChildPresets("program_files");
+    ASSERT_EQ(program_files.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(program_files[0].id, "program_files_common");
+    EXPECT_EQ(program_files[0].layer_key, L"#ProgramFilesCommon#");
 
     const auto system = appbox::ChildPresets("windows");
     ASSERT_EQ(system.size(), static_cast<std::size_t>(2));
-    EXPECT_EQ(system[0].id, "system32");
-    EXPECT_EQ(system[0].layer_key, L"#System32#");
-    EXPECT_EQ(system[1].id, "fonts");
-    EXPECT_EQ(system[1].layer_key, L"#Fonts#");
+    EXPECT_EQ(system[0].id, "fonts");
+    EXPECT_EQ(system[0].layer_key, L"#Fonts#");
+    EXPECT_EQ(system[1].id, "system32");
+    EXPECT_EQ(system[1].layer_key, L"#System32#");
 
     /* A preset without nested presets and an unknown preset hold nothing. */
-    EXPECT_TRUE(appbox::ChildPresets("program_files").empty());
-    EXPECT_TRUE(appbox::ChildPresets("documents").empty());
-    EXPECT_TRUE(appbox::ChildPresets("system32").empty());
-    EXPECT_TRUE(appbox::ChildPresets("fonts").empty());
-    EXPECT_TRUE(appbox::ChildPresets("does_not_exist").empty());
+    const char* const empty[] = { "application_data",
+                                  "desktop",
+                                  "documents",
+                                  "downloads",
+                                  "favorites",
+                                  "fonts",
+                                  "local_application_data",
+                                  "local_application_data_low",
+                                  "program_data",
+                                  "program_files_common",
+                                  "startup",
+                                  "system32",
+                                  "does_not_exist" };
+    for (const char* id : empty)
+    {
+        EXPECT_TRUE(appbox::ChildPresets(id).empty()) << id;
+    }
 
     /*
      * The tree of the presets holds every preset exactly once, which is what
      * the filesystem workspace walks to build its items.
      */
-    std::size_t reachable = top.size();
-    for (const auto& preset : top)
+    std::size_t              reachable = 0;
+    std::vector<std::string> pending = { "" };
+    while (!pending.empty())
     {
-        reachable += appbox::ChildPresets(preset.id).size();
+        const std::string parent = pending.back();
+        pending.pop_back();
+        for (const auto& preset : appbox::ChildPresets(parent))
+        {
+            ++reachable;
+            pending.push_back(preset.id);
+        }
     }
     EXPECT_EQ(reachable, appbox::PresetDirectories().size());
 }
@@ -210,6 +262,31 @@ TEST(Unit_PresetDirectory, FindsKnownAndRejectsUnknownIds)
     EXPECT_EQ(preset.layer_key, L"#Documents#");
     EXPECT_TRUE(appbox::FindPresetDirectory("desktop", preset));
     EXPECT_EQ(preset.layer_key, L"#Desktop#");
+    EXPECT_TRUE(appbox::FindPresetDirectory("application_data", preset));
+    EXPECT_EQ(preset.layer_key, L"#AppData#");
+    EXPECT_EQ(preset.parent_id, "user_profile");
+    EXPECT_TRUE(appbox::FindPresetDirectory("local_application_data", preset));
+    EXPECT_EQ(preset.layer_key, L"#LocalAppData#");
+    EXPECT_TRUE(appbox::FindPresetDirectory("local_application_data_low", preset));
+    EXPECT_EQ(preset.layer_key, L"#LocalAppDataLow#");
+    EXPECT_TRUE(appbox::FindPresetDirectory("downloads", preset));
+    EXPECT_EQ(preset.layer_key, L"#Downloads#");
+    EXPECT_TRUE(appbox::FindPresetDirectory("favorites", preset));
+    EXPECT_EQ(preset.layer_key, L"#Favorites#");
+    EXPECT_TRUE(appbox::FindPresetDirectory("start_menu", preset));
+    EXPECT_EQ(preset.layer_key, L"#StartMenu#");
+    EXPECT_TRUE(appbox::FindPresetDirectory("programs", preset));
+    EXPECT_EQ(preset.layer_key, L"#Programs#");
+    EXPECT_EQ(preset.parent_id, "start_menu");
+    EXPECT_TRUE(appbox::FindPresetDirectory("startup", preset));
+    EXPECT_EQ(preset.layer_key, L"#Startup#");
+    EXPECT_EQ(preset.parent_id, "programs");
+    EXPECT_TRUE(appbox::FindPresetDirectory("program_data", preset));
+    EXPECT_EQ(preset.layer_key, L"#ProgramData#");
+    EXPECT_EQ(preset.parent_id, "");
+    EXPECT_TRUE(appbox::FindPresetDirectory("program_files_common", preset));
+    EXPECT_EQ(preset.layer_key, L"#ProgramFilesCommon#");
+    EXPECT_EQ(preset.parent_id, "program_files");
     EXPECT_TRUE(appbox::FindPresetDirectory("windows", preset));
     EXPECT_EQ(preset.layer_key, L"#Windows#");
     EXPECT_TRUE(appbox::FindPresetDirectory("system32", preset));

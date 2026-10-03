@@ -22,17 +22,28 @@ struct FolderMapping
  * key which is not listed here is rejected by MapBaseFS with `Unknown folder`.
  *
  * The keys share no prefix with each other, which keeps the prefix match of
- * ExpandKnownFolder unambiguous.
+ * ExpandKnownFolder unambiguous. Both lookups compare a key exactly as it is
+ * listed here, so only the keys the packer produces name a folder.
  */
 static const FolderMapping s_known_folders[] = {
     /* Known FolderID */
-    { L"#ProgramFiles#", FOLDERID_ProgramFiles }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
-    { L"#USERPROFILE#",  FOLDERID_Profile      }, /* %USERPROFILE% (%SystemDrive%\Users\%USERNAME%) */
-    { L"#Documents#",    FOLDERID_Documents    }, /* the Documents folder of the user (may be redirected) */
-    { L"#Desktop#",      FOLDERID_Desktop      }, /* the Desktop folder of the user (may be redirected) */
-    { L"#Windows#",      FOLDERID_Windows      }, /* the system directory, %SystemRoot% */
-    { L"#System32#",     FOLDERID_System       }, /* the 32 bit system directory, %SystemRoot%\system32 */
-    { L"#Fonts#",        FOLDERID_Fonts        }, /* the font directory of the system, %SystemRoot%\Fonts */
+    { L"#ProgramFiles#",       FOLDERID_ProgramFiles       }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
+    { L"#ProgramFilesCommon#", FOLDERID_ProgramFilesCommon }, /* %ProgramFilesCommon% (%ProgramFiles%\Common Files) */
+    { L"#USERPROFILE#",        FOLDERID_Profile            }, /* %USERPROFILE% (%SystemDrive%\Users\%USERNAME%) */
+    { L"#Documents#",          FOLDERID_Documents          }, /* the Documents folder of the user (may be redirected) */
+    { L"#Desktop#",            FOLDERID_Desktop            }, /* the Desktop folder of the user (may be redirected) */
+    { L"#AppData#",            FOLDERID_RoamingAppData     }, /* %AppData% (%USERPROFILE%\AppData\Roaming) */
+    { L"#LocalAppData#",       FOLDERID_LocalAppData       }, /* %LocalAppData% (%USERPROFILE%\AppData\Local) */
+    { L"#LocalAppDataLow#",    FOLDERID_LocalAppDataLow    }, /* %LocalAppDataLow% (%USERPROFILE%\AppData\LocalLow) */
+    { L"#Downloads#",          FOLDERID_Downloads          }, /* the Downloads folder of the user (may be redirected) */
+    { L"#Favorites#",          FOLDERID_Favorites          }, /* the Favorites folder of the user (may be redirected) */
+    { L"#StartMenu#",          FOLDERID_StartMenu          }, /* the Start Menu folder of the user (may be redirected) */
+    { L"#Programs#",           FOLDERID_Programs           }, /* the Programs folder inside the Start Menu of the user */
+    { L"#Startup#",            FOLDERID_Startup            }, /* the Startup folder inside the Programs folder of the user */
+    { L"#ProgramData#",        FOLDERID_ProgramData        }, /* %ProgramData% (%SystemDrive%\ProgramData) */
+    { L"#Windows#",            FOLDERID_Windows            }, /* the system directory, %SystemRoot% */
+    { L"#System32#",           FOLDERID_System             }, /* the 32 bit system directory, %SystemRoot%\system32 */
+    { L"#Fonts#",              FOLDERID_Fonts              }, /* the font directory of the system, %SystemRoot%\Fonts */
 };
 
 static std::wstring GetFolderPath(const GUID& guid)
@@ -122,7 +133,13 @@ std::wstring appbox::ExpandKnownFolder(const std::wstring& path)
             continue;
         }
 
-        if (_wcsnicmp(entry.name.c_str(), path.c_str(), entry.name.size()) == 0)
+        /*
+         * The key is compared exactly as the table spells it, like the lookup
+         * of `SearchFolderID` which decides whether a layer directory is
+         * mounted: only the keys the packer produces name a folder, so a
+         * spelling of another case names none.
+         */
+        if (path.compare(0, entry.name.size(), entry.name) == 0)
         {
             const auto folder = GetFolderPath(entry.guid);
             const auto rest = path.substr(entry.name.size());

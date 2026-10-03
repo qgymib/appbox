@@ -435,9 +435,10 @@ executable carries itself:
   creating a file, and the whiteout store of the target survives the merge.
 * `test/unit/ExpandKnownFolder.cpp` — the expansion of a `#Name#` layer
   key of a path, including a path which carries no key, the rejection of the
-  historical `%Name%` delimiter and the set of known layer keys: only the keys
-  the packer produces are known, a mapping which no preset directory uses is
-  removed from the table. It pins the variables the sandbox expands in the
+  historical `%Name%` delimiter and the set of known layer keys: a key is
+  matched exactly as the table spells it, so only the keys the packer produces
+  are known and a mapping which no preset directory uses is removed from the
+  table. It pins the variables the sandbox expands in the
   values of the workspace as well: one per known folder, named after the layer
   key without its `#` delimiters, with the real path of the folder of this
   machine.
@@ -548,14 +549,19 @@ comment.
 | `QueryAttributes_LowerLayer` | – | `data.txt` | query the attributes of `data.txt` | success, a regular file is reported |
 | `QueryAttributes_NonExists` | – | `other.txt` | query the attributes of `data.txt` | failure with `File Not Found` |
 
-Three cases are not part of the matrices above:
+Four cases are not part of the matrices above:
 `test/e2e/Fs_LaunchProcess_FromLower.cpp` starts an executable which only a
 lower layer holds, `test/e2e/Fs_ListDir_UserPresetLayers.cpp` mounts one layer
-per folder of the user (`#Documents#`, `#Desktop#`) and checks that each of them
-is mapped to the real folder its layer key names, and
+per folder below `Current User Directory` (`#Documents#`, `#Desktop#`,
+`#AppData#`, `#LocalAppData#`, `#LocalAppDataLow#`, `#Downloads#`,
+`#Favorites#`, `#StartMenu#`, `#Programs#`, `#Startup#`) and checks that each of
+them is mapped to the real folder its layer key names,
 `test/e2e/Fs_QueryAttributes_SystemPresetLayers.cpp` does the same for the
-system folders (`#Windows#`, `#System32#`), including that the file of one layer
-is not visible in the folder of the other one.
+system folders (`#Windows#`, `#System32#`), and
+`test/e2e/Fs_QueryAttributes_ProgramPresetLayers.cpp` for the `Program Data`
+folder of the system and the `Common` folder below `Program Files`
+(`#ProgramData#`, `#ProgramFilesCommon#`). The last three cases include that the
+file of one layer is not visible in the folder of the other one.
 
 The cases which exercise the isolation modes of the workspace write the
 isolation file of the case into the filesystem domain of the resources

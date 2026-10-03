@@ -74,8 +74,8 @@ bool SearchFolderID(const std::wstring& name, std::wstring& folder_path);
  * A path which starts with a `#Name#` layer key such as
  * `#ProgramFiles#\MyApp\app.exe` is rewritten to the real path of the folder
  * plus the remainder of the path. Every other path, including a plain
- * absolute path, is returned unchanged. The layer key is matched case
- * insensitively and without a leading separator, so the remainder keeps its
+ * absolute path, is returned unchanged. The layer key is matched exactly as the
+ * table spells it and without a leading separator, so the remainder keeps its
  * own separator and a doubled backslash is never produced.
  *
  * @param[in] path File path.

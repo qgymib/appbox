@@ -108,6 +108,7 @@ add_executable(AppBoxTests
     "e2e/Fs_NewFile_WhiteoutInLower.cpp"
     "e2e/Fs_NewFile_WhiteoutInUpper.cpp"
     "e2e/Fs_QueryAttributes_LowerLayer.cpp"
+    "e2e/Fs_QueryAttributes_ProgramPresetLayers.cpp"
     "e2e/Fs_QueryAttributes_SystemPresetLayers.cpp"
     "e2e/Fs_ReadFile_WhiteoutInUpper.cpp"
     "e2e/Fs_RootIsolation_MergeWritesTheHostFile.cpp"

@@ -12,6 +12,35 @@ namespace
 {
 
 /**
+ * @brief One layer of the case: the layer key and the file it carries.
+ */
+struct LayerFile
+{
+    const wchar_t* layer; /* Layer key of the preset directory. */
+    const char*    name;  /* Name of the file below the layer. */
+};
+
+/**
+ * @brief The layers of the case and the file of each one.
+ *
+ * The file of a nested layer is not an entry of the listing of its parent,
+ * because the real folder of the parent holds the folder of the child instead
+ * of the files below it.
+ */
+const LayerFile s_layers[] = {
+    { L"#Documents#",       "Fs.ListDir_UserPresetLayers.Documents.txt"       },
+    { L"#Desktop#",         "Fs.ListDir_UserPresetLayers.Desktop.txt"         },
+    { L"#AppData#",         "Fs.ListDir_UserPresetLayers.AppData.txt"         },
+    { L"#LocalAppData#",    "Fs.ListDir_UserPresetLayers.LocalAppData.txt"    },
+    { L"#LocalAppDataLow#", "Fs.ListDir_UserPresetLayers.LocalAppDataLow.txt" },
+    { L"#Downloads#",       "Fs.ListDir_UserPresetLayers.Downloads.txt"       },
+    { L"#Favorites#",       "Fs.ListDir_UserPresetLayers.Favorites.txt"       },
+    { L"#StartMenu#",       "Fs.ListDir_UserPresetLayers.StartMenu.txt"       },
+    { L"#Programs#",        "Fs.ListDir_UserPresetLayers.Programs.txt"        },
+    { L"#Startup#",         "Fs.ListDir_UserPresetLayers.Startup.txt"         },
+};
+
+/**
  * @brief Whether a listing holds a file of a given name.
  * @param[in] rsp Listing of a directory.
  * @param[in] name Name of the file.
@@ -50,55 +79,62 @@ ProtocolListDir::Rsp ListLayer(const std::wstring& layer, const std::filesystem:
 
 /**
  * Condition:
- * 1. The resource tree holds a lower layer for the `Documents` folder and one
- *    for the `Desktop` folder of the user, each with a file of its own.
- * 2. The sandboxed process lists both folders.
+ * 1. The resource tree holds a lower layer for every folder of the user below
+ *    `Current User Directory` -- `Documents`, `Desktop`, `Application Data`,
+ *    `Local Application Data`, `Local Application Data Low`, `Downloads`,
+ *    `Favorites`, `Start Menu`, `Programs` and `Startup` -- each with a file of
+ *    its own.
+ * 2. The sandboxed process lists every one of those folders.
  *
  * Expected:
  * 1. Every file is listed in the folder of its own layer.
- * 2. A file of the other layer is not listed, so each layer is mapped to the
- *    folder its layer key names.
+ * 2. A file of another layer is not listed, so each layer is mapped to the
+ *    folder its layer key names. `Programs` and `Startup` hang below the real
+ *    Start Menu folder, so their files are not entries of the listing of the
+ *    folder above them either.
  * 3. The resources of the application are untouched.
  */
 TEST_F(E2E_Fs, ListDir_UserPresetLayers)
 {
-    const std::string  documents_name = "Fs.ListDir_UserPresetLayers.Documents.txt";
-    const std::string  desktop_name = "Fs.ListDir_UserPresetLayers.Desktop.txt";
-    const std::wstring w_documents_name = CLI::widen(documents_name);
-    const std::wstring w_desktop_name = CLI::widen(desktop_name);
-
     /*
      * Every level declares one directory per entry, because the verification
      * of a case counts the entries of a directory and compares them with the
      * children it declared.
      */
+    FsNode::Nodes layers;
+    for (const auto& entry : s_layers)
+    {
+        layers.push_back(FsDir(entry.layer, { FsFile(CLI::widen(entry.name), "content") }));
+    }
+
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
         FsDir(L"app", {
-            FsDir(L"filesystem", {
-                FsDir(L"#Documents#", {
-                    FsFile(w_documents_name, "documents")
-                }),
-                FsDir(L"#Desktop#", {
-                    FsFile(w_desktop_name, "desktop")
-                })
-            })
+            FsDir(L"filesystem", layers)
         })
     });
     /* clang-format on */
 
     auto config = tree.Build();
 
-    /* The layer of the Documents folder is mapped to the real Documents folder. */
-    const auto documents = ListLayer(L"#Documents#", GetCWD(), config);
-    EXPECT_TRUE(HoldsFile(documents, documents_name));
-    EXPECT_FALSE(HoldsFile(documents, desktop_name));
+    for (const auto& entry : s_layers)
+    {
+        const auto listing = ListLayer(entry.layer, GetCWD(), config);
 
-    /* The layer of the Desktop folder is mapped to the real Desktop folder. */
-    const auto desktop = ListLayer(L"#Desktop#", GetCWD(), config);
-    EXPECT_TRUE(HoldsFile(desktop, desktop_name));
-    EXPECT_FALSE(HoldsFile(desktop, documents_name));
+        /* The file of the layer is listed in the real folder of its own key. */
+        EXPECT_TRUE(HoldsFile(listing, entry.name)) << entry.name;
+
+        /* The file of no other layer is listed there. */
+        for (const auto& other : s_layers)
+        {
+            if (&other == &entry)
+            {
+                continue;
+            }
+            EXPECT_FALSE(HoldsFile(listing, other.name)) << entry.name << " holds " << other.name;
+        }
+    }
 
     /* Verify that the resources of the application are untouched. */
     ASSERT_TRUE(tree.Verify());

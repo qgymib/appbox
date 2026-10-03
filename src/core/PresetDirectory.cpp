@@ -1,5 +1,6 @@
 #include "PresetDirectory.hpp"
 #include "utils/KnownFolder.hpp"
+#include <algorithm>
 #include <spdlog/spdlog.h>
 
 namespace
@@ -21,13 +22,23 @@ struct PresetDefinition
  * resolution below can tell whether the parent is offered as well.
  */
 const PresetDefinition s_preset_definitions[] = {
-    { "program_files", L"Program Files",          L"#ProgramFiles#", nullptr        },
-    { "user_profile",  L"Current User Directory", L"#USERPROFILE#",  nullptr        },
-    { "documents",     L"Documents",              L"#Documents#",    "user_profile" },
-    { "desktop",       L"Desktop",                L"#Desktop#",      "user_profile" },
-    { "windows",       L"Windows",                L"#Windows#",      nullptr        },
-    { "system32",      L"System32",               L"#System32#",     "windows"      },
-    { "fonts",         L"Fonts",                  L"#Fonts#",        "windows"      },
+    { "program_files",              L"Program Files",              L"#ProgramFiles#",       nullptr         },
+    { "program_files_common",       L"Common",                     L"#ProgramFilesCommon#", "program_files" },
+    { "user_profile",               L"Current User Directory",     L"#USERPROFILE#",        nullptr         },
+    { "documents",                  L"Documents",                  L"#Documents#",          "user_profile"  },
+    { "desktop",                    L"Desktop",                    L"#Desktop#",            "user_profile"  },
+    { "application_data",           L"Application Data",           L"#AppData#",            "user_profile"  },
+    { "local_application_data",     L"Local Application Data",     L"#LocalAppData#",       "user_profile"  },
+    { "local_application_data_low", L"Local Application Data Low", L"#LocalAppDataLow#",    "user_profile"  },
+    { "downloads",                  L"Downloads",                  L"#Downloads#",          "user_profile"  },
+    { "favorites",                  L"Favorites",                  L"#Favorites#",          "user_profile"  },
+    { "start_menu",                 L"Start Menu",                 L"#StartMenu#",          "user_profile"  },
+    { "programs",                   L"Programs",                   L"#Programs#",           "start_menu"    },
+    { "startup",                    L"Startup",                    L"#Startup#",            "programs"      },
+    { "program_data",               L"Program Data",               L"#ProgramData#",        nullptr         },
+    { "windows",                    L"Windows",                    L"#Windows#",            nullptr         },
+    { "system32",                   L"System32",                   L"#System32#",           "windows"       },
+    { "fonts",                      L"Fonts",                      L"#Fonts#",              "windows"       },
 };
 
 /**
@@ -100,6 +111,17 @@ std::vector<PresetDirectory> ChildPresets(const std::string& parent_id)
             result.push_back(preset);
         }
     }
+
+    /*
+     * The siblings of the tree are ordered by their label, which is what the
+     * filesystem workspace shows and what the definition table above is free
+     * of: a new preset joins its group by name instead of having to be inserted
+     * at the right table position.
+     */
+    std::sort(result.begin(), result.end(), [](const PresetDirectory& left, const PresetDirectory& right) {
+        return left.display_name < right.display_name;
+    });
+
     return result;
 }
 

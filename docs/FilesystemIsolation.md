@@ -200,17 +200,21 @@ view path is rebased by replacing the layer's `mapped_nt_path` prefix with its
 followed by a path separator, so `...\AppData\RoamingX` does not match the
 `...\AppData\Roaming` mapping.
 
-A layer key is a `#Name#` delimited token (`#ProgramFiles#`, `#USERPROFILE#`,
-`#Documents#`, `#Desktop#`, `#Windows#`, `#System32#`, `#Fonts#`, a single drive
-letter);
+A layer key is a `#Name#` delimited token (`#ProgramFiles#`,
+`#ProgramFilesCommon#`, `#USERPROFILE#`, `#Documents#`, `#Desktop#`, `#AppData#`,
+`#LocalAppData#`, `#LocalAppDataLow#`, `#Downloads#`, `#Favorites#`,
+`#StartMenu#`, `#Programs#`, `#Startup#`, `#ProgramData#`, `#Windows#`,
+`#System32#`, `#Fonts#`, a single drive letter);
 `#REGISTRY#` and `#NETWORK#` are reserved for the other isolation domains. The packer offers one
 layer per preset directory of its filesystem workspace and names it after the
 layer key of that preset, so the launcher knows exactly the keys the packer
 produces: a directory which is named after any other key is rejected with
-`Unknown folder`. Layers are matched longest prefix first, so nested prefixes
-are matched before their parents. An archive which was packed with the former
-`%Name%` form has to be packed again: the launcher rejects the unknown layer
-name.
+`Unknown folder`. A key is matched exactly as the table spells it, both by that
+lookup and by the expansion of the path of a startup file, so a differently
+spelled key names no layer and no folder. Layers are matched longest prefix
+first, so nested prefixes are matched before their parents. An archive which was
+packed with the former `%Name%` form has to be packed again: the launcher
+rejects the unknown layer name.
 
 A layer key can be held by several layers of one run, because a patch package
 carries layers of its own: the launcher mounts the layers of the packages before
@@ -260,17 +264,27 @@ The launcher resolves its configuration as `<own file name>.json` in its own
 directory, so renaming the extracted launcher program requires renaming the
 configuration file as well. Running the extracted launcher program shows the
 imported folders at their preset locations (`#ProgramFiles#\<import>`,
-`#USERPROFILE#\<import>`, `#Documents#\<import>`, `#Desktop#\<import>`,
-`#Windows#\<import>`, `#System32#\<import>`, `#Fonts#\<import>`) and starts the
-selected startup files inside the isolation. The folders of the user hang below
-`Current User Directory` in the tree of the packer and the system directory
-hangs below `Windows`, yet every preset directory owns a layer of its own:
-`Documents` and `Desktop` are resolved from their own known folder id, which
-keeps them correct when the shell redirects them (for example into OneDrive),
-and `System32` is resolved from its own id instead of being a subdirectory of
-the `Windows` layer. The `Fonts` folder of the same section is the layer of the
-fonts domain, whose fonts are loaded into the font table of a sandboxed process:
-see [Fonts Isolation](FontsIsolation.md).
+`#ProgramFilesCommon#\<import>`, `#USERPROFILE#\<import>`,
+`#Documents#\<import>`, `#Desktop#\<import>`, `#AppData#\<import>`,
+`#LocalAppData#\<import>`, `#LocalAppDataLow#\<import>`, `#Downloads#\<import>`,
+`#Favorites#\<import>`, `#StartMenu#\<import>`, `#Programs#\<import>`,
+`#Startup#\<import>`, `#ProgramData#\<import>`, `#Windows#\<import>`,
+`#System32#\<import>`, `#Fonts#\<import>`) and starts the selected startup files
+inside the isolation. The folders of the user hang below `Current User
+Directory` in the tree of the packer, `Programs` hangs below `Start Menu` and
+`Startup` below `Programs`, while the system directory hangs below `Windows` and
+`Common` below `Program Files`; `Program Data` is a top level preset next to
+`Program Files`, `Current User Directory` and `Windows`. Yet every preset
+directory owns a layer of its own: `Documents` and `Desktop` are resolved from
+their own known folder id, which keeps them correct when the shell redirects
+them (for example into OneDrive), `Local Application Data Low` is resolved from
+its own id instead of being a subdirectory of `Local Application Data`,
+`Programs` and `Startup` are resolved from their own ids instead of being
+subdirectories of the `Start Menu` layer, and `System32` is resolved from its own
+id instead of being a subdirectory of the `Windows` layer. The `Fonts` folder of
+the same section is the layer of the fonts domain, whose fonts are loaded into
+the font table of a sandboxed process: see
+[Fonts Isolation](FontsIsolation.md).
 
 ## Key behavior rules
 
