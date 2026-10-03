@@ -43,7 +43,7 @@ struct TestConfig
     std::wstring      sandbox32_path;       /* Path to the 32 bit sandbox injection module */
     std::wstring      sandbox64_path;       /* Path to the 64 bit sandbox injection module */
     std::wstring      packer_path;          /* Path to the packer */
-    std::wstring      log_level = L"info";  /* Log level */
+    std::wstring      log_level = L"info";  /* Level of the log files of a case, not of the test executable */
     bool              no_cleanup = false;   /* Do not cleanup the test directory */
     TestMode          mode = TestMode::All; /* Part of the suites the run executes */
     TestTimeoutConfig test_timeout;         /* Timeout of a test case and the coredumps of a timeout */

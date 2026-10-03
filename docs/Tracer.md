@@ -1,60 +1,95 @@
 # Tracer
 
-`AppBoxTracer.exe` runs a program and reports which **lowest level entry points**
-of the filesystem, the registry and the network the program **actually used**,
-including the calls of its child processes. It answers the question "which of the
-entry points an isolation layer has to intercept does this program really call?".
+The **Tracer workspace** of `AppBox.exe` runs a program and shows which **lowest
+level entry points** of the filesystem, the registry and the network the program
+**actually used**, including the calls of its child processes. It answers the
+question "which of the entry points an isolation layer has to intercept does this
+program really call?".
+
+The workspace is a page of the main window, next to the Filesystem, Registry,
+Network, Environment and Settings workspaces. The run itself is driven by the
+same tracing library the rest of the product uses; the workspace only chooses the
+program and the view and presents the result.
 
 The scope is the set of entry points of the three isolation domains, and it is
 **independent of the hooks the sandbox implements**: the sandbox may cover a part
 of the set, the tracer still reports the whole domain. That is why the scope
 holds the native entry points (`ntdll!NtOpenFile`) and not the Win32 wrappers
 (`kernel32!CreateFileW`): the tracer is a debugging tool for the domains, not a
-mirror of one implementation of them. The wrappers are reachable through
-`--all-exports`.
+mirror of one implementation of them. The wrappers are reachable through the
+`All exports` view.
 
-```
-AppBoxTracer [options] <program> [program arguments...]
-```
+## Usage
 
-Options must precede the program; everything from the program on is passed to it
-unchanged.
+The page offers the target and the view above the list:
 
-| Option | Meaning |
+* `Target Program` — the program to run, with a `Browse...` button which opens a
+  file dialog. A typed path is resolved when the box loses the focus or the user
+  presses Enter, which fills the list.
+* `Arguments` — the arguments passed to the program, quoted the way a command
+  line quotes them. They are split with the Windows command line rules.
+* `View` — the kind of function list the page shows, either `Isolation entry
+  points` (the default) or `All exports`.
+* `Run` — starts the run below `cdb.exe`. While a run is going on the button
+  reads `Stop`, the boxes are disabled and the status line shows the progress of
+  the session; `Stop` asks the session to stop and keeps what it collected so
+  far.
+* `Export JSON...` — writes the functions the last run used to a JSON file. It is
+  disabled until a run of the current view finished.
+* The list itself: every function of the view as a `module!function` row.
+
+The rows are **grey** while the view was not run, and a run paints the functions
+it reported **black**. The used rows are moved in front of the unused ones, and
+each of the two groups stays ASCII ascending. The status line ends with
+`processes: <n>, breakpoints: <n>, functions used: <n>`, or with
+`the run did not complete: <message>` when the run was aborted.
+
+Changing the target or the view rebuilds the list and drops the result of the
+last run, so the export always describes the view which is on the screen.
+
+### Views
+
+| View | Rows |
 | --- | --- |
-| `--cdb <path>` | Debugger to drive. Searched on the `PATH` and below the Windows Kits directory when it is omitted. |
-| `--output <path>` | Write the report as UTF-8 to this file instead of the standard output. |
-| `--categories <list>` | Comma separated categories to trace: `file`, `registry`, `network`. Default: all three. |
-| `--all-exports` | Trace every executable export of the traced modules instead of the categories, which includes the Win32 wrappers. Much slower. |
-| `--list-scope` | Print the functions which would be armed and exit. |
-| `--with-categories` | Annotate every reported function with its categories. |
-| `--timeout <seconds>` | Hard limit of the whole run. Default: 600. |
-| `--stall-timeout <seconds>` | Seconds the debugger may stay stopped before the run is aborted. Default: 30. |
-| `--keep-raw <path>` | Write the raw debugger output as UTF-8 to this file. |
-| `-h`, `--help` | Print the usage text. |
+| `Isolation entry points` | The lowest level entry points of the three isolation domains, the built in table of the tracer (see *Scope classification* below). This is what the sandbox has to intercept. |
+| `All exports` | Every executable export parsed from the traced DLLs (`ntdll`, `kernel32`, `kernelbase`, `ws2_32`, `dnsapi`), the Win32 wrappers included. |
 
-Exit codes: `0` the run completed, `1` the trace could not be completed (the
-report is still written), `2` invalid command line.
+The `All exports` view arms one one-shot breakpoint per export of the traced
+modules (several thousand). Arming them takes minutes in the debugger before the
+program even starts, which is why the workspace asks for confirmation before it
+starts such a run.
 
-## Examples
+The list is built by parsing the system modules of the target from the module
+directory which matches the machine type of the target (the WOW64 copies for a
+32 bit program), so the rows are exactly the names a run of the same view can
+report. A module which can not be read is skipped, and its names are missing from
+the list.
 
+## Export
+
+`Export JSON...` writes the result of the last run:
+
+```json
+{
+  "program": "C:\\Windows\\System32\\cmd.exe",
+  "view": "scope",
+  "result": "completed",
+  "processes": 1,
+  "breakpoints": 120,
+  "functions": [
+    "ntdll!NtClose",
+    "ntdll!NtCreateFile",
+    "ntdll!ZwClose"
+  ]
+}
 ```
-# Which entry points of the three domains does cmd.exe use, including its child?
-AppBoxTracer --output cmd.txt cmd.exe /c cmd.exe /c echo child
 
-# Review the scope before a run, with the categories of every function.
-AppBoxTracer --list-scope --with-categories --output scope.txt cmd.exe
-
-# Only the registry domain.
-AppBoxTracer --categories registry --with-categories notepad.exe
-
-# Which name resolution entry points does a lookup use? The DNS client is loaded
-# on demand, so its breakpoints are armed when the loader maps it.
-AppBoxTracer --categories network --with-categories --output dns.txt ping.exe -n 1 localhost
-
-# Trace a 32 bit program: the WOW64 copies of the modules are used.
-AppBoxTracer --timeout 120 "C:\Program Files (x86)\app\app.exe"
-```
+`view` is `scope` or `all-exports`. `result` is `completed` or
+`aborted: <reason>`; an aborted run still exports what was collected, so a
+timeout or an interrupted run never loses its result. `breakpoints` is the number
+of breakpoints the first process was armed with, including the ones which were
+armed when a module was loaded later. `functions` holds only the functions the
+run used; the unused rows of the view stay out of the file.
 
 ## How it works
 
@@ -144,10 +179,10 @@ eight prompts, exactly one more than were fed.
 
 ### Scope classification
 
-The scope is a table of explicit names (`tracer/ScopePatterns.cpp`), one list per
-domain and module, and a name is only classified for the module which exports it.
-A table is used instead of a name pattern because a pattern is far too broad: a
-keyword match cannot tell a file section from an ALPC section
+The scope is a table of explicit names (`src/tracer/ScopePatterns.cpp`), one list
+per domain and module, and a name is only classified for the module which exports
+it. A table is used instead of a name pattern because a pattern is far too broad:
+a keyword match cannot tell a file section from an ALPC section
 (`NtAlpcCreatePortSection`), a registry key from a synchronization object
 (`NtCreateKeyedEvent`) or an object manager directory from a file directory
 (`NtOpenDirectoryObject`).
@@ -179,7 +214,7 @@ Out of the scope are, deliberately:
 
 * the Win32 wrappers (`CreateFileW`, `ReadFile`, `RegOpenKeyExW`,
   `CreateNamedPipeW`, ...) and the `Rtl*` path helpers (`RtlDosPathNameToNtPathName_U`),
-  which are only reachable through `--all-exports`;
+  which are only reachable through the `All exports` view;
 * the helpers of the resolver which only free, validate or configure something
   (`FreeAddrInfoW`, `DnsValidateName_W`, `DnsQueryConfig`), because they are not
   lookups;
@@ -199,46 +234,20 @@ Measured on Windows 10.0.22621 with the debugger 10.0.28000.2705:
 
 | Scope | Breakpoints | Names | Cost |
 | --- | --- | --- | --- |
-| `file, registry, network` (default) | 120 | 214 | `--list-scope` takes 0.08 s with warm files (1.9 s cold) |
-| every executable export (`--all-exports`) | 5747 | 6564 | arming takes about 245 s before the program starts |
+| `Isolation entry points` (default) | 120 | 214 | building the view takes 0.08 s with warm files (1.9 s cold) |
+| `All exports` | 5747 | 6564 | arming takes about 245 s before the program starts |
 
 The default scope is 94 addresses in ntdll (188 names, the `Zw` alias included),
 16 in `ws2_32` and 10 in `dnsapi`. Arming breakpoints is super-linear in the
 debugger (1000 breakpoints take 0.56 s, 3000 take 17.3 s), which is why the
-default scope is the category set and why `--all-exports` warns about its cost
-before the run starts.
+default view is the category set and why the `All exports` view warns about its
+cost before the run starts.
 
 | Run | Duration | Result |
 | --- | --- | --- |
 | `cmd.exe /c echo hi` | about 0.7 s | 1 process, 94 breakpoints, 40 functions |
 | `cmd.exe /c cmd.exe /c echo child` | about 1 s | 2 processes, both armed with 94 breakpoints, 40 functions |
 | `ping.exe -n 1 localhost` | about 1.3 s | 1 process, 120 breakpoints (10 of them armed when the DNS client was loaded), 46 functions |
-
-## Report
-
-```
-AppBoxTracer report
-  program     : C:\Windows\SYSTEM32\ping.exe
-  debugger    : C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe
-  scope       : file, registry, network
-  processes   : 1
-  breakpoints : 120 per process
-  result      : completed
-
-dnsapi.dll (1 functions)
-  dnsapi!DnsQueryEx
-
-ntdll.dll (40 functions)
-  ntdll!NtClose
-  ntdll!NtCreateFile
-  ntdll!NtCreateKey
-  ...
-```
-
-`breakpoints` is the number of breakpoints the first process was armed with,
-including the ones which were armed when a module was loaded later. `result` is
-`completed` or `aborted: <reason>`; an aborted run still reports what was
-collected, so a timeout or an interrupted run never loses its result.
 
 ## Known limitations
 
@@ -253,25 +262,29 @@ collected, so a timeout or an interrupted run never loses its result.
    caller, are not seen.
 4. **The Win32 wrappers are not traced by default.** A run reports
    `ntdll!NtCreateFile`, not `kernel32!CreateFileW`; the wrapper layer is only
-   reachable through `--all-exports`.
-5. **The exhaustive scope is slow.** `--all-exports` arms 5747 addresses, which
-   takes about four minutes before the program even starts.
+   reachable through the `All exports` view.
+5. **The exhaustive view is slow.** The `All exports` view arms 5747 addresses,
+   which takes about four minutes before the program even starts.
 6. **A module which is loaded again is not armed again.** A session arms a module
    once; a module which is unloaded and mapped again at a different base address
    keeps its breakpoints only when the address is unchanged.
 7. **A debugger is required.** The tracer needs `cdb.exe` of the Debugging Tools
-   for Windows (`--cdb` or the default search). No other debugger is supported.
+   for Windows, which the workspace finds with the default search. No other
+   debugger is supported, and a machine without the Debugging Tools shows
+   `cdb.exe was not found; install the Debugging Tools for Windows` in the
+   status line.
 8. **The scope is a table.** An entry point which is related to a domain but is
-   missing from the table is not reported; `--list-scope --with-categories` shows
-   what a run covers, and the table is a single file
-   (`tracer/ScopePatterns.cpp`).
+   missing from the table is not reported; the `Isolation entry points` view
+   shows what a run covers, and the table is a single file
+   (`src/tracer/ScopePatterns.cpp`).
 9. **The categories describe entry points, not semantics.** A call which ends up
    in `NtQueryInformationFile` is reported as a file function even when it
    queries something else, because the entry point is what an isolation layer
    has to intercept.
-10. **A run which reaches `--timeout` is aborted.** A program which runs longer
-    than the limit (an interactive program, for example) has to be given a larger
-    `--timeout`.
+10. **A run which reaches its time limit is aborted.** The hard limit of one run
+    is 600 seconds. A program which runs longer (an interactive program, for
+    example) has to be stopped with `Stop`, or the limit has to be raised in
+    `src/core/TracerModel.hpp` (`kTracerRunTimeoutSeconds`).
 
 ## Tests
 

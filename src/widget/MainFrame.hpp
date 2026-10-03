@@ -22,6 +22,7 @@ class RegistryPanel;
 class SettingsPanel;
 class SideNav;
 class Toolbar;
+class TracerPanel;
 class wxProgressDialog;
 class wxSimplebook;
 class wxTimer;
@@ -340,6 +341,7 @@ private:
     RegistryPanel*    registry_panel_ = nullptr;
     NetworkPanel*     network_panel_ = nullptr;
     EnvironmentPanel* environment_panel_ = nullptr;
+    TracerPanel*      tracer_panel_ = nullptr;
     SettingsPanel*    settings_panel_ = nullptr;
 
     bool output_path_edited_ = false;

@@ -248,8 +248,8 @@ static DWORD MainLauncher()
 
     for (const auto& target : targets)
     {
-        auto job = std::make_unique<appbox::ProcessJob>(target.exe_path, target.args, LauncherApp().runtime->inject_data,
-                                                        target.hide_console);
+        auto       job = std::make_unique<appbox::ProcessJob>(target.exe_path, target.args,
+                                                              LauncherApp().runtime->inject_data, target.hide_console);
         const auto ret = job->Start();
         if (ret != 0)
         {

@@ -14,19 +14,11 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 - **Environment Isolation**: Collects the environment variables the packaged application sees inside the sandbox with the isolation mode and the merge mode of every variable; the composed environment lives in a private table of the sandbox, so the environment of the host is never modified and the modifications of the application survive in the state directory of the sandbox (see [Environment Isolation](docs/EnvironmentIsolation.md)).
 - **Patch Packages**: The `Project Type` box of the packer writes either a self-contained archive or a patch package which holds the resources of the packaged application without the launcher and without the sandbox injection modules; the packages of the `patch` directory next to a standalone archive are merged into its resources in ascending name order — the filesystem layers, the virtual registry, the network configuration and the environment variables of a package included (see [Patch Layers](docs/PatchLayer.md)).
 
-## Requirements
-
-- CMake 3.25+
-- C++17 compatible compiler
-- Windows SDK
-
 ## Build
 
 ### Prerequisites
 
-1. Install CMake 3.25 or later — the first release which accepts the schema
-   version 6 of `CMakePresets.json`. The `cmake_minimum_required` of
-   `CMakeLists.txt` is a separate bound and stays at 3.15.
+1. Install CMake 3.25 or later.
 2. Install a C++17 compatible compiler (MSVC, GCC, or Clang)
 3. Clone the repository with submodules:
    ```bash
@@ -67,7 +59,6 @@ generator adds below it:
 | --- | --- |
 | `AppBox.exe` (main product) | `build/<config>/<config>/AppBox.exe` |
 | `AppBoxLauncher.exe` | `build/<config>/launcher/<config>/AppBoxLauncher.exe` |
-| `AppBoxTracer.exe` (API tracer) | `build/<config>/tracer/<config>/AppBoxTracer.exe` |
 | `AppBoxTests.exe` (unit and end-to-end tests) | `build/<config>/test/<config>/AppBoxTests.exe` |
 
 ## Project Components
@@ -81,8 +72,10 @@ layout of a packaging tool: a toolbar on top, a vertical icon navigation on the
 left and the workspace on the right.
 
 The navigation offers the Filesystem, Registry, Network and Environment
-workspaces, which edit the four isolation domains of the sandbox, and the
-Settings workspace, whose `Output` tab holds the destination archive of the
+workspaces, which edit the four isolation domains of the sandbox, the Tracer
+workspace, which runs a chosen program below the debugger and lists the entry
+points it uses (see [Tracer](docs/Tracer.md)), and the Settings workspace, whose
+`Output` tab holds the destination archive of the
 `Build` command and the project type; a value of the Environment and of the
 Registry workspace may reference a known folder of the machine which runs the
 sandbox (see [Variable Expansion](#variable-expansion)). The configuration of a
@@ -116,14 +109,13 @@ command the shell runs interactively, with a command it runs
 
 ### Tracer
 
-Console tool which reports the functions a program uses: it drives `cdb.exe`
-to arm one-shot breakpoints on `ntdll`, `kernel32`, `kernelbase`, `ws2_32`
-and `dnsapi` and collects the functions which are actually called, including
-the ones of the child processes.
-
-```
-AppBoxTracer --output cmd.txt cmd.exe /c cmd.exe /c echo child
-```
+Workspace of `AppBox.exe` which reports the functions a program uses: it runs a
+chosen program below `cdb.exe`, arms one-shot breakpoints on `ntdll`,
+`kernel32`, `kernelbase`, `ws2_32` and `dnsapi`, and marks the functions which
+are actually called, including the ones of the child processes. The list shows
+either the `Isolation entry points` of the three isolation domains or every
+executable export of the traced modules (`All exports`), and the result can be
+exported as JSON.
 
 See [Tracer](docs/Tracer.md) for the usage, the mechanism and the measured cost.
 
@@ -201,7 +193,7 @@ pure function `appbox::ExpandVariables()` of
 - [Environment Isolation](docs/EnvironmentIsolation.md) - Environment isolation architecture
 - [Fonts Isolation](docs/FontsIsolation.md) - Fonts isolation architecture
 - [Patch Layers](docs/PatchLayer.md) - Patch packages: layout, merge rules and the launcher side
-- [Tracer](docs/Tracer.md) - API tracer: usage, mechanism and measured cost
+- [Tracer](docs/Tracer.md) - Tracer workspace: usage, mechanism and measured cost
 - [Tests](test/README.md) - Unit tests and end-to-end tests of the sandbox
 
 ## License

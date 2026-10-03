@@ -1,7 +1,7 @@
 #ifndef APPBOX_TRACER_SCOPEPATTERNS_HPP
 #define APPBOX_TRACER_SCOPEPATTERNS_HPP
 
-#include "tracer/Options.hpp"
+#include "tracer/Category.hpp"
 #include <string>
 #include <vector>
 

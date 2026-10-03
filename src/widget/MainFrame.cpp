@@ -8,6 +8,7 @@
 #include "SettingsPanel.hpp"
 #include "SideNav.hpp"
 #include "Toolbar.hpp"
+#include "TracerPanel.hpp"
 #include "core/BuildReport.hpp"
 #include "core/EmbeddedResource.hpp"
 #include "core/EmbeddedResourceIds.h"
@@ -197,6 +198,8 @@ void MainFrame::CreateLayout()
                        "Name resolution and proxy the packaged application uses inside the sandbox");
     side_nav_->AddItem("Environment", wxART_LIST_VIEW,
                        "Environment variables the packaged application sees inside the sandbox");
+    side_nav_->AddItem("Tracer", wxART_EXECUTABLE_FILE,
+                       "Runs a program and shows which isolation entry points it really uses");
     side_nav_->AddItem("Settings", wxART_HELP, "Archive the Build command writes and the type of the product");
 
     workspace_ = new wxSimplebook(this, wxID_ANY);
@@ -212,6 +215,9 @@ void MainFrame::CreateLayout()
 
     environment_panel_ = new EnvironmentPanel(workspace_, environment_);
     workspace_->AddPage(environment_panel_, "Environment");
+
+    tracer_panel_ = new TracerPanel(workspace_);
+    workspace_->AddPage(tracer_panel_, "Tracer");
 
     settings_panel_ = new SettingsPanel(workspace_);
     workspace_->AddPage(settings_panel_, "Settings");

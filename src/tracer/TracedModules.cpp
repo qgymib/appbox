@@ -71,6 +71,19 @@ std::filesystem::path SystemDirectoryForMachine(std::uint16_t machine)
     return wow64_directory.empty() ? system_directory : wow64_directory;
 }
 
+std::filesystem::path ModuleDirectoryForTarget(const std::filesystem::path& target)
+{
+    try
+    {
+        return SystemDirectoryForMachine(PeImage::FromFile(target).Machine());
+    }
+    catch (const std::runtime_error&)
+    {
+        /* Without a readable image the 64 bit system modules are the best guess. */
+        return SystemDirectoryForMachine(0);
+    }
+}
+
 ModuleImages LoadTracedModules(const std::filesystem::path& directory)
 {
     std::map<std::wstring, std::filesystem::path> paths;

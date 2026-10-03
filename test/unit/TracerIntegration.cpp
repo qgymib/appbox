@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "src/core/TracerModel.hpp"
 #include "tracer/ArmPlan.hpp"
 #include "tracer/CdbLocator.hpp"
 #include "tracer/CdbSession.hpp"
@@ -8,6 +9,7 @@
 #include "utils/NameResolutionProbe.hpp"
 #include "utils/TestTimeout.hpp"
 #include <algorithm>
+#include <cstddef>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -237,4 +239,84 @@ TEST(Unit_TracerIntegration, AModuleLoadedOnDemandIsArmedWhenItAppears)
      * DNS client only when the probe asks for it. */
     EXPECT_TRUE(HasName(result.names, L"ws2_32!GetAddrInfoW"));
     EXPECT_TRUE(HasName(result.names, L"dnsapi!DnsQuery_UTF8"));
+}
+
+/**
+ * @brief The workspace marks exactly the rows of its view which a real run
+ *        reported, and the summary describes the run.
+ *
+ * The invariant which makes the black rows meaningful is that a name a run
+ * reports is a row of the view: both are built from the same breakpoint plan, so
+ * the view can never miss a name the run collected.
+ */
+TEST(Unit_TracerIntegration, TheViewOfARealRunIsMarked)
+{
+    const IntegrationSetup setup = Prepare();
+    if (setup.debugger.empty())
+    {
+        GTEST_SKIP() << "cdb.exe was not found";
+    }
+
+    if (setup.target.empty())
+    {
+        GTEST_SKIP() << "cmd.exe was not found";
+    }
+
+    const std::filesystem::path      directory = appbox::tracer::SystemDirectoryForMachine(0);
+    std::vector<appbox::TracerEntry> entries;
+    std::string                      error;
+    ASSERT_TRUE(appbox::BuildTracerView(appbox::TracerView::Scope, directory, entries, error)) << error;
+    ASSERT_FALSE(entries.empty());
+
+    appbox::test::SetTestTimeout(static_cast<int>(kRunTimeoutSeconds + kStallTimeoutSeconds + 60));
+
+    const appbox::TracerRunOutcome outcome =
+        appbox::RunTracerSession(setup.target, { L"/c", L"echo", L"hi" }, appbox::TracerView::Scope, directory, {});
+    EXPECT_TRUE(outcome.error.empty()) << outcome.error;
+
+    const appbox::tracer::TraceResult& result = outcome.result;
+    ASSERT_EQ(result.status, appbox::tracer::RunStatus::Completed) << result.message;
+    ASSERT_FALSE(result.names.empty());
+
+    /* Every name the run collected is a row of the view. */
+    for (const auto& name : result.names)
+    {
+        const bool found = std::any_of(entries.begin(), entries.end(),
+                                       [&name](const appbox::TracerEntry& entry) { return entry.name == name; });
+        EXPECT_TRUE(found) << name;
+    }
+
+    appbox::MarkTracerEntries(entries, result.names);
+    appbox::OrderTracerEntries(entries);
+
+    const auto by_name = [](const appbox::TracerEntry& left, const appbox::TracerEntry& right) {
+        return left.name < right.name;
+    };
+
+    std::size_t used_count = 0;
+    for (const auto& entry : entries)
+    {
+        if (entry.used)
+        {
+            ++used_count;
+        }
+    }
+    EXPECT_GT(used_count, 0U);
+
+    for (std::size_t index = 0; index < entries.size(); ++index)
+    {
+        EXPECT_EQ(entries[index].used, index < used_count) << entries[index].name;
+    }
+
+    const auto used_end = entries.begin() + static_cast<std::ptrdiff_t>(used_count);
+    EXPECT_TRUE(std::is_sorted(entries.begin(), used_end, by_name));
+    EXPECT_TRUE(std::is_sorted(used_end, entries.end(), by_name));
+
+    /* The file APIs of the startup are among the used rows. */
+    const bool file_api_used = std::any_of(entries.begin(), used_end, [](const appbox::TracerEntry& entry) {
+        return entry.name == L"ntdll!NtCreateFile" || entry.name == L"ntdll!NtOpenFile";
+    });
+    EXPECT_TRUE(file_api_used);
+
+    EXPECT_EQ(appbox::TracerRunSummary(result).rfind(L"processes: 1, ", 0), 0U);
 }

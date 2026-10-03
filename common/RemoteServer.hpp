@@ -172,13 +172,11 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
         auto self = shared_from_this();
 
         uint64_t session_id = uid_gen++;
-        SPDLOG_DEBUG("[HANDLE: {}] server accept success: session_id={}", pipe->native_handle(), session_id);
 
         auto session = RemoteSession::Create(
             std::move(pipe), [self, session_id](const asio::error_code& ec, RemoteSession::MsgPtr data) {
                 if (ec)
                 {
-                    SPDLOG_DEBUG("[SESSION: {}] session closed: {}", session_id, ec.message());
                     {
                         std::lock_guard<std::mutex> guard(self->session_map_mutex);
                         self->session_map.erase(session_id);

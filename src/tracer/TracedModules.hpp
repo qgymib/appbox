@@ -53,6 +53,19 @@ std::wstring ModuleNameFromImagePath(const std::wstring& image_path);
 std::filesystem::path SystemDirectoryForMachine(std::uint16_t machine);
 
 /**
+ * @brief Directory which holds the system modules a target runs against.
+ *
+ * The machine type of the target decides between the 64 bit and the 32 bit system modules,
+ * because a 32 bit process runs against the WOW64 copies and their export tables are the ones
+ * its calls end up in.
+ *
+ * @param[in] target Path of the program to trace.
+ * @return The directory of the system modules; the 64 bit directory when the target image
+ *         can not be read.
+ */
+std::filesystem::path ModuleDirectoryForTarget(const std::filesystem::path& target);
+
+/**
  * @brief Parse the traced modules from a directory.
  *
  * @param[in] directory Directory which holds the modules.

@@ -13,6 +13,7 @@
 #include "WString.hpp"
 #include "CommandLine.hpp"
 #include "Coredump.hpp"
+#include "TestLog.hpp"
 #include "TestTimeout.hpp"
 
 namespace
@@ -186,6 +187,8 @@ void RunCoredumpWriter(const appbox::test::CoredumpRequest& request)
 [[noreturn]] void HandleTestTimeout(const std::string& test_name, const appbox::test::TestTimeoutConfig& config)
 {
     ReportToStderr(fmt::format("test case {} timed out after {} seconds", test_name, config.test_timeout_seconds));
+
+    appbox::test::DumpTestLog();
 
     appbox::test::CoredumpRequest request;
     request.pid = ::GetCurrentProcessId();

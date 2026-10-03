@@ -116,7 +116,6 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
         auto fn = [self](const asio::error_code& ec, std::size_t n) {
             if (ec)
             {
-                SPDLOG_DEBUG("[HANDLE: {}] read pipe failed: {}", self->pipe->native_handle(), ec.message());
                 self->cb(ec, MsgPtr());
                 return;
             }

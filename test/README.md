@@ -65,7 +65,7 @@ variable counterpart:
 | `--sandbox32` | `APPBOX_TEST_SANDBOX32` | Path of the 32 bit sandbox injection module the cases put into the resource root of their directory. |
 | `--sandbox64` | `APPBOX_TEST_SANDBOX64` | Path of the 64 bit sandbox injection module. |
 | `--packer` | `APPBOX_TEST_PACKER` | Path of the packer executable, which carries the payloads as resources. |
-| `--log-level` | `APPBOX_TEST_LOG_LEVEL` | `trace`, `debug`, `info`, `warn`, `err`, `critical` or `off`; default `info`. |
+| `--log-level` | `APPBOX_TEST_LOG_LEVEL` | Level of the launcher and of the sandboxed processes of a case: `trace`, `debug`, `info`, `warn`, `err`, `critical` or `off`; default `info`. The test executable itself stays silent and prints its messages only when a case fails. |
 | `--mode` | `APPBOX_TEST_MODE` | `all`, `unit` or `e2e`; default `all`. |
 | `--no-cleanup` | `APPBOX_TEST_NO_CLEANUP` | Keep the working directory of a case instead of removing it. |
 | `--test-timeout` | `APPBOX_TEST_TIMEOUT` | Timeout of one test case, in seconds; `0` turns the watchdog off. Default `300`. |
@@ -205,6 +205,19 @@ every kernel call the sandbox intercepts, so a run which is started with
 `APPBOX_TEST_LOG_LEVEL=trace`, like the presets of `CMakePresets.json` do,
 writes the whole path of the case into the logs of its processes.
 
+### The output of the run itself
+
+The messages the test executable logs — the pipe server which carries the
+probes of a case, and the helpers of a case — are not printed while the run
+works. They are held in a backtrace of `spdlog` (`test/utils/TestLog.*`) whose
+buffer is reset when a case starts, and the buffer is written out only when a
+case fails, or when a case times out and the watchdog ends the run. A passing
+run therefore shows the GoogleTest lines and nothing else, and the program log
+of the case which failed appears between them.
+
+`--log-level` is the level of the log files of a case, not of the test
+executable: see [Logs of a case](#logs-of-a-case).
+
 ### The report of a crash
 
 The sandbox installs a handler of fatal exceptions into every process it is
@@ -254,6 +267,7 @@ which died is the first one to open:
 | `test/utils/` | The builders and helpers which the cases share, see [Test helpers](#test-helpers). |
 | `test/utils/ProbeCall.*` | The call of a probe: it starts the launcher for the case, serves the probe over the pipe and reports the logs of the processes of the run when the case fails. |
 | `test/utils/TestTimeout.*` | The timeout of a test case: the GoogleTest hook, the watchdog thread and the options of a run. |
+| `test/utils/TestLog.*` | The backtrace of the program log of a run: it silences the messages of the test executable, keeps them in a `spdlog` backtrace and dumps them when a case fails or times out. |
 | `test/utils/Coredump.*` | The coredump writer: the full memory dump of a process, the walk of a process tree and the termination of its processes. |
 | `test/utils/CommandLine.*` | The command line and the environment of a run, which the coredump writer reads before GoogleTest and CLI11 look at them. |
 | `test/utils/LauncherPath.hpp` | The launcher path of a run: `LauncherPath()` answers the `--launcher` value of the configuration. |
@@ -1052,13 +1066,16 @@ header comment.
 
 * `test/unit/Tracer*.cpp` — the parser, the PE reader, the scope table
   (which is verified against the export tables of `ntdll`, `ws2_32` and
-  `dnsapi`), the breakpoint plan, the arm helpers, the report and the command
-  line, all without a debugger.
+  `dnsapi`), the breakpoint plan, the arm helpers, the category vocabulary and
+  the workspace model (`TracerModel.cpp`), all without a debugger.
 * `test/unit/TracerIntegration.cpp` — real runs below the real debugger: a
   run of `cmd.exe`, a run with a child process, and a run of the name resolution
   probe of this executable (`test/utils/NameResolutionProbe.*`), which loads the
   DNS client on demand and therefore proves that the breakpoints of a module
-  which the loader maps after the initial break are armed. The suite skips itself
+  which the loader maps after the initial break are armed. The workspace case
+  (`TheViewOfARealRunIsMarked`) built a view, ran `cmd.exe` through
+  `appbox::RunTracerSession` and checked that every name the run collected is a
+  row of the view and that exactly those rows are marked. The suite skips itself
   when `cdb.exe` is not installed.
 
 ## Known gaps
@@ -1098,5 +1115,5 @@ header comment.
   isolation architecture.
 * [PatchLayer.md](../docs/PatchLayer.md) — patch packages: layout, merge rules
   and the launcher side.
-* [Tracer.md](../docs/Tracer.md) — API tracer: usage, mechanism and measured
-  cost.
+* [Tracer.md](../docs/Tracer.md) — Tracer workspace: usage, mechanism and
+  measured cost.

@@ -4,6 +4,7 @@
 #include "tracer/ArmPlan.hpp"
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -43,7 +44,9 @@ struct TraceRequest
     std::vector<ArmGroup>     plan;                       ///< Breakpoints to arm in every process.
     unsigned                  timeout_seconds = 600;      ///< Hard limit of the whole run.
     unsigned                  stall_timeout_seconds = 30; ///< Limit for consuming a batch which was fed.
-    std::filesystem::path     keep_raw_path;              ///< Optional file for the raw debugger output.
+
+    /// Reports one progress line of the run; an empty function reports nothing.
+    std::function<void(const std::wstring&)> progress;
 };
 
 /**
@@ -65,13 +68,22 @@ struct TraceRequest
  *   debugger waits for input. That is how an unexpected stop (an exception, for
  *   example) is recognised and continued.
  *
- * Progress and diagnostics go to the standard error; the collected names are
- * returned. The function does not throw.
+ * Progress lines are reported through `request.progress`; the collected names
+ * are returned. The function does not throw.
  *
  * @param[in] request What to run and what to arm.
  * @return The collected names and how the run ended.
  */
 TraceResult RunTraceSession(const TraceRequest& request);
+
+/**
+ * @brief Ask a running session to stop.
+ *
+ * The call is thread safe and returns at once; the session notices the request between two
+ * polls, reports `RunStatus::Interrupted` and keeps what it collected so far. The flag is
+ * cleared when a session starts.
+ */
+void RequestTraceInterrupt();
 
 } // namespace appbox::tracer
 

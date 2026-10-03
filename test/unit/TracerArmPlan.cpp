@@ -1,13 +1,8 @@
 #include <gtest/gtest.h>
 #include "tracer/ArmPlan.hpp"
 #include "tracer/TracedModules.hpp"
-#include "tracer/TraceReport.hpp"
 #include <windows.h>
-#include <algorithm>
-#include <cstdio>
 #include <filesystem>
-#include <fstream>
-#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -354,67 +349,4 @@ TEST(Unit_TracerArmPlan, LoadFiltersAreOneCommandPerModule)
     EXPECT_EQ(lines[0], "sxe ld:ws2_32");
     EXPECT_EQ(lines[1], "sxe ld:dnsapi");
     EXPECT_TRUE(appbox::tracer::BuildLoadFilterLines({}).empty());
-}
-
-/**
- * @brief The listing of the scope names every planned function, so the scope
- *        patterns can be reviewed before a run.
- */
-TEST(Unit_TracerArmPlan, ScopeListingShowsEveryName)
-{
-    const std::vector<appbox::tracer::ArmGroup> plan = {
-        { L"kernelbase", 0x100U, { L"kernel32!GetCommandLineW", L"kernelbase!GetCommandLineW" } },
-        { L"ntdll",      0x200U, { L"ntdll!NtCreateFile", L"ntdll!NtOpenKey" }                  },
-    };
-
-    const std::wstring text = appbox::tracer::FormatScope(plan, L"file, registry, network", true);
-
-    EXPECT_NE(text.find(L"Scope: file, registry, network"), std::wstring::npos);
-    EXPECT_NE(text.find(L"Breakpoints: 2"), std::wstring::npos);
-    EXPECT_NE(text.find(L"kernelbase.dll: 1 breakpoints, 2 names"), std::wstring::npos);
-    EXPECT_NE(text.find(L"  kernel32!GetCommandLineW\n"), std::wstring::npos);
-    EXPECT_NE(text.find(L"  ntdll!NtCreateFile  [file]"), std::wstring::npos);
-    EXPECT_NE(text.find(L"  ntdll!NtOpenKey  [registry]"), std::wstring::npos);
-
-    const std::wstring plain = appbox::tracer::FormatScope(plan, L"all exports", false);
-    EXPECT_NE(plain.find(L"Scope: all exports"), std::wstring::npos);
-    EXPECT_EQ(plain.find(L"[file]"), std::wstring::npos);
-    EXPECT_NE(plain.find(L"  ntdll!NtCreateFile\n"), std::wstring::npos);
-}
-
-/**
- * @brief The report is written as UTF-8, which keeps the file readable
- *        independently of the code page of the machine.
- */
-TEST(Unit_TracerArmPlan, ReportsAreWrittenAsUtf8)
-{
-    const std::filesystem::path path = std::filesystem::temp_directory_path() /
-                                       (L"appbox-tracer-unit-" + std::to_wstring(::GetCurrentProcessId()) + L".txt");
-
-    const std::wstring text = L"ntdll!NtClose\n\u00e4\u00f6\u00fc\n";
-    const std::wstring error = appbox::tracer::WriteUtf8File(path, text);
-    EXPECT_TRUE(error.empty()) << error;
-
-    std::ifstream stream(path, std::ios::binary);
-    ASSERT_TRUE(stream.is_open());
-    const std::string bytes((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-    stream.close();
-    std::filesystem::remove(path);
-
-    /* The umlauts are two bytes each in UTF-8, and the file is not written with
-     * a byte order mark. */
-    EXPECT_EQ(bytes.rfind("\xEF\xBB\xBF", 0), std::string::npos);
-    EXPECT_NE(bytes.find("ntdll!NtClose\n"), std::string::npos);
-    EXPECT_NE(bytes.find("\xC3\xA4\xC3\xB6\xC3\xBC"), std::string::npos);
-}
-
-/**
- * @brief A path which can not be written is reported instead of failing
- *        silently.
- */
-TEST(Unit_TracerArmPlan, AReportWhichCanNotBeWrittenIsReported)
-{
-    const std::wstring error = appbox::tracer::WriteUtf8File(L"Z:\\appbox\\no\\such\\directory\\report.txt", L"text\n");
-
-    EXPECT_FALSE(error.empty());
 }

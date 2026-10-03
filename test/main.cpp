@@ -5,6 +5,7 @@
 #include "probe/__init__.hpp"
 #include "utils/Coredump.hpp"
 #include "utils/NameResolutionProbe.hpp"
+#include "utils/TestLog.hpp"
 #include "utils/TestTimeout.hpp"
 #include "Test.hpp"
 
@@ -60,6 +61,12 @@ int wmain(int argc, wchar_t* argv[])
         return 1;
     }
 
+    /*
+     * The program log of the test executable is captured from here on: it is
+     * written out only when a case fails, so the run prints the GoogleTest
+     * lines of a passing case and nothing else.
+     */
+    appbox::test::InstallTestLog();
     appbox::test::InstallTestTimeoutHook(appbox::test::config.test_timeout);
 
     const int result = RUN_ALL_TESTS();

@@ -6,7 +6,6 @@
 #include <string>
 #include <spdlog/spdlog.h>
 #include "utils/CommandLine.hpp"
-#include "SetLogLevel.hpp"
 #include "Test.hpp"
 #include "WString.hpp"
 
@@ -200,10 +199,10 @@ bool CheckSuiteOwnership(std::string& error)
     return true;
 }
 
-void SetLogLevelFromString(const std::wstring& level)
+/** @brief Take the level of the log files of a case out of a command line value. */
+void SetCaseLogLevelFromString(const std::wstring& level)
 {
     appbox::test::config.log_level = level;
-    appbox::SetLogLevel(level);
 }
 
 /**
@@ -240,7 +239,7 @@ void SetConfigFromEnv()
     }
     if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_LOG_LEVEL", val))
     {
-        SetLogLevelFromString(val);
+        SetCaseLogLevelFromString(val);
     }
     if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_NO_CLEANUP", val))
     {
@@ -309,8 +308,9 @@ int appbox::test::SetupTestConfig(CLI::App& app)
                    "Path to the 64 bit sandbox injection module. Environment variable: APPBOX_TEST_SANDBOX64.");
     app.add_option("--packer", appbox::test::config.packer_path,
                    "Path to the packer executable. Environment variable: APPBOX_TEST_PACKER.");
-    app.add_option_function<std::wstring>("--log-level", SetLogLevelFromString,
-                                          "Log level. Available levels: trace, debug, info, warn, err, critical, off. "
+    app.add_option_function<std::wstring>("--log-level", SetCaseLogLevelFromString,
+                                          "Log level of the launcher and of the sandboxed processes of a case. "
+                                          "Available levels: trace, debug, info, warn, err, critical, off. "
                                           "Default: info. Environment variable: APPBOX_TEST_LOG_LEVEL.");
     app.add_option("--no-cleanup", appbox::test::config.no_cleanup,
                    "Do not cleanup the test directory. Environment variable: APPBOX_TEST_NO_CLEANUP.");

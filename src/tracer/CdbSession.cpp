@@ -1,7 +1,5 @@
 #include "tracer/CdbSession.hpp"
 #include "tracer/CdbOutputParser.hpp"
-#include "tracer/Console.hpp"
-#include "tracer/TraceReport.hpp"
 #include "tracer/TracedModules.hpp"
 #include "BuildCommandLine.hpp"
 #include <windows.h>
@@ -21,9 +19,6 @@ namespace appbox::tracer
 {
 namespace
 {
-
-/** Upper bound of the raw output which is kept for `--keep-raw`. */
-constexpr std::size_t kMaxRawBytes = 16U * 1024U * 1024U;
 
 /** Size of one read from the debugger output. */
 constexpr std::size_t kReadBufferSize = 64U * 1024U;
@@ -53,7 +48,7 @@ BOOL WINAPI ConsoleControlHandler(DWORD type)
 {
     if (type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT || type == CTRL_CLOSE_EVENT)
     {
-        g_interrupted.store(true);
+        RequestTraceInterrupt();
         return TRUE;
     }
 
@@ -460,6 +455,20 @@ ArmPayload BuildArmPayload(const std::vector<ArmGroup>& groups, const ModuleBase
     return payload;
 }
 
+/**
+ * @brief Report one progress line to the caller of the session.
+ *
+ * @param[in] request Request of the running session.
+ * @param[in] text Line to report.
+ */
+void ReportProgress(const TraceRequest& request, const std::wstring& text)
+{
+    if (request.progress)
+    {
+        request.progress(text);
+    }
+}
+
 } // namespace
 
 TraceResult RunTraceSession(const TraceRequest& request)
@@ -509,9 +518,6 @@ TraceResult RunTraceSession(const TraceRequest& request)
     input_read.Close();
     output_write.Close();
 
-    std::mutex             raw_mutex;
-    std::string            raw_output;
-    bool                   raw_truncated = false;
     std::atomic<long long> last_output{ NowMilliseconds() };
     EventQueue             queue;
 
@@ -531,20 +537,7 @@ TraceResult RunTraceSession(const TraceRequest& request)
             last_output.store(NowMilliseconds());
 
             const std::string_view chunk(buffer.data(), length);
-            {
-                std::lock_guard<std::mutex> lock(raw_mutex);
-                const std::size_t room = raw_output.size() < kMaxRawBytes ? kMaxRawBytes - raw_output.size() : 0U;
-                if (room == 0U)
-                {
-                    raw_truncated = true;
-                }
-                else
-                {
-                    raw_output.append(chunk.substr(0, room));
-                }
-            }
-
-            std::vector<CdbEvent> events;
+            std::vector<CdbEvent>  events;
             parser.Feed(chunk, events);
             for (const auto& event : events)
             {
@@ -634,7 +627,7 @@ TraceResult RunTraceSession(const TraceRequest& request)
                     ++result.unexpected_stops;
                     ++commands_fed;
                     writer.Post("g\n");
-                    WriteStderr(L"AppBoxTracer: the debugger stopped unexpectedly, continuing\n");
+                    ReportProgress(request, L"the debugger stopped unexpectedly, continuing");
                     break;
                 }
 
@@ -652,18 +645,18 @@ TraceResult RunTraceSession(const TraceRequest& request)
 
                 if (!first_arm)
                 {
-                    WriteStderr(L"AppBoxTracer: a module was loaded, " + std::to_wstring(payload.breakpoints) +
-                                L" more breakpoints armed in the process\n");
+                    ReportProgress(request, L"a module was loaded, " + std::to_wstring(payload.breakpoints) +
+                                                L" more breakpoints armed in the process");
                 }
                 else if (payload.breakpoints == 0U)
                 {
-                    WriteStderr(L"AppBoxTracer: no breakpoint could be armed: the module base "
-                                L"addresses of the process are unknown\n");
+                    ReportProgress(
+                        request, L"no breakpoint could be armed: the module base addresses of the process are unknown");
                 }
                 else
                 {
-                    WriteStderr(L"AppBoxTracer: process " + std::to_wstring(armed_sessions.size()) + L" armed with " +
-                                std::to_wstring(payload.breakpoints) + L" breakpoints\n");
+                    ReportProgress(request, L"process " + std::to_wstring(armed_sessions.size()) + L" armed with " +
+                                                std::to_wstring(payload.breakpoints) + L" breakpoints");
                 }
 
                 break;
@@ -674,7 +667,7 @@ TraceResult RunTraceSession(const TraceRequest& request)
         if (names.size() >= reported + 100U)
         {
             reported = names.size();
-            WriteStderr(L"AppBoxTracer: " + std::to_wstring(reported) + L" functions used so far\n");
+            ReportProgress(request, std::to_wstring(reported) + L" functions used so far");
         }
 
         if (g_interrupted.load())
@@ -758,28 +751,12 @@ TraceResult RunTraceSession(const TraceRequest& request)
         result.breakpoints = session_breakpoints.begin()->second;
     }
 
-    if (!request.keep_raw_path.empty())
-    {
-        std::string raw;
-        {
-            std::lock_guard<std::mutex> lock(raw_mutex);
-            raw = raw_output;
-        }
-
-        std::wstring text = DecodeConsoleBytes(raw);
-        if (raw_truncated)
-        {
-            text += L"\n[AppBoxTracer] the raw output was truncated at " + std::to_wstring(kMaxRawBytes) + L" bytes\n";
-        }
-
-        const std::wstring error = WriteUtf8File(request.keep_raw_path, text);
-        if (!error.empty())
-        {
-            WriteStderr(L"AppBoxTracer: " + error + L"\n");
-        }
-    }
-
     return result;
+}
+
+void RequestTraceInterrupt()
+{
+    g_interrupted.store(true);
 }
 
 } // namespace appbox::tracer

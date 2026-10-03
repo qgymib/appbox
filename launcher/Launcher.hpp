@@ -42,8 +42,8 @@ struct AppBoxLauncher
     std::vector<const appbox::LauncherStartup*> startups;        /* Startup files to run */
     std::string                                 startup_error;   /* Error which refuses the run */
     bool                                        shell = false;   /* True to run the shell of the host in the sandbox */
-    std::wstring                                shell_path;  /* Shell of the host to run, empty outside the shell mode */
-    std::vector<std::wstring>                   shell_args;  /* Command the shell runs, empty for an interactive shell */
+    std::wstring                                shell_path; /* Shell of the host to run, empty outside the shell mode */
+    std::vector<std::wstring>                   shell_args; /* Command the shell runs, empty for an interactive shell */
 };
 
 /**

@@ -62,9 +62,8 @@ add_executable(AppBoxTests
     "unit/TracerCdbLocator.cpp"
     "unit/TracerCdbOutput.cpp"
     "unit/TracerIntegration.cpp"
-    "unit/TracerOptions.cpp"
+    "unit/TracerModel.cpp"
     "unit/TracerPeImage.cpp"
-    "unit/TracerReport.cpp"
     "unit/TracerScope.cpp"
     "unit/TracerTargetProgram.cpp"
     "unit/VariableExpansion.cpp"
@@ -240,6 +239,7 @@ add_executable(AppBoxTests
     "utils/Socks5Server.cpp"
     "utils/TestFont.cpp"
     "utils/TestKnownFolder.cpp"
+    "utils/TestLog.cpp"
     "utils/TestTimeout.cpp"
     "utils/WriteFileFull.cpp"
 
@@ -301,17 +301,16 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/LogFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/PipeClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/VariableExpansion.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/ArmPlan.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/CdbLocator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/CdbOutputParser.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/CdbSession.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/Console.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/Options.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/PeImage.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/ScopePatterns.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/TargetProgram.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/TraceReport.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../tracer/TracedModules.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/ArmPlan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/Category.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/CdbLocator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/CdbOutputParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/CdbSession.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/PeImage.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/ScopePatterns.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/TargetProgram.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/TracedModules.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/TracerModel.cpp
 )
 appbox_setup_target_wall(AppBoxTests)
 
@@ -321,6 +320,7 @@ target_include_directories(AppBoxTests
         ${CMAKE_CURRENT_SOURCE_DIR}/../launcher
         ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
         ${APPBOX_GENERATED_DIR}
 )
 

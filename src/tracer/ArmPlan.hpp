@@ -1,7 +1,7 @@
 #ifndef APPBOX_TRACER_ARMPLAN_HPP
 #define APPBOX_TRACER_ARMPLAN_HPP
 
-#include "tracer/Options.hpp"
+#include "tracer/Category.hpp"
 #include "tracer/PeImage.hpp"
 #include <cstdint>
 #include <filesystem>

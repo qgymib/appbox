@@ -153,15 +153,6 @@ configure_file(
 add_subdirectory(launcher)
 
 ###############################################################################
-# Tracer
-#
-# A console tool which drives cdb.exe to report the file, registry and network
-# functions a program uses. It is a build time helper, not a product of the
-# sandbox, so it stays a separate subdirectory next to launcher/.
-###############################################################################
-add_subdirectory(tracer)
-
-###############################################################################
 # AppBox
 #
 # The main product is described here instead of in a src/CMakeLists.txt so that
@@ -193,8 +184,18 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/RegistryIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/RegistryModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/StartupTree.cpp"
+    "${APPBOX_SOURCE_DIR}/core/TracerModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/ZipReader.cpp"
     "${APPBOX_SOURCE_DIR}/core/ZipWriter.cpp"
+    "${APPBOX_SOURCE_DIR}/tracer/ArmPlan.cpp"
+    "${APPBOX_SOURCE_DIR}/tracer/Category.cpp"
+    "${APPBOX_SOURCE_DIR}/tracer/CdbLocator.cpp"
+    "${APPBOX_SOURCE_DIR}/tracer/CdbOutputParser.cpp"
+    "${APPBOX_SOURCE_DIR}/tracer/CdbSession.cpp"
+    "${APPBOX_SOURCE_DIR}/tracer/PeImage.cpp"
+    "${APPBOX_SOURCE_DIR}/tracer/ScopePatterns.cpp"
+    "${APPBOX_SOURCE_DIR}/tracer/TargetProgram.cpp"
+    "${APPBOX_SOURCE_DIR}/tracer/TracedModules.cpp"
     "${APPBOX_SOURCE_DIR}/widget/AboutDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/DataViewTooltip.cpp"
     "${APPBOX_SOURCE_DIR}/widget/EnvironmentPanel.cpp"
@@ -215,6 +216,8 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/widget/StartupTreeModel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/TabBar.cpp"
     "${APPBOX_SOURCE_DIR}/widget/Toolbar.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/TracerListModel.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/TracerPanel.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/launcher/utils/KnownFolder.cpp"
     "${APPBOX_SOURCE_DIR}/main.cpp"
     "${APPBOX_SOURCE_DIR}/resource.rc"
