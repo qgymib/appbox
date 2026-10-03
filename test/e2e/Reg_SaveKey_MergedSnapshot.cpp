@@ -24,6 +24,56 @@ std::vector<BYTE> StringData(const std::wstring& text)
     return data;
 }
 
+/**
+ * @brief Whether the token of this process holds `SeBackupPrivilege`.
+ *
+ * `RegSaveKeyW` and `RegSaveKeyExW` reach `NtSaveKey` / `NtSaveKeyEx`, which the
+ * kernel serves only for a process whose token holds the privilege (it is
+ * disabled by default, so the caller has to enable it). A case which saves a
+ * hive cannot run without it and skips itself.
+ *
+ * @return true when the token holds the privilege, enabled or disabled.
+ */
+bool HasBackupPrivilege()
+{
+    LUID luid = {};
+    if (!LookupPrivilegeValueW(nullptr, L"SeBackupPrivilege", &luid))
+    {
+        return false;
+    }
+
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
+    {
+        return false;
+    }
+
+    DWORD size = 0;
+    GetTokenInformation(token, TokenPrivileges, nullptr, 0, &size);
+
+    bool holds = false;
+    if (size != 0)
+    {
+        std::vector<BYTE> buffer(size);
+        if (GetTokenInformation(token, TokenPrivileges, buffer.data(), size, &size))
+        {
+            const auto* privileges = reinterpret_cast<const TOKEN_PRIVILEGES*>(buffer.data());
+            for (DWORD index = 0; index < privileges->PrivilegeCount; ++index)
+            {
+                const LUID& entry = privileges->Privileges[index].Luid;
+                if (entry.LowPart == luid.LowPart && entry.HighPart == luid.HighPart)
+                {
+                    holds = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    CloseHandle(token);
+    return holds;
+}
+
 } // namespace
 
 /**
@@ -43,6 +93,12 @@ std::vector<BYTE> StringData(const std::wstring& text)
  */
 TEST_F(E2E_Reg, SaveKey_MergedSnapshot)
 {
+    if (!HasBackupPrivilege())
+    {
+        GTEST_SKIP() << "the save needs SeBackupPrivilege, which this process does not hold: run the suite from "
+                        "an elevated shell";
+    }
+
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data")
@@ -133,6 +189,12 @@ TEST_F(E2E_Reg, SaveKey_MergedSnapshot)
  */
 TEST_F(E2E_Reg, SaveKeyEx_MergedSnapshot)
 {
+    if (!HasBackupPrivilege())
+    {
+        GTEST_SKIP() << "the save needs SeBackupPrivilege, which this process does not hold: run the suite from "
+                        "an elevated shell";
+    }
+
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data")

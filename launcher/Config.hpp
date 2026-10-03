@@ -51,11 +51,6 @@ struct LauncherStartup
 struct LauncherConfig
 {
     /**
-     * @brief Enable admin UI.
-     */
-    bool enable_admin_ui = false;
-
-    /**
      * @brief Start the startup files without a console window.
      *
      * The launcher is a GUI program without a console, so a console program it
@@ -72,7 +67,7 @@ struct LauncherConfig
      */
     std::vector<LauncherStartup> startups;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LauncherConfig, enable_admin_ui, hide_console, startups)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LauncherConfig, hide_console, startups)
 };
 
 } // namespace appbox

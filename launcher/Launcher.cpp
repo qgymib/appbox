@@ -1,4 +1,10 @@
-#include <wx/wx.h>
+/*
+ * <winsock2.h> has to precede <windows.h>, which the headers below pull in
+ * (<Shlobj.h>, the project headers): it defines _WINSOCKAPI_, so <windows.h>
+ * skips the winsock 1.1 header, which cannot be included next to the winsock 2
+ * header the RPC server reaches through asio.
+ */
+#include <winsock2.h>
 #include <spdlog/spdlog.h>
 #include <sstream>
 #include <chrono>
@@ -18,7 +24,11 @@
 #include "WString.hpp"
 #include "Launcher.hpp"
 
-wxDEFINE_EVENT(APPBOX_EXIT_APPLICATION_IF_NO_GUI, wxCommandEvent);
+AppBoxLauncher& LauncherApp()
+{
+    static AppBoxLauncher instance;
+    return instance;
+}
 
 /**
  * @brief Create the writable upper layer of the sandbox.
@@ -181,7 +191,7 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level)
     auto        random_str = appbox::RandomString(16);
     auto        unique_path = fmt::format("appbox-{}-{}", timestamp, random_str);
 
-    const auto& paths = wxGetApp().sandbox_paths;
+    const auto& paths = LauncherApp().sandbox_paths;
 
     this->inject_data.pipe_path = fmt::format(R"(\\.\pipe\{})", unique_path);
 

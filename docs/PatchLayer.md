@@ -259,11 +259,11 @@ after it, and the sandbox applies the list in that order.
   sandbox mounts keeps the whole model as it is and needs no change inside the
   sandbox at all.
 - **The merge mounts the hive of the state directory.** The merge needs the
-  hive mounted for writing, which fails while another process holds it: the
-  registry browser of the admin UI mounts the same file, and so does a sandbox
-  of an earlier run which is still alive. A run whose merge cannot mount the
-  hive logs the failure and continues with the hive as it is, which is the state
-  of the runs before it — a package then takes effect at the next start.
+  hive mounted for writing, which fails while another process holds it: a
+  sandbox of an earlier run which is still alive mounts the same file. A run
+  whose merge cannot mount the hive logs the failure and continues with the
+  hive as it is, which is the state of the runs before it — a package then
+  takes effect at the next start.
 - **A broken package is not fatal.** A package which cannot be read, a package
   which is not an archive and a malformed isolation file of a package are
   logged and skipped, exactly like a malformed isolation file of the archive

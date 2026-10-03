@@ -1,4 +1,10 @@
-#include <wx/wx.h>
+/*
+ * <winsock2.h> has to precede <windows.h>, which the headers below pull in
+ * (<Shlobj.h>, the project headers): it defines _WINSOCKAPI_, so <windows.h>
+ * skips the winsock 1.1 header, which cannot be included next to the winsock 2
+ * header the RPC server reaches through asio.
+ */
+#include <winsock2.h>
 #include <CLI/CLI.hpp>
 #include <detours.h>
 #include <spdlog/spdlog.h>
@@ -13,14 +19,11 @@
 #include <base64.hpp>
 #include "sandbox/utils/Defines.hpp"
 #include "utils/CommandLineOptions.hpp"
-#include "utils/Defer.hpp"
 #include "utils/GetExecutableDir.hpp"
 #include "utils/ProcessJob.hpp"
 #include "utils/Shell.hpp"
 #include "utils/KnownFolder.hpp"
 #include "utils/WinCall.hpp"
-#include "widget/MainFrame.hpp"
-#include "BuildCommandLine.hpp"
 #include "Launcher.hpp"
 #include "WString.hpp"
 
@@ -133,16 +136,16 @@ static bool SelectStartups(const appbox::LauncherConfig& config, const std::stri
  */
 static bool PrepareShell(const std::vector<std::string>& params)
 {
-    wxGetApp().shell = true;
+    LauncherApp().shell = true;
 
-    wxGetApp().shell_path = appbox::ResolveShellPath();
-    if (wxGetApp().shell_path.empty())
+    LauncherApp().shell_path = appbox::ResolveShellPath();
+    if (LauncherApp().shell_path.empty())
     {
         return false;
     }
 
-    wxGetApp().shell_args = appbox::BuildShellArguments(params);
-    SPDLOG_INFO("Run the shell '{}' of the host in the sandbox", appbox::WideToUTF8(wxGetApp().shell_path));
+    LauncherApp().shell_args = appbox::BuildShellArguments(params);
+    SPDLOG_INFO("Run the shell '{}' of the host in the sandbox", appbox::WideToUTF8(LauncherApp().shell_path));
     return true;
 }
 
@@ -166,8 +169,8 @@ static void SelectStartupsForRun(const appbox::CommandLineOptions& opt)
         return;
     }
 
-    SelectStartups(wxGetApp().launcher_config, opt.startup_trigger, opt.has_startup_trigger, wxGetApp().startups,
-                   wxGetApp().startup_error);
+    SelectStartups(LauncherApp().launcher_config, opt.startup_trigger, opt.has_startup_trigger, LauncherApp().startups,
+                   LauncherApp().startup_error);
 }
 
 /**
@@ -199,40 +202,41 @@ static std::vector<LaunchTarget> BuildLaunchTargets()
 {
     std::vector<LaunchTarget> targets;
 
-    if (wxGetApp().shell)
+    if (LauncherApp().shell)
     {
         LaunchTarget target;
         target.name = "shell";
-        target.exe_path = wxGetApp().shell_path;
-        target.args = wxGetApp().shell_args;
+        target.exe_path = LauncherApp().shell_path;
+        target.args = LauncherApp().shell_args;
         target.hide_console = false;
         targets.push_back(std::move(target));
         return targets;
     }
 
-    for (const auto* startup : wxGetApp().startups)
+    for (const auto* startup : LauncherApp().startups)
     {
         LaunchTarget target;
         target.name = startup->trigger;
         target.exe_path = appbox::ExpandKnownFolder(appbox::UTF8ToWide(startup->executable.c_str()));
         target.args = BuildCmdArg(*startup);
-        target.hide_console = wxGetApp().launcher_config.hide_console;
+        target.hide_console = LauncherApp().launcher_config.hide_console;
         targets.push_back(std::move(target));
     }
 
     return targets;
 }
 
-static void MainLauncher()
+/**
+ * @brief Run the processes the configuration describes.
+ *
+ * Every target is started before the first one is waited for, so the targets of
+ * the run side by side instead of one after the other.
+ *
+ * @return The exit code of the run: the first non zero exit code of a target,
+ *         zero when every target exited with zero.
+ */
+static DWORD MainLauncher()
 {
-    appbox::Defer defer([]() { wxGetApp().QueueEvent(new wxCommandEvent(APPBOX_EXIT_APPLICATION_IF_NO_GUI)); });
-
-    if (!wxGetApp().startup_error.empty())
-    {
-        /* The selection failed already, the error was reported by OnInit(). */
-        return;
-    }
-
     const auto targets = BuildLaunchTargets();
 
     /*
@@ -244,7 +248,7 @@ static void MainLauncher()
 
     for (const auto& target : targets)
     {
-        auto job = std::make_unique<appbox::ProcessJob>(target.exe_path, target.args, wxGetApp().runtime->inject_data,
+        auto job = std::make_unique<appbox::ProcessJob>(target.exe_path, target.args, LauncherApp().runtime->inject_data,
                                                         target.hide_console);
         const auto ret = job->Start();
         if (ret != 0)
@@ -281,8 +285,8 @@ static void MainLauncher()
         }
     }
 
-    wxGetApp().exit_code = exit_code;
-    SPDLOG_INFO("the sandboxed application exited with code {}", wxGetApp().exit_code);
+    SPDLOG_INFO("the sandboxed application exited with code {}", exit_code);
+    return exit_code;
 }
 
 /**
@@ -299,7 +303,7 @@ static void MainLauncher()
 static void ResolveSandboxPaths(const std::wstring& config_dir)
 {
     const auto dir = config_dir.empty() ? appbox::GetExecutableDir() : config_dir;
-    wxGetApp().sandbox_paths = appbox::SandboxPaths::Resolve(dir);
+    LauncherApp().sandbox_paths = appbox::SandboxPaths::Resolve(dir);
 }
 
 /**
@@ -316,7 +320,7 @@ static void ResolveSandboxPaths(const std::wstring& config_dir)
  */
 static void CheckSandboxModules(std::string& error)
 {
-    const auto& paths = wxGetApp().sandbox_paths;
+    const auto& paths = LauncherApp().sandbox_paths;
 
     const std::wstring modules[] = { paths.Sandbox32Dll(), paths.Sandbox64Dll() };
     for (const auto& module : modules)
@@ -348,7 +352,7 @@ static void LoadConfig()
     }
 
     nlohmann::json j_cfg = nlohmann::json::parse(f);
-    wxGetApp().launcher_config = j_cfg;
+    LauncherApp().launcher_config = j_cfg;
     ResolveSandboxPaths(dir);
 }
 
@@ -358,7 +362,7 @@ static void FinializeCommandArgs(const appbox::CommandLineOptions& opt)
      * The arguments which were not consumed by the launcher belong to the
      * sandboxed application, so every startup file receives them.
      */
-    for (auto& startup : wxGetApp().launcher_config.startups)
+    for (auto& startup : LauncherApp().launcher_config.startups)
     {
         for (const auto& arg : opt.extra_args)
         {
@@ -390,34 +394,47 @@ static bool PrepareShellRun(const appbox::CommandLineOptions& opt)
     if (opt.has_startup_trigger)
     {
         /* The two options name different programs to run. */
-        wxGetApp().startup_error = "the options --X-AppBox-Shell and --X-AppBox-Startup cannot be used together";
+        LauncherApp().startup_error = "the options --X-AppBox-Shell and --X-AppBox-Startup cannot be used together";
         return false;
     }
 
     if (!PrepareShell(opt.extra_args))
     {
-        wxGetApp().startup_error = "the shell of the host could not be resolved";
+        LauncherApp().startup_error = "the shell of the host could not be resolved";
         return false;
     }
 
     return true;
 }
 
-bool AppBoxLauncher::OnInit()
+/**
+ * @brief Run the launcher.
+ *
+ * The launcher has no user interface and no message loop: it resolves the
+ * configuration, starts the startup files (or the shell) and exits with the
+ * exit code of the run. A failure is logged and reported through the exit code.
+ *
+ * @return The exit code of the run.
+ */
+static DWORD RunLauncher()
 {
     appbox::WinCallInit();
 
     appbox::CommandLineOptions opt;
     if (!opt.ParseOptions())
     {
-        return false;
+        /*
+         * The process launcher mode leaves the process in RunAsStarter(); this
+         * path is the plain "nothing to run" refusal of the option parser.
+         */
+        return 0;
     }
 
     try
     {
         if (!opt.override_config.is_null())
         {
-            wxGetApp().launcher_config = opt.override_config;
+            LauncherApp().launcher_config = opt.override_config;
             ResolveSandboxPaths(opt.config_dir);
         }
         else
@@ -425,82 +442,42 @@ bool AppBoxLauncher::OnInit()
             LoadConfig();
         }
         PrepareShellRun(opt);
-        SPDLOG_INFO("Load config: {}", nlohmann::json(wxGetApp().launcher_config).dump());
+        SPDLOG_INFO("Load config: {}", nlohmann::json(LauncherApp().launcher_config).dump());
 
         /*
          * A run without the injection modules cannot sandbox anything: the
          * failure is reported by the block below the startup selection, which
          * turns it into a non zero exit code and starts nothing.
          */
-        CheckSandboxModules(wxGetApp().startup_error);
+        CheckSandboxModules(LauncherApp().startup_error);
 
-        wxGetApp().runtime = std::make_shared<AppBoxLauncherRuntime>(opt.log_level);
+        LauncherApp().runtime = std::make_shared<AppBoxLauncherRuntime>(opt.log_level);
     }
     catch (const std::exception& e)
     {
         SPDLOG_ERROR(e.what());
-        wxGenericMessageDialog dlg(nullptr, e.what(), "Error", wxOK | wxICON_ERROR);
-        dlg.ShowModal();
-        return false;
+        return 1;
     }
 
     /*
-     * The startup files are selected on the main thread, so a rejected
-     * trigger is reported before the working thread starts. The failure is
-     * always logged and turns into a non zero exit code; the dialog is shown
-     * with the admin UI only, so an unattended run cannot wait for a click.
+     * The startup files are selected before the first process starts, so a
+     * rejected trigger is reported before anything runs.
      */
     SelectStartupsForRun(opt);
 
-    if (!wxGetApp().startup_error.empty())
+    if (!LauncherApp().startup_error.empty())
     {
-        SPDLOG_ERROR("{}", wxGetApp().startup_error);
-        this->exit_code = 1;
-
-        if (this->launcher_config.enable_admin_ui)
-        {
-            wxGenericMessageDialog dlg(nullptr, wxGetApp().startup_error, "Error", wxOK | wxICON_ERROR);
-            dlg.ShowModal();
-        }
+        SPDLOG_ERROR("{}", LauncherApp().startup_error);
+        LauncherApp().runtime.reset();
+        return 1;
     }
 
-    this->Bind(APPBOX_EXIT_APPLICATION_IF_NO_GUI, &AppBoxLauncher::HandleEventExitApplicationNoGUI, this);
-
-    main_frame = new MainFrame(wxGetApp().runtime->inject_data.registry_hive_dos_path);
-    main_frame->Show(this->launcher_config.enable_admin_ui);
-
-    this->working_thread = new std::thread(MainLauncher);
-    return true;
+    const auto exit_code = MainLauncher();
+    LauncherApp().runtime.reset();
+    return exit_code;
 }
 
-int AppBoxLauncher::OnExit()
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 {
-    if (this->working_thread != nullptr)
-    {
-        this->working_thread->join();
-        delete this->working_thread;
-        this->working_thread = nullptr;
-    }
-
-    runtime.reset();
-    return wxApp::OnExit();
+    return static_cast<int>(RunLauncher());
 }
-
-int AppBoxLauncher::OnRun()
-{
-    auto ret = wxApp::OnRun();
-    return ret != 0 ? ret : static_cast<int>(exit_code);
-}
-
-void AppBoxLauncher::HandleEventExitApplicationNoGUI(wxCommandEvent&)
-{
-    /*
-     * Only close application if the main frame is not shown.
-     */
-    if (!main_frame->IsShown())
-    {
-        main_frame->Close();
-    }
-}
-
-wxIMPLEMENT_APP(AppBoxLauncher); // NOLINT

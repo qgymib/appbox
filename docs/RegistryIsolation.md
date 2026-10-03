@@ -273,18 +273,6 @@ Handles below the private hive mount run the merged logic; every other handle
 redirected handle is translated back into the view path wherever its name is
 queried, so it behaves exactly like the key it shadows.
 
-## Launcher registry browser
-
-The admin UI of the launcher (`enable_admin_ui`) contains a read-only registry
-browser which mirrors the layout of the Windows registry editor. It mounts
-`data\registry\user.hiv` itself — the hive the launcher seeded and the sandbox
-mounts — and reads everything relative to the returned root handle — the host registry is never touched, and keys which only
-exist in the real registry (the read through of the sandbox) are not part of
-the view. The launcher never writes to the hive, and the whiteout store stays
-hidden. `Refresh` (F5) releases and remounts the file, picking up everything
-the sandboxed process flushed to disk; when the sandbox has not created the
-hive yet, the browser shows an empty tree with a hint instead of an error.
-
 ## Tests
 
 The unit tests and the end-to-end cases of the registry isolation are

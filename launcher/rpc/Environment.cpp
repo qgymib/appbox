@@ -1,4 +1,10 @@
-#include <wx/wx.h>
+/*
+ * <winsock2.h> has to precede <windows.h>, which the headers below pull in
+ * (<Shlobj.h>, the project headers): it defines _WINSOCKAPI_, so <windows.h>
+ * skips the winsock 1.1 header, which cannot be included next to the winsock 2
+ * header the RPC server reaches through asio.
+ */
+#include <winsock2.h>
 #include <spdlog/spdlog.h>
 #include <filesystem>
 #include <fstream>
@@ -70,7 +76,7 @@ bool WriteEnvironmentState(const std::wstring& path, const std::string& text, st
 
 APPBOX_LAUNCHER_RPC_DEFINE(MsgEnvironment, id, param)
 {
-    const std::wstring path = wxGetApp().sandbox_paths.StateEnvironmentFile();
+    const std::wstring path = LauncherApp().sandbox_paths.StateEnvironmentFile();
 
     std::string error;
     if (!WriteEnvironmentState(path, param.state, error))
@@ -82,5 +88,5 @@ APPBOX_LAUNCHER_RPC_DEFINE(MsgEnvironment, id, param)
      * The answer is sent after the document is on disk: the sandbox relies on
      * the answer to know that its modifications survive the end of the run.
      */
-    wxGetApp().runtime->pipe_server->SendResponse(id, {});
+    LauncherApp().runtime->pipe_server->SendResponse(id, {});
 }

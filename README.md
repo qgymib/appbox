@@ -100,8 +100,8 @@ top of the resources of `app` (see [Patch Layers](docs/PatchLayer.md)).
 
 ### Launcher
 
-wxWidgets-based GUI application for managing sandboxed processes: it injects
-the sandbox DLLs the archive carries below `app` (`sandbox32.dll` and
+Windowless application which runs a packaged application inside the sandbox: it
+injects the sandbox DLLs the archive carries below `app` (`sandbox32.dll` and
 `sandbox64.dll`) and starts the startup files of its configuration. The launcher
 keeps the read-only resources of the packed application below `app` and the
 state of the sandbox below `data`, both beside the launcher program: the state
@@ -112,9 +112,7 @@ sandbox to the state the archive was packed with.
 `--X-AppBox-Shell` runs the `cmd.exe` of the machine which runs the sandbox
 inside the isolation instead of the application of the configuration: without a
 command the shell runs interactively, with a command it runs
-`cmd /c <command>`. The admin UI also offers a read-only sandbox registry
-browser, which mounts the hive of the overlay directly and never touches the
-host registry (see [Registry Isolation](docs/RegistryIsolation.md)).
+`cmd /c <command>`.
 
 ### Tracer
 

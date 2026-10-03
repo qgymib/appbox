@@ -32,7 +32,6 @@ add_executable(AppBoxTests
     "unit/FilesystemIsolation.cpp"
     "unit/GetExecutableDir.cpp"
     "unit/HiveMerge.cpp"
-    "unit/HiveReader.cpp"
     "unit/HookTransaction.cpp"
     "unit/IsolationDocument.cpp"
     "unit/Log.cpp"
@@ -250,7 +249,6 @@ add_executable(AppBoxTests
 
     # Code under test. The unit tests work on the modules directly, so they are
     # compiled into the test executable instead of being linked from a library.
-    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/registry/HiveReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/ConvertDosPathToNtPath.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/GetExecutableDir.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/HiveMerge.cpp

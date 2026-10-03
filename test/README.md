@@ -41,6 +41,13 @@ without the launcher the end-to-end cases cannot start it, without the modules t
 cases skip themselves (see `appbox::test::CommonFixture::SetUp()`), and without
 the packer the unit test of the embedded resources skips itself.
 
+Two end-to-end cases need the `SeBackupPrivilege` of the process, because
+`RegSaveKeyW` / `RegSaveKeyExW` reach `NtSaveKey` / `NtSaveKeyEx`, which the
+kernel only serves for a token which holds it:
+`test/e2e/Reg_SaveKey_MergedSnapshot.cpp` skips both of its cases with a
+message when the run does not hold the privilege, so an unelevated run stays
+green (an elevated run verifies the save).
+
 ```bash
 build/Debug/test/Debug/AppBoxTests.exe --mode=e2e \
     --launcher=<absolute path of AppBoxLauncher.exe> \
@@ -405,9 +412,6 @@ The unit tests of the packer:
 The unit tests of the launcher and of the sandbox modules which the test
 executable carries itself:
 
-* `test/unit/HiveReader.cpp` — the mounting, the enumeration and the
-  formatting of the launcher registry browser, including the root of the hive
-  which hides the whiteout store of the sandbox.
 * `test/unit/HiveMerge.cpp` — the merge of a hive into another, which is the
   launcher side of the registry domain of a patch layer: a target which does not
   exist yet is created, the entries of the source override the entries of the
@@ -657,7 +661,11 @@ folder below `#USERPROFILE#` of the host as the entry of the host layer
   the isolation hides is not part of the file, a key which only the hive holds
   is exported with its content, and the host registry is unchanged. The second
   case of the file saves through `RegSaveKeyExW` and therefore reaches
-  `NtSaveKeyEx`, which has to export the same merged view.
+  `NtSaveKeyEx`, which has to export the same merged view. Both cases need
+  `SeBackupPrivilege`, which `RegSaveKeyW` / `RegSaveKeyExW` reach through
+  `NtSaveKey` / `NtSaveKeyEx`: a run which does not hold it skips the two cases
+  with a message instead of failing, so the save behaviour is verified by an
+  elevated run (the CI is elevated).
 * `test/e2e/Reg_IsolationInheritance.cpp` — the first case pins that the mode
   of a parent key reaches a child key which lists no mode of its own (the host
   value of the child key is not readable) and that a mode of the child key
