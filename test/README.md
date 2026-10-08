@@ -582,6 +582,10 @@ comment.
 | `ReadFile_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | read `data.txt` | failure |
 | `QueryAttributes_LowerLayer` | – | `data.txt` | query the attributes of `data.txt` | success, a regular file is reported |
 | `QueryAttributes_NonExists` | – | `other.txt` | query the attributes of `data.txt` | failure with `File Not Found` |
+| `QueryFullAttributes_LowerLayer` | – | `data.txt` | query the full attributes of `data.txt` with `NtQueryFullAttributesFile` | success, a regular file with the size of the packed content is reported |
+| `QueryFullAttributes_NonExists` | – | `other.txt` | query the full attributes of a missing file and of a file below a missing folder | failure with `File Not Found` and `Path Not Found` |
+| `QueryInformationByName_LowerLayer` | – | `data.txt` | query the information of `data.txt` with `NtQueryInformationByName` and `FileStatInformation` | success, a regular file with the size of the packed content is reported |
+| `QueryInformationByName_NonExists` | – | `other.txt` | query the information of a missing file and of a file below a missing folder | failure with `File Not Found` and `Path Not Found` |
 
 Four cases are not part of the matrices above:
 `test/e2e/Fs_LaunchProcess_FromLower.cpp` starts an executable which only a
@@ -611,6 +615,8 @@ folder below `#USERPROFILE#` of the host as the entry of the host layer
 | `Whiteout_CreateInSandbox` | file `Whiteout` | create the file, read it back, query it, list the folder | the create lands in the overlay, the entry is visible afterwards, the host file keeps its content |
 | `Whiteout_FolderHidesItsSubtree` | folder `Whiteout` | query and read the folder, create it, read the packed file, create a file inside it | the folder and its packed content are hidden until the sandbox creates the folder, the created file lands in the overlay |
 | `ListDir_IsolationFiltersTheEntries` | folder `Full`, file `Whiteout` | enumerate the folder with `std::filesystem`, `FindFirstFile`, `_findfirst` and both NT entry points | every enumeration reports the visible entry of the lower layer only; the hidden file, the host file and the host folder are not listed |
+| `QueryFullAttributes_IsolationHidden` | folder `Full`, file `Whiteout` | query the full attributes of the packed file, of the host file and of the hidden packed file | the packed file of the visible folder is reported, while the host file and the hidden file report `File Not Found` |
+| `QueryInformationByName_IsolationHidden` | folder `Full`, file `Whiteout` | query the information of the packed file, of the host file and of the hidden packed file | the packed file of the visible folder is reported, while the host file and the hidden file report `File Not Found` |
 | `MalformedIsolationFile_FallsBack` | document which cannot be read | read a host file while the isolation file is not JSON, while it carries an unknown version and while it is the valid document which hides the folder | the host file stays visible for both refused documents and is hidden for the readable one, which is what makes the run a check of the fallback; the content of the lower layer is visible in every one of them |
 | `WriteLowerLayerFile_CopyUp` | file of a lower layer only | open the file for writing and write another content into it | the open copies the file up into the overlay, the write and the read back report the new content, and the layer it was copied from keeps its own content |
 | `Directory_CreateAndDelete` | layer `Write Copy`, folder of the host only | create a directory below the folder, query it, create a file inside it, remove the directory, remove the file, remove the directory again | the directory is created in the overlay and reported as a directory, the removal of a directory which still holds a visible entry reports `Directory Not Empty`, and the second removal succeeds and leaves neither the view nor the overlay with the entry; the host folder stays empty |
@@ -1100,11 +1106,17 @@ header comment.
 * `test/probe/*` — the operations executed inside the sandbox (`CreateFileW`,
   `CreateDirectoryW`, `DeleteFileW`, `RemoveDirectoryW`, `WriteFile`,
   `ListDir`, `ListDirNt`, `ReadFileFull`), plus the probes of the remaining
-  cases (`LaunchProcess`, `QueryAttributes`, `ConsoleWindow`).
+  cases (`LaunchProcess`, `QueryAttributes`, `QueryFullAttributes`,
+  `QueryInformationByName`, `ConsoleWindow`).
   `ListDirNt` opens a directory with `NtOpenFile` and enumerates it with
   `NtQueryDirectoryFile` or `NtQueryDirectoryFileEx`, so it pins both entry
   points of the merged view directly, while the user mode wrappers may use
-  either of them.
+  either of them. `QueryAttributes` asks the user mode wrapper of the
+  attributes, while `QueryFullAttributes` and `QueryInformationByName` call
+  `NtQueryFullAttributesFile` and `NtQueryInformationByName` themselves, so
+  every name based query of the view is pinned directly. The three query
+  probes answer one item per path of their request, which keeps the number of
+  calls into the sandbox low.
 * `test/probe/RegWriteValue.cpp` / `RegReadValue.cpp` — the operations
   executed inside the sandbox; both address the key through a root key of the
   view, so a case can pin that two roots name the same key.

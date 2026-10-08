@@ -33,6 +33,7 @@ add_library(${sandbox_name} MODULE
     "filesystem/DirName.cpp"
     "filesystem/Isolation.cpp"
     "filesystem/IsolationTable.cpp"
+    "filesystem/QueryPath.cpp"
     "filesystem/RemoveAll.cpp"
     "filesystem/Resolve.cpp"
     "filesystem/Sequence.cpp"

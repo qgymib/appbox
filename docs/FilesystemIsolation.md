@@ -314,6 +314,14 @@ These rules constrain every hooked API; the implementation lives in
   A hook which runs inside a kernel call must never read more than the caller
   declared and never throw: a failure inside a hook is a failure of the
   application.
+* **Name based queries are redirected.** `NtQueryAttributesFile`,
+  `NtQueryFullAttributesFile` and `NtQueryInformationByName` resolve the name
+  they were given through the view and query the first layer which the
+  isolation leaves visible, so a file only a lower layer holds is found and an
+  entry which a whiteout, an opaque marker or the isolation hides reports
+  `File Not Found`. The three entry points share the lookup of
+  `sandbox/filesystem/QueryPath.*`, and a name which cannot be expressed as a
+  view path is forwarded unchanged.
 * **Process creation is redirected.** The application image is resolved through
   the view before the child process is created and the sandbox DLL is injected
   into it, so applications which only exist in a lower layer become launchable
@@ -332,55 +340,50 @@ listed in [test/README.md](../test/README.md).
 The following points are visible in the current code and should be kept in mind when
 extending or testing the isolation:
 
-1. **Path-based queries are not redirected.** `NtQueryFullAttributesFile` and
-   `NtQueryInformationByName` log their arguments and forward the call unchanged, so the
-   query hits the raw path (a lower layer or the host filesystem) instead of the view.
-   `NtQueryAttributesFile` and both directory enumeration entry points are redirected
-   (see above).
-2. **Handle-based hooks only log.** `NtQueryInformationFile`, `NtSetInformationFile`,
+1. **Handle-based hooks only log.** `NtQueryInformationFile`, `NtSetInformationFile`,
    `NtQueryVolumeInformationFile`, `NtDeviceIoControlFile` and `NtFsControlFile` forward
    unchanged. The handle already refers to the layer that was selected at open time
    (the upper layer after a copy-up), so most queries are consistent with the view; the
    exceptions are the information classes that carry a path, see the next item.
-3. **Metadata writes carrying a path are not redirected.** `NtSetInformationFile` is not
+2. **Metadata writes carrying a path are not redirected.** `NtSetInformationFile` is not
    hooked, so `FileRenameInformation`, `FileLinkInformation` and friends are applied to
    the name exactly as the caller passed it. A full view path (`\??\C:\...`) therefore
    denotes the real filesystem instead of the view, and a rename/move can move an object
    out of the upper layer into the host filesystem. Classes that only act on the handle
    (`FileBasicInformation`, `FileEndOfFileInformation`, `FileDispositionInformation`,
    ...) are consistent with the view, because the handle is already the correct one.
-4. **Delete-on-close is only handled for registered handles.** `NtClose` consults
+3. **Delete-on-close is only handled for registered handles.** `NtClose` consults
    `HandleInfo`, which is populated by `NtOpenFile` only. A handle opened through the
    `NtCreateFile` hook and marked for deletion has no handle information, so closing it
    deletes the layer object without creating the whiteout that would hide the lower
    layers.
-5. **Directory merging covers the name carrying information classes only.** The merge
+4. **Directory merging covers the name carrying information classes only.** The merge
    reads and rewrites the entry list, so it understands `FileDirectoryInformation`,
    `FileFullDirectoryInformation` and `FileBothDirectoryInformation`. A caller which uses
    one of the `FileId...DirectoryInformation` classes, an information class which does
    not carry a name, or a directory handle which was not registered by `NtOpenFile`
    (a handle of `CreateFileW`, for example) sees the single layer the handle was opened
    with.
-6. **A mode does not reach the alternate data streams of its file.** The lookup of the
+5. **A mode does not reach the alternate data streams of its file.** The lookup of the
    isolation walks the path upwards component by component, and a stream name such as
    `file.txt:stream` is the last component of its own path, so it does not inherit the
    mode of `file.txt`. The mode of a folder still covers the streams of the files below
    it.
-7. **Copy-up copies the default data stream only.** Alternate data streams are not
+6. **Copy-up copies the default data stream only.** Alternate data streams are not
    handled specially: a stream name such as `file.txt:stream` is carried into the upper
    layer path as part of the file name, while copy-up reads only the file content, and
    whiteout / opaque markers are not stream aware.
-8. **Non-local paths bypass isolation.** UNC paths, named pipes, mailslots, network
+7. **Non-local paths bypass isolation.** UNC paths, named pipes, mailslots, network
    volumes and drive-relative paths cannot be converted to a view path, so the hooks
    forward them unchanged.
-9. **`ResolveFs` is fixed at injection time.** There is no way to add or remove a lower
+8. **`ResolveFs` is fixed at injection time.** There is no way to add or remove a lower
    layer while a sandboxed process is running; the layers come from the injected
    configuration and live in the `appbox::sandbox` singleton. The isolation modes are
    loaded once as well, so a mode which is changed in the packer afterwards needs a new
    archive.
-10. **A root mode which hides the host filesystem stops the process.** The mode of the
-    root of the view covers every path no other entry names, so `Full` or `Whiteout` at
-    the root hides the whole host filesystem: the sandboxed process can no longer load
-    the modules of the host and fails to start, which is the behaviour the mode asks for
-    but which no end-to-end case can drive. A root mode of `Write Copy` or `Merge` is the
-    one a workspace normally uses.
+9. **A root mode which hides the host filesystem stops the process.** The mode of the
+   root of the view covers every path no other entry names, so `Full` or `Whiteout` at
+   the root hides the whole host filesystem: the sandboxed process can no longer load
+   the modules of the host and fails to start, which is the behaviour the mode asks for
+   but which no end-to-end case can drive. A root mode of `Write Copy` or `Merge` is the
+   one a workspace normally uses.
