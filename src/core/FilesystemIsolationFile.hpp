@@ -12,12 +12,12 @@ namespace appbox
  *
  * The document carries the isolation modes of the virtual filesystem from the
  * packer to the sandbox (see `common/FilesystemIsolation.hpp` for the schema).
- * Every entry the user set a mode for is listed with its virtual path, its
- * kind and its mode, so the sandbox reads the same modes the workspace shows.
+ * Every mode the workspace holds is listed with its virtual path, its kind and
+ * its mode, so the sandbox reads the same modes the workspace shows.
  * An entry which the file does not mention — a path the user never touched, or
  * an entry of a hand written isolation file — still falls back to the closest
  * listed folder above it, then to the entry of the root of the view and to the
- * default of its kind, so the document stays small and a folder which was set
+ * default of the view, so the document stays small and a folder which was set
  * to `Full` also covers the entries below it which the model does not even know
  * about.
  *

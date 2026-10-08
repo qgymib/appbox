@@ -178,8 +178,23 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
     }
     CreateOptions &= ~FILE_OPEN_BY_FILE_ID;
 
+    const bool want_create = (CreateDisposition == FILE_SUPERSEDE || CreateDisposition == FILE_CREATE ||
+                              CreateDisposition == FILE_OPEN_IF || CreateDisposition == FILE_OVERWRITE_IF);
+    const bool want_edit = (DesiredAccess & (DELETE | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA |
+                                             FILE_APPEND_DATA | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE | GENERIC_ALL));
+
+    /*
+     * A call which may create or write the entry is a modification, and the
+     * layer it lands in is decided from the layers which hold the entry, so
+     * such a call asks the resolver for every layer. The isolation of a path
+     * no entry covers is the default of the view, which is `Merge`, so the
+     * resolver has to know every layer here as well.
+     */
+    appbox::filesystem::ResolveOption resolve_option;
+    resolve_option.bStopOnFirstFound = !(want_create || want_edit);
+
     /* Resolve path in sandbox. */
-    auto resolve_result = appbox::filesystem::Resolve(nativate_fs_path);
+    auto resolve_result = appbox::filesystem::Resolve(nativate_fs_path, resolve_option);
     LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
     /* In all of conditions, the parent path must exist. */
     if (!resolve_result->bParentExist)
@@ -197,11 +212,6 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
     {
         return STATUS_OBJECT_NAME_NOT_FOUND;
     }
-
-    const bool want_create = (CreateDisposition == FILE_SUPERSEDE || CreateDisposition == FILE_CREATE ||
-                              CreateDisposition == FILE_OPEN_IF || CreateDisposition == FILE_OVERWRITE_IF);
-    const bool want_edit = (DesiredAccess & (DELETE | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA |
-                                             FILE_APPEND_DATA | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE | GENERIC_ALL));
 
     /*
      * An entry which the isolation hides does not exist in the view: a call
@@ -229,11 +239,12 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
          * the creation is picked: `Merge` writes to the host filesystem when
          * the host holds the entry or when no layer holds it, and the entry
          * the whiteout hid may be a packed entry which only a lower layer
-         * holds.
+         * holds. A path no entry covers follows the default of the view, which
+         * is `Merge` as well, so the mode of the result decides on its own.
          */
-        if (resolve_result->bIsolationListed && resolve_result->isolation == appbox::FilesystemIsolation::Merge)
+        if (resolve_result->isolation == appbox::FilesystemIsolation::Merge)
         {
-            resolve_result = appbox::filesystem::Resolve(nativate_fs_path);
+            resolve_result = appbox::filesystem::Resolve(nativate_fs_path, resolve_option);
             LOG_T("resolve after whiteout: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
         }
 

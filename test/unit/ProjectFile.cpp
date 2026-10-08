@@ -961,7 +961,7 @@ TEST(Unit_ProjectFile, ApplyOfADocumentWithoutAFilesystemRestoresAnEmptyModel)
     /* The document does not describe the filesystem, so every entry follows its default. */
     EXPECT_TRUE(isolation.IsEmpty());
     EXPECT_EQ(isolation.EffectiveIsolation(L"#Windows#", appbox::FilesystemEntryKind::Directory),
-              appbox::FilesystemIsolation::WriteCopy);
+              appbox::filesystem_isolation::kDefaultIsolation);
 }
 
 TEST(Unit_ProjectFile, ApplyRejectsABrokenFilesystemMember)

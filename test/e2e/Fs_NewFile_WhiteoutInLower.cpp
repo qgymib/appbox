@@ -1,6 +1,7 @@
 #include "probe/CreateFileW.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
+#include "utils/FsIsolationBuilder.hpp"
 #include "utils/TestKnownFolder.hpp"
 #include "WString.hpp"
 
@@ -10,7 +11,10 @@ using namespace appbox::test;
 /**
  * Condition:
  * 1. The lower layer carries a whiteout marker for the name.
- * 2. Try to create file.
+ * 2. The layer `#USERPROFILE#` of the case is pinned to `Write Copy`, so the
+ *    new file is created in the sandbox and the case pins its own rule instead
+ *    of the default of the view.
+ * 3. Try to create file.
  *
  * Expected:
  * 1. New file is created in the state of the sandbox.
@@ -31,6 +35,16 @@ TEST_F(E2E_Fs, NewFile_WhiteoutInLower)
 
     /* Build filesystem tree. */
     auto config = tree.Build();
+
+    /*
+     * The layer of the case is pinned to `Write Copy`, which is the mode a
+     * path had before the default of the view became `Merge`: the case pins
+     * the rule it is about and never reaches the host filesystem.
+     */
+    ASSERT_TRUE(WriteFsIsolationFile(GetCWD(), {
+                                                   { L"#USERPROFILE#", appbox::FilesystemEntryKind::Directory,
+                                                    appbox::FilesystemIsolation::WriteCopy }
+    }));
 
     /* Create file in the state of the sandbox should success. */
     {

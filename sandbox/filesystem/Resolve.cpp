@@ -212,8 +212,12 @@ static void ApplyIsolation(const appbox::filesystem::IsolationTable* isolation, 
     appbox::FilesystemEntryKind source_kind = appbox::FilesystemEntryKind::Directory;
     if (!isolation->Lookup(view_path, mode, source_kind))
     {
-        /* Without a listed entry the default of every kind keeps the whole
-         * view visible, so there is nothing to mask. */
+        /*
+         * Without a listed entry the default of the view applies, which the
+         * result already carries: it keeps every layer visible and lets a
+         * modification reach the host filesystem when the host holds the entry
+         * or when no layer holds it, so there is nothing to mask here.
+         */
         return;
     }
 
@@ -305,7 +309,10 @@ appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveFull(const Res
      * holds the entry or when no layer holds it at all, so the resolver has to
      * know every layer which holds the path and not only the first one. The
      * mode is looked up before the search, because the search itself stops at
-     * the first hit while the caller asked for it.
+     * the first hit while the caller asked for it. A path no entry covers
+     * follows the default of the view, which is `Merge` as well, so a caller
+     * which may modify such a path asks for every layer through
+     * `ResolveOption::bStopOnFirstFound`.
      */
     ResolveOption search_option = option;
     if (search_option.bStopOnFirstFound && isolation != nullptr && !isolation->Empty())

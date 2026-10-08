@@ -149,11 +149,15 @@ struct ResolveResult
      * @brief Isolation mode which applies to the path.
      *
      * The mode of the closest entry of the isolation table at or above the
-     * path. Without such an entry the field keeps `WriteCopy`, which is the
-     * default of a folder and the behaviour of a sandbox without an isolation
-     * file: every layer of the view stays visible.
+     * path. Without such an entry the field keeps the default of the view
+     * (`Merge`, see `kDefaultIsolation`), which is the behaviour of a sandbox
+     * without an isolation file: every layer of the view stays visible and a
+     * modification is applied to the host filesystem when the host holds the
+     * entry or when no layer holds it at all. A file has no default of its
+     * own: the mode of a file path is the mode of the closest entry above it,
+     * which is the folder that holds the file.
      */
-    FilesystemIsolation isolation = FilesystemIsolation::WriteCopy;
+    FilesystemIsolation isolation = filesystem_isolation::kDefaultIsolation;
 
     /**
      * @brief Kind of the entry which carries the isolation mode.

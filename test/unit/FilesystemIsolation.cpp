@@ -138,10 +138,18 @@ TEST(Unit_FilesystemIsolation, OnlyAFolderAcceptsTheFolderOnlyModes)
     }
 }
 
-TEST(Unit_FilesystemIsolation, DefaultsDependOnTheKind)
+/**
+ * @brief The default of the view is `Merge`, which a file cannot hold.
+ *
+ * A folder the user never touched follows the default of the view; a file
+ * cannot hold `Merge`, so the workspace shows `Full` for a file which no entry
+ * covers while the sandbox takes the mode of the folder that holds it.
+ */
+TEST(Unit_FilesystemIsolation, DefaultsAreMergeForAFolderAndFullForAFile)
 {
+    EXPECT_EQ(appbox::filesystem_isolation::kDefaultIsolation, appbox::FilesystemIsolation::Merge);
     EXPECT_EQ(appbox::DefaultFilesystemIsolation(appbox::FilesystemEntryKind::Directory),
-              appbox::FilesystemIsolation::WriteCopy);
+              appbox::filesystem_isolation::kDefaultIsolation);
     EXPECT_EQ(appbox::DefaultFilesystemIsolation(appbox::FilesystemEntryKind::File), appbox::FilesystemIsolation::Full);
 }
 
@@ -214,7 +222,7 @@ TEST(Unit_FilesystemIsolation, FreshModelFollowsTheDefaults)
     EXPECT_TRUE(model.IsEmpty());
     EXPECT_FALSE(model.HasExplicitIsolation(kAppFolder));
     EXPECT_EQ(model.EffectiveIsolation(kAppFolder, appbox::FilesystemEntryKind::Directory),
-              appbox::FilesystemIsolation::WriteCopy);
+              appbox::FilesystemIsolation::Merge);
     EXPECT_EQ(model.EffectiveIsolation(kAppFile, appbox::FilesystemEntryKind::File), appbox::FilesystemIsolation::Full);
 }
 
@@ -288,10 +296,10 @@ TEST(Unit_FilesystemIsolation, TheRootOfTheViewIsAnEntryOfItsOwn)
     appbox::FilesystemIsolationModel model;
     std::string                      error;
 
-    /* Without a root entry a path no entry covers follows the default of its kind. */
+    /* Without a root entry a path no entry covers follows the default of the view. */
     EXPECT_FALSE(model.HasExplicitIsolation(L""));
     EXPECT_EQ(model.EffectiveIsolation(L"#Windows#\\System32", appbox::FilesystemEntryKind::Directory),
-              appbox::FilesystemIsolation::WriteCopy);
+              appbox::filesystem_isolation::kDefaultIsolation);
 
     ASSERT_TRUE(
         model.SetIsolation(L"", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full, error))
@@ -384,6 +392,181 @@ TEST(Unit_FilesystemIsolation, ApplyIsolationToSubtreeOverwritesTheFoldersBelow)
     EXPECT_EQ(model.Entries().size(), count);
 }
 
+/**
+ * @brief The mode of the container reaches the layers of the view only when
+ *        the recursion of the dialog was chosen.
+ *
+ * The preset directories are the roots of the layers of the view and not
+ * folders below the container, so the mode picked for the container has to
+ * keep them: the call pins every layer root which carries no mode of its own
+ * to the mode which applies to it today.
+ */
+TEST(Unit_FilesystemIsolation, SetRootIsolationKeepsTheLayersOfTheView)
+{
+    appbox::FilesystemIsolationModel model;
+    std::string                      error;
+
+    const std::vector<std::wstring> layers = { L"#ProgramFiles#", L"#Windows#", L"#USERPROFILE#" };
+    ASSERT_TRUE(model.SetRootIsolation(appbox::FilesystemIsolation::Whiteout, layers, error)) << error;
+
+    /* The root of the view and one entry per layer are listed. */
+    ASSERT_EQ(model.Entries().size(), 4u);
+    EXPECT_EQ(model.Entries()[0].path, L"");
+    EXPECT_EQ(model.Entries()[0].kind, appbox::FilesystemEntryKind::Directory);
+    EXPECT_EQ(model.Entries()[0].isolation, appbox::FilesystemIsolation::Whiteout);
+
+    /* Every layer keeps the mode it showed before the container changed. */
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#", appbox::FilesystemEntryKind::Directory),
+              appbox::filesystem_isolation::kDefaultIsolation);
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\data", appbox::FilesystemEntryKind::Directory),
+              appbox::filesystem_isolation::kDefaultIsolation);
+    EXPECT_EQ(model.EffectiveIsolation(L"#Windows#\\System32", appbox::FilesystemEntryKind::Directory),
+              appbox::filesystem_isolation::kDefaultIsolation);
+
+    /* A location outside the layers follows the mode of the container. */
+    EXPECT_EQ(model.EffectiveIsolation(L"#Other#", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Whiteout);
+    EXPECT_EQ(model.EffectiveIsolation(L"", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Whiteout);
+}
+
+/**
+ * @brief A layer which carries a mode of its own keeps it.
+ *
+ * The mode of the container reaches the layers which follow it, so only a
+ * layer without an entry of its own is pinned; an entry the user set before
+ * stays what it is.
+ */
+TEST(Unit_FilesystemIsolation, SetRootIsolationKeepsAnExplicitLayerMode)
+{
+    appbox::FilesystemIsolationModel model;
+    std::string                      error;
+
+    SetMode(model, L"#ProgramFiles#", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
+    SetMode(model, L"#ProgramFiles#\\MyApp", appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
+
+    ASSERT_TRUE(
+        model.SetRootIsolation(appbox::FilesystemIsolation::Whiteout, { L"#ProgramFiles#", L"#Windows#" }, error))
+        << error;
+
+    /* The layer and the entries below it keep their own modes. */
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\data", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Full);
+
+    /* The layer without a mode of its own is pinned to what it showed. */
+    EXPECT_TRUE(model.HasExplicitIsolation(L"#Windows#"));
+    EXPECT_EQ(model.EffectiveIsolation(L"#Windows#\\System32", appbox::FilesystemEntryKind::Directory),
+              appbox::filesystem_isolation::kDefaultIsolation);
+    EXPECT_EQ(model.EffectiveIsolation(L"", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Whiteout);
+}
+
+/**
+ * @brief A container which already carries the mode is left alone.
+ *
+ * The mode of the view is the mode of an untouched container, so picking it
+ * writes no entry at all; the same holds for a container which was given the
+ * mode before.
+ */
+TEST(Unit_FilesystemIsolation, SetRootIsolationWithoutAChangeWritesNoEntry)
+{
+    appbox::FilesystemIsolationModel model;
+    std::string                      error;
+
+    const std::vector<std::wstring> layers = { L"#ProgramFiles#", L"#Windows#" };
+
+    ASSERT_TRUE(model.SetRootIsolation(appbox::filesystem_isolation::kDefaultIsolation, layers, error)) << error;
+    EXPECT_TRUE(model.IsEmpty());
+
+    ASSERT_TRUE(model.SetRootIsolation(appbox::FilesystemIsolation::Whiteout, layers, error)) << error;
+    const auto count = model.Entries().size();
+    ASSERT_TRUE(model.SetRootIsolation(appbox::FilesystemIsolation::Whiteout, layers, error)) << error;
+    EXPECT_EQ(model.Entries().size(), count);
+}
+
+/**
+ * @brief A layer root which does not name a folder is refused.
+ *
+ * The call is the one of the dialog, so a layer of the view which cannot be
+ * addressed has to leave the model unchanged instead of pinning half of it.
+ */
+TEST(Unit_FilesystemIsolation, SetRootIsolationRefusesAnInvalidLayer)
+{
+    appbox::FilesystemIsolationModel model;
+    std::string                      error;
+
+    EXPECT_FALSE(
+        model.SetRootIsolation(appbox::FilesystemIsolation::Whiteout, { L"#ProgramFiles#\\..\\Windows" }, error));
+    EXPECT_FALSE(error.empty());
+
+    error.clear();
+    EXPECT_FALSE(model.SetRootIsolation(appbox::FilesystemIsolation::Whiteout, { L"" }, error));
+    EXPECT_FALSE(error.empty());
+
+    /* A refused call never changes the model. */
+    EXPECT_TRUE(model.IsEmpty());
+}
+
+/**
+ * @brief The recursion of the dialog overwrites the pinned layers as well.
+ */
+TEST(Unit_FilesystemIsolation, SetRootIsolationIsOverwrittenByTheRecursion)
+{
+    appbox::FilesystemIsolationModel model;
+    std::string                      error;
+
+    ASSERT_TRUE(
+        model.SetRootIsolation(appbox::FilesystemIsolation::Whiteout, { L"#ProgramFiles#", L"#Windows#" }, error))
+        << error;
+    ASSERT_TRUE(model.ApplyIsolationToSubtree(L"", appbox::FilesystemIsolation::Full, error)) << error;
+
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(model.EffectiveIsolation(L"#Windows#\\System32", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Full);
+}
+
+/**
+ * @brief The layers of a container mode travel to the sandbox.
+ *
+ * The modes the packer writes are read back by the table of the sandbox, so a
+ * path below a layer root has to land on the entry of the layer while a
+ * location no layer holds lands on the entry of the root.
+ */
+TEST(Unit_FilesystemIsolation, ThePinnedLayersTravelThroughTheIsolationFile)
+{
+    appbox::FilesystemIsolationModel model;
+    std::string                      error;
+    ASSERT_TRUE(model.SetRootIsolation(appbox::FilesystemIsolation::Whiteout, { L"#ProgramFiles#" }, error)) << error;
+
+    std::string text;
+    ASSERT_TRUE(appbox::BuildFilesystemIsolationFile(model, text, error)) << error;
+
+    const std::vector<appbox::filesystem::IsolationLayer> layers = {
+        { L"#ProgramFiles#", L"\\??\\C:\\Program Files" },
+    };
+
+    appbox::filesystem::IsolationTable table;
+    std::vector<std::wstring>          unmapped;
+    ASSERT_TRUE(table.Parse(text, layers, unmapped, error)) << error;
+    EXPECT_TRUE(unmapped.empty());
+    EXPECT_EQ(table.Count(), 2u);
+
+    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::Full;
+    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
+
+    /* The layer keeps the mode it showed, so the container does not reach it. */
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\data", mode, kind));
+    EXPECT_EQ(mode, appbox::filesystem_isolation::kDefaultIsolation);
+    EXPECT_EQ(kind, appbox::FilesystemEntryKind::Directory);
+
+    /* A location outside the layers follows the mode of the container. */
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Windows\\System32", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::Whiteout);
+}
+
 TEST(Unit_FilesystemIsolation, AChildOverridesTheFolderAbove)
 {
     appbox::FilesystemIsolationModel model;
@@ -419,7 +602,8 @@ TEST(Unit_FilesystemIsolation, AMergedFolderShowsFullForAFile)
 {
     appbox::FilesystemIsolationModel model;
 
-    /* The default of a folder is `Write Copy`, which a file cannot express. */
+    /* A file which no entry covers follows `Full`, which is what the workspace
+     * shows for a file, because a file cannot hold `Merge`. */
     EXPECT_EQ(model.EffectiveIsolation(kAppFile, appbox::FilesystemEntryKind::File), appbox::FilesystemIsolation::Full);
 
     SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
@@ -543,7 +727,7 @@ TEST(Unit_FilesystemIsolation, ResetDropsEveryMode)
     EXPECT_TRUE(model.IsEmpty());
     EXPECT_FALSE(model.HasExplicitIsolation(kAppFolder));
     EXPECT_EQ(model.EffectiveIsolation(kAppFolder, appbox::FilesystemEntryKind::Directory),
-              appbox::FilesystemIsolation::WriteCopy);
+              appbox::filesystem_isolation::kDefaultIsolation);
 }
 
 TEST(Unit_FilesystemIsolation, BuildIsolationFileListsTheExplicitEntries)
@@ -705,7 +889,7 @@ TEST(Unit_FilesystemIsolation, EveryModeIsDescribedForATooltip)
                                                      appbox::FilesystemEntryKind::Directory)
                   .find(L"invisible"),
               std::wstring::npos);
-    EXPECT_NE(appbox::FilesystemIsolationDescription(appbox::FilesystemIsolation::WriteCopy,
+    EXPECT_NE(appbox::FilesystemIsolationDescription(appbox::FilesystemIsolation::Merge,
                                                      appbox::FilesystemEntryKind::Directory)
                   .find(L"default mode of a folder"),
               std::wstring::npos);

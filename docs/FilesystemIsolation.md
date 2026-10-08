@@ -55,7 +55,7 @@ sandbox reads back and enforces.
 
 | Kind | Modes | Default |
 | --- | --- | --- |
-| folder | `Full`, `Write Copy`, `Merge`, `Whiteout` | `Write Copy` |
+| folder | `Full`, `Write Copy`, `Merge`, `Whiteout` | `Merge` |
 | file | `Full`, `Whiteout` | `Full` |
 
 * **Full** (folder) - only the virtual filesystem is visible, even when the
@@ -143,16 +143,16 @@ other child of the folder is a layer of the view:
 
 The `path` of an entry is a path of the virtual filesystem, which is the path
 the `Source Path` column shows: the first component is the layer key of a preset
-directory and the remaining ones are the path below it. Only the entries the
-user set a mode for are listed; an entry which the document does not mention
-follows the closest listed folder above it, then the root of the view, and falls
-back to the default of its kind.
+directory and the remaining ones are the path below it. The document lists the
+modes the workspace holds; an entry which it does not mention follows the
+closest listed folder above it, then the root of the view, and falls back to the
+default of the view.
 
 An entry whose `path` is **empty** is the root of the view: it is a folder and
 it decides the mode of every path no other entry covers, including the locations
 which are not part of the virtual filesystem at all. A document which lists no
 such entry leaves the behaviour outside the recorded paths to the default of the
-kind, which is the state of a workspace whose container was never given a mode.
+view, which is the state of a workspace whose container was never given a mode.
 
 The document is read and written as the structure of the schema:
 `common/FilesystemIsolation.hpp` describes an entry and the document, and both
@@ -165,7 +165,9 @@ sandbox in step.
 The launcher derives the path of the file from the resources of the archive and
 passes it to the sandbox. A missing file, a missing configuration or a malformed document is not
 an error: the sandbox then behaves like one without an isolation file, in which
-every entry keeps the default of its kind and the host filesystem stays visible.
+every entry follows the default of the view, which is `Merge`: the host
+filesystem stays visible and a modification is applied to it when the host holds
+the entry or when no layer holds it at all.
 
 A run has one isolation file per layer: the file of the resources of the archive
 comes first and the file of every patch package follows in the order the

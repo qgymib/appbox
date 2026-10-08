@@ -87,6 +87,8 @@ add_executable(AppBoxTests
     "e2e/Font_AddFontResourceEx_ViewPath.cpp"
     "e2e/Font_HostIsNotModified.cpp"
     "e2e/Font_PackedFontIsUsable.cpp"
+    "e2e/Fs_DefaultMerge_CreatesTheEntriesInTheHost.cpp"
+    "e2e/Fs_DefaultMerge_WritesTheFileOfTheHost.cpp"
     "e2e/Fs_DeleteFile_LowerLayer.cpp"
     "e2e/Fs_DeleteFile_LowerLayerAndUpper.cpp"
     "e2e/Fs_DeleteFile_NonExists.cpp"

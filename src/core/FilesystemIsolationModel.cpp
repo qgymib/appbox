@@ -105,13 +105,13 @@ std::wstring FilesystemIsolationDescription(FilesystemIsolation isolation, Files
     {
     case FilesystemIsolation::WriteCopy:
         return L"Isolation mode 'Write Copy': the host entry and the sandbox entry are both visible with the sandbox "
-               L"taking precedence, and every modification lands in the sandbox. This is the default mode of a folder.";
+               L"taking precedence, and every modification lands in the sandbox.";
     case FilesystemIsolation::Merge:
         return L"Isolation mode 'Merge': the host entry and the sandbox entry are both visible with the sandbox taking "
                L"precedence, and a modification is written to the host filesystem whenever the host holds the entry or "
                L"no layer holds it at all, while an entry only the sandbox holds is modified inside the sandbox. The "
                L"host folders above a written entry are created when they are missing, and deleting an entry the host "
-               L"holds really removes it from the host filesystem.";
+               L"holds really removes it from the host filesystem. This is the default mode of a folder.";
     case FilesystemIsolation::Whiteout:
         return L"Isolation mode 'Whiteout': the entry is invisible for the application, even while the host holds it; "
                L"creating the entry succeeds inside the sandbox and it is readable and writable afterwards.";
@@ -156,7 +156,11 @@ bool ParseFilesystemIsolationName(const std::wstring& name, FilesystemIsolation&
 
 FilesystemIsolation DefaultFilesystemIsolation(FilesystemEntryKind kind)
 {
-    return kind == FilesystemEntryKind::Directory ? FilesystemIsolation::WriteCopy : FilesystemIsolation::Full;
+    /*
+     * The default of the view is `Merge`; a file cannot hold it, so the
+     * workspace shows `Full` for a file which no entry covers.
+     */
+    return kind == FilesystemEntryKind::Directory ? filesystem_isolation::kDefaultIsolation : FilesystemIsolation::Full;
 }
 
 FilesystemIsolation FilesystemIsolationForKind(FilesystemIsolation isolation, FilesystemEntryKind kind)
@@ -302,20 +306,7 @@ bool FilesystemIsolationModel::SetIsolation(const std::wstring& view_path, Files
         return false;
     }
 
-    const auto index = EntryIndex(path);
-    if (index >= 0)
-    {
-        auto& entry = entries_[static_cast<std::size_t>(index)];
-        entry.kind = kind;
-        entry.isolation = isolation;
-        return true;
-    }
-
-    FilesystemIsolationEntry entry;
-    entry.path = path;
-    entry.kind = kind;
-    entry.isolation = isolation;
-    entries_.push_back(std::move(entry));
+    StoreEntry(path, kind, isolation);
     SortEntries();
     return true;
 }
@@ -335,21 +326,7 @@ bool FilesystemIsolationModel::ApplyIsolationToSubtree(const std::wstring& view_
      * already holds a mode for it or not. A folder accepts every mode, so the
      * new mode needs no further validation.
      */
-    const auto index = EntryIndex(path);
-    if (index >= 0)
-    {
-        auto& entry = entries_[static_cast<std::size_t>(index)];
-        entry.kind = FilesystemEntryKind::Directory;
-        entry.isolation = isolation;
-    }
-    else
-    {
-        FilesystemIsolationEntry entry;
-        entry.path = path;
-        entry.kind = FilesystemEntryKind::Directory;
-        entry.isolation = isolation;
-        entries_.push_back(std::move(entry));
-    }
+    StoreEntry(path, FilesystemEntryKind::Directory, isolation);
 
     /*
      * Every folder below the path is overwritten, no matter which mode it held
@@ -370,6 +347,65 @@ bool FilesystemIsolationModel::ApplyIsolationToSubtree(const std::wstring& view_
         }
     }
 
+    SortEntries();
+    return true;
+}
+
+bool FilesystemIsolationModel::SetRootIsolation(FilesystemIsolation              isolation,
+                                                const std::vector<std::wstring>& layer_roots, std::string& error)
+{
+    if (!filesystem_isolation::IsAllowed(isolation, FilesystemEntryKind::Directory))
+    {
+        error = RefusedMode(isolation);
+        return false;
+    }
+
+    /*
+     * The mode of the root of the view reaches every path no other entry
+     * names, so a layer root which carries no entry of its own would follow
+     * the new mode. The layer roots are the preset directories of the view and
+     * not folders below the container, so every one of them keeps the mode
+     * which applies to it today.
+     *
+     * The whole call is validated and every mode is read before the model is
+     * touched, so a refusal leaves it unchanged. The path of the root is the
+     * empty one, which is the folder a location outside the recorded paths
+     * belongs to.
+     */
+    const std::wstring root;
+
+    std::vector<std::pair<std::wstring, FilesystemIsolation>> pinned;
+    pinned.reserve(layer_roots.size());
+    for (const auto& layer_root : layer_roots)
+    {
+        std::wstring path;
+        if (!NormalizeEntryPath(layer_root, path) || path.empty())
+        {
+            error = "the layer root " + Quote(layer_root) + " does not name a folder of the virtual filesystem";
+            return false;
+        }
+        if (EntryIndex(path) >= 0)
+        {
+            /* The layer carries a mode of its own, which it keeps. */
+            continue;
+        }
+        pinned.emplace_back(path, EffectiveIsolation(path, FilesystemEntryKind::Directory));
+    }
+
+    if (EffectiveIsolation(root, FilesystemEntryKind::Directory) == isolation)
+    {
+        /*
+         * The root already carries the mode and the layers follow it, so the
+         * call changes nothing and writes no entry of its own.
+         */
+        return true;
+    }
+
+    for (const auto& layer : pinned)
+    {
+        StoreEntry(layer.first, FilesystemEntryKind::Directory, layer.second);
+    }
+    StoreEntry(root, FilesystemEntryKind::Directory, isolation);
     SortEntries();
     return true;
 }
@@ -495,6 +531,25 @@ void FilesystemIsolationModel::SortEntries()
               [](const FilesystemIsolationEntry& left, const FilesystemIsolationEntry& right) {
                   return LessIgnoreCase(left.path, right.path);
               });
+}
+
+void FilesystemIsolationModel::StoreEntry(const std::wstring& normalized_path, FilesystemEntryKind kind,
+                                          FilesystemIsolation isolation)
+{
+    const auto index = EntryIndex(normalized_path);
+    if (index >= 0)
+    {
+        auto& entry = entries_[static_cast<std::size_t>(index)];
+        entry.kind = kind;
+        entry.isolation = isolation;
+        return;
+    }
+
+    FilesystemIsolationEntry entry;
+    entry.path = normalized_path;
+    entry.kind = kind;
+    entry.isolation = isolation;
+    entries_.push_back(std::move(entry));
 }
 
 } // namespace appbox

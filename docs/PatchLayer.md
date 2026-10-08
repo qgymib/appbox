@@ -112,7 +112,7 @@ layer order: the file of `app` first, then the file of every package in
 ascending order. An entry of a later file replaces the mode of the same path, so
 the mode of the last layer which names a path is the mode the sandboxed process
 observes, and a path which no file names follows the closest entry above it and
-the default of its kind. A folder which `app` isolates as `Write Copy` and
+the default of the view. A folder which `app` isolates as `Write Copy` and
 `01-bar.zip` isolates as `Full` is `Full` for the sandbox.
 
 The merge is per path and not per subtree: a package which names a folder leaves

@@ -26,7 +26,7 @@ namespace appbox
  *   redirected into the sandbox.
  * - `WriteCopy` - the host filesystem and the virtual filesystem are both
  *   visible with the virtual one taking precedence, and every modification is
- *   redirected into the sandbox. This is the default mode of a folder.
+ *   redirected into the sandbox.
  * - `Merge` - the host filesystem and the virtual filesystem are both visible
  *   with the virtual one taking precedence, like `WriteCopy`, but a
  *   modification is not always redirected into the sandbox: a write of an
@@ -36,7 +36,8 @@ namespace appbox
  *   folders above a written entry are created when they are missing. A delete
  *   follows the same rule, so an entry the host filesystem holds is really
  *   removed while an entry only the sandbox holds is recorded as deleted
- *   inside the sandbox.
+ *   inside the sandbox. This is the default mode of a folder, see
+ *   `filesystem_isolation::kDefaultIsolation`.
  * - `Whiteout` - the folder is invisible for the sandboxed process: opening,
  *   reading and writing report `File Not Found`, even when the host holds the
  *   folder. Creating the folder succeeds inside the sandbox, and the folder is
@@ -44,8 +45,9 @@ namespace appbox
  *
  * For a **file** only two modes exist:
  *
- * - `Full` - every write of the file lands in the sandbox. This is the default
- *   mode of a file.
+ * - `Full` - every write of the file lands in the sandbox. The workspace shows
+ *   this mode for a file which no entry covers, because a file cannot hold
+ *   `Merge`.
  * - `Whiteout` - the file is invisible for the sandboxed process: opening,
  *   reading and writing report `File Not Found`, even when the host holds the
  *   file. Creating the file succeeds inside the sandbox, and the file is
@@ -58,12 +60,15 @@ namespace appbox
  *
  * The mode of a folder reaches the entries below it: an entry which carries no
  * mode of its own follows the closest folder above it which does, and a folder
- * which the user never touched follows `WriteCopy` while a file which the user
- * never touched follows `Full`. A path no listed entry covers at all follows
- * the entry of the **root of the view**, which is the entry whose path is
- * empty, and falls back to the default of its kind when the document holds no
- * such entry; the root entry is what decides the mode of a location outside
- * the recorded paths.
+ * which the user never touched follows the default of the view, see
+ * `filesystem_isolation::kDefaultIsolation`. A path no listed entry covers at
+ * all follows the entry of the **root of the view**, which is the entry whose
+ * path is empty, and
+ * falls back to the default of the view when the document holds no such entry;
+ * the root entry is what decides the mode of a location outside the recorded
+ * paths. The workspace shows `Full` for a file which no entry covers, because
+ * a file cannot hold `Merge`; the sandbox has no default of its own for a
+ * file, so the mode of a file path is the mode of the closest entry above it.
  *
  * The enumeration lives in `common/` because the packer and the sandbox share
  * it: the packer stores the modes of the workspace and writes them into the
@@ -109,10 +114,10 @@ namespace filesystem_isolation
  * virtual filesystem from the packer to the sandbox: the packer writes it into
  * the overlay of the archive, the launcher hands its path to the sandbox, and
  * the sandbox redirects the filesystem of the packaged application through the
- * modes. The packer lists the entries the user set a mode for; an entry which
- * is not listed follows the closest listed folder above it, then the root
- * entry of the view, and falls back to the default of its kind (`WriteCopy`
- * for a folder, `Full` for a file).
+ * modes. The packer lists the modes the workspace holds; an entry which is not
+ * listed follows the closest listed folder above it, then the root entry of
+ * the view, and falls back to the default of the view (`Merge`, see
+ * `kDefaultIsolation`).
  *
  * ```
  * {
@@ -303,6 +308,25 @@ inline bool IsAllowed(FilesystemIsolation isolation, FilesystemEntryKind kind)
     }
     return isolation == FilesystemIsolation::Full || isolation == FilesystemIsolation::Whiteout;
 }
+
+/**
+ * @brief Default isolation mode of a path of the view.
+ *
+ * The mode of the closest listed entry wins; a path which no entry covers at
+ * all follows this default, which is `Merge`: every layer of the view stays
+ * visible and a modification is applied to the host filesystem when the host
+ * holds the entry or when no layer holds it at all, while an entry only a
+ * sandbox layer holds is modified inside the sandbox. A sandbox without an
+ * isolation file behaves like a document which lists no entry, so the default
+ * is what an unconfigured run does.
+ *
+ * A **file** cannot hold `Merge`, so the workspace shows `Full` for a file
+ * which no entry covers; that default belongs to the workspace alone, because
+ * the mode of a file path is the mode of the closest entry above it, which is
+ * the folder that holds it. The constant lives next to the schema because the
+ * packer and the sandbox have to agree on it.
+ */
+inline constexpr FilesystemIsolation kDefaultIsolation = FilesystemIsolation::Merge;
 
 /**
  * @brief One entry of the filesystem isolation file.

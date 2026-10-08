@@ -5,6 +5,7 @@
 #include "probe/RemoveDirectory.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
+#include "utils/FsIsolationBuilder.hpp"
 #include "utils/RealFsFolder.hpp"
 #include "utils/TestKnownFolder.hpp"
 #include "WString.hpp"
@@ -47,7 +48,10 @@ std::wstring CreatedDirectoryInOverlay(const std::wstring& cwd)
  * 1. The sandboxed process creates a directory below a folder which only the
  *    host holds, asks for its attributes, creates a file inside it and removes
  *    the directory while the file is still there.
- * 2. It removes the file and removes the directory again.
+ * 2. The layer `#USERPROFILE#` of the case is pinned to `Write Copy`, so the
+ *    directory is created in the sandbox and the case pins its own rule
+ *    instead of the default of the view.
+ * 3. It removes the file and removes the directory again.
  *
  * Expected:
  * 1. The directory is created inside the sandbox: the view reports it as a
@@ -64,11 +68,23 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
         FsDir(L"data", {}),
-        FsDir(L"app", {})
+        FsDir(L"app", {
+            FsDir(L"filesystem\\#USERPROFILE#", {})
+        })
     });
     /* clang-format on */
 
     auto config = tree.Build();
+
+    /*
+     * The layer of the case is pinned to `Write Copy`, which is the mode a
+     * path had before the default of the view became `Merge`: the case pins
+     * the rule it is about and never reaches the host filesystem.
+     */
+    ASSERT_TRUE(WriteFsIsolationFile(GetCWD(), {
+                                                   { L"#USERPROFILE#", appbox::FilesystemEntryKind::Directory,
+                                                    appbox::FilesystemIsolation::WriteCopy }
+    }));
 
     const auto created = CreatedDirectory();
     const auto file = created + L"\\data.txt";

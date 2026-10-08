@@ -1,5 +1,6 @@
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
+#include "utils/FsIsolationBuilder.hpp"
 #include "utils/ProbeCall.hpp"
 #include "utils/ReadFileFull.hpp"
 #include "utils/TestKnownFolder.hpp"
@@ -25,8 +26,10 @@ constexpr wchar_t kFolderName[] = L"AppBoxTest_Shell";
  * The configuration carries the filesystem of the sandbox the launcher mounts:
  * an empty upper layer and a lower layer below `filesystem`, which holds the
  * folder the shell of a case writes into. The folder exists in the view of the
- * sandbox only, so a write of the shell proves that the command of the shell
- * ran inside the isolation.
+ * sandbox only, so a case which writes into it pins the layer to `Write Copy`
+ * and the write lands in the overlay of the sandbox instead of the folder of
+ * the host, which is what makes it a proof that the command of the shell ran
+ * inside the isolation.
  *
  * @param[in] root Root directory of the filesystem of the case.
  * @return The configuration without any startup file.
@@ -108,7 +111,9 @@ TEST_F(E2E_Launcher_Shell, CommandRunsAndStartupsAreIgnored)
  * Condition:
  * 1. The lower layer of the filesystem holds the folder `#USERPROFILE#\
  *    AppBoxTest_Shell`, which exists in the view of the sandbox only.
- * 2. The launcher runs with `--X-AppBox-Shell echo hello> <folder>\shell.txt`,
+ * 2. The layer is pinned to `Write Copy`, so the write of the command lands in
+ *    the overlay of the sandbox instead of the folder of the host.
+ * 3. The launcher runs with `--X-AppBox-Shell echo hello> <folder>\shell.txt`,
  *    where the folder is the path of the known folder of the host.
  *
  * Expected:
@@ -132,6 +137,17 @@ TEST_F(E2E_Launcher_Shell, CommandRunsInsideTheSandbox)
     /* clang-format on */
 
     auto config = tree.Build();
+
+    /*
+     * The layer of the case is pinned to `Write Copy`, which is the mode a
+     * path of the sandbox had before the default of the view became `Merge`:
+     * the write of the command lands in the overlay of the sandbox and never
+     * in the folder of the host.
+     */
+    ASSERT_TRUE(WriteFsIsolationFile(GetCWD(), {
+                                                   { L"#USERPROFILE#", appbox::FilesystemEntryKind::Directory,
+                                                    appbox::FilesystemIsolation::WriteCopy }
+    }));
 
     const auto folder = GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName;
     const auto file = folder + L"\\shell.txt";

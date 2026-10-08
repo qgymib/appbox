@@ -1274,10 +1274,34 @@ void FilesystemPanel::EditIsolation(const TreeNode& node)
     }
 
     std::string error;
-    const bool  applied =
-        dialog.ApplyToSubfolders()
-            ? isolation_.ApplyIsolationToSubtree(view_path, dialog.Isolation(), error)
-            : isolation_.SetIsolation(view_path, appbox::FilesystemEntryKind::Directory, dialog.Isolation(), error);
+    bool        applied = false;
+    if (dialog.ApplyToSubfolders())
+    {
+        applied = isolation_.ApplyIsolationToSubtree(view_path, dialog.Isolation(), error);
+    }
+    else if (node.preset_id.empty())
+    {
+        /*
+         * The container is the root of the view and not a folder of it: the
+         * preset directories are the roots of the layers of the view, so the
+         * mode of the container must not reach them. The call pins every layer
+         * root to the mode it shows today, which keeps the layers and
+         * everything below them unchanged while the mode of the container
+         * reaches the locations outside the layers.
+         */
+        std::vector<std::wstring> layer_roots;
+        layer_roots.reserve(appbox::PresetDirectories().size());
+        for (const auto& preset : appbox::PresetDirectories())
+        {
+            layer_roots.push_back(preset.layer_key);
+        }
+
+        applied = isolation_.SetRootIsolation(dialog.Isolation(), layer_roots, error);
+    }
+    else
+    {
+        applied = isolation_.SetIsolation(view_path, appbox::FilesystemEntryKind::Directory, dialog.Isolation(), error);
+    }
     if (!applied)
     {
         wxMessageBox(wxString::FromUTF8(error), "Isolation", wxOK | wxICON_ERROR, this);

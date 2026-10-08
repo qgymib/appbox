@@ -415,6 +415,11 @@ private:
      * it returns reaches the node itself, and it reaches the folders below the
      * node as well while the recursion of the dialog was chosen.
      *
+     * The container is the root of the view and not a folder of it: its mode
+     * decides the locations no entry covers, so the call keeps the layers of
+     * the view, which are the preset directories, on the mode they show today
+     * while the recursion is off.
+     *
      * @param[in] node Data of the tree node.
      */
     void EditIsolation(const TreeNode& node);

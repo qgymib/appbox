@@ -90,9 +90,9 @@ struct IsolationEntry
  * **root of the view**, which is the entry whose path is empty and which is
  * stored under the empty key, so its mode decides every path no listed folder
  * covers, including the locations outside the virtual filesystem. A path which
- * neither a listed folder nor the root covers follows the default of its kind,
- * so a sandbox without an isolation file behaves like one whose document lists
- * no entry at all.
+ * neither a listed folder nor the root covers follows the default of the view
+ * (`Merge`, see `kDefaultIsolation`), so a sandbox without an isolation file
+ * behaves like one whose document lists no entry at all.
  *
  * The class holds no dependency on the Windows API, so the lookup rules are
  * unit testable.

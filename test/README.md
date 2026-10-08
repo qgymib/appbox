@@ -317,12 +317,14 @@ The unit tests of the packer:
 
 * `test/unit/FilesystemIsolation.cpp` — the vocabulary of the filesystem
   isolation (the tokens and the display names of the modes, the modes an entry
-  kind accepts, the default of a kind, the fold of `Write Copy` to `Full` for a
-  file) and the model of the packer: the path helpers of the virtual
-  filesystem, the explicit mode of an entry, the inheritance of the closest
-  folder above an entry, the mode of the root of the view for the paths no
-  entry covers, the recursion which overwrites the folders below a folder, the
-  removal of a subtree and the order of the entries. It also pins the isolation
+  kind accepts, the default of the view, which is `Merge` and which a file
+  cannot hold, the fold of `Write Copy` to `Full` for a file) and the model of
+  the packer: the path helpers of the virtual filesystem, the explicit mode of
+  an entry, the inheritance of the closest folder above an entry, the mode of
+  the root of the view for the paths no entry covers, the call which sets that
+  mode while it pins the layer roots of the view to the mode they show, the
+  recursion which overwrites the folders below a folder, the removal of a
+  subtree and the order of the entries. It also pins the isolation
   file the packer writes, including the root entry without a path and the round
   trip through the table of the sandbox, so the two sides of the schema cannot
   drift apart. The table itself is pinned as well: the files of the layers of a
@@ -595,13 +597,15 @@ folder below `#USERPROFILE#` of the host as the entry of the host layer
 | `ListDir_IsolationFiltersTheEntries` | folder `Full`, file `Whiteout` | enumerate the folder with `std::filesystem`, `FindFirstFile`, `_findfirst` and both NT entry points | every enumeration reports the visible entry of the lower layer only; the hidden file, the host file and the host folder are not listed |
 | `MalformedIsolationFile_FallsBack` | document which cannot be read | read a host file while the isolation file is not JSON, while it carries an unknown version and while it is the valid document which hides the folder | the host file stays visible for both refused documents and is hidden for the readable one, which is what makes the run a check of the fallback; the content of the lower layer is visible in every one of them |
 | `WriteLowerLayerFile_CopyUp` | file of a lower layer only | open the file for writing and write another content into it | the open copies the file up into the overlay, the write and the read back report the new content, and the layer it was copied from keeps its own content |
-| `Directory_CreateAndDelete` | folder of the host only | create a directory below the folder, query it, create a file inside it, remove the directory, remove the file, remove the directory again | the directory is created in the overlay and reported as a directory, the removal of a directory which still holds a visible entry reports `Directory Not Empty`, and the second removal succeeds and leaves neither the view nor the overlay with the entry; the host folder stays empty |
+| `Directory_CreateAndDelete` | layer `Write Copy`, folder of the host only | create a directory below the folder, query it, create a file inside it, remove the directory, remove the file, remove the directory again | the directory is created in the overlay and reported as a directory, the removal of a directory which still holds a visible entry reports `Directory Not Empty`, and the second removal succeeds and leaves neither the view nor the overlay with the entry; the host folder stays empty |
 | `Merge_WritesTheFileOfTheHost` | folder `Merge`, host file and packed file | open the file of the host for writing | the write is applied to the host file, which carries the new content, the overlay holds no copy of it, and the packed file is not carried into the host |
 | `Merge_KeepsThePackedFileInTheSandbox` | folder `Merge`, packed file which the host does not hold | open the packed file for writing | the file is copied up into the overlay and the copy carries the new content, while the host gains no entry and the lower layer keeps its own content |
 | `Merge_CreatesTheFoldersOfANewFileInTheHost` | folder `Merge`, packed folder which the host does not hold | create `fresh\new.txt`, which no layer holds | the host gains the folder `fresh` and the file, the overlay holds neither of them, and the lower layer keeps its content |
 | `Merge_DeletesTheFileOfTheHost` | folder `Merge`, host file which no layer holds | delete the file | the file is really removed from the host filesystem and the lower layer keeps its content |
 | `Merge_DeletesThePackedFileInTheSandbox` | folder `Merge`, packed file which the host does not hold | delete the file | the whiteout marker lands in the overlay, while the host gains no entry and the lower layer keeps its content |
 | `RootIsolation_MergeWritesTheFileOfTheHost` | root of the view `Merge`, host file, no entry names the folder | open the file of the host for writing | the mode of the root reaches the write, so the host file carries the new content |
+| `DefaultMerge_CreatesTheEntriesInTheHost` | no entry names the folder, so the default of the view applies | create a directory and a file below a folder of the host | the directory and the file are created in the host filesystem, while the overlay holds neither of them |
+| `DefaultMerge_WritesTheFileOfTheHost` | no entry names the file, so the default of the view applies | open the file of the host for writing | the write is applied to the file of the host filesystem, while the overlay holds no copy of it |
 
 ### Registry isolation cases
 

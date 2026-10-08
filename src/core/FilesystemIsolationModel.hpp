@@ -78,7 +78,9 @@ bool ParseFilesystemIsolationName(const std::wstring& name, FilesystemIsolation&
 /**
  * @brief Get the default isolation mode of an entry kind.
  *
- * A folder which the user never touched is `WriteCopy`, a file is `Full`.
+ * The default of the view is `Merge` (see `kDefaultIsolation`), which is what a
+ * folder the user never touched follows; a file cannot hold `Merge`, so a file
+ * which no entry covers follows `Full`.
  *
  * @param[in] kind The kind of the entry.
  * @return The default mode of the kind.
@@ -206,8 +208,8 @@ struct FilesystemIsolationEntry
  * filesystem workspace and resolves the mode of every other entry by
  * inheritance: an entry without a mode of its own follows the closest folder
  * above it which carries one, then the entry of the root of the view, and
- * falls back to the default of its kind (`WriteCopy` for a folder, `Full` for
- * a file).
+ * falls back to the default of the view, which is `Merge` for a folder while a
+ * file, which cannot hold `Merge`, falls back to `Full`.
  *
  * The entry of the root of the view carries an empty path and is the folder
  * every path no other entry covers belongs to, including the locations which
@@ -280,6 +282,34 @@ public:
      * @return true on success.
      */
     bool ApplyIsolationToSubtree(const std::wstring& view_path, FilesystemIsolation isolation, std::string& error);
+
+    /**
+     * @brief Set the isolation mode of the root of the view and keep the layers.
+     *
+     * The mode of the root of the view covers every path no other entry names,
+     * so setting it would change the mode of every layer root which carries no
+     * entry of its own: the preset directories are the roots of the layers of
+     * the view and not folders below the container, so they have to keep the
+     * mode which applies to them today. The call therefore pins every such
+     * layer root to that mode and sets the root afterwards; a layer root which
+     * already carries a mode of its own keeps it, and a layer root which is not
+     * part of \p layer_roots is left alone.
+     *
+     * The call is a no-op when the mode which applies to the root today is
+     * already \p isolation, because the layers follow the root and nothing
+     * changes for them either.
+     *
+     * The call fails when the mode cannot be used for a folder or when a layer
+     * root does not name a folder of the view; a failure leaves the model
+     * untouched.
+     *
+     * @param[in] isolation New isolation mode of the root of the view.
+     * @param[in] layer_roots Layer keys of the preset directories of the view.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool SetRootIsolation(FilesystemIsolation isolation, const std::vector<std::wstring>& layer_roots,
+                          std::string& error);
 
     /**
      * @brief Add one entry exactly as it is recorded.
@@ -364,6 +394,20 @@ private:
      * @return The index of the entry, -1 when it does not exist.
      */
     std::ptrdiff_t EntryIndex(const std::wstring& normalized_path) const;
+
+    /**
+     * @brief Store the mode of one entry.
+     *
+     * An entry which already exists is updated in place, so the spelling the
+     * user picked first is kept; every other entry is appended. The path has to
+     * be normalized and the mode has to be usable for the kind: the call is the
+     * write half of the operations which validate their input first.
+     *
+     * @param[in] normalized_path Normalized path of the entry.
+     * @param[in] kind Kind of the entry.
+     * @param[in] isolation New isolation mode.
+     */
+    void StoreEntry(const std::wstring& normalized_path, FilesystemEntryKind kind, FilesystemIsolation isolation);
 
     /**
      * @brief Restore the path order of the entries.

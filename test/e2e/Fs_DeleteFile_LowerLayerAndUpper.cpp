@@ -1,6 +1,7 @@
 #include "probe/DeleteFileW.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
+#include "utils/FsIsolationBuilder.hpp"
 #include "utils/TestKnownFolder.hpp"
 #include "WString.hpp"
 
@@ -10,7 +11,10 @@ using namespace appbox::test;
 /**
  * Condition:
  * 1. File exists in the state of the sandbox and in the lower layer.
- * 2. Try to delete file.
+ * 2. The layer `#USERPROFILE#` of the case is pinned to `Write Copy`, so the
+ *    delete stays in the sandbox and the case pins its own rule instead of the
+ *    default of the view.
+ * 3. Try to delete file.
  *
  * Expected:
  * 1. Delete file success.
@@ -38,6 +42,16 @@ TEST_F(E2E_Fs, DeleteFile_LowerLayerAndUpper)
 
     /* Build filesystem tree. */
     auto config = tree.Build();
+
+    /*
+     * The layer of the case is pinned to `Write Copy`, which is the mode a
+     * path had before the default of the view became `Merge`: the case pins
+     * the rule it is about and never reaches the host filesystem.
+     */
+    ASSERT_TRUE(WriteFsIsolationFile(GetCWD(), {
+                                                   { L"#USERPROFILE#", appbox::FilesystemEntryKind::Directory,
+                                                    appbox::FilesystemIsolation::WriteCopy }
+    }));
 
     /* Delete file. */
     {
