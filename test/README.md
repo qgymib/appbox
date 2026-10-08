@@ -27,7 +27,8 @@ ctest --test-dir build/Debug -C Debug -R AppBoxUnitTests --output-on-failure
 ```
 
 The presets of `CMakePresets.json` wrap the same steps:
-`cmake --workflow --preset Debug` configures, builds, tests and packages, while
+`cmake --workflow --preset Debug` configures, builds and tests the Debug
+configuration, whose workflow carries no package step, while
 `ctest --preset Debug` runs the tests alone. The test presets set
 `APPBOX_TEST_LOG_LEVEL=trace`, stop at the first failure and fail when no test
 is registered at all.
@@ -503,6 +504,21 @@ executable carries itself:
   of the imports, the default trigger of a file, the uniqueness of a trigger
   and the auto start flag.
 
+The independence of the products from the runtime library of the toolchain has
+a suite of its own:
+
+* `test/unit/StaticRuntime.cpp` — the import table of the four products of the
+  build (the packer, the launcher and the two sandbox injection modules) and of
+  the test executable itself: the reader parses the image of the file, so it
+  works for the 32 bit and the 64 bit products alike, and no table may name a
+  module of the Visual C++ runtime (`VCRUNTIME`, `MSVCP`, `CONCRT`, `VCCORLIB`,
+  `ucrtbase` and the `api-ms-win-crt-*` API sets). The suite pins the promise of
+  `cmake/StaticRuntime.cmake`, so a dependency which is linked with the DLL form
+  of the runtime is reported instead of being noticed on a machine which carries
+  no redistributable. The reader is only trusted while it reports the modules
+  every product imports (`kernel32.dll` or `ntdll.dll` among them), so a reader
+  which failed silently cannot pass the check with an empty table.
+
 The timeout and the coredumps of a run have a unit test of their own:
 
 * `test/unit/TestTimeout.cpp` — the helpers of the timeout and of the
@@ -890,6 +906,26 @@ them removes them again.
 | `MissingSandboxDll.The32BitModuleIsMissing` | the resource root carries the 64 bit module only | the run is refused as well, because a packaged application may start a 32 bit process which has to be injected |
 | `SandboxDllFromTheApp.TheRunInjectsFromTheResourceRoot` | the resource root carries both modules, the state root is empty | the startup file runs inside the sandbox, so the modules of the resource root were injected, and the state root carries no module afterwards |
 
+### Launcher runtime library case
+
+The case (`test/e2e/Launcher_NoVcRuntime.cpp`) runs the probe inside the sandbox
+and asks it for the modules its process has loaded with the probe
+`test/probe/LoadedModules.*`: the list carries the modules of the probe, the
+injection modules of the resource root and every module they depend on, so it
+tells whether a sandboxed process needs the runtime library of the toolchain.
+The case is the runtime side of the promise of `cmake/StaticRuntime.cmake`,
+whose static side `test/unit/StaticRuntime.cpp` pins on the files of the build.
+
+| Case | Steps | Expected |
+| --- | --- | --- |
+| `TheSandboxedProcessLoadsNoVcRuntime` | the resource root carries both injection modules, the configuration holds no startup file, so the launcher starts the probe once | the module list carries `sandbox64.dll`, which proves that the probe reported from inside the sandbox, and no module the Visual C++ Redistributable installs, so the sandboxed process needs no redistributable |
+
+The case checks the list against `IsVcRedistributableModule()`, not against the
+strict `IsVcRuntimeModule()` of the import tables: the modules of Windows which a
+process loads import the runtime of the operating system themselves, so
+`ucrtbase.dll`, `msvcrt.dll` and `msvcp_win.dll` appear in the list of a process
+which needs no redistributable at all.
+
 ### Patch layer cases
 
 The patch cases (`test/e2e/Patch_*.cpp`) run the layout of the filesystem cases
@@ -948,6 +984,16 @@ header comment.
 * `test/utils/SandboxDll.hpp` — the injection modules of a run:
   `Sandbox32DllPath()` and `Sandbox64DllPath()` answer the paths of the run and
   `SandboxModulesAvailable()` tells whether both of them exist.
+* `test/utils/ModuleList.hpp` — the module list checks of the runtime
+  independence cases: `IsVcRuntimeModule()` reports whether a module name is a
+  runtime library of the C++ toolchain (`VCRUNTIME`, `MSVCP`, `CONCRT`,
+  `VCCORLIB`, `ucrtbase`, the `api-ms-win-crt-*` API sets and `msvcrt`), which
+  is the check of the import tables of the products, while
+  `IsVcRedistributableModule()` reports the narrower set the Visual C++
+  Redistributable installs, which is the check of the module list of a running
+  process; `HasModule()` looks a module up in a list, all of them ignoring the
+  case. The unit test of the import tables and the end-to-end case of the module
+  list of a sandboxed process share them, so the two cannot drift apart.
 * `test/utils/CWD.*` — the working directory itself: `Create()` makes it,
   `NoCleanup()` keeps it after the case.
 * `test/utils/ProbeCall.*` — writes the `LauncherConfig` to `config.json`, starts the
@@ -1063,6 +1109,10 @@ header comment.
   `AddFontResourceExW` and `FR_PRIVATE`. A request names the family the case
   expects, an optional family which must not be carried and the path of the view,
   so one call answers the whole case.
+* `test/probe/LoadedModules.*` — the modules the probe process has loaded, in
+  load order, taken with a tool help snapshot of the process itself, which is
+  the list the case about the runtime library of a sandboxed process reads (see
+  [Launcher runtime library case](#launcher-runtime-library-case)).
 * `test/probe/__init__.hpp` — the probe registry: a probe registers itself by
   name on start and `ProbeInit` registers the command which the launcher starts.
   `--startup_marker` carries the marker of the startup file a probe process was

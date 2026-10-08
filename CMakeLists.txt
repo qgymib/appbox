@@ -16,6 +16,15 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "appbox: build all dependencies as static l
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 ###############################################################################
+# Runtime library form
+#
+# The products link the runtime library of the compiler statically as well, so
+# they need no Visual C++ Redistributable on the machine which runs them; see
+# cmake/StaticRuntime.cmake, which the sandbox project includes as well.
+###############################################################################
+include(StaticRuntime)
+
+###############################################################################
 # Support functions
 ###############################################################################
 function(appbox_setup_target_wall name)

@@ -6,6 +6,12 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake")
 
 include(SetupTargetWall)
 
+# The injection modules link the runtime library of the compiler statically, so
+# a sandboxed application needs no Visual C++ Redistributable of its own. This
+# project is configured on its own below the build tree of the packer, which is
+# why it includes the file instead of inheriting the variable.
+include(StaticRuntime)
+
 ###############################################################################
 # Build sandbox module
 ###############################################################################
@@ -139,6 +145,13 @@ set_target_properties(${sandbox_name}
     PROPERTIES
         CXX_STANDARD 17
         PREFIX ""
+
+    # The module links the runtime library of the compiler statically, so the
+    # runtime library belongs to the module and its detach notification would
+    # uninitialize it while the process exits — the hooks of the sandbox are
+    # still called then. The entry point keeps the runtime library initialized
+    # in that case, see AppBoxSandboxEntry() in Sandbox.cpp.
+    LINK_FLAGS "/ENTRY:AppBoxSandboxEntry"
 )
 
 target_include_directories(${sandbox_name}

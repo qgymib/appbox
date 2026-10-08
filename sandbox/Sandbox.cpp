@@ -261,6 +261,10 @@ static void OnDllDetach(bool process_terminating)
      * The log is switched off, so the exit sequence neither writes nor waits
      * for anything the sandbox owns. The file itself stays open: the kernel
      * closes it, and everything which was written before is already in it.
+     *
+     * The runtime library of the module stays initialized for the same reason:
+     * see the entry point below, which skips its uninitialization while the
+     * process is terminating.
      */
     appbox::LogEnable(false);
 
@@ -332,4 +336,57 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)
         return FALSE;
     }
     return TRUE;
+}
+
+/**
+ * @brief Entry point the runtime library of the module provides.
+ *
+ * @param[in] instance Handle of the module.
+ * @param[in] reason Reason of the notification.
+ * @param[in] reserved Whether the module is unloaded while the process
+ *                     terminates.
+ * @return Whether the notification was handled.
+ */
+extern "C" BOOL WINAPI _DllMainCRTStartup(HINSTANCE instance, DWORD reason, LPVOID reserved);
+
+/**
+ * @brief Entry point of the module.
+ *
+ * The runtime library of a module which links it statically belongs to that
+ * module: its detach notification destroys the static objects of the module and
+ * releases the heap, the locks and the thread data of the runtime library. The
+ * toolset notes the difference in `dll_dllmain.cpp`: the runtime library of a
+ * module which links it dynamically is uninitialized by the DLL which owns it,
+ * a DLL which outlives the module.
+ *
+ * The hooks of the sandbox are still called while the process exits: the detach
+ * notification of this module is the first of the exit sequence — the module is
+ * loaded last — and the modules which are detached after it call the entry
+ * points the sandbox hooks, which the end-to-end cases observe as an exit
+ * sequence which fails inside the sandbox (`0xC0000409`, the `abort()` of the
+ * unreachable sentinel of the log path). The runtime library therefore has to
+ * stay usable for the whole life of the process, exactly like the one of the
+ * dynamic form does.
+ *
+ * The entry point runs the detach of the sandbox itself and skips the
+ * uninitialization of the runtime library while the process is terminating. The
+ * kernel reclaims the state of the module either way, the log of the run is
+ * switched off by OnDllDetach(), and the hooks keep isolating the application
+ * until it is gone. A module which `FreeLibrary` unloads keeps the complete
+ * teardown, the hooks included.
+ *
+ * @param[in] instance Handle of the module.
+ * @param[in] reason Reason of the notification.
+ * @param[in] reserved Whether the process is terminating.
+ * @return Whether the notification was handled.
+ */
+extern "C" BOOL WINAPI AppBoxSandboxEntry(HINSTANCE instance, DWORD reason, LPVOID reserved)
+{
+    if (reason == DLL_PROCESS_DETACH && reserved != nullptr)
+    {
+        OnDllDetach(true);
+        return TRUE;
+    }
+
+    return _DllMainCRTStartup(instance, reason, reserved);
 }

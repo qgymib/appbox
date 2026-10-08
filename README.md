@@ -4,7 +4,7 @@ A Windows application sandbox system with resource isolation support.
 
 ## Overview
 
-appbox provides runtime isolation for Windows applications, enabling controlled execution of untrusted programs with filesystem, registry, and network isolation capabilities.
+appbox provides runtime isolation for Windows applications, enabling controlled execution of untrusted programs with filesystem, registry, network and environment isolation capabilities.
 
 ## Features
 
@@ -12,6 +12,7 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 - **Registry Isolation**: Redirects all five root keys onto a private hive file inside the overlay and enforces three isolation modes (`Full`, `WriteCopy`, `Hide`); the host registry is never modified (see [Registry Isolation](docs/RegistryIsolation.md)).
 - **Network Isolation**: Answers the name resolution of the packaged application from the redirections of the workspace, and optionally carries its TCP and UDP traffic through a SOCKS5 proxy (see [Network Isolation](docs/NetworkIsolation.md)).
 - **Environment Isolation**: Collects the environment variables the packaged application sees inside the sandbox with the isolation mode and the merge mode of every variable; the composed environment lives in a private table of the sandbox, so the environment of the host is never modified and the modifications of the application survive in the state directory of the sandbox (see [Environment Isolation](docs/EnvironmentIsolation.md)).
+- **Fonts Isolation**: Loads the fonts a layer of the filesystem carries into the font table of every process of a run, so the packaged application creates, enumerates and renders them as if they were installed, while the font directory, the font table and the registry of the host stay untouched (see [Fonts Isolation](docs/FontsIsolation.md)).
 - **Patch Packages**: The `Project Type` box of the packer writes either a self-contained archive or a patch package which holds the resources of the packaged application without the launcher and without the sandbox injection modules; the packages of the `patch` directory next to a standalone archive are merged into its resources in ascending name order — the filesystem layers, the virtual registry, the network configuration and the environment variables of a package included (see [Patch Layers](docs/PatchLayer.md)).
 
 ## Build
@@ -19,47 +20,29 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 ### Prerequisites
 
 1. Install CMake 3.25 or later.
-2. Install a C++17 compatible compiler (MSVC, GCC, or Clang)
+2. Install a C++17 compatible compiler (MSVC, GCC, or Clang).
 3. Clone the repository with submodules:
    ```bash
-   git clone --recursive <repository-url>
+   git clone --recursive https://github.com/qgymib/appbox.git
    ```
 
 ### Build Steps
 
-Every configuration is built through the presets of `CMakePresets.json`. The
-`Release` preset configures the tree below `build/Release` and builds the
-release products:
+The `Release` preset of `CMakePresets.json` configures the tree below
+`build/Release`, builds the release products, runs their tests and packs them
+into a zip archive. A single workflow command runs all of the steps at once:
 
 ```bash
-# Configure and build the Release configuration
-cmake --preset Release
-cmake --build --preset Release
-```
-
-`cmake --workflow --preset Release` runs the configure, build, test and package
-steps of the configuration in one go, and `ctest --preset Release` runs its
-tests alone. The `Debug` preset wraps the same steps for development:
-
-```bash
-cmake --preset Debug
-cmake --build --preset Debug
-ctest --preset Debug
+cmake --workflow --preset Release
 ```
 
 See [test/README.md](test/README.md) for the test suites and the way to run them.
 
 ### Build Artifacts
 
-Every product is written below the build directory the preset names
-(`build/Debug` or `build/Release`), inside the configuration subdirectory the
-generator adds below it:
-
-| Product | Path |
-| --- | --- |
-| `AppBox.exe` (main product) | `build/<config>/<config>/AppBox.exe` |
-| `AppBoxLauncher.exe` | `build/<config>/launcher/<config>/AppBoxLauncher.exe` |
-| `AppBoxTests.exe` (unit and end-to-end tests) | `build/<config>/test/<config>/AppBoxTests.exe` |
+The main product is written below the build directory the preset names, inside
+the configuration subdirectory the generator adds below it:
+`build/Release/Release/AppBox.exe`.
 
 ## Project Components
 
@@ -67,57 +50,19 @@ generator adds below it:
 
 The main product of the repository: a wxWidgets-based GUI application which
 packages an installed application into a portable zip archive and edits the
-isolation the packaged application runs with. The window follows the three part
-layout of a packaging tool: a toolbar on top, a vertical icon navigation on the
-left and the workspace on the right.
-
-The navigation offers the Filesystem, Registry, Network and Environment
-workspaces, which edit the four isolation domains of the sandbox, the Tracer
-workspace, which runs a chosen program below the debugger and lists the entry
-points it uses (see [Tracer](docs/Tracer.md)), and the Settings workspace, whose
-`Output` tab holds the destination archive of the
-`Build` command and the project type; a value of the Environment and of the
-Registry workspace may reference a known folder of the machine which runs the
-sandbox (see [Variable Expansion](#variable-expansion)). The configuration of a
-session — imported folders, startup files, the project type and the four
-workspaces — travels with the JSON project file of `File -> Export
-Configuration...` and is restored by `File -> Import Configuration...`.
-
-The `Project Type` box of the `Output` tab selects the product of the `Build`
-command. `Standalone (ZIP)` writes a self-contained archive which carries the
-launcher, its configuration, the two sandbox injection modules and the resources
-of the application below `app`; `Patch (ZIP)` writes a patch package which holds
-the same resources rooted at the archive root, so it can be dropped into the
-`patch` directory next to a standalone archive, where the launcher merges it on
-top of the resources of `app` (see [Patch Layers](docs/PatchLayer.md)).
+isolation the packaged application runs with. Its workspaces edit the four
+isolation domains of the sandbox, hold the destination archive and the project
+type of the `Build` command, and may reference a known folder of the machine
+(see [Variable Expansion](#variable-expansion)).
 
 ### Launcher
 
 Windowless application which runs a packaged application inside the sandbox: it
-injects the sandbox DLLs the archive carries below `app` (`sandbox32.dll` and
-`sandbox64.dll`) and starts the startup files of its configuration. The launcher
-keeps the read-only resources of the packed application below `app` and the
-state of the sandbox below `data`, both beside the launcher program: the state
-directory is created at run time and carries the writable overlay of the
-filesystem and the registry hive the sandbox mounts. Deleting it resets the
-sandbox to the state the archive was packed with.
-
-`--X-AppBox-Shell` runs the `cmd.exe` of the machine which runs the sandbox
-inside the isolation instead of the application of the configuration: without a
-command the shell runs interactively, with a command it runs
-`cmd /c <command>`.
-
-### Tracer
-
-Workspace of `AppBox.exe` which reports the functions a program uses: it runs a
-chosen program below `cdb.exe`, arms one-shot breakpoints on `ntdll`,
-`kernel32`, `kernelbase`, `ws2_32` and `dnsapi`, and marks the functions which
-are actually called, including the ones of the child processes. The list shows
-either the `Isolation entry points` of the three isolation domains or every
-executable export of the traced modules (`All exports`), and the result can be
-exported as JSON.
-
-See [Tracer](docs/Tracer.md) for the usage, the mechanism and the measured cost.
+injects the sandbox DLLs the archive carries below `app`, starts the startup
+files of its configuration, and keeps the read-only resources below `app` and
+the writable state of the sandbox below `data`, both beside the launcher
+program, so deleting `data` resets the sandbox to the state the archive was
+packed with.
 
 ### Sandbox
 
@@ -139,25 +84,25 @@ A reference is spelled `%APPBOX:<NAME>%`. The prefix `APPBOX:` and the name are
 compared ignoring the case, so `%appbox:documents%` names the same folder as
 `%APPBOX:Documents%` does.
 
-| Name | Known folder | Example path |
-| --- | --- | --- |
-| `ProgramFiles` | `FOLDERID_ProgramFiles` | `C:\Program Files` |
-| `ProgramFilesCommon` | `FOLDERID_ProgramFilesCommon` | `C:\Program Files\Common Files` |
-| `USERPROFILE` | `FOLDERID_Profile` | `C:\Users\Alice` |
-| `Documents` | `FOLDERID_Documents` | `C:\Users\Alice\Documents` |
-| `Desktop` | `FOLDERID_Desktop` | `C:\Users\Alice\Desktop` |
-| `AppData` | `FOLDERID_RoamingAppData` | `C:\Users\Alice\AppData\Roaming` |
-| `LocalAppData` | `FOLDERID_LocalAppData` | `C:\Users\Alice\AppData\Local` |
-| `LocalAppDataLow` | `FOLDERID_LocalAppDataLow` | `C:\Users\Alice\AppData\LocalLow` |
-| `Downloads` | `FOLDERID_Downloads` | `C:\Users\Alice\Downloads` |
-| `Favorites` | `FOLDERID_Favorites` | `C:\Users\Alice\Favorites` |
-| `StartMenu` | `FOLDERID_StartMenu` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu` |
-| `Programs` | `FOLDERID_Programs` | `...\Start Menu\Programs` |
-| `Startup` | `FOLDERID_Startup` | `...\Programs\Startup` |
-| `ProgramData` | `FOLDERID_ProgramData` | `C:\ProgramData` |
-| `Windows` | `FOLDERID_Windows` | `C:\Windows` |
-| `System32` | `FOLDERID_System` | `C:\Windows\System32` |
-| `Fonts` | `FOLDERID_Fonts` | `C:\Windows\Fonts` |
+| Name | Example path |
+| --- | --- |
+| `ProgramFiles` | `C:\Program Files` |
+| `ProgramFilesCommon` | `C:\Program Files\Common Files` |
+| `USERPROFILE` | `C:\Users\Alice` |
+| `Documents` | `C:\Users\Alice\Documents` |
+| `Desktop` | `C:\Users\Alice\Desktop` |
+| `AppData` | `C:\Users\Alice\AppData\Roaming` |
+| `LocalAppData` | `C:\Users\Alice\AppData\Local` |
+| `LocalAppDataLow` | `C:\Users\Alice\AppData\LocalLow` |
+| `Downloads` | `C:\Users\Alice\Downloads` |
+| `Favorites` | `C:\Users\Alice\Favorites` |
+| `StartMenu` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu` |
+| `Programs` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu\Programs` |
+| `Startup` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup` |
+| `ProgramData` | `C:\ProgramData` |
+| `Windows` | `C:\Windows` |
+| `System32` | `C:\Windows\System32` |
+| `Fonts` | `C:\Windows\Fonts` |
 
 The list follows the preset directories of the Filesystem workspace: the name of
 a variable is the layer key of a preset directory without its `#` delimiters, so

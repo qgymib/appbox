@@ -17,6 +17,15 @@ get_filename_component(_WXWIDGETS_SOURCE_DIR "${_WXWIDGETS_SOURCE_DIR}" ABSOLUTE
 # libwebp picks its library type from BUILD_SHARED_LIBS, so both are pinned
 # through the cache to survive a reconfigure of an already polluted build tree.
 set(wxBUILD_SHARED OFF CACHE BOOL "wxWidgets: static libraries" FORCE)
+
+# wxWidgets picks the runtime library of its targets from its own option rather
+# than from CMAKE_MSVC_RUNTIME_LIBRARY: it only defaults to the static runtime
+# while that variable is set and does not name a DLL runtime, and a build tree
+# which was configured before appbox asked for the static runtime holds OFF in
+# its cache. The value is therefore pinned with FORCE like the one of
+# wxBUILD_SHARED above; without it the wx libraries keep the DLL runtime and the
+# link of the packer fails with LNK2038.
+set(wxBUILD_USE_STATIC_RUNTIME ON CACHE BOOL "wxWidgets: static runtime library" FORCE)
 set(wxBUILD_TESTS OFF)
 set(wxBUILD_SAMPLES OFF)
 set(wxBUILD_DEMOS OFF)
