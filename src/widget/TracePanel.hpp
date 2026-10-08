@@ -1,5 +1,5 @@
-#ifndef APPBOX_PACKER_WIDGET_TRACER_PANEL_HPP
-#define APPBOX_PACKER_WIDGET_TRACER_PANEL_HPP
+#ifndef APPBOX_PACKER_WIDGET_TRACE_PANEL_HPP
+#define APPBOX_PACKER_WIDGET_TRACE_PANEL_HPP
 
 /*
  * wx/wx.h comes first on purpose: including the wxWidgets headers in another
@@ -20,9 +20,9 @@ wxDECLARE_EVENT(APPBOX_TRACER_PROGRESS, wxThreadEvent);
 wxDECLARE_EVENT(APPBOX_TRACER_FINISHED, wxThreadEvent);
 
 /**
- * @brief Tracer workspace of the packer.
+ * @brief `Trace` tab of the Debug workspace.
  *
- * The workspace runs a program under `cdb.exe` and shows which of the functions of a view the
+ * The tab runs a program under `cdb.exe` and shows which of the functions of a view the
  * program used. The box above the list picks the target program and its arguments, the second
  * box the view: `Isolation entry points` (the default, the built in table of the entry points
  * of the three isolation domains) or `All exports` (every executable export parsed from the
@@ -33,19 +33,19 @@ wxDECLARE_EVENT(APPBOX_TRACER_FINISHED, wxThreadEvent);
  * way the pack run of the frame does. The `Run` button becomes `Stop` while a run is going
  * on, which asks the session to stop.
  */
-class TracerPanel : public wxPanel
+class TracePanel : public wxPanel
 {
 public:
     /**
-     * @brief Create the workspace.
+     * @brief Create the page.
      * @param[in] parent Parent window.
      */
-    explicit TracerPanel(wxWindow* parent);
+    explicit TracePanel(wxWindow* parent);
 
     /**
      * @brief Stop a still running trace and join its thread.
      */
-    ~TracerPanel() override;
+    ~TracePanel() override;
 
 private:
     void OnBrowse(wxCommandEvent& event);       ///< Pick the target program.
@@ -98,4 +98,4 @@ private:
     std::thread                      thread_;             ///< Worker of the running trace.
 };
 
-#endif // APPBOX_PACKER_WIDGET_TRACER_PANEL_HPP
+#endif // APPBOX_PACKER_WIDGET_TRACE_PANEL_HPP

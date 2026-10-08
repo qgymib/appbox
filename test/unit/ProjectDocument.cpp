@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "src/core/ApplicationMetadata.hpp"
 #include "src/core/ProjectDocument.hpp"
 #include <nlohmann/json.hpp>
 #include <cstddef>
@@ -59,6 +60,12 @@ appbox::ProjectDocument BuildSampleDocument()
     appbox::ProjectDocument document;
     document.output_path = L"D:\\out\\MyApp.zip";
     document.project_type = appbox::ProjectType::Patch;
+
+    appbox::ProjectMetadataFieldRecord description;
+    description.key = appbox::metadata_field::kFileDescription;
+    description.value = L"My Application";
+    document.metadata.source = L"C:\\Program Files\\MyApp\\app.exe";
+    document.metadata.overrides.push_back(description);
 
     appbox::ProjectFolderRecord folder;
     folder.preset_id = "program_files";
@@ -148,6 +155,11 @@ TEST(Unit_ProjectDocument, RoundTripKeepsEveryMember)
     EXPECT_EQ(back.output_path, document.output_path);
     EXPECT_EQ(back.project_type, document.project_type);
 
+    EXPECT_EQ(back.metadata.source, L"C:\\Program Files\\MyApp\\app.exe");
+    ASSERT_EQ(back.metadata.overrides.size(), 1u);
+    EXPECT_EQ(back.metadata.overrides[0].key, appbox::metadata_field::kFileDescription);
+    EXPECT_EQ(back.metadata.overrides[0].value, L"My Application");
+
     ASSERT_EQ(back.folders.size(), 1u);
     EXPECT_EQ(back.folders[0].preset_id, "program_files");
     EXPECT_EQ(back.folders[0].name, L"MyApp");
@@ -227,6 +239,54 @@ TEST(Unit_ProjectDocument, RejectsAnIncompleteDnsRecord)
     EXPECT_NE(not_an_array.find("network"), std::string::npos) << not_an_array;
 }
 
+TEST(Unit_ProjectDocument, ReadsADocumentWithoutFileProperties)
+{
+    /* The member is optional: a document which does not name it edits nothing. */
+    const auto document = ParseDocument(R"({"version":1})");
+    EXPECT_TRUE(document.metadata.source.empty());
+    EXPECT_TRUE(document.metadata.overrides.empty());
+
+    /* A member which only lists the fields describes the default source. */
+    const auto without_source =
+        ParseDocument(R"({"version":1,"metadata":{"overrides":[{"key":"FileDescription","value":"My Application"}]}})");
+    EXPECT_TRUE(without_source.metadata.source.empty());
+    ASSERT_EQ(without_source.metadata.overrides.size(), 1u);
+    EXPECT_EQ(without_source.metadata.overrides[0].key, appbox::metadata_field::kFileDescription);
+    EXPECT_EQ(without_source.metadata.overrides[0].value, L"My Application");
+
+    /* A null member describes a session without file properties as well. */
+    const auto null_member = ParseDocument(R"({"version":1,"metadata":null})");
+    EXPECT_TRUE(null_member.metadata.source.empty());
+    EXPECT_TRUE(null_member.metadata.overrides.empty());
+}
+
+TEST(Unit_ProjectDocument, RejectsAFilePropertyWhichIsNotAField)
+{
+    const auto unknown =
+        ParseError(R"({"version":1,"metadata":{"overrides":[{"key":"FileDescriptions","value":"My Application"}]}})");
+    EXPECT_NE(unknown.find("overrides[0]"), std::string::npos) << unknown;
+    EXPECT_NE(unknown.find("FileDescriptions"), std::string::npos) << unknown;
+
+    /* A field without its value is incomplete. */
+    const auto incomplete = ParseError(R"({"version":1,"metadata":{"overrides":[{"key":"FileDescription"}]}})");
+    EXPECT_NE(incomplete.find("overrides[0]"), std::string::npos) << incomplete;
+    EXPECT_NE(incomplete.find("value"), std::string::npos) << incomplete;
+
+    const auto not_an_array = ParseError(R"({"version":1,"metadata":{"overrides":{}}})");
+    EXPECT_NE(not_an_array.find("overrides"), std::string::npos) << not_an_array;
+
+    const auto not_an_object = ParseError(R"({"version":1,"metadata":[]})");
+    EXPECT_NE(not_an_object.find("metadata"), std::string::npos) << not_an_object;
+}
+
+TEST(Unit_ProjectDocument, RejectsAFilePropertyWhichIsListedTwice)
+{
+    const auto duplicate = ParseError(R"({"version":1,"metadata":{"overrides":[{"key":"ProductName","value":"One"},)"
+                                      R"({"key":"ProductName","value":"Two"}]}})");
+    EXPECT_NE(duplicate.find("overrides[1]"), std::string::npos) << duplicate;
+    EXPECT_NE(duplicate.find("listed twice"), std::string::npos) << duplicate;
+}
+
 TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
 {
     const auto json = nlohmann::ordered_json(BuildSampleDocument());
@@ -241,14 +301,21 @@ TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
      * The version comes first and the members follow the order of the schema,
      * so the text of a given document is stable and easy to diff.
      */
-    const std::vector<std::string> expected{ "version", "output_path",   "project_type", "folders",
-                                             "files",   "startup_files", "registry",     "filesystem",
-                                             "network", "proxy",         "environment" };
+    const std::vector<std::string> expected{ "version",    "output_path", "project_type",  "metadata",
+                                             "folders",    "files",       "startup_files", "registry",
+                                             "filesystem", "network",     "proxy",         "environment" };
     EXPECT_EQ(members, expected);
     EXPECT_EQ(json.at("version").get<int>(), appbox::kProjectFileVersion);
 
     /* The kind of product is stored as the token of the project type. */
     EXPECT_EQ(json.at("project_type").get<std::string>(), "patch");
+
+    /* The file properties name their source and the fields the user edited. */
+    const auto& metadata = json.at("metadata");
+    EXPECT_EQ(metadata.at("source").get<std::string>(), "C:\\Program Files\\MyApp\\app.exe");
+    ASSERT_EQ(metadata.at("overrides").size(), 1u);
+    EXPECT_EQ(metadata.at("overrides")[0].at("key").get<std::string>(), "FileDescription");
+    EXPECT_EQ(metadata.at("overrides")[0].at("value").get<std::string>(), "My Application");
 
     /* The proxy names its protocol, the traffic it carries and the server. */
     const auto& proxy = json.at("proxy");

@@ -7,6 +7,8 @@
 #include <cstddef>
 #include <string>
 #include <thread>
+#include <vector>
+#include "core/ApplicationMetadata.hpp"
 #include "core/BuildReport.hpp"
 #include "core/EnvironmentModel.hpp"
 #include "core/FilesystemIsolationModel.hpp"
@@ -15,6 +17,7 @@
 #include "core/ProjectType.hpp"
 #include "core/RegistryModel.hpp"
 
+class DebugPanel;
 class EnvironmentPanel;
 class FilesystemPanel;
 class NetworkPanel;
@@ -22,7 +25,6 @@ class RegistryPanel;
 class SettingsPanel;
 class SideNav;
 class Toolbar;
-class TracerPanel;
 class wxProgressDialog;
 class wxSimplebook;
 class wxTimer;
@@ -152,6 +154,37 @@ private:
      * @param[in] type Project type to adopt.
      */
     void ApplyProjectType(appbox::ProjectType type);
+
+    /**
+     * @brief Refresh the Metadata tab of the Settings workspace.
+     *
+     * The tab offers the programs the file properties can be inherited from,
+     * which are the startup files of the session, and shows the values of the
+     * program the session reads from with the fields the user edited applied
+     * on top of them. The program is read again on every call, so a source
+     * which was updated on disk is picked up without reopening the project.
+     *
+     * A patch project writes no launcher, so the tab is disabled and explains
+     * why instead of offering a source which would never be packed.
+     */
+    void RefreshMetadata();
+
+    /**
+     * @brief Adopt the file properties the Metadata tab shows.
+     *
+     * The tab cannot tell a field which follows the source program from a
+     * field the user edited, so the session derives the overrides from the
+     * values of the tab and the values which were read from the source.
+     *
+     * @param[in] event Command event of the tab.
+     */
+    void OnMetadataChanged(wxCommandEvent& event);
+
+    /**
+     * @brief Choose any program the file properties are inherited from.
+     * @param[in] event Command event of the `Browse...` button.
+     */
+    void OnBrowseMetadata(wxCommandEvent& event);
 
     /**
      * @brief Handle the application exit command.
@@ -325,6 +358,25 @@ private:
     appbox::EnvironmentModel environment_;
 
     /**
+     * @brief File properties the launcher of a standalone archive carries.
+     *
+     * The session stores the program the information is inherited from and the
+     * fields the user edited only; the fields which were not touched are read
+     * from that program again on every pack run. The information travels with
+     * the project file.
+     */
+    appbox::ApplicationMetadata metadata_;
+
+    /**
+     * @brief The fields the Metadata tab read from the source program.
+     *
+     * The list is the state the tab shows before the overrides of the session
+     * are applied to it, so an edit of a field can be told apart from a value
+     * which still follows the source program.
+     */
+    std::vector<appbox::MetadataField> metadata_inherited_;
+
+    /**
      * @brief Kind of product the `Build` command writes.
      *
      * The type is picked in the `Project Type` box of the Settings workspace
@@ -341,7 +393,7 @@ private:
     RegistryPanel*    registry_panel_ = nullptr;
     NetworkPanel*     network_panel_ = nullptr;
     EnvironmentPanel* environment_panel_ = nullptr;
-    TracerPanel*      tracer_panel_ = nullptr;
+    DebugPanel*       debug_panel_ = nullptr;
     SettingsPanel*    settings_panel_ = nullptr;
 
     bool output_path_edited_ = false;

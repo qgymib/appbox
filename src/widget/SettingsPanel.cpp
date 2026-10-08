@@ -1,16 +1,25 @@
 #include "SettingsPanel.hpp"
+#include "MetadataDialog.hpp"
 #include "TabBar.hpp"
 #include <wx/button.h>
 #include <wx/dcclient.h>
+#include <wx/settings.h>
 #include <wx/simplebook.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 #include <wx/textctrl.h>
+#include <algorithm>
 #include <cstddef>
 
 extern const int kSettingsOutputPath = wxNewId();
 extern const int kSettingsBrowseOutput = wxNewId();
 extern const int kSettingsProjectType = wxNewId();
+extern const int kSettingsMetadataSource = wxNewId();
+extern const int kSettingsMetadataBrowse = wxNewId();
+extern const int kSettingsMetadataField = wxNewId();
+extern const int kSettingsMetadataCustomize = wxNewId();
+
+wxDEFINE_EVENT(APPBOX_METADATA_CHANGED, wxCommandEvent);
 
 namespace
 {
@@ -22,7 +31,8 @@ namespace
  */
 enum class SettingsPage
 {
-    Output = 0 ///< Destination archive and project type of the session.
+    Output = 0,  ///< Destination archive and project type of the session.
+    Metadata = 1 ///< File properties the launcher of the archive carries.
 };
 
 /** Page the workspace opens on. */
@@ -70,21 +80,37 @@ const char* const kProjectTypeTooltip =
     "Standalone writes a self-contained archive with the launcher; Patch writes the resources "
     "of the app directory without a launcher, for the patch directory next to it";
 
+/** Label of the inherit source row of the Metadata tab. */
+const char* const kMetadataSourceLabel = "Inherit From:";
+
+/** Tooltip of the inherit source box of the Metadata tab. */
+const char* const kMetadataSourceTooltip =
+    "Program the file properties of the launcher are read from; the first entry follows the program which is "
+    "marked for auto start";
+
+/** Tooltip of the `Browse...` button of the Metadata tab. */
+const char* const kMetadataBrowseTooltip = "Choose any program the file properties are read from";
+
+/** Tooltip of the `Customize...` button of the Metadata tab. */
+const char* const kMetadataCustomizeTooltip =
+    "Edit every field of the file properties, the ones the tab does not show included";
+
 } // namespace
 
 SettingsPanel::SettingsPanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
 {
     tab_bar_ = new TabBar(this, wxID_ANY);
     tab_bar_->AddTab("Output");
+    tab_bar_->AddTab("Metadata");
     tab_bar_->SetSelection(static_cast<int>(kStartPage));
 
     /*
-     * The book holds the page of every tab of the strip. The strip offers the
-     * Output tab only for now, so the two are kept in step by adding a tab to
-     * both of them.
+     * The book holds the page of every tab of the strip, so the two are kept
+     * in step by adding a tab to both of them in the same order.
      */
     pages_ = new wxSimplebook(this, wxID_ANY);
     pages_->AddPage(CreateOutputPage(pages_), "Output");
+    pages_->AddPage(CreateMetadataPage(pages_), "Metadata");
     pages_->SetSelection(static_cast<std::size_t>(kStartPage));
 
     auto* sizer = new wxBoxSizer(wxVERTICAL);
@@ -93,6 +119,9 @@ SettingsPanel::SettingsPanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
     SetSizer(sizer);
 
     Bind(APPBOX_TAB, &SettingsPanel::OnTabChanged, this);
+    Bind(wxEVT_COMBOBOX, &SettingsPanel::OnMetadataSourceChanged, this, kSettingsMetadataSource);
+    Bind(wxEVT_TEXT, &SettingsPanel::OnMetadataFieldEdited, this, kSettingsMetadataField);
+    Bind(wxEVT_BUTTON, &SettingsPanel::OnMetadataCustomize, this, kSettingsMetadataCustomize);
 }
 
 wxString SettingsPanel::GetOutputPath() const
@@ -199,6 +228,215 @@ wxWindow* SettingsPanel::CreateOutputPage(wxWindow* parent)
     sizer->Add(grid, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, kFormBorder);
     page->SetSizer(sizer);
     return page;
+}
+
+wxWindow* SettingsPanel::CreateMetadataPage(wxWindow* parent)
+{
+    auto* page = new wxPanel(parent, wxID_ANY);
+
+    metadata_source_ = new wxComboBox(page, kSettingsMetadataSource, wxEmptyString, wxDefaultPosition, wxDefaultSize,
+                                      wxArrayString(), wxCB_READONLY);
+    metadata_source_->SetMinSize(wxSize(kFieldWidth, -1));
+    metadata_source_->SetToolTip(kMetadataSourceTooltip);
+
+    auto* browse = new wxButton(page, kSettingsMetadataBrowse, "Browse...");
+    browse->SetToolTip(kMetadataBrowseTooltip);
+
+    /*
+     * A box of a grid cell fills its whole cell, and the height of a cell is
+     * the height of the tallest item of its row, so the box is added through a
+     * row of its own, like the archive path box of the Output tab.
+     */
+    auto* source_cell = new wxBoxSizer(wxHORIZONTAL);
+    source_cell->Add(metadata_source_, 1, wxALIGN_CENTER_VERTICAL);
+
+    const auto& fields = appbox::CommonMetadataFields();
+
+    /*
+     * The inherit source and the fields of the tab share one grid, which lines
+     * the labels up in the first column and the controls up in the second one,
+     * so the tab reads like the Output tab.
+     */
+    auto* grid = new wxFlexGridSizer(static_cast<int>(fields.size()) + 1, kFormColumns, kRowGap, kFieldGap);
+    grid->AddGrowableCol(kControlColumn, 1);
+
+    grid->Add(new wxStaticText(page, wxID_ANY, kMetadataSourceLabel), 0, wxALIGN_CENTER_VERTICAL);
+    grid->Add(source_cell, 1, wxEXPAND);
+    grid->Add(browse, 0, wxALIGN_CENTER_VERTICAL);
+
+    for (const auto& key : fields)
+    {
+        const auto label = wxString(appbox::MetadataFieldLabel(key)) + ":";
+        grid->Add(new wxStaticText(page, wxID_ANY, label), 0, wxALIGN_CENTER_VERTICAL);
+
+        auto* box = new wxTextCtrl(page, kSettingsMetadataField);
+        box->SetMinSize(wxSize(kFieldWidth, -1));
+        metadata_fields_.push_back(box);
+
+        auto* cell = new wxBoxSizer(wxHORIZONTAL);
+        cell->Add(box, 1, wxALIGN_CENTER_VERTICAL);
+        grid->Add(cell, 1, wxEXPAND);
+
+        /* The third column of a field row holds no control. */
+        grid->Add(0, 0);
+    }
+
+    /*
+     * The note names the program the values were read from, or the reason why
+     * nothing could be read; it is grey like the hints of the other dialogs.
+     */
+    metadata_note_ = new wxStaticText(page, wxID_ANY, wxEmptyString);
+    metadata_note_->SetForegroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT));
+
+    auto* customize = new wxButton(page, kSettingsMetadataCustomize, "Customize...");
+    customize->SetToolTip(kMetadataCustomizeTooltip);
+
+    auto* sizer = new wxBoxSizer(wxVERTICAL);
+    sizer->Add(grid, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, kFormBorder);
+    sizer->Add(metadata_note_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, kFormBorder);
+    sizer->Add(customize, 0, wxLEFT | wxRIGHT | wxTOP, kFormBorder);
+    page->SetSizer(sizer);
+
+    metadata_page_ = page;
+    return page;
+}
+
+void SettingsPanel::SetMetadataSources(const std::vector<MetadataSource>& sources, const wxString& selected)
+{
+    if (metadata_source_ == nullptr)
+    {
+        return;
+    }
+
+    metadata_sources_ = sources;
+
+    /*
+     * A source the box does not offer yet - a program which was browsed, or a
+     * source of an imported project whose startup files are gone - is added,
+     * so the selection of the session can always be shown.
+     */
+    const auto known = std::any_of(metadata_sources_.begin(), metadata_sources_.end(),
+                                   [&selected](const MetadataSource& source) { return source.path == selected; });
+    if (!selected.empty() && !known)
+    {
+        metadata_sources_.push_back(MetadataSource{ selected, selected });
+    }
+
+    wxArrayString labels;
+    int           selection = 0;
+    for (std::size_t index = 0; index < metadata_sources_.size(); ++index)
+    {
+        labels.Add(metadata_sources_[index].label);
+        if (!selected.empty() && metadata_sources_[index].path == selected)
+        {
+            selection = static_cast<int>(index);
+        }
+    }
+
+    /* Set() and SetSelection() raise no command event, so this is not a re-entry. */
+    metadata_source_->Set(labels);
+    if (!metadata_sources_.empty())
+    {
+        metadata_source_->SetSelection(selection);
+    }
+}
+
+void SettingsPanel::SetMetadataValues(const std::vector<appbox::MetadataField>& values, const wxString& note)
+{
+    /*
+     * Every field of a version resource is kept, so an edit of one of the boxes
+     * of the tab does not drop the fields the customization dialog filled in.
+     */
+    metadata_values_.clear();
+    for (const auto& key : appbox::MetadataFields())
+    {
+        const auto* value = appbox::FindMetadataValue(values, key);
+        metadata_values_.push_back(appbox::MetadataField{ key, value != nullptr ? *value : std::wstring() });
+    }
+
+    const auto& fields = appbox::CommonMetadataFields();
+    for (std::size_t index = 0; index < metadata_fields_.size() && index < fields.size(); ++index)
+    {
+        const auto* value = appbox::FindMetadataValue(metadata_values_, fields[index]);
+        metadata_fields_[index]->ChangeValue(value != nullptr ? wxString(*value) : wxString());
+    }
+
+    if (metadata_note_ != nullptr)
+    {
+        metadata_note_->SetLabel(note);
+        metadata_note_->GetParent()->Layout();
+    }
+}
+
+wxString SettingsPanel::GetMetadataSource() const
+{
+    if (metadata_source_ == nullptr)
+    {
+        return {};
+    }
+
+    const auto selection = metadata_source_->GetSelection();
+    if (selection < 0 || static_cast<std::size_t>(selection) >= metadata_sources_.size())
+    {
+        return {};
+    }
+
+    return metadata_sources_[static_cast<std::size_t>(selection)].path;
+}
+
+const std::vector<appbox::MetadataField>& SettingsPanel::GetMetadataValues() const
+{
+    return metadata_values_;
+}
+
+void SettingsPanel::EnableMetadata(bool enabled)
+{
+    if (metadata_page_ != nullptr)
+    {
+        metadata_page_->Enable(enabled);
+    }
+}
+
+void SettingsPanel::CollectMetadataValues()
+{
+    const auto& fields = appbox::CommonMetadataFields();
+    for (std::size_t index = 0; index < metadata_fields_.size() && index < fields.size(); ++index)
+    {
+        appbox::SetMetadataValue(metadata_values_, fields[index], metadata_fields_[index]->GetValue().ToStdWstring());
+    }
+}
+
+void SettingsPanel::OnMetadataSourceChanged(wxCommandEvent& event)
+{
+    ReportMetadataChanged();
+    event.Skip();
+}
+
+void SettingsPanel::OnMetadataFieldEdited(wxCommandEvent& event)
+{
+    CollectMetadataValues();
+    ReportMetadataChanged();
+    event.Skip();
+}
+
+void SettingsPanel::OnMetadataCustomize(wxCommandEvent&)
+{
+    MetadataDialog dialog(this, metadata_values_);
+    if (dialog.ShowModal() != wxID_OK)
+    {
+        return;
+    }
+
+    /* The note keeps the source it names; only the values are replaced. */
+    SetMetadataValues(dialog.Values(), metadata_note_ != nullptr ? metadata_note_->GetLabel() : wxString());
+    ReportMetadataChanged();
+}
+
+void SettingsPanel::ReportMetadataChanged()
+{
+    wxCommandEvent changed(APPBOX_METADATA_CHANGED, GetId());
+    changed.SetEventObject(this);
+    GetParent()->GetEventHandler()->ProcessEvent(changed);
 }
 
 void SettingsPanel::OnTabChanged(wxCommandEvent& event)

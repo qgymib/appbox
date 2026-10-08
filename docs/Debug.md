@@ -1,15 +1,16 @@
-# Tracer
+# Debug
 
-The **Tracer workspace** of `AppBox.exe` runs a program and shows which **lowest
+The **`Trace` tab of the Debug workspace** of `AppBox.exe` runs a program and shows which **lowest
 level entry points** of the filesystem, the registry and the network the program
 **actually used**, including the calls of its child processes. It answers the
 question "which of the entry points an isolation layer has to intercept does this
 program really call?".
 
-The workspace is a page of the main window, next to the Filesystem, Registry,
-Network, Environment and Settings workspaces. The run itself is driven by the
-same tracing library the rest of the product uses; the workspace only chooses the
-program and the view and presents the result.
+The Debug workspace is the last page of the main window, below the Filesystem,
+Registry, Network, Environment and Settings workspaces, and the tab is its only
+page. The run itself is driven by the same tracing library the rest of the
+product uses; the tab only chooses the program and the view and presents the
+result.
 
 The scope is the set of entry points of the three isolation domains, and it is
 **independent of the hooks the sandbox implements**: the sandbox may cover a part
@@ -21,14 +22,14 @@ mirror of one implementation of them. The wrappers are reachable through the
 
 ## Usage
 
-The page offers the target and the view above the list:
+The tab offers the target and the view above the list:
 
 * `Target Program` — the program to run, with a `Browse...` button which opens a
   file dialog. A typed path is resolved when the box loses the focus or the user
   presses Enter, which fills the list.
 * `Arguments` — the arguments passed to the program, quoted the way a command
   line quotes them. They are split with the Windows command line rules.
-* `View` — the kind of function list the page shows, either `Isolation entry
+* `View` — the kind of function list the tab shows, either `Isolation entry
   points` (the default) or `All exports`.
 * `Run` — starts the run below `cdb.exe`. While a run is going on the button
   reads `Stop`, the boxes are disabled and the status line shows the progress of
@@ -56,7 +57,7 @@ last run, so the export always describes the view which is on the screen.
 
 The `All exports` view arms one one-shot breakpoint per export of the traced
 modules (several thousand). Arming them takes minutes in the debugger before the
-program even starts, which is why the workspace asks for confirmation before it
+program even starts, which is why the tab asks for confirmation before it
 starts such a run.
 
 The list is built by parsing the system modules of the target from the module
@@ -269,7 +270,7 @@ cost before the run starts.
    once; a module which is unloaded and mapped again at a different base address
    keeps its breakpoints only when the address is unchanged.
 7. **A debugger is required.** The tracer needs `cdb.exe` of the Debugging Tools
-   for Windows, which the workspace finds with the default search. No other
+   for Windows, which the tab finds with the default search. No other
    debugger is supported, and a machine without the Debugging Tools shows
    `cdb.exe was not found; install the Debugging Tools for Windows` in the
    status line.

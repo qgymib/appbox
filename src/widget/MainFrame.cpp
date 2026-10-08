@@ -8,7 +8,7 @@
 #include "SettingsPanel.hpp"
 #include "SideNav.hpp"
 #include "Toolbar.hpp"
-#include "TracerPanel.hpp"
+#include "DebugPanel.hpp"
 #include "core/BuildReport.hpp"
 #include "core/EmbeddedResource.hpp"
 #include "core/EmbeddedResourceIds.h"
@@ -136,6 +136,8 @@ MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox", wxDefaultPosition,
     Bind(wxEVT_BUTTON, &MainFrame::OnBrowseOutput, this, kSettingsBrowseOutput);
     Bind(wxEVT_TEXT, &MainFrame::OnOutputPathEdited, this, kSettingsOutputPath);
     Bind(wxEVT_COMBOBOX, &MainFrame::OnProjectTypeChanged, this, kSettingsProjectType);
+    Bind(wxEVT_BUTTON, &MainFrame::OnBrowseMetadata, this, kSettingsMetadataBrowse);
+    Bind(APPBOX_METADATA_CHANGED, &MainFrame::OnMetadataChanged, this);
     Bind(APPBOX_PACK_PROGRESS, &MainFrame::OnPackProgress, this);
     Bind(APPBOX_PACK_FINISHED, &MainFrame::OnPackFinished, this);
 }
@@ -198,9 +200,11 @@ void MainFrame::CreateLayout()
                        "Name resolution and proxy the packaged application uses inside the sandbox");
     side_nav_->AddItem("Environment", wxART_LIST_VIEW,
                        "Environment variables the packaged application sees inside the sandbox");
-    side_nav_->AddItem("Tracer", wxART_EXECUTABLE_FILE,
+    side_nav_->AddItem("Settings", wxART_HELP,
+                       "Archive the Build command writes, the type of the product and the file properties of the "
+                       "launcher");
+    side_nav_->AddItem("Debug", wxART_EXECUTABLE_FILE,
                        "Runs a program and shows which isolation entry points it really uses");
-    side_nav_->AddItem("Settings", wxART_HELP, "Archive the Build command writes and the type of the product");
 
     workspace_ = new wxSimplebook(this, wxID_ANY);
 
@@ -216,11 +220,11 @@ void MainFrame::CreateLayout()
     environment_panel_ = new EnvironmentPanel(workspace_, environment_);
     workspace_->AddPage(environment_panel_, "Environment");
 
-    tracer_panel_ = new TracerPanel(workspace_);
-    workspace_->AddPage(tracer_panel_, "Tracer");
-
     settings_panel_ = new SettingsPanel(workspace_);
     workspace_->AddPage(settings_panel_, "Settings");
+
+    debug_panel_ = new DebugPanel(workspace_);
+    workspace_->AddPage(debug_panel_, "Debug");
     workspace_->SetSelection(static_cast<size_t>(0));
 
     auto* body = new wxBoxSizer(wxHORIZONTAL);
@@ -347,6 +351,13 @@ void MainFrame::ApplyProjectType(appbox::ProjectType type)
      */
     toolbar_->SetBuildAndRunEnabled(type == appbox::ProjectType::Standalone);
 
+    /*
+     * A patch package carries no launcher either, so its file properties are
+     * not part of the product: the Metadata tab follows the type.
+     */
+    settings_panel_->EnableMetadata(type == appbox::ProjectType::Standalone);
+    RefreshMetadata();
+
     /* Keep following the startup files until the user edits the path. */
     if (!output_path_edited_)
     {
@@ -355,6 +366,112 @@ void MainFrame::ApplyProjectType(appbox::ProjectType type)
 
     UpdateStatusBar();
     UpdateTitle();
+}
+
+void MainFrame::RefreshMetadata()
+{
+    if (settings_panel_ == nullptr)
+    {
+        return;
+    }
+
+    /*
+     * A patch package carries no launcher, so it carries no file properties
+     * either: the tab explains that instead of offering a source which would
+     * never be packed.
+     */
+    if (project_type_ == appbox::ProjectType::Patch)
+    {
+        metadata_inherited_.clear();
+        settings_panel_->SetMetadataSources({}, wxString());
+        settings_panel_->SetMetadataValues({}, "A patch package carries no launcher, so it has no file properties.");
+        return;
+    }
+
+    /*
+     * The programs the tab offers are the startup files of the session, with
+     * the default source of the session in front of them.
+     */
+    std::vector<MetadataSource> choices;
+    choices.push_back(MetadataSource{ "Automatic - first program marked for auto start", wxString() });
+
+    for (const auto& file : model_.StartupFiles())
+    {
+        std::wstring path;
+        if (!model_.StartupFilePath(file, path))
+        {
+            continue;
+        }
+
+        auto label = wxString(file.import_name) + "\\" + wxString(file.relative_path);
+        if (file.auto_start)
+        {
+            label += " (auto start)";
+        }
+        choices.push_back(MetadataSource{ label, wxString(path) });
+    }
+
+    /*
+     * The values of the source program are read again on every refresh, so a
+     * source which was updated on disk is picked up; the fields the user
+     * edited are applied on top of them.
+     */
+    const auto source = appbox::MetadataSourcePath(model_, metadata_);
+
+    metadata_inherited_.clear();
+    wxString note;
+    if (source.empty())
+    {
+        note = "No program to inherit the file properties from.";
+    }
+    else
+    {
+        appbox::ApplicationVersionInfo info;
+        std::string                    error;
+        if (appbox::ReadApplicationMetadata(source, info, error))
+        {
+            metadata_inherited_ = info.fields;
+            note = "Inherited from " + wxString(source);
+        }
+        else
+        {
+            note = "The file properties cannot be read: " + wxString::FromUTF8(error);
+        }
+    }
+
+    settings_panel_->SetMetadataSources(choices, wxString(metadata_.source));
+    settings_panel_->SetMetadataValues(appbox::MergeMetadataFields(metadata_inherited_, metadata_.overrides), note);
+}
+
+void MainFrame::OnMetadataChanged(wxCommandEvent& event)
+{
+    /* The tab reports every edit; the state of the session follows it. */
+    metadata_.source = settings_panel_->GetMetadataSource().ToStdWstring();
+    metadata_.overrides = appbox::DiffMetadataFields(metadata_inherited_, settings_panel_->GetMetadataValues());
+
+    /*
+     * The values are resolved again, because another source brings its own
+     * fields: the overrides stay while the fields which follow the source are
+     * replaced by the ones of the new program.
+     */
+    RefreshMetadata();
+
+    event.Skip();
+}
+
+void MainFrame::OnBrowseMetadata(wxCommandEvent&)
+{
+    wxFileName current(settings_panel_->GetMetadataSource());
+
+    wxFileDialog dialog(this, "File Properties", current.GetPath(), current.GetFullName(),
+                        "Programs (*.exe)|*.exe|All files (*.*)|*.*", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dialog.ShowModal() != wxID_OK)
+    {
+        return;
+    }
+
+    metadata_.source = dialog.GetPath().ToStdWstring();
+    RefreshMetadata();
 }
 
 void MainFrame::OnExit(wxCommandEvent&)
@@ -410,13 +527,14 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     appbox::FilesystemIsolationModel loaded_isolation;
     appbox::NetworkModel             loaded_network;
     appbox::EnvironmentModel         loaded_environment;
+    appbox::ApplicationMetadata      loaded_metadata;
     appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
     std::wstring                     output_path;
     std::string                      error;
 
     if (!appbox::LoadProject(dialog.GetPath().ToStdWstring(), document, error) ||
         !appbox::ApplyProjectDocument(document, loaded, loaded_registry, loaded_isolation, loaded_network,
-                                      loaded_environment, loaded_project_type, output_path, error))
+                                      loaded_environment, loaded_metadata, loaded_project_type, output_path, error))
     {
         spdlog::error("importing the configuration failed: {}", error);
         wxMessageBox("The configuration could not be imported:\n\n" + wxString::FromUTF8(error), "Import Configuration",
@@ -429,6 +547,7 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     filesystem_isolation_ = std::move(loaded_isolation);
     network_ = std::move(loaded_network);
     environment_ = std::move(loaded_environment);
+    metadata_ = std::move(loaded_metadata);
     filesystem_panel_->RefreshModel();
     registry_panel_->RefreshModel();
     network_panel_->RefreshModel();
@@ -472,8 +591,9 @@ void MainFrame::OnExportConfiguration(wxCommandEvent&)
     }
 
     std::string error;
-    const auto  document = appbox::MakeProjectDocument(model_, registry_model_, filesystem_isolation_, network_,
-                                                       environment_, project_type_, OutputPath().ToStdWstring());
+    const auto  document =
+        appbox::MakeProjectDocument(model_, registry_model_, filesystem_isolation_, network_, environment_, metadata_,
+                                    project_type_, OutputPath().ToStdWstring());
     if (!appbox::SaveProject(document, dialog.GetPath().ToStdWstring(), error))
     {
         spdlog::error("exporting the configuration failed: {}", error);
@@ -539,6 +659,9 @@ void MainFrame::OnStartupFiles(wxCommandEvent&)
 
     filesystem_panel_->RefreshModel();
     UpdateStatusBar();
+
+    /* The programs the file properties can be inherited from follow the list. */
+    RefreshMetadata();
 
     /* Keep following the startup files until the user edits the path. */
     if (!output_path_edited_)
@@ -700,11 +823,13 @@ void MainFrame::StartPack(bool run_after)
     const auto isolation_snapshot = filesystem_isolation_;
     const auto network_snapshot = network_;
     const auto environment_snapshot = environment_;
+    const auto metadata_snapshot = metadata_;
     const auto zip_wide = zip_path.ToStdWstring();
     const auto project_type = project_type_;
 
     pack_thread_ = std::thread([this, snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
-                                environment_snapshot, payloads, zip_wide, run_after, project_type]() {
+                                environment_snapshot, metadata_snapshot, payloads, zip_wide, run_after,
+                                project_type]() {
         const auto report_progress = [this](const appbox::BuildProgress& report) {
             auto* event = new wxThreadEvent(APPBOX_PACK_PROGRESS);
             event->SetPayload(report);
@@ -722,7 +847,7 @@ void MainFrame::StartPack(bool run_after)
         else
         {
             outcome.error = appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
-                                         environment_snapshot, payloads, zip_wide, report_progress);
+                                         environment_snapshot, metadata_snapshot, payloads, zip_wide, report_progress);
         }
 
         if (outcome.error.empty())

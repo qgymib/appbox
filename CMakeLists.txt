@@ -174,6 +174,7 @@ set(APPBOX_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/AboutInfo.cpp"
     "${APPBOX_SOURCE_DIR}/core/ApplicationIcon.cpp"
+    "${APPBOX_SOURCE_DIR}/core/ApplicationMetadata.cpp"
     "${APPBOX_SOURCE_DIR}/core/BuildReport.cpp"
     "${APPBOX_SOURCE_DIR}/core/EmbeddedResource.cpp"
     "${APPBOX_SOURCE_DIR}/core/EnvironmentIsolationFile.cpp"
@@ -207,11 +208,13 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/tracer/TracedModules.cpp"
     "${APPBOX_SOURCE_DIR}/widget/AboutDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/DataViewTooltip.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/DebugPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/EnvironmentPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/FilesystemIsolationDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/FilesystemIsolationRenderer.cpp"
     "${APPBOX_SOURCE_DIR}/widget/FilesystemPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/MainFrame.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/MetadataDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/NetworkPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/PlaceholderPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/RegistryIsolationDialog.cpp"
@@ -225,8 +228,8 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/widget/StartupTreeModel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/TabBar.cpp"
     "${APPBOX_SOURCE_DIR}/widget/Toolbar.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/TracePanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/TracerListModel.cpp"
-    "${APPBOX_SOURCE_DIR}/widget/TracerPanel.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/launcher/utils/KnownFolder.cpp"
     "${APPBOX_SOURCE_DIR}/main.cpp"
     "${APPBOX_SOURCE_DIR}/resource.rc"
@@ -285,6 +288,11 @@ target_link_libraries(AppBox PRIVATE shell32 ole32)
 # Registry access of the packer core, which writes the virtual registry into a
 # hive file (RegLoadAppKeyW and friends).
 target_link_libraries(AppBox PRIVATE advapi32)
+
+# Version resource of the packer core, which reads the program information the
+# launcher payload inherits from the main program of the packaged application
+# (GetFileVersionInfoW and VerQueryValueW).
+target_link_libraries(AppBox PRIVATE version)
 
 # zlib must be configured before libzip: the libzip build performs its own
 # find_package(ZLIB 1.1.2 REQUIRED) which reuses the already built target.

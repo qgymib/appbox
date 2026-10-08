@@ -1,31 +1,31 @@
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0600
-#endif
-/*
- * The resource API is used with the wide character forms: the RT_ICON and
- * RT_GROUP_ICON macros expand to their ANSI form unless UNICODE is defined,
- * and the targets of the packer do not define it.
- */
-#ifndef UNICODE
-#define UNICODE
-#endif
-#include <windows.h>
 #include "ApplicationIcon.hpp"
-#include "WString.hpp"
-#include <chrono>
+#include "PeResourcePatch.hpp"
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
-#include <fstream>
-#include <ios>
-#include <system_error>
+#include <string>
 #include <vector>
 
 namespace
 {
 
-/** Offset of the PE signature inside the DOS header of an image. */
-constexpr std::size_t kPeSignatureOffset = 0x3C;
+/*
+ * The helpers which read an image as a data file and which patch its resources
+ * are shared with the version information of the launcher payload, see
+ * src/core/PeResourcePatch.hpp.
+ */
+using appbox::pe_resource::kUpdateAttempts;
+using appbox::pe_resource::LoadAsDataFile;
+using appbox::pe_resource::LoadedImage;
+using appbox::pe_resource::LooksLikePeImage;
+using appbox::pe_resource::ReadFileBytes;
+using appbox::pe_resource::SameResourceName;
+using appbox::pe_resource::TemporaryFile;
+using appbox::pe_resource::TemporaryPath;
+using appbox::pe_resource::UpdateSession;
+using appbox::pe_resource::WaitForResourceUpdate;
+using appbox::pe_resource::WriteFileBytes;
 
 /** Size of the group icon header which precedes the icon directory entries. */
 constexpr std::size_t kGroupIconHeaderSize = 6;
@@ -49,19 +49,6 @@ constexpr std::uint32_t kLastResourceId = 0xFFFF;
  * groups of the launcher without touching them.
  */
 const wchar_t* const kApplicationIconGroup = L"!AppBoxIcon";
-
-/** Number of attempts of the resource update of one image. */
-constexpr int kUpdateAttempts = 6;
-
-/**
- * @brief Base wait between two attempts of the resource update in milliseconds.
- *
- * A filter driver which scans the freshly written image holds the file for a
- * moment, so a denied update is repeated after a wait which grows with the
- * attempt: a scanner which is still busy with a large image keeps the file
- * longer than the first short wait.
- */
-constexpr DWORD kUpdateRetryDelayMs = 250;
 
 #pragma pack(push, 1)
 
@@ -92,150 +79,6 @@ static_assert(sizeof(GroupIconDirectory) == kGroupIconHeaderSize,
               "the group icon header has to match the resource layout");
 static_assert(sizeof(GroupIconDirectoryEntry) == kGroupIconEntrySize,
               "a group icon entry has to match the resource layout");
-
-/**
- * @brief RAII wrapper of a module handle returned by LoadLibraryExW.
- *
- * The handle of an image which was loaded as a data file has to be released
- * before the file can be opened for writing by the resource update API.
- */
-class LoadedImage
-{
-public:
-    /**
-     * @brief Take ownership of a module handle.
-     * @param[in] module Module handle, may be nullptr.
-     */
-    explicit LoadedImage(HMODULE module) : module_(module)
-    {
-    }
-
-    ~LoadedImage()
-    {
-        if (module_ != nullptr)
-        {
-            FreeLibrary(module_);
-        }
-    }
-
-    LoadedImage(const LoadedImage&) = delete;
-    LoadedImage& operator=(const LoadedImage&) = delete;
-
-    /**
-     * @brief Get the module handle.
-     * @return The handle, nullptr when the image was not loaded.
-     */
-    HMODULE Get() const
-    {
-        return module_;
-    }
-
-    /**
-     * @brief Whether the image was loaded.
-     * @return true when the handle is valid.
-     */
-    explicit operator bool() const
-    {
-        return module_ != nullptr;
-    }
-
-private:
-    HMODULE module_;
-};
-
-/**
- * @brief RAII wrapper of a resource update session.
- *
- * The session is discarded unless Commit() was called, so every error path
- * leaves the file unchanged.
- */
-class UpdateSession
-{
-public:
-    /**
-     * @brief Take ownership of a resource update handle.
-     * @param[in] handle Handle returned by BeginUpdateResourceW.
-     */
-    explicit UpdateSession(HANDLE handle) : handle_(handle)
-    {
-    }
-
-    ~UpdateSession()
-    {
-        if (handle_ != nullptr)
-        {
-            /* Discard the pending changes of an uncommitted session. */
-            EndUpdateResourceW(handle_, TRUE);
-        }
-    }
-
-    UpdateSession(const UpdateSession&) = delete;
-    UpdateSession& operator=(const UpdateSession&) = delete;
-
-    /**
-     * @brief Get the update handle.
-     * @return The handle.
-     */
-    HANDLE Get() const
-    {
-        return handle_;
-    }
-
-    /**
-     * @brief Write the pending resources to the file.
-     * @return true on success.
-     */
-    bool Commit()
-    {
-        if (handle_ == nullptr)
-        {
-            return false;
-        }
-
-        const HANDLE handle = handle_;
-        handle_ = nullptr;
-        return EndUpdateResourceW(handle, FALSE) != FALSE;
-    }
-
-private:
-    HANDLE handle_;
-};
-
-/**
- * @brief RAII wrapper of a temporary file.
- */
-class TemporaryFile
-{
-public:
-    /**
-     * @brief Remember the path of the file to remove.
-     * @param[in] path Path of the temporary file.
-     */
-    explicit TemporaryFile(std::filesystem::path path) : path_(std::move(path))
-    {
-    }
-
-    ~TemporaryFile()
-    {
-        std::error_code ec;
-        std::filesystem::remove(path_, ec);
-    }
-
-    TemporaryFile(const TemporaryFile&) = delete;
-    TemporaryFile& operator=(const TemporaryFile&) = delete;
-
-    /**
-     * @brief Get the path of the temporary file.
-     * @return The path.
-     */
-    const std::filesystem::path& Path() const
-    {
-        return path_;
-    }
-
-private:
-    std::filesystem::path path_;
-};
 
 /**
  * @brief Description of the icon group which the shell shows for a file.
@@ -300,65 +143,6 @@ BOOL CALLBACK CaptureFirstGroupIcon(HMODULE module, LPCWSTR type, LPWSTR name, L
     }
     choice->found = true;
     return FALSE;
-}
-
-/**
- * @brief Whether a buffer starts with a PE image.
- *
- * @param[in] bytes Buffer to inspect.
- * @param[in] size Buffer size in bytes.
- * @return true when the DOS and the PE signature are present.
- */
-bool LooksLikePeImage(const void* bytes, std::size_t size)
-{
-    if (bytes == nullptr || size < kPeSignatureOffset + sizeof(std::uint32_t))
-    {
-        return false;
-    }
-
-    const auto* data = static_cast<const unsigned char*>(bytes);
-    if (data[0] != 'M' || data[1] != 'Z')
-    {
-        return false;
-    }
-
-    std::uint32_t signature_offset = 0;
-    std::memcpy(&signature_offset, data + kPeSignatureOffset, sizeof(signature_offset));
-    if (signature_offset + 4 > size)
-    {
-        return false;
-    }
-
-    return data[signature_offset] == 'P' && data[signature_offset + 1] == 'E' && data[signature_offset + 2] == 0 &&
-           data[signature_offset + 3] == 0;
-}
-
-/**
- * @brief Map an executable as a data file without running it.
- *
- * LOAD_LIBRARY_AS_IMAGE_RESOURCE lets the resource functions return pointers
- * into the mapping; plain data file loading is used as the fallback when a
- * mapping is refused. Both forms work for 32 bit and 64 bit images and never
- * execute the mapped code.
- *
- * @param[in] path Host path of the image.
- * @param[out] error Error description on failure.
- * @return The module handle, nullptr on failure.
- */
-HMODULE LoadAsDataFile(const std::wstring& path, std::string& error)
-{
-    const DWORD flags[] = { LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE, LOAD_LIBRARY_AS_DATAFILE };
-    for (const auto flag : flags)
-    {
-        if (HMODULE module = LoadLibraryExW(path.c_str(), nullptr, flag); module != nullptr)
-        {
-            return module;
-        }
-    }
-
-    error = "failed to open '" + appbox::WideToUTF8(path) + "' as a data file (error " +
-            std::to_string(GetLastError()) + ")";
-    return nullptr;
 }
 
 /**
@@ -450,24 +234,6 @@ bool CollectIconGroup(HMODULE module, std::vector<char>& group, std::vector<std:
     }
 
     return true;
-}
-
-/**
- * @brief Compare two resource names the way the resource API does.
- *
- * The resource update API stores the names of the resources in upper case and
- * the lookup functions compare them case insensitively, so the comparison
- * follows that rule instead of comparing the strings literally.
- *
- * @param[in] left First resource name.
- * @param[in] right Second resource name.
- * @return true when both names address the same resource.
- */
-bool SameResourceName(const std::wstring& left, const std::wstring& right)
-{
-    const auto result = CompareStringOrdinal(left.c_str(), static_cast<int>(left.size()), right.c_str(),
-                                             static_cast<int>(right.size()), TRUE);
-    return result == CSTR_EQUAL;
 }
 
 /**
@@ -655,11 +421,12 @@ bool WriteIconGroup(const std::filesystem::path& path, const std::vector<char>& 
     {
         if (attempt > 0)
         {
-            Sleep(kUpdateRetryDelayMs * static_cast<DWORD>(attempt));
+            WaitForResourceUpdate(attempt);
         }
 
-        DWORD code = 0;
-        if (AddIconResources(path, remapped, images, image_base, error, code))
+        std::string attempt_error;
+        DWORD       code = 0;
+        if (AddIconResources(path, remapped, images, image_base, attempt_error, code))
         {
             /*
              * The icon is only used when the group really is the first one of
@@ -673,8 +440,12 @@ bool WriteIconGroup(const std::filesystem::path& path, const std::vector<char>& 
                 return false;
             }
 
+            /* An attempt which succeeded clears the reason of an earlier one. */
+            error.clear();
             return true;
         }
+
+        error = std::move(attempt_error);
 
         if (code != ERROR_ACCESS_DENIED && code != ERROR_SHARING_VIOLATION)
         {
@@ -683,88 +454,6 @@ bool WriteIconGroup(const std::filesystem::path& path, const std::vector<char>& 
     }
 
     return false;
-}
-
-/**
- * @brief Write a buffer to a file.
- *
- * @param[in] path Destination path.
- * @param[in] data Buffer to write.
- * @param[in] size Buffer size in bytes.
- * @param[out] error Error description on failure.
- * @return true on success.
- */
-bool WriteFileBytes(const std::filesystem::path& path, const void* data, std::size_t size, std::string& error)
-{
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file)
-    {
-        error = "failed to create '" + appbox::WideToUTF8(path.wstring()) + "'";
-        return false;
-    }
-
-    file.write(static_cast<const char*>(data), static_cast<std::streamsize>(size));
-    file.close();
-    if (!file)
-    {
-        error = "failed to write '" + appbox::WideToUTF8(path.wstring()) + "'";
-        return false;
-    }
-
-    return true;
-}
-
-/**
- * @brief Read a whole file into a buffer.
- *
- * @param[in] path Source path.
- * @param[out] bytes The file content.
- * @param[out] error Error description on failure.
- * @return true on success.
- */
-bool ReadFileBytes(const std::filesystem::path& path, std::vector<char>& bytes, std::string& error)
-{
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file)
-    {
-        error = "failed to open '" + appbox::WideToUTF8(path.wstring()) + "'";
-        return false;
-    }
-
-    const auto size = file.tellg();
-    if (size < 0)
-    {
-        error = "failed to measure '" + appbox::WideToUTF8(path.wstring()) + "'";
-        return false;
-    }
-
-    bytes.resize(static_cast<std::size_t>(size));
-    file.seekg(0, std::ios::beg);
-    if (!bytes.empty())
-    {
-        file.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-    }
-
-    if (!file)
-    {
-        error = "failed to read '" + appbox::WideToUTF8(path.wstring()) + "'";
-        return false;
-    }
-
-    return true;
-}
-
-/**
- * @brief Build the path of the temporary payload image.
- *
- * @return A unique path below the temporary directory of the process.
- */
-std::filesystem::path TemporaryPayloadPath()
-{
-    const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
-    const auto name =
-        L"AppBox-Icon-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(ticks) + L".exe";
-    return std::filesystem::temp_directory_path() / name;
 }
 
 } // namespace
@@ -814,7 +503,7 @@ std::vector<char> ApplyApplicationIcon(const void* launcher_bytes, std::size_t l
             }
         }
 
-        const auto          temporary_path = TemporaryPayloadPath();
+        const auto          temporary_path = TemporaryPath(L"AppBox-Icon");
         const TemporaryFile payload(temporary_path);
         if (!WriteFileBytes(temporary_path, launcher_bytes, launcher_size, error))
         {

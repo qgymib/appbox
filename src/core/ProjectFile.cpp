@@ -428,12 +428,21 @@ namespace appbox
 
 ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel& registry,
                                     const FilesystemIsolationModel& isolation, const NetworkModel& network,
-                                    const EnvironmentModel& environment, ProjectType project_type,
-                                    const std::wstring& output_path)
+                                    const EnvironmentModel& environment, const ApplicationMetadata& metadata,
+                                    ProjectType project_type, const std::wstring& output_path)
 {
     ProjectDocument document;
     document.output_path = output_path;
     document.project_type = project_type;
+
+    document.metadata.source = metadata.source;
+    for (const auto& field : metadata.overrides)
+    {
+        ProjectMetadataFieldRecord record;
+        record.key = field.key;
+        record.value = field.value;
+        document.metadata.overrides.push_back(std::move(record));
+    }
 
     for (const auto& preset : PresetDirectories())
     {
@@ -521,13 +530,21 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
 
 bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, RegistryModel& registry,
                           FilesystemIsolationModel& isolation, NetworkModel& network, EnvironmentModel& environment,
-                          ProjectType& project_type, std::wstring& output_path, std::string& error)
+                          ApplicationMetadata& metadata, ProjectType& project_type, std::wstring& output_path,
+                          std::string& error)
 {
     PackModel                candidate;
     RegistryModel            candidate_registry;
     FilesystemIsolationModel candidate_isolation;
     NetworkModel             candidate_network;
     EnvironmentModel         candidate_environment;
+
+    ApplicationMetadata candidate_metadata;
+    candidate_metadata.source = document.metadata.source;
+    for (const auto& field : document.metadata.overrides)
+    {
+        candidate_metadata.overrides.push_back(MetadataField{ field.key, field.value });
+    }
 
     std::size_t index = 0;
     for (const auto& folder : document.folders)
@@ -603,6 +620,7 @@ bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, Reg
     isolation = std::move(candidate_isolation);
     network = std::move(candidate_network);
     environment = std::move(candidate_environment);
+    metadata = std::move(candidate_metadata);
     project_type = document.project_type;
     output_path = document.output_path;
     return true;

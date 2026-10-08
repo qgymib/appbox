@@ -1,4 +1,4 @@
-#include "TracerPanel.hpp"
+#include "TracePanel.hpp"
 #include "TracerListModel.hpp"
 #include "core/TracerModel.hpp"
 #include "WString.hpp"
@@ -81,16 +81,16 @@ std::vector<std::wstring> SplitArguments(const wxString& text)
 
 } // namespace
 
-TracerPanel::TracerPanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
+TracePanel::TracePanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
 {
     target_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER);
     target_->SetToolTip("Program the tracer runs below the debugger");
-    target_->Bind(wxEVT_KILL_FOCUS, &TracerPanel::OnTargetChanged, this);
-    target_->Bind(wxEVT_TEXT_ENTER, &TracerPanel::OnTargetChanged, this);
+    target_->Bind(wxEVT_KILL_FOCUS, &TracePanel::OnTargetChanged, this);
+    target_->Bind(wxEVT_TEXT_ENTER, &TracePanel::OnTargetChanged, this);
 
     browse_ = new wxButton(this, wxID_ANY, "Browse...");
     browse_->SetToolTip("Choose the program to trace");
-    browse_->Bind(wxEVT_BUTTON, &TracerPanel::OnBrowse, this);
+    browse_->Bind(wxEVT_BUTTON, &TracePanel::OnBrowse, this);
 
     arguments_ = new wxTextCtrl(this, wxID_ANY);
     arguments_->SetToolTip("Arguments passed to the program, quoted as on a command line");
@@ -105,15 +105,15 @@ TracerPanel::TracerPanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
     view_->SetToolTip("The isolation entry points are the functions an isolation layer has to intercept; the all "
                       "exports view lists every executable export parsed from ntdll, kernel32, kernelbase, ws2_32 and "
                       "dnsapi");
-    view_->Bind(wxEVT_COMBOBOX, &TracerPanel::OnViewChanged, this);
+    view_->Bind(wxEVT_COMBOBOX, &TracePanel::OnViewChanged, this);
 
     run_ = new wxButton(this, wxID_ANY, "Run");
     run_->SetToolTip("Run the target below the debugger");
-    run_->Bind(wxEVT_BUTTON, &TracerPanel::OnRun, this);
+    run_->Bind(wxEVT_BUTTON, &TracePanel::OnRun, this);
 
     export_ = new wxButton(this, wxID_ANY, "Export JSON...");
     export_->SetToolTip("Write the functions the run used to a JSON file");
-    export_->Bind(wxEVT_BUTTON, &TracerPanel::OnExport, this);
+    export_->Bind(wxEVT_BUTTON, &TracePanel::OnExport, this);
 
     model_ = new TracerListModel();
     list_ = new wxDataViewCtrl(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxDV_ROW_LINES | wxDV_SINGLE);
@@ -158,14 +158,14 @@ TracerPanel::TracerPanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
     sizer->Add(status_, 0, wxEXPAND | wxALL, kFormBorder);
     SetSizer(sizer);
 
-    Bind(APPBOX_TRACER_PROGRESS, &TracerPanel::OnTraceProgress, this);
-    Bind(APPBOX_TRACER_FINISHED, &TracerPanel::OnTraceFinished, this);
+    Bind(APPBOX_TRACER_PROGRESS, &TracePanel::OnTraceProgress, this);
+    Bind(APPBOX_TRACER_FINISHED, &TracePanel::OnTraceFinished, this);
 
     SetStatus("Choose the target program to trace.");
     UpdateButtons();
 }
 
-TracerPanel::~TracerPanel()
+TracePanel::~TracePanel()
 {
     if (thread_.joinable())
     {
@@ -174,12 +174,12 @@ TracerPanel::~TracerPanel()
     }
 }
 
-appbox::TracerView TracerPanel::CurrentView() const
+appbox::TracerView TracePanel::CurrentView() const
 {
     return view_->GetSelection() == 1 ? appbox::TracerView::AllExports : appbox::TracerView::Scope;
 }
 
-void TracerPanel::ReloadView()
+void TracePanel::ReloadView()
 {
     entries_.clear();
     result_ = appbox::tracer::TraceResult();
@@ -226,7 +226,7 @@ void TracerPanel::ReloadView()
     UpdateButtons();
 }
 
-void TracerPanel::OnBrowse(wxCommandEvent&)
+void TracePanel::OnBrowse(wxCommandEvent&)
 {
     wxFileDialog dialog(this, "Target Program", wxEmptyString, wxEmptyString,
                         "Programs (*.exe)|*.exe|All files (*.*)|*.*", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
@@ -239,7 +239,7 @@ void TracerPanel::OnBrowse(wxCommandEvent&)
     ReloadView();
 }
 
-void TracerPanel::OnTargetChanged(wxEvent& event)
+void TracePanel::OnTargetChanged(wxEvent& event)
 {
     if (target_->GetValue().ToStdWstring() != loaded_target_)
     {
@@ -249,13 +249,13 @@ void TracerPanel::OnTargetChanged(wxEvent& event)
     event.Skip();
 }
 
-void TracerPanel::OnViewChanged(wxCommandEvent& event)
+void TracePanel::OnViewChanged(wxCommandEvent& event)
 {
     ReloadView();
     event.Skip();
 }
 
-void TracerPanel::OnRun(wxCommandEvent&)
+void TracePanel::OnRun(wxCommandEvent&)
 {
     if (thread_.joinable())
     {
@@ -301,7 +301,7 @@ void TracerPanel::OnRun(wxCommandEvent&)
     });
 }
 
-void TracerPanel::OnExport(wxCommandEvent&)
+void TracePanel::OnExport(wxCommandEvent&)
 {
     const wxString target_text(target_path_);
     wxFileName     suggested(target_text);
@@ -327,7 +327,7 @@ void TracerPanel::OnExport(wxCommandEvent&)
     SetStatus(wxString("Result exported to ") + dialog.GetPath());
 }
 
-void TracerPanel::OnTraceProgress(wxThreadEvent& event)
+void TracePanel::OnTraceProgress(wxThreadEvent& event)
 {
     if (thread_.joinable())
     {
@@ -335,7 +335,7 @@ void TracerPanel::OnTraceProgress(wxThreadEvent& event)
     }
 }
 
-void TracerPanel::OnTraceFinished(wxThreadEvent& event)
+void TracePanel::OnTraceFinished(wxThreadEvent& event)
 {
     if (thread_.joinable())
     {
@@ -364,7 +364,7 @@ void TracerPanel::OnTraceFinished(wxThreadEvent& event)
     UpdateButtons();
 }
 
-void TracerPanel::SetRunning(bool running)
+void TracePanel::SetRunning(bool running)
 {
     run_->SetLabel(running ? "Stop" : "Run");
     target_->Enable(!running);
@@ -374,13 +374,13 @@ void TracerPanel::SetRunning(bool running)
     UpdateButtons();
 }
 
-void TracerPanel::UpdateButtons()
+void TracePanel::UpdateButtons()
 {
     const bool idle = !thread_.joinable();
     export_->Enable(idle && has_result_ && model_->GetCount() > 0);
 }
 
-void TracerPanel::SetStatus(const wxString& text)
+void TracePanel::SetStatus(const wxString& text)
 {
     status_->SetLabel(text);
     Layout();

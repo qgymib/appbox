@@ -148,7 +148,7 @@ pure function `appbox::ExpandVariables()` of
 - [Environment Isolation](docs/EnvironmentIsolation.md) - Environment isolation architecture
 - [Fonts Isolation](docs/FontsIsolation.md) - Fonts isolation architecture
 - [Patch Layers](docs/PatchLayer.md) - Patch packages: layout, merge rules and the launcher side
-- [Tracer](docs/Tracer.md) - Tracer workspace: usage, mechanism and measured cost
+- [Debug](docs/Debug.md) - Debug workspace: usage, mechanism and measured cost
 - [Tests](test/README.md) - Unit tests and end-to-end tests of the sandbox
 
 ## License

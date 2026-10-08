@@ -1,4 +1,5 @@
 #include "ProjectDocument.hpp"
+#include "ApplicationMetadata.hpp"
 #include "WString.hpp"
 #include <nlohmann/json.hpp>
 #include <cstddef>
@@ -20,6 +21,9 @@ using Json = nlohmann::ordered_json;
 constexpr const char* kVersionKey = "version";
 constexpr const char* kOutputPathKey = "output_path";
 constexpr const char* kProjectTypeKey = "project_type";
+constexpr const char* kMetadataKey = "metadata";
+constexpr const char* kOverridesKey = "overrides";
+constexpr const char* kKeyKey = "key";
 constexpr const char* kFoldersKey = "folders";
 constexpr const char* kFilesKey = "files";
 constexpr const char* kStartupFilesKey = "startup_files";
@@ -381,6 +385,36 @@ void ReadRecordArray(const Json& json, const char* key, std::vector<Record>& out
 }
 
 /**
+ * @brief Read a member which holds one nested record, absent or not.
+ *
+ * A member which is absent or null leaves @p out at the value it carries, so a
+ * record of an optional member keeps the default of a fresh document.
+ *
+ * @param[in] json Object to read from.
+ * @param[in] key Name of the member.
+ * @param[out] out The record, untouched when the member is absent or null.
+ * @throw appbox::ProjectDocumentError The member does not fit the schema.
+ */
+template <typename Record>
+void ReadRecord(const Json& json, const char* key, Record& out)
+{
+    const auto member = json.find(key);
+    if (member == json.end() || member->is_null())
+    {
+        return;
+    }
+
+    try
+    {
+        out = member->get<Record>();
+    }
+    catch (const appbox::ProjectDocumentError& error)
+    {
+        throw appbox::ProjectDocumentError(std::string(key) + ": " + error.what());
+    }
+}
+
+/**
  * @brief Read an optional member which holds one nested record.
  * @param[in] json Object to read from.
  * @param[in] key Name of the member.
@@ -412,6 +446,67 @@ void ReadOptionalRecord(const Json& json, const char* key, std::optional<Record>
 
 namespace appbox
 {
+
+void to_json(nlohmann::ordered_json& json, const ProjectMetadataFieldRecord& record)
+{
+    json = nlohmann::ordered_json::object();
+    json[kKeyKey] = record.key;
+    json[kValueKey] = WideToUTF8(record.value);
+}
+
+void from_json(const nlohmann::ordered_json& json, ProjectMetadataFieldRecord& record)
+{
+    RequireObject(json);
+
+    ProjectMetadataFieldRecord candidate;
+    candidate.key = ReadRequiredString(json, kKeyKey);
+
+    /* Only the fields of a version resource can be written into a launcher. */
+    if (!IsMetadataField(candidate.key))
+    {
+        throw ProjectDocumentError("unknown metadata field '" + candidate.key + "'");
+    }
+
+    candidate.value = ReadRequiredText(json, kValueKey);
+
+    record = std::move(candidate);
+}
+
+void to_json(nlohmann::ordered_json& json, const ProjectMetadataRecord& record)
+{
+    json = nlohmann::ordered_json::object();
+    json[kSourceKey] = WideToUTF8(record.source);
+    json[kOverridesKey] = record.overrides;
+}
+
+void from_json(const nlohmann::ordered_json& json, ProjectMetadataRecord& record)
+{
+    RequireObject(json);
+
+    ProjectMetadataRecord candidate;
+
+    /*
+     * A document which does not name the source describes the default one, so
+     * a hand written document only has to list the fields it edits.
+     */
+    candidate.source = ReadOptionalText(json, kSourceKey);
+    ReadRecordArray(json, kOverridesKey, candidate.overrides);
+
+    /* A field which is listed twice would be written twice as well. */
+    for (std::size_t index = 0; index < candidate.overrides.size(); ++index)
+    {
+        for (std::size_t other = index + 1; other < candidate.overrides.size(); ++other)
+        {
+            if (candidate.overrides[index].key == candidate.overrides[other].key)
+            {
+                throw ProjectDocumentError("overrides[" + std::to_string(other) + "]: the field '" +
+                                           candidate.overrides[other].key + "' is listed twice");
+            }
+        }
+    }
+
+    record = std::move(candidate);
+}
 
 void to_json(nlohmann::ordered_json& json, const ProjectFolderRecord& record)
 {
@@ -619,6 +714,7 @@ void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
     json[kVersionKey] = kProjectFileVersion;
     json[kOutputPathKey] = WideToUTF8(document.output_path);
     json[kProjectTypeKey] = ProjectTypeToken(document.project_type);
+    json[kMetadataKey] = document.metadata;
     json[kFoldersKey] = document.folders;
     json[kFilesKey] = document.files;
     json[kStartupFilesKey] = document.startup_files;
@@ -663,6 +759,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectDocument& document)
     ProjectDocument candidate;
     candidate.output_path = ReadOptionalText(json, kOutputPathKey);
     candidate.project_type = ReadProjectType(json);
+    ReadRecord(json, kMetadataKey, candidate.metadata);
     ReadRecordArray(json, kFoldersKey, candidate.folders);
     ReadRecordArray(json, kFilesKey, candidate.files);
     ReadRecordArray(json, kStartupFilesKey, candidate.startup_files);

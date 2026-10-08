@@ -52,6 +52,51 @@ public:
 };
 
 /**
+ * @brief One field of the file properties of a launcher.
+ *
+ * The record is one entry of the `StringFileInfo` block of a version resource:
+ * the key names the field (`FileDescription` for example) and the value is the
+ * text the shell shows for it on the `Details` page of the file.
+ */
+struct ProjectMetadataFieldRecord
+{
+    /**
+     * @brief Key of the field, one of `MetadataFields()`.
+     */
+    std::string key;
+
+    /**
+     * @brief Value of the field, which may be empty.
+     */
+    std::wstring value;
+};
+
+/**
+ * @brief The file properties the launcher of a project carries.
+ *
+ * The record is the counterpart of `ApplicationMetadata` of
+ * `src/core/ApplicationMetadata.hpp`: it names the program the information is
+ * inherited from and the fields the user edited. The fields which are not
+ * listed are read from that program while the archive is packed, so a source
+ * program which was updated since the project was saved is picked up.
+ *
+ * An empty source names the default source of the model, which is the first
+ * program marked for auto start.
+ */
+struct ProjectMetadataRecord
+{
+    /**
+     * @brief Host path of the program the information is inherited from.
+     */
+    std::wstring source;
+
+    /**
+     * @brief The fields the user edited, in document order.
+     */
+    std::vector<ProjectMetadataFieldRecord> overrides;
+};
+
+/**
  * @brief One imported folder of a project document.
  *
  * At sandbox runtime the folder content is visible as
@@ -345,9 +390,9 @@ struct ProjectEnvironmentRecord
  * the startup files, the virtual registry, the isolation modes of the virtual
  * filesystem, the DNS redirections of the network workspace, the proxy of the
  * network workspace, the environment variables of the environment workspace,
- * the kind of product the `Build` command writes and the path of the
- * `Output File` box. It holds no host state and no wxWidgets dependency, so the
- * conversion is unit testable.
+ * the kind of product the `Build` command writes, the file properties the
+ * launcher carries and the path of the `Output File` box. It holds no host
+ * state and no wxWidgets dependency, so the conversion is unit testable.
  *
  * `to_json()` and `from_json()` convert the structure to and from the JSON
  * text of a project file; the file itself is written and read by
@@ -363,6 +408,9 @@ struct ProjectEnvironmentRecord
  *   "version": 1,
  *   "output_path": "D:\\out\\MyApp.zip",
  *   "project_type": "standalone",
+ *   "metadata": { "source": "C:\\Program Files\\MyApp\\app.exe",
+ *                 "overrides": [ { "key": "FileDescription",
+ *                                  "value": "My Application" } ] },
  *   "folders": [ { "preset": "program_files", "name": "MyApp",
  *                  "source": "C:\\Program Files\\MyApp" } ],
  *   "files": [ { "preset": "user_profile", "target_dir": "MyApp\\data",
@@ -399,6 +447,11 @@ struct ProjectEnvironmentRecord
  * The `project_type` member is optional as well: a file which does not name it
  * describes a standalone project, which is what every file written before the
  * member existed describes.
+ *
+ * The `metadata` member is optional as well: a file which does not name it
+ * describes a session which inherits the file properties of its launcher from
+ * the default source without editing a field. Every key of an override has to
+ * name a field of a version resource, and a key may be listed once only.
  */
 struct ProjectDocument
 {
@@ -414,6 +467,15 @@ struct ProjectDocument
      * which is what a file written before the member existed describes.
      */
     ProjectType project_type = ProjectType::Standalone;
+
+    /**
+     * @brief The file properties the launcher of a standalone archive carries.
+     *
+     * A document which does not name the member describes a session which
+     * inherits the information from the default source without editing a
+     * field.
+     */
+    ProjectMetadataRecord metadata;
 
     /**
      * @brief Imported folders, in the order the document stores them.
@@ -460,6 +522,36 @@ struct ProjectDocument
      */
     std::vector<ProjectEnvironmentRecord> environment;
 };
+
+/**
+ * @brief Store one field of the file properties of a document.
+ * @param[out] json Object which receives the record.
+ * @param[in] record The record to store.
+ */
+void to_json(nlohmann::ordered_json& json, const ProjectMetadataFieldRecord& record);
+
+/**
+ * @brief Read one field of the file properties of a document.
+ * @param[in] json Object holding the record.
+ * @param[out] record The record to fill.
+ * @throw ProjectDocumentError The object does not fit the schema.
+ */
+void from_json(const nlohmann::ordered_json& json, ProjectMetadataFieldRecord& record);
+
+/**
+ * @brief Store the file properties of a document.
+ * @param[out] json Object which receives the record.
+ * @param[in] record The record to store.
+ */
+void to_json(nlohmann::ordered_json& json, const ProjectMetadataRecord& record);
+
+/**
+ * @brief Read the file properties of a document.
+ * @param[in] json Object holding the record.
+ * @param[out] record The record to fill.
+ * @throw ProjectDocumentError The object does not fit the schema.
+ */
+void from_json(const nlohmann::ordered_json& json, ProjectMetadataRecord& record);
 
 /**
  * @brief Store one imported folder of a document.

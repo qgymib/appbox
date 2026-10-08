@@ -17,7 +17,7 @@ inline constexpr unsigned kTracerRunTimeoutSeconds = 600;
 inline constexpr unsigned kTracerStallTimeoutSeconds = 30;
 
 /**
- * @brief Kind of the function list the tracer workspace shows.
+ * @brief Kind of the function list the `Trace` tab of the Debug workspace shows.
  */
 enum class TracerView
 {

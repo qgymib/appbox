@@ -22,6 +22,7 @@ add_executable(AppBoxTests
     # start the launcher, so they are listed first and run first.
     "unit/AboutInfo.cpp"
     "unit/ApplicationIcon.cpp"
+    "unit/ApplicationMetadata.cpp"
     "unit/BuildReport.cpp"
     "unit/EnvironmentIsolation.cpp"
     "unit/EnvironmentIsolationFile.cpp"
@@ -267,6 +268,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/WinCall.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/AboutInfo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationIcon.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationMetadata.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EmbeddedResource.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentIsolationFile.cpp
@@ -382,6 +384,11 @@ target_link_libraries(AppBoxTests PRIVATE shell32 ole32)
 
 # Registry access of the sandbox hive reader (RegLoadAppKeyW and friends).
 target_link_libraries(AppBoxTests PRIVATE advapi32)
+
+# Version resource of the packer core, which reads the program information the
+# launcher payload inherits from the main program of the packaged application
+# (GetFileVersionInfoW and VerQueryValueW).
+target_link_libraries(AppBoxTests PRIVATE version)
 
 # Digest of a patch package (BCryptOpenAlgorithmProvider and friends).
 target_link_libraries(AppBoxTests PRIVATE bcrypt)

@@ -342,11 +342,16 @@ The unit tests of the packer:
   environment variables, which is always written, the optional `proxy` member,
   which is omitted while it is absent and read back as absent, the optional
   `project_type` member, which is written for every project type and read as
-  `standalone` while it is absent, and the atomic read.
+  `standalone` while it is absent, the optional `metadata` member, which names
+  the program the file properties of the launcher are inherited from and the
+  fields the user edited, refuses a key which is not a field of a version
+  resource and a field which is listed twice, and is read as empty while it is
+  absent, and the atomic read.
 * `test/unit/ProjectFile.cpp` — the file layer of a project file: the
   round trip of the configuration, of the virtual registry, of the
   filesystem isolation modes, of the proxy of the network workspace, of the
-  environment variables of the environment workspace and of the project type,
+  environment variables of the environment workspace, of the project type and of
+  the file properties the launcher carries,
   the strict UTF-8 encoding, the failures of a malformed document and the
   atomicity of applying a document to the models, including a mode which a file
   cannot hold, a path which is listed twice, a proxy the model refuses, a
@@ -367,8 +372,10 @@ The unit tests of the packer:
 * `test/unit/PackService.cpp` — the archive carries the hive, the isolation
   file of the registry, the isolation file of the filesystem workspace, the
   isolation file of the network workspace, the isolation file of the
-  environment workspace and the two sandbox injection modules below `app`; the
-  patch package carries the very same resources
+  environment workspace and the two sandbox injection modules below `app`, and
+  the launcher carries the file properties of the program the metadata of the
+  session inherits from with the fields the user edited applied on top of them;
+  the patch package carries the very same resources
   rooted at the archive root, without the launcher, without the injection modules
   and without an `app`
   directory, and needs neither a startup file nor the payloads, which is
@@ -502,6 +509,15 @@ executable carries itself:
 * `test/unit/ApplicationIcon.cpp` — the icon the packer writes into the first
   startup file of an archive, including the round trip through the real launcher
   payload.
+* `test/unit/ApplicationMetadata.cpp` — the file properties the packer writes
+  into the launcher of an archive: the fields of a version resource and their
+  labels, the lookup and the merge of a field list, the overrides a session
+  derives from the values it shows, the program the information is inherited
+  from by default (the first program marked for auto start, in ascending order
+  of its executable file name), the read of a program without version
+  information, and the round trip of the information through a payload,
+  including the replacement of a resource a payload already carries and the
+  round trip through the real launcher payload.
 * `test/unit/StartupTree.cpp` — the startup file tree of the packer: the rows
   of the imports, the default trigger of a file, the uniqueness of a trigger
   and the auto start flag.
@@ -1175,5 +1191,5 @@ header comment.
   isolation architecture.
 * [PatchLayer.md](../docs/PatchLayer.md) — patch packages: layout, merge rules
   and the launcher side.
-* [Tracer.md](../docs/Tracer.md) — Tracer workspace: usage, mechanism and
-  measured cost.
+* [Debug.md](../docs/Debug.md) — Debug workspace, Trace tab: usage, mechanism
+  and measured cost.

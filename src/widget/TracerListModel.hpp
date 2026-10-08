@@ -12,7 +12,7 @@
 #include <vector>
 
 /**
- * @brief Flat list model of the tracer workspace.
+ * @brief Flat list model of the `Trace` tab of the Debug workspace.
  *
  * The model presents the rows of the current view as a single column list. A
  * row whose function was used by the last run keeps the default text colour;

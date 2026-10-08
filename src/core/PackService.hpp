@@ -1,6 +1,7 @@
 #ifndef APPBOX_PACKER_CORE_PACK_SERVICE_HPP
 #define APPBOX_PACKER_CORE_PACK_SERVICE_HPP
 
+#include "ApplicationMetadata.hpp"
 #include "BuildReport.hpp"
 #include "EnvironmentModel.hpp"
 #include "FilesystemIsolationModel.hpp"
@@ -151,6 +152,16 @@ struct PackPayloads
  * its own icon resources. A startup file without an icon leaves the payload
  * unchanged; the run then only logs a warning instead of failing.
  *
+ * The launcher program carries the file properties of the packaged application
+ * as well: the version resource of the program the metadata of the session
+ * inherits from is written into the payload (see
+ * `src/core/ApplicationMetadata.hpp`), with the fields the user edited applied
+ * on top of it. The information is read while the run is going on, so a source
+ * program which was updated since the project was saved is picked up. A
+ * session without a source program, or with one whose version resource cannot
+ * be read, writes the fields the user edited only, and a payload which cannot
+ * be patched leaves the run a warning instead of a failure.
+ *
  * The payloads are supplied by the caller so unit tests can inject fake bytes
  * without a real launcher binary and without real sandbox modules.
  *
@@ -196,6 +207,9 @@ struct PackPayloads
  * @param[in] environment Environment variables of the workspace, which are
  *                        written into the environment domain of the archive as
  *                        an isolation file.
+ * @param[in] metadata File properties of the launcher, which are read from the
+ *                     program the session inherits them from and written into
+ *                     the launcher payload.
  * @param[in] payloads Embedded launcher program and sandbox injection modules,
  *                     written beside the resources of the archive.
  * @param[in] zip_path Destination zip path (truncated when it exists).
@@ -205,8 +219,8 @@ struct PackPayloads
  * @return Error description, empty on success.
  */
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
-                 const NetworkModel& network, const EnvironmentModel& environment, const PackPayloads& payloads,
-                 const std::wstring& zip_path, const BuildProgressCallback& progress);
+                 const NetworkModel& network, const EnvironmentModel& environment, const ApplicationMetadata& metadata,
+                 const PackPayloads& payloads, const std::wstring& zip_path, const BuildProgressCallback& progress);
 
 /**
  * @brief Pack the resources of the model into a patch package.

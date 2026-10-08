@@ -140,6 +140,21 @@ bool BuildSampleIsolation(appbox::FilesystemIsolationModel& isolation)
 }
 
 /**
+ * @brief Session state the cases below restore a document into.
+ *
+ * The file properties of the launcher are not the subject of the cases which
+ * use this helper, so they are restored into one sink which every case shares;
+ * a case which describes them keeps a state of its own.
+ *
+ * @return The sink of the file properties.
+ */
+appbox::ApplicationMetadata& ScratchMetadata()
+{
+    static appbox::ApplicationMetadata metadata;
+    return metadata;
+}
+
+/**
  * @brief Build the document of a session with the network and the environment
  *        model left out.
  *
@@ -153,14 +168,16 @@ bool BuildSampleIsolation(appbox::FilesystemIsolationModel& isolation)
  * @param[in] isolation Filesystem modes to store.
  * @param[in] output_path Output path to store.
  * @param[in] project_type Kind of product to store, standalone by default.
+ * @param[in] metadata File properties to store, none by default.
  * @return The document of the session.
  */
 appbox::ProjectDocument MakeDocument(const appbox::PackModel& model, const appbox::RegistryModel& registry,
                                      const appbox::FilesystemIsolationModel& isolation, const std::wstring& output_path,
-                                     appbox::ProjectType project_type = appbox::ProjectType::Standalone)
+                                     appbox::ProjectType                project_type = appbox::ProjectType::Standalone,
+                                     const appbox::ApplicationMetadata& metadata = {})
 {
     return appbox::MakeProjectDocument(model, registry, isolation, appbox::NetworkModel{}, appbox::EnvironmentModel{},
-                                       project_type, output_path);
+                                       metadata, project_type, output_path);
 }
 
 /**
@@ -181,8 +198,8 @@ bool ApplyDocument(const appbox::ProjectDocument& document, appbox::PackModel& m
     appbox::NetworkModel     network;
     appbox::EnvironmentModel environment;
     appbox::ProjectType      project_type = appbox::ProjectType::Standalone;
-    return appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, project_type,
-                                        output_path, error);
+    return appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, ScratchMetadata(),
+                                        project_type, output_path, error);
 }
 
 /**
@@ -195,8 +212,8 @@ appbox::ProjectDocument MakeEnvironmentDocument(const appbox::EnvironmentModel& 
                                                 const std::wstring&             output_path)
 {
     return appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
-                                       appbox::NetworkModel{}, environment, appbox::ProjectType::Standalone,
-                                       output_path);
+                                       appbox::NetworkModel{}, environment, appbox::ApplicationMetadata{},
+                                       appbox::ProjectType::Standalone, output_path);
 }
 
 /**
@@ -219,8 +236,8 @@ bool ApplyEnvironmentDocument(const appbox::ProjectDocument& document, appbox::E
     appbox::NetworkModel             network;
     appbox::ProjectType              project_type = appbox::ProjectType::Standalone;
     std::wstring                     output_path;
-    return appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, project_type,
-                                        output_path, error);
+    return appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, ScratchMetadata(),
+                                        project_type, output_path, error);
 }
 
 /**
@@ -1050,9 +1067,10 @@ TEST(Unit_ProjectFile, NetworkRedirectionsTravelWithTheProjectFile)
     ASSERT_TRUE(network.AddDnsEntry(L"update.example.com", L"127.0.0.1", error)) << error;
     ASSERT_TRUE(network.AddDnsEntry(L"api.example.com", L"::1", error)) << error;
 
-    const auto document = appbox::MakeProjectDocument(
-        appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, network,
-        appbox::EnvironmentModel{}, appbox::ProjectType::Standalone, L"D:\\out\\MyApp.zip");
+    const auto document =
+        appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
+                                    network, appbox::EnvironmentModel{}, appbox::ApplicationMetadata(),
+                                    appbox::ProjectType::Standalone, L"D:\\out\\MyApp.zip");
 
     const auto path = temp.File(L"network.json");
     ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
@@ -1068,7 +1086,8 @@ TEST(Unit_ProjectFile, NetworkRedirectionsTravelWithTheProjectFile)
     appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
-                                             loaded_environment, loaded_project_type, loaded_output, error))
+                                             loaded_environment, ScratchMetadata(), loaded_project_type, loaded_output,
+                                             error))
         << error;
 
     ASSERT_EQ(loaded_network.DnsEntries().size(), 2u);
@@ -1077,6 +1096,61 @@ TEST(Unit_ProjectFile, NetworkRedirectionsTravelWithTheProjectFile)
     EXPECT_EQ(loaded_network.DnsEntries()[1].hostname, L"api.example.com");
     EXPECT_EQ(loaded_network.DnsEntries()[1].redirect, L"::1");
     EXPECT_EQ(loaded_output, L"D:\\out\\MyApp.zip");
+}
+
+TEST(Unit_ProjectFile, FilePropertiesTravelWithTheProjectFile)
+{
+    TempDir temp;
+
+    appbox::ApplicationMetadata metadata;
+    metadata.source = L"C:\\Program Files\\MyApp\\app.exe";
+    metadata.overrides = {
+        { appbox::metadata_field::kFileDescription, L"My Application" },
+        { appbox::metadata_field::kCompanyName,     L""               },
+    };
+
+    const auto document = MakeDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
+                                       L"D:\\out\\MyApp.zip", appbox::ProjectType::Standalone, metadata);
+
+    const auto  path = temp.File(L"metadata.json");
+    std::string error;
+    ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
+
+    appbox::ProjectDocument loaded_document;
+    ASSERT_TRUE(appbox::LoadProject(path.wstring(), loaded_document, error)) << error;
+
+    appbox::PackModel                loaded;
+    appbox::RegistryModel            loaded_registry;
+    appbox::FilesystemIsolationModel loaded_isolation;
+    appbox::NetworkModel             loaded_network;
+    appbox::EnvironmentModel         loaded_environment;
+    appbox::ApplicationMetadata      loaded_metadata;
+    appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
+    std::wstring                     loaded_output;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
+                                             loaded_environment, loaded_metadata, loaded_project_type, loaded_output,
+                                             error))
+        << error;
+
+    EXPECT_EQ(loaded_metadata.source, metadata.source);
+    ASSERT_EQ(loaded_metadata.overrides.size(), 2u);
+    EXPECT_EQ(loaded_metadata.overrides[0].key, appbox::metadata_field::kFileDescription);
+    EXPECT_EQ(loaded_metadata.overrides[0].value, L"My Application");
+
+    /* An emptied field is stored as an override, which is what it is. */
+    EXPECT_EQ(loaded_metadata.overrides[1].key, appbox::metadata_field::kCompanyName);
+    EXPECT_TRUE(loaded_metadata.overrides[1].value.empty());
+
+    /* A document without file properties clears the ones of the session. */
+    const auto plain =
+        MakeDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, L"");
+
+    appbox::ApplicationMetadata cleared = loaded_metadata;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(plain, loaded, loaded_registry, loaded_isolation, loaded_network,
+                                             loaded_environment, cleared, loaded_project_type, loaded_output, error))
+        << error;
+    EXPECT_TRUE(cleared.source.empty());
+    EXPECT_TRUE(cleared.overrides.empty());
 }
 
 TEST(Unit_ProjectFile, ApplyRejectsABrokenNetworkMember)
@@ -1113,14 +1187,14 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenNetworkMember)
     /* The address and the uniqueness of a hostname are rules of the model, so
      * the failure is reported while the document is applied. */
     ASSERT_TRUE(appbox::LoadProject(bad_address.wstring(), document, error)) << error;
-    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, project_type,
-                                              output, error));
+    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
+                                              ScratchMetadata(), project_type, output, error));
     EXPECT_NE(error.find("network[0]"), std::string::npos);
     EXPECT_NE(error.find("is not an IPv4 or an IPv6 address"), std::string::npos);
 
     ASSERT_TRUE(appbox::LoadProject(duplicate.wstring(), document, error)) << error;
-    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, project_type,
-                                              output, error));
+    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
+                                              ScratchMetadata(), project_type, output, error));
     EXPECT_NE(error.find("network[1]"), std::string::npos);
     EXPECT_NE(error.find("listed twice"), std::string::npos);
 
@@ -1148,9 +1222,9 @@ TEST(Unit_ProjectFile, ProxyTravelsWithTheProjectFile)
     ASSERT_TRUE(network.SetProxy(proxy, error)) << error;
     ASSERT_TRUE(network.AddDnsEntry(L"update.example.com", L"127.0.0.1", error)) << error;
 
-    const auto document =
-        appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
-                                    network, appbox::EnvironmentModel{}, appbox::ProjectType::Standalone, L"");
+    const auto document = appbox::MakeProjectDocument(
+        appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, network,
+        appbox::EnvironmentModel{}, appbox::ApplicationMetadata(), appbox::ProjectType::Standalone, L"");
 
     const auto path = temp.File(L"proxy.json");
     ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
@@ -1166,7 +1240,8 @@ TEST(Unit_ProjectFile, ProxyTravelsWithTheProjectFile)
     appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
-                                             loaded_environment, loaded_project_type, loaded_output, error))
+                                             loaded_environment, ScratchMetadata(), loaded_project_type, loaded_output,
+                                             error))
         << error;
 
     ASSERT_TRUE(loaded_network.HasProxy());
@@ -1197,9 +1272,9 @@ TEST(Unit_ProjectFile, KeepsAProxyWhichIsTurnedOff)
     std::string          error;
     ASSERT_TRUE(network.SetProxy(proxy, error)) << error;
 
-    const auto document =
-        appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
-                                    network, appbox::EnvironmentModel{}, appbox::ProjectType::Standalone, L"");
+    const auto document = appbox::MakeProjectDocument(
+        appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, network,
+        appbox::EnvironmentModel{}, appbox::ApplicationMetadata(), appbox::ProjectType::Standalone, L"");
 
     /*
      * A proxy which was typed and then disabled is part of the document, so
@@ -1232,8 +1307,8 @@ TEST(Unit_ProjectFile, ApplyOfADocumentWithoutAProxyClearsTheProxy)
     appbox::EnvironmentModel         environment;
     appbox::ProjectType              project_type = appbox::ProjectType::Standalone;
     std::wstring                     output;
-    ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, project_type,
-                                             output, error))
+    ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
+                                             ScratchMetadata(), project_type, output, error))
         << error;
 
     /* A session which imports a configuration without a proxy holds none. */
@@ -1270,8 +1345,8 @@ TEST(Unit_ProjectFile, ApplyRejectsAProxyTheModelRefuses)
     appbox::EnvironmentModel         environment;
     appbox::ProjectType              project_type = appbox::ProjectType::Standalone;
     std::wstring                     output;
-    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, project_type,
-                                              output, error));
+    EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
+                                              ScratchMetadata(), project_type, output, error));
     EXPECT_NE(error.find("proxy"), std::string::npos) << error;
     EXPECT_NE(error.find("must not be empty"), std::string::npos) << error;
 
@@ -1448,7 +1523,8 @@ TEST(Unit_ProjectFile, ProjectTypeTravelsWithTheProjectFile)
     appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
-                                             loaded_environment, loaded_project_type, loaded_output, error))
+                                             loaded_environment, ScratchMetadata(), loaded_project_type, loaded_output,
+                                             error))
         << error;
 
     /* The session adopts the type of the file together with the models. */
@@ -1476,8 +1552,8 @@ TEST(Unit_ProjectFile, AFileWithoutAProjectTypeIsAStandaloneProject)
     appbox::EnvironmentModel         environment;
     appbox::ProjectType              project_type = appbox::ProjectType::Patch;
     std::wstring                     output;
-    ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, project_type,
-                                             output, error))
+    ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
+                                             ScratchMetadata(), project_type, output, error))
         << error;
 
     EXPECT_EQ(project_type, appbox::ProjectType::Standalone);

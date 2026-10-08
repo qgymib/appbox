@@ -415,6 +415,65 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
     return {};
 }
 
+/**
+ * @brief Read the file properties the launcher of a run carries.
+ *
+ * The information is read from the source program of the session, which is the
+ * program the metadata inherits from, and the fields the user edited are
+ * applied on top of it. The read happens while the run is going on, so a
+ * source program which was updated since the project was saved is picked up.
+ *
+ * A session without a source program still writes the fields the user edited,
+ * and so does a session whose source program cannot be read: the file
+ * properties of a project do not depend on the program being installed. The
+ * reason why nothing was inherited is reported through @p warning in that
+ * case, while the fields of the session are written all the same.
+ *
+ * @param[in] model The pack model.
+ * @param[in] metadata Metadata of the session.
+ * @param[out] info The information to write, empty when the session describes
+ *             none.
+ * @param[out] warning Reason why nothing was inherited, empty when the
+ *             information was read in full.
+ * @return true when there is information to write.
+ */
+bool ReadLauncherVersionInfo(const appbox::PackModel& model, const appbox::ApplicationMetadata& metadata,
+                             appbox::ApplicationVersionInfo& info, std::string& warning)
+{
+    warning.clear();
+
+    const auto source = appbox::MetadataSourcePath(model, metadata);
+    if (source.empty())
+    {
+        info.fields = metadata.overrides;
+        if (info.fields.empty())
+        {
+            warning = "the session has no program to inherit the file properties from";
+            return false;
+        }
+        return true;
+    }
+
+    std::string read_error;
+    if (appbox::ReadApplicationMetadata(source, info, read_error))
+    {
+        info.fields = appbox::MergeMetadataFields(info.fields, metadata.overrides);
+        return true;
+    }
+
+    /* A source which cannot be read leaves the fields the user edited. */
+    info = appbox::ApplicationVersionInfo{};
+    info.fields = metadata.overrides;
+    if (info.fields.empty())
+    {
+        warning = read_error;
+        return false;
+    }
+
+    warning = read_error;
+    return true;
+}
+
 } // namespace
 
 namespace appbox
@@ -470,8 +529,8 @@ std::wstring LauncherEntryName(const PackModel& model)
 }
 
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
-                 const NetworkModel& network, const EnvironmentModel& environment, const PackPayloads& payloads,
-                 const std::wstring& zip_path, const BuildProgressCallback& progress)
+                 const NetworkModel& network, const EnvironmentModel& environment, const ApplicationMetadata& metadata,
+                 const PackPayloads& payloads, const std::wstring& zip_path, const BuildProgressCallback& progress)
 {
     if (!model.HasStartupFiles())
     {
@@ -529,11 +588,11 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
          * run: the launcher then keeps its own icon and the reason is logged.
          */
         std::wstring      startup_path;
-        std::vector<char> patched_launcher;
+        std::vector<char> payload_image;
         if (model.StartupFilePath(model.StartupFiles().front(), startup_path))
         {
             std::string icon_warning;
-            patched_launcher =
+            payload_image =
                 ApplyApplicationIcon(payloads.launcher_bytes, payloads.launcher_size, startup_path, icon_warning);
             if (!icon_warning.empty())
             {
@@ -541,8 +600,37 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
             }
         }
 
-        const void* const payload = patched_launcher.empty() ? payloads.launcher_bytes : patched_launcher.data();
-        const auto        payload_size = patched_launcher.empty() ? payloads.launcher_size : patched_launcher.size();
+        /*
+         * The launcher carries the file properties of the packaged application
+         * as well, which are the version information the shell shows on the
+         * `Details` page of the extracted program. The information is applied
+         * to the image the icon patch produced, and a patch which cannot be
+         * applied never fails the run either: the payload keeps the state of
+         * the patch before it.
+         */
+        {
+            const void* const base = payload_image.empty() ? payloads.launcher_bytes : payload_image.data();
+            const auto        base_size = payload_image.empty() ? payloads.launcher_size : payload_image.size();
+
+            ApplicationVersionInfo info;
+            std::string            metadata_warning;
+            if (ReadLauncherVersionInfo(model, metadata, info, metadata_warning))
+            {
+                auto patched = ApplyApplicationMetadata(base, base_size, info, metadata_warning);
+                if (!patched.empty())
+                {
+                    payload_image = std::move(patched);
+                }
+            }
+
+            if (!metadata_warning.empty())
+            {
+                spdlog::warn("the launcher keeps its own file properties: {}", metadata_warning);
+            }
+        }
+
+        const void* const payload = payload_image.empty() ? payloads.launcher_bytes : payload_image.data();
+        const auto        payload_size = payload_image.empty() ? payloads.launcher_size : payload_image.size();
         if (!writer.AddFileBuffer(launcher_entry, payload, payload_size, error))
         {
             return error;
