@@ -36,7 +36,14 @@ static NTSTATUS Hook_NtClose(HANDLE Handle)
     bool bPendingDelete = false;
     if (info.get() != nullptr)
     {
-        bPendingDelete = IsPendingDelete(Handle);
+        /*
+         * A handle which was opened with `FILE_DELETE_ON_CLOSE` removes its
+         * object while it is closed, and the object never reports a pending
+         * delete for it, so the flag of the record decides that case. Every
+         * other handle is asked for the state of the object: only a handle
+         * which carries the access to delete it can have a pending delete.
+         */
+        bPendingDelete = info->bDeleteOnClose || IsPendingDelete(Handle);
         LOG_T(L"path:{}, bPendingDelete:{}", info->viewPath, bPendingDelete);
     }
 

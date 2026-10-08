@@ -94,6 +94,17 @@ public:
      */
     ULONG ObjAttributes;
 
+    /**
+     * @brief Whether the call which opened the handle asked for the delete of
+     *        the object when the handle is closed.
+     *
+     * The flag of the call (`FILE_DELETE_ON_CLOSE`) is not part of the state
+     * the file system reports for the object: a handle which carries it removes
+     * its object while it is closed, without the object ever reporting a
+     * pending delete, so the close has to know it from the record of the open.
+     */
+    bool bDeleteOnClose;
+
     ~HandleInfo();
     HandleInfo(const HandleInfo&) = delete;
     HandleInfo(HandleInfo&&) = delete;

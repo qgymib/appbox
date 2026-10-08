@@ -12,6 +12,7 @@
 #include "hook/RtlInitUnicodeString.hpp"
 #include "utils/BitParser.hpp"
 #include "utils/CopyFileNt.hpp"
+#include "utils/HandleInfo.hpp"
 #include "utils/Log.hpp"
 #include "utils/MappingAsDosNtPath.hpp"
 #include "utils/Defines.hpp"
@@ -144,6 +145,70 @@ static NTSTATUS NtCreateFileOpenFS(const std::wstring& path, ULONG Attributes, P
         sys_NtClose(tmpHandle);
     }
     return st;
+}
+
+/**
+ * @brief Whether the handle of the call may be marked for deletion.
+ *
+ * A delete on close is a modification of the entry, so the caller has to ask
+ * for the access which removes it: `FILE_DELETE_ON_CLOSE` is only accepted
+ * together with `DELETE`, and a caller which marks the handle for deletion
+ * afterwards asks for `DELETE` as well. A handle which carries neither access
+ * can never delete its object, so no handle information is needed for it.
+ *
+ * @param[in] DesiredAccess Access the caller asked for.
+ * @param[in] CreateOptions Options of the call.
+ * @return true when the handle may be marked for deletion.
+ */
+static bool MayDeleteOnClose(ACCESS_MASK DesiredAccess, ULONG CreateOptions)
+{
+    return (DesiredAccess & DELETE) != 0 || (CreateOptions & FILE_DELETE_ON_CLOSE) != 0;
+}
+
+/**
+ * @brief Record the information of a handle which may be marked for deletion.
+ *
+ * `NtClose` is where the sandbox records the delete of a handle which carries
+ * a pending delete, so such a handle needs the information `NtOpenFile` writes
+ * as well. The recorded resolve has to describe the layers as they are once
+ * the open succeeded: the close removes the object the handle denotes, so the
+ * record is what tells the delete which layers still hold the name, and it is
+ * the only place that information is available: the object is gone by the time
+ * the close runs.
+ *
+ * The path is resolved again here instead of reusing the result of the call,
+ * because the call changes what the layers hold: it creates the entry, copies
+ * it up into the upper layer and removes a whiteout marker which hid the entry
+ * of a lower layer, and a record taken before the call would name the wrong
+ * layers. A path the record cannot be built for stays unrecorded, in which
+ * case the close removes the layer object without hiding the layers below it.
+ *
+ * @param[in] handle Handle the call opened.
+ * @param[in] viewPath Path of the view the handle denotes.
+ * @param[in] ObjectAttributes Attributes of the call.
+ * @param[in] CreateOptions Options of the call.
+ */
+static void RecordDeletableHandle(HANDLE handle, const std::wstring& viewPath, POBJECT_ATTRIBUTES ObjectAttributes,
+                                  ULONG CreateOptions)
+{
+    appbox::filesystem::ResolveOption resolve_option;
+    resolve_option.NameAttributes = ObjectAttributes->Attributes;
+    resolve_option.bStopOnFirstFound = false;
+
+    auto resolve_result = appbox::filesystem::Resolve(viewPath, resolve_option);
+    LOG_T("resolve for handle: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
+    if (resolve_result->status != appbox::filesystem::ResolveResult::Status::Exists)
+    {
+        return;
+    }
+
+    appbox::HandleInfo::Create(
+        handle, [&viewPath, ObjectAttributes, &resolve_result, CreateOptions](appbox::HandleInfo::Ptr info) {
+            info->viewPath = viewPath;
+            info->resolve = resolve_result;
+            info->ObjAttributes = ObjectAttributes->Attributes;
+            info->bDeleteOnClose = (CreateOptions & FILE_DELETE_ON_CLOSE) != 0;
+        });
 }
 
 static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes,
@@ -317,9 +382,23 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
         open_path = resolve_result->hPath[0].fPath;
     }
 
-    return NtCreateFileOpenFS(open_path, ObjectAttributes->Attributes, FileHandle, DesiredAccess, IoStatusBlock,
-                              AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer,
-                              EaLength);
+    const NTSTATUS st = NtCreateFileOpenFS(open_path, ObjectAttributes->Attributes, FileHandle, DesiredAccess,
+                                           IoStatusBlock, AllocationSize, FileAttributes, ShareAccess,
+                                           CreateDisposition, CreateOptions, EaBuffer, EaLength);
+
+    /*
+     * A handle which the caller may mark for deletion records the same
+     * information `NtOpenFile` records, so the close of the handle can hide
+     * the layers which still hold the name. The handle is only known once the
+     * call succeeded, and a caller which passed no handle keeps the internal
+     * one of the helper, which the helper closed already.
+     */
+    if (NT_SUCCESS(st) && FileHandle != nullptr && MayDeleteOnClose(DesiredAccess, CreateOptions))
+    {
+        RecordDeletableHandle(*FileHandle, nativate_fs_path, ObjectAttributes, CreateOptions);
+    }
+
+    return st;
 }
 
 static void LoadNtCreateFile()

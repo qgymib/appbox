@@ -575,6 +575,10 @@ comment.
 | `DeleteFile_UpperOnly` | `data.txt` | – | delete `data.txt` | success, no whiteout (nothing to hide) |
 | `DeleteFile_NonExists` | – | `data1.txt` | delete `data.txt` | failure, no whiteout |
 | `DeleteFile_WhiteoutInLower_ExistsInUpper` | `data.txt` | `data.txt.$APPBOX_DELETE$` | delete `data.txt` | success, file of the state deleted, no whiteout in the state |
+| `DeleteOnClose_LowerLayer` | – | `data.txt` | open `data.txt` with `CreateFileW` (`DELETE` and `FILE_FLAG_DELETE_ON_CLOSE`) and close the handle | success, the close records the delete: no file in the state, whiteout created, the view reports `File Not Found`, resources unchanged |
+| `DeleteOnClose_MergeHost` | – | folder `Merge`, `packed.txt` | open the file `data.txt` of the host filesystem the same way | success, the file of the host filesystem is really removed, no whiteout in the state |
+| `DeleteOnClose_UpperOnly` | `data.txt` | – | open `data.txt` the same way | success, file of the state deleted, no whiteout (nothing to hide) |
+| `DeleteOnClose_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | create `data.txt` again (`CREATE_NEW`) the same way | success, file of the state deleted, the whiteout is written again, the view reports `File Not Found` |
 | `ListDir_LowerLayer` | – | `F.txt` | list `#USERPROFILE#` | `F.txt` appears exactly once, host entries also listed |
 | `ListDir_WhiteoutInUpper` | `F.txt.$APPBOX_DELETE$` | `F.txt`, `F2.txt` | list `#USERPROFILE#` | `F.txt` hidden, `F2.txt` listed once |
 | `NewFile_WhiteoutInLower` | – | `data.txt.$APPBOX_DELETE$` | create `data.txt` (`CREATE_NEW`) | success, file created in the state |

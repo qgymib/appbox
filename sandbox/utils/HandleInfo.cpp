@@ -113,6 +113,7 @@ appbox::HandleInfo::HandleInfo()
     data_ = new Data;
     handle = nullptr;
     ObjAttributes = 0;
+    bDeleteOnClose = false;
 }
 
 appbox::HandleInfo::~HandleInfo()

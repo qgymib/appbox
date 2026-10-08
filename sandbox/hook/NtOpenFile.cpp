@@ -124,12 +124,13 @@ static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
 
     if (NT_SUCCESS(st))
     {
-        appbox::HandleInfo::Create(
-            *FileHandle, [&nativate_fs_path, ObjectAttributes, &resolve_result](appbox::HandleInfo::Ptr info) {
-                info->viewPath = nativate_fs_path;
-                info->resolve = resolve_result;
-                info->ObjAttributes = ObjectAttributes->Attributes;
-            });
+        appbox::HandleInfo::Create(*FileHandle, [&nativate_fs_path, ObjectAttributes, &resolve_result,
+                                                 OpenOptions](appbox::HandleInfo::Ptr info) {
+            info->viewPath = nativate_fs_path;
+            info->resolve = resolve_result;
+            info->ObjAttributes = ObjectAttributes->Attributes;
+            info->bDeleteOnClose = (OpenOptions & FILE_DELETE_ON_CLOSE) != 0;
+        });
     }
     return st;
 }

@@ -306,6 +306,13 @@ These rules constrain every hooked API; the implementation lives in
   delete of a `Merge` path removes the entry of the host filesystem as well,
   which is the layer the mode names, and writes the marker only while a layer
   below the upper one still holds the entry.
+* **A delete on close is recorded when the handle is closed.** A handle which
+  the caller may mark for deletion is recorded by the hook which opens it,
+  whatever entry point that is, so the close which removes the object the
+  handle denotes records the delete as well. The layer object is gone by the
+  time the close runs, so the record names the layers as they were once the
+  open succeeded, and those layers decide whether a whiteout marker has to
+  hide the ones which still hold the name.
 * **Directory listings are merged.** The enumeration of a directory merges its
   entries across all layers which the isolation leaves visible: upper layer
   first, then every visible lower layer, then the host layer. A name which an
@@ -360,45 +367,44 @@ listed in [test/README.md](../test/README.md).
 The following points are visible in the current code and should be kept in mind when
 extending or testing the isolation:
 
-1. **Delete-on-close is only handled for registered handles.** `NtClose` consults
-   `HandleInfo`, which is populated by `NtOpenFile` only. A handle opened through the
-   `NtCreateFile` hook and marked for deletion has no handle information, so closing it
-   deletes the layer object without creating the whiteout that would hide the lower
-   layers.
-2. **Directory merging covers the name carrying information classes only.** The merge
+1. **Directory merging covers the name carrying information classes only.** The merge
    reads and rewrites the entry list, so it understands `FileDirectoryInformation`,
    `FileFullDirectoryInformation` and `FileBothDirectoryInformation`. A caller which uses
    one of the `FileId...DirectoryInformation` classes, an information class which does
    not carry a name, or a directory handle which was not registered by `NtOpenFile`
    (a handle of `CreateFileW`, for example) sees the single layer the handle was opened
    with.
-3. **A mode does not reach the alternate data streams of its file.** The lookup of the
+2. **A mode does not reach the alternate data streams of its file.** The lookup of the
    isolation walks the path upwards component by component, and a stream name such as
    `file.txt:stream` is the last component of its own path, so it does not inherit the
    mode of `file.txt`. The mode of a folder still covers the streams of the files below
    it.
-4. **Copy-up copies the default data stream only.** Alternate data streams are not
+3. **Copy-up copies the default data stream only.** Alternate data streams are not
    handled specially: a stream name such as `file.txt:stream` is carried into the upper
    layer path as part of the file name, while copy-up reads only the file content, and
    whiteout / opaque markers are not stream aware.
-5. **Non-local paths bypass isolation.** UNC paths, named pipes, mailslots, network
+4. **Non-local paths bypass isolation.** UNC paths, named pipes, mailslots, network
    volumes and drive-relative paths cannot be converted to a view path, so the hooks
    forward them unchanged. A rename or a link whose name is such a path is forwarded as
    well.
-6. **`ResolveFs` is fixed at injection time.** There is no way to add or remove a lower
+5. **`ResolveFs` is fixed at injection time.** There is no way to add or remove a lower
    layer while a sandboxed process is running; the layers come from the injected
    configuration and live in the `appbox::sandbox` singleton. The isolation modes are
    loaded once as well, so a mode which is changed in the packer afterwards needs a new
    archive.
-7. **A root mode which hides the host filesystem stops the process.** The mode of the
+6. **A root mode which hides the host filesystem stops the process.** The mode of the
    root of the view covers every path no other entry names, so `Full` or `Whiteout` at
    the root hides the whole host filesystem: the sandboxed process can no longer load
    the modules of the host and fails to start, which is the behaviour the mode asks for
    but which no end-to-end case can drive. A root mode of `Write Copy` or `Merge` is the
    one a workspace normally uses.
-8. **A rename of a directory which only a read-only layer holds fails.** The open of the
+7. **A rename of a directory which only a read-only layer holds fails.** The open of the
    directory with the access a rename needs is a modification, and the copy-up such a
    call asks for copies a file: a directory stays in the layer which holds it, so the
    open of the overlay entry fails and the caller is told that the entry is missing.
    Neither layer changes, so the read-only layers stay untouched. A directory the
    overlay or the host filesystem holds is renamed as usual.
+8. **A delete on close of a handle the sandbox did not open is not recorded.** The
+   delete of such a handle is recorded while it is closed, and the sandbox only knows
+   the layers of a handle it opened itself: a handle which was inherited or duplicated
+   from another process removes its layer object without hiding the layers below it.
