@@ -63,6 +63,21 @@
 #define OBJ_CASE_INSENSITIVE                        0x00000040
 #define OBJ_INHERIT                                 0x00000002
 
+/*
+ * The flags of the `...Ex` classes of a rename and of a link. The Windows SDK
+ * declares the rename flags below `_WIN32_WINNT_WIN10_RS1`, which this module
+ * does not ask for, so they are declared here as well.
+ */
+#ifndef FILE_RENAME_FLAG_REPLACE_IF_EXISTS
+#define FILE_RENAME_FLAG_REPLACE_IF_EXISTS          0x00000001
+#endif
+#ifndef FILE_RENAME_FLAG_POSIX_SEMANTICS
+#define FILE_RENAME_FLAG_POSIX_SEMANTICS            0x00000002
+#endif
+#ifndef FILE_LINK_FLAG_REPLACE_IF_EXISTS
+#define FILE_LINK_FLAG_REPLACE_IF_EXISTS            0x00000001
+#endif
+
 #define SL_RESTART_SCAN                             0x00000001
 #define SL_RETURN_SINGLE_ENTRY                      0x00000002
 #define SL_INDEX_SPECIFIED                          0x00000004
@@ -534,6 +549,128 @@ typedef struct _FILE_DISPOSITION_INFORMATION_EX
     ULONG Flags;
 } FILE_DISPOSITION_INFORMATION_EX, *PFILE_DISPOSITION_INFORMATION_EX;
 
+/**
+ * @brief Name of an entry, reported by the name carrying query classes.
+ *
+ * The name is relative to the root of the volume of the handle, which is the
+ * form the file system stores for a file object: a file below
+ * `\??\C:\Windows` is reported as `\Windows\...`.
+ *
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_name_information
+ */
+typedef struct _FILE_NAME_INFORMATION
+{
+    ULONG FileNameLength;
+    WCHAR FileName[1];
+} FILE_NAME_INFORMATION, *PFILE_NAME_INFORMATION;
+
+/**
+ * @brief New name of a rename, carried by `FileRenameInformation`.
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information
+ */
+typedef struct _FILE_RENAME_INFORMATION
+{
+    BOOLEAN ReplaceIfExists;
+    HANDLE  RootDirectory;
+    ULONG   FileNameLength;
+    WCHAR   FileName[1];
+} FILE_RENAME_INFORMATION, *PFILE_RENAME_INFORMATION;
+
+/**
+ * @brief New name of a rename, carried by `FileRenameInformationEx`.
+ *
+ * The flags of the extended form replace the `ReplaceIfExists` byte of the
+ * plain form and the rest of the record has the same layout, so a caller which
+ * reads the name of either class can use the same offsets.
+ *
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information_ex
+ */
+typedef struct _FILE_RENAME_INFORMATION_EX
+{
+    ULONG  Flags;
+    HANDLE RootDirectory;
+    ULONG  FileNameLength;
+    WCHAR  FileName[1];
+} FILE_RENAME_INFORMATION_EX, *PFILE_RENAME_INFORMATION_EX;
+
+/**
+ * @brief New name of a hard link, carried by `FileLinkInformation`.
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_link_information
+ */
+typedef struct _FILE_LINK_INFORMATION
+{
+    BOOLEAN ReplaceIfExists;
+    HANDLE  RootDirectory;
+    ULONG   FileNameLength;
+    WCHAR   FileName[1];
+} FILE_LINK_INFORMATION, *PFILE_LINK_INFORMATION;
+
+/**
+ * @brief New name of a hard link, carried by `FileLinkInformationEx`.
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_link_information_ex
+ */
+typedef struct _FILE_LINK_INFORMATION_EX
+{
+    ULONG  Flags;
+    HANDLE RootDirectory;
+    ULONG  FileNameLength;
+    WCHAR  FileName[1];
+} FILE_LINK_INFORMATION_EX, *PFILE_LINK_INFORMATION_EX;
+
+/**
+ * @brief Identity of an entry inside its volume.
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_internal_information
+ */
+typedef struct _FILE_INTERNAL_INFORMATION
+{
+    LARGE_INTEGER IndexNumber;
+} FILE_INTERNAL_INFORMATION, *PFILE_INTERNAL_INFORMATION;
+
+/**
+ * @brief Size of the extended attributes of an entry.
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_ea_information
+ */
+typedef struct _FILE_EA_INFORMATION
+{
+    ULONG EaSize;
+} FILE_EA_INFORMATION, *PFILE_EA_INFORMATION;
+
+/**
+ * @brief Access mask the entry was opened with.
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_access_information
+ */
+typedef struct _FILE_ACCESS_INFORMATION
+{
+    ACCESS_MASK AccessFlags;
+} FILE_ACCESS_INFORMATION, *PFILE_ACCESS_INFORMATION;
+
+/**
+ * @brief Position of the file pointer of an entry.
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_position_information
+ */
+typedef struct _FILE_POSITION_INFORMATION
+{
+    LARGE_INTEGER CurrentByteOffset;
+} FILE_POSITION_INFORMATION, *PFILE_POSITION_INFORMATION;
+
+/**
+ * @brief Mode of an entry.
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_mode_information
+ */
+typedef struct _FILE_MODE_INFORMATION
+{
+    ULONG Mode;
+} FILE_MODE_INFORMATION, *PFILE_MODE_INFORMATION;
+
+/**
+ * @brief Alignment an entry requires.
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_alignment_information
+ */
+typedef struct _FILE_ALIGNMENT_INFORMATION
+{
+    ULONG AlignmentRequirement;
+} FILE_ALIGNMENT_INFORMATION, *PFILE_ALIGNMENT_INFORMATION;
+
 typedef struct _FILE_STANDARD_INFORMATION
 {
     LARGE_INTEGER AllocationSize;
@@ -542,6 +679,29 @@ typedef struct _FILE_STANDARD_INFORMATION
     BOOLEAN       DeletePending;
     BOOLEAN       Directory;
 } FILE_STANDARD_INFORMATION, *PFILE_STANDARD_INFORMATION;
+
+/**
+ * @brief Every information a handle reports, carried by `FileAllInformation`.
+ *
+ * The name is the last member of the record, so a caller which answers the
+ * class with a translated name only has to rewrite the tail of the buffer the
+ * file system filled. The `static_assert` in the hook which uses the record
+ * pins the offset of the name against the layout the file system reports.
+ *
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_all_information
+ */
+typedef struct _FILE_ALL_INFORMATION
+{
+    FILE_BASIC_INFORMATION     BasicInformation;
+    FILE_STANDARD_INFORMATION  StandardInformation;
+    FILE_INTERNAL_INFORMATION  InternalInformation;
+    FILE_EA_INFORMATION        EaInformation;
+    FILE_ACCESS_INFORMATION    AccessInformation;
+    FILE_POSITION_INFORMATION  PositionInformation;
+    FILE_MODE_INFORMATION      ModeInformation;
+    FILE_ALIGNMENT_INFORMATION AlignmentInformation;
+    FILE_NAME_INFORMATION      NameInformation;
+} FILE_ALL_INFORMATION, *PFILE_ALL_INFORMATION;
 
 typedef struct _PROCESS_BASIC_INFORMATION
 {

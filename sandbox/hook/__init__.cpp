@@ -13,10 +13,8 @@
 #include "hook/NtDeleteFile.hpp"
 #include "hook/NtDeleteKey.hpp"
 #include "hook/NtDeleteValueKey.hpp"
-#include "hook/NtDeviceIoControlFile.hpp"
 #include "hook/NtEnumerateKey.hpp"
 #include "hook/NtEnumerateValueKey.hpp"
-#include "hook/NtFsControlFile.hpp"
 #include "hook/NtGdiAddFontResourceW.hpp"
 #include "hook/NtGdiRemoveFontResourceW.hpp"
 #include "hook/NtOpenFile.hpp"
@@ -32,7 +30,6 @@
 #include "hook/NtQueryMultipleValueKey.hpp"
 #include "hook/NtQueryObject.hpp"
 #include "hook/NtQueryValueKey.hpp"
-#include "hook/NtQueryVolumeInformationFile.hpp"
 #include "hook/NtReadFile.hpp"
 #include "hook/NtSaveKey.hpp"
 #include "hook/NtSaveKeyEx.hpp"
@@ -104,10 +101,8 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtDeleteFile,
     &appbox::HookNtDeleteKey,
     &appbox::HookNtDeleteValueKey,
-    &appbox::HookNtDeviceIoControlFile,
     &appbox::HookNtEnumerateKey,
     &appbox::HookNtEnumerateValueKey,
-    &appbox::HookNtFsControlFile,
     &appbox::HookNtGdiAddFontResourceW,
     &appbox::HookNtGdiRemoveFontResourceW,
     &appbox::HookNtOpenFile,
@@ -123,7 +118,6 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtQueryMultipleValueKey,
     &appbox::HookNtQueryObject,
     &appbox::HookNtQueryValueKey,
-    &appbox::HookNtQueryVolumeInformationFile,
     &appbox::HookNtReadFile,
     &appbox::HookNtSaveKey,
     &appbox::HookNtSaveKeyEx,

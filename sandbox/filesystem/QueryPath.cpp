@@ -5,6 +5,46 @@
 #include "Resolve.hpp"
 #include "QueryPath.hpp"
 
+appbox::filesystem::QueryPathResult appbox::filesystem::QueryPathFromResolve(const ResolveResult& resolve)
+{
+    QueryPathResult result;
+
+    if (!resolve.bParentExist)
+    {
+        result.outcome = QueryPathResult::Outcome::NotFound;
+        result.status = STATUS_OBJECT_PATH_NOT_FOUND;
+        return result;
+    }
+    if (resolve.status != ResolveResult::Status::Exists)
+    {
+        result.outcome = QueryPathResult::Outcome::NotFound;
+        result.status = STATUS_OBJECT_NAME_NOT_FOUND;
+        return result;
+    }
+
+    /*
+     * The isolation already dropped the hits of the layers a mode hides, so
+     * the first hit is the layer the view reports the entry from: the upper
+     * layer first, then the lower layers and the host layer last.
+     */
+    result.outcome = QueryPathResult::Outcome::Found;
+    result.layerPath = resolve.hPath[0].fPath;
+    return result;
+}
+
+appbox::filesystem::QueryPathResult appbox::filesystem::ResolveViewPath(const std::wstring& viewPath,
+                                                                        ULONG nameAttributes, bool stopOnFirstFound)
+{
+    ResolveOption resolve_option;
+    resolve_option.NameAttributes = nameAttributes;
+    resolve_option.bStopOnFirstFound = stopOnFirstFound;
+
+    auto resolve_result = Resolve(viewPath, resolve_option);
+    LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
+
+    return QueryPathFromResolve(*resolve_result);
+}
+
 appbox::filesystem::QueryPathResult appbox::filesystem::ResolveQueryPath(const POBJECT_ATTRIBUTES ObjectAttributes)
 {
     QueryPathResult result;
@@ -27,32 +67,5 @@ appbox::filesystem::QueryPathResult appbox::filesystem::ResolveQueryPath(const P
         return result;
     }
 
-    /* Resolve the view path against the layers of the view. */
-    ResolveOption resolve_option;
-    resolve_option.NameAttributes = ObjectAttributes->Attributes;
-
-    auto resolve_result = Resolve(native_fs_path, resolve_option);
-    LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
-
-    if (!resolve_result->bParentExist)
-    {
-        result.outcome = QueryPathResult::Outcome::NotFound;
-        result.status = STATUS_OBJECT_PATH_NOT_FOUND;
-        return result;
-    }
-    if (resolve_result->status != ResolveResult::Status::Exists)
-    {
-        result.outcome = QueryPathResult::Outcome::NotFound;
-        result.status = STATUS_OBJECT_NAME_NOT_FOUND;
-        return result;
-    }
-
-    /*
-     * The isolation already dropped the hits of the layers a mode hides, so
-     * the first hit is the layer the view reports the entry from: the upper
-     * layer first, then the lower layers and the host layer last.
-     */
-    result.outcome = QueryPathResult::Outcome::Found;
-    result.layerPath = resolve_result->hPath[0].fPath;
-    return result;
+    return ResolveViewPath(native_fs_path, ObjectAttributes->Attributes);
 }

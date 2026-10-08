@@ -2,6 +2,7 @@
 #define APPBOX_SANDBOX_FILESYSTEM_QUERY_PATH_HPP
 
 #include "utils/WinAPI.h" /* Must be first include file */
+#include "Resolve.hpp"
 #include <string>
 
 namespace appbox::filesystem
@@ -66,6 +67,40 @@ struct QueryPathResult
      */
     std::wstring layerPath;
 };
+
+/**
+ * @brief Report how a resolved path of the view has to be answered.
+ *
+ * The helper turns the result of the resolver into the vocabulary of a call
+ * which carries a name: a path whose parent directory is not part of the view
+ * and a path which no visible layer holds are failures of the view, and a path
+ * which a visible layer holds is answered from the layer the view prefers.
+ *
+ * @param[in] resolve Result of the resolver.
+ * @return The outcome of the lookup, the failure status of the view and the
+ *         layer path which holds the name.
+ */
+QueryPathResult QueryPathFromResolve(const ResolveResult& resolve);
+
+/**
+ * @brief Resolve a path of the view and report how a caller has to answer it.
+ *
+ * The helper is the front end of every hooked NT entry point which carries a
+ * name of its own: it resolves the name in the view and reports which layer
+ * the caller has to address.
+ *
+ * @param[in] viewPath Path of the view.
+ * @param[in] nameAttributes Lookup attributes of the call, see
+ *                           `ResolveOption::NameAttributes`.
+ * @param[in] stopOnFirstFound Whether the search may stop at the first layer
+ *                             which holds the path. A call which may modify
+ *                             the entry asks for every layer, because the
+ *                             isolation of a `Merge` path decides the layer of
+ *                             the modification from them.
+ * @return The outcome of the lookup, the failure status of the view and the
+ *         layer path which holds the name.
+ */
+QueryPathResult ResolveViewPath(const std::wstring& viewPath, ULONG nameAttributes, bool stopOnFirstFound = true);
 
 /**
  * @brief Resolve the name of a query to the first visible layer of the view.

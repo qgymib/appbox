@@ -628,6 +628,16 @@ folder below `#USERPROFILE#` of the host as the entry of the host layer
 | `RootIsolation_MergeWritesTheFileOfTheHost` | root of the view `Merge`, host file, no entry names the folder | open the file of the host for writing | the mode of the root reaches the write, so the host file carries the new content |
 | `DefaultMerge_CreatesTheEntriesInTheHost` | no entry names the folder, so the default of the view applies | create a directory and a file below a folder of the host | the directory and the file are created in the host filesystem, while the overlay holds neither of them |
 | `DefaultMerge_WritesTheFileOfTheHost` | no entry names the file, so the default of the view applies | open the file of the host for writing | the write is applied to the file of the host filesystem, while the overlay holds no copy of it |
+| `Rename_LowerLayer` | layer `Write Copy`, packed file | rename the packed file inside its folder | the new name is an entry of the overlay which carries the packed content, the old name is hidden by a whiteout marker, and the lower layer keeps its file |
+| `Rename_MergeWritesTheHostFile` | folder `Merge`, host file | rename the host file inside its folder | the host carries the new name and not the old one any more, and the overlay holds neither of the two names |
+| `Rename_TargetExists` | layer `Write Copy`, two packed files | rename one file onto the name of the other one, once without and once with the replace flag | the rename without the flag reports `Name Collision`, the one with it succeeds and leaves the new name in the overlay, the hidden source and the untouched lower layer |
+| `Rename_IsolationHidden` | folder `Full`, host file which carries the name of the rename | rename the packed file onto the name of the host file | the rename succeeds because the view does not hold the name, the new entry is the file of the overlay, and the host file keeps its own content |
+| `Rename_RelativeName` | layer `Write Copy`, two packed files | rename one file with a name relative to a directory the call names, and one with a name relative to the directory of the object | both renames succeed and resolve the name against the same base as the file system uses, so both new names are entries of the overlay and both sources are hidden |
+| `Rename_Directory` | layer `Write Copy`, folder of the overlay and folder of the lower layer | rename the folder of the overlay and the folder of the read-only layer | the folder of the overlay carries its new name together with the file it holds, while the second rename fails and leaves both layers as they were, because the open of a directory cannot copy it up |
+| `Rename_SameName` | layer `Write Copy`, packed file | rename the packed file onto the name it already has, once without and once with the replace flag | both renames succeed, as the file system reports for an object moved onto its own name, and the entry keeps its content and is not hidden by a marker |
+| `Link_LowerLayer` | layer `Write Copy`, packed file | link the packed file to a second name of its folder | the link is an entry of the overlay which carries the packed content, while the source is neither carried into the overlay nor hidden, which is what tells a link from a rename |
+| `QueryInformationFile_ViewPath` | layer `Write Copy`, packed file and host file | ask `FileNameInformation`, `FileNormalizedNameInformation` and `FileAllInformation` for the packed file, for the copy a write opened and for the host file | every class reports the name of the view for every handle, so the layout of the sandbox never reaches the application |
+| `QueryInformationFile_SmallBuffer` | layer `Write Copy`, packed file | ask the three name classes with a buffer which holds the name of the view and not the one of the layer | every class reports the name of the view and succeeds, so a caller which sized its buffer after the view is never told that the buffer is too small |
 
 ### Registry isolation cases
 
@@ -1107,16 +1117,21 @@ header comment.
   `CreateDirectoryW`, `DeleteFileW`, `RemoveDirectoryW`, `WriteFile`,
   `ListDir`, `ListDirNt`, `ReadFileFull`), plus the probes of the remaining
   cases (`LaunchProcess`, `QueryAttributes`, `QueryFullAttributes`,
-  `QueryInformationByName`, `ConsoleWindow`).
+  `QueryInformationByName`, `QueryInformationFile`, `SetInformationFile`,
+  `ConsoleWindow`).
   `ListDirNt` opens a directory with `NtOpenFile` and enumerates it with
   `NtQueryDirectoryFile` or `NtQueryDirectoryFileEx`, so it pins both entry
   points of the merged view directly, while the user mode wrappers may use
   either of them. `QueryAttributes` asks the user mode wrapper of the
   attributes, while `QueryFullAttributes` and `QueryInformationByName` call
   `NtQueryFullAttributesFile` and `NtQueryInformationByName` themselves, so
-  every name based query of the view is pinned directly. The three query
-  probes answer one item per path of their request, which keeps the number of
-  calls into the sandbox low.
+  every name based query of the view is pinned directly. `QueryInformationFile`
+  calls `NtQueryInformationFile` with the three classes which report a name and
+  reports every name together with the size of the buffer it was asked with, and
+  `SetInformationFile` calls `NtSetInformationFile` with the classes of a rename
+  and of a link, so both entry points which act on a handle are pinned directly
+  as well. The probes answer one item per question of their request, which keeps
+  the number of calls into the sandbox low.
 * `test/probe/RegWriteValue.cpp` / `RegReadValue.cpp` — the operations
   executed inside the sandbox; both address the key through a root key of the
   view, so a case can pin that two roots name the same key.
@@ -1168,13 +1183,14 @@ header comment.
 
 ## Known gaps
 
-* **A rename or a move of a file is not redirected.** `NtSetInformationFile` is
-  not hooked, so `FileRenameInformation` and its friends act on the name the
-  caller passed, which is a path of the view and therefore denotes the real
-  filesystem (see the known gaps of
-  [FilesystemIsolation.md](../docs/FilesystemIsolation.md)). A case which pins
-  that would have to modify the real filesystem, so the behaviour is left
-  without an end-to-end case until the sandbox redirects those classes.
+* **The `...BypassAccessCheck` classes have no case.** A rename and a link are
+  redirected for the eight classes of the two families, but
+  `FileRenameInformationBypassAccessCheck`,
+  `FileRenameInformationExBypassAccessCheck`,
+  `FileLinkInformationBypassAccessCheck` and
+  `FileLinkInformationExBypassAccessCheck` belong to kernel mode callers, which
+  no case of the suite can drive; the cases pin the four classes a user mode
+  caller reaches.
 * **The timeout and the coredumps of a run are verified by hand.** The test
   suite does not test itself (see
   [Timeouts and coredumps](#timeouts-and-coredumps)).

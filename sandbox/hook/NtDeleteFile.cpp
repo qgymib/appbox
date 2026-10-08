@@ -377,6 +377,38 @@ NTSTATUS appbox::DeleteViewPath(const appbox::filesystem::ResolveResult& resolve
     return DeleteAsDirectory(resolve, Attributes);
 }
 
+NTSTATUS appbox::HideViewPath(const std::wstring& path, ULONG Attributes)
+{
+    appbox::filesystem::ResolveOption resolve_option;
+    resolve_option.bStopOnFirstFound = false;
+
+    auto resolve_result = appbox::filesystem::Resolve(path, resolve_option);
+    LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
+
+    if (resolve_result->status != appbox::filesystem::ResolveResult::Status::Exists)
+    {
+        /* No visible layer holds the entry, so the view reports it as gone. */
+        return STATUS_SUCCESS;
+    }
+
+    NTSTATUS st = STATUS_SUCCESS;
+    if (resolve_result->bInUpper)
+    {
+        st = NtDeleteFileWrap(resolve_result->uPath, Attributes);
+        if (!NT_SUCCESS(st) && st != STATUS_OBJECT_NAME_NOT_FOUND)
+        {
+            return st;
+        }
+    }
+
+    /* The marker hides the layers which still hold the entry. */
+    if (NeedsWhiteout(*resolve_result, false))
+    {
+        st = CreateWhiteoutOfEntry(*resolve_result, Attributes);
+    }
+    return st;
+}
+
 static void LoadNtDeleteFile()
 {
     auto addr = GetProcAddress(appbox::sys.h_ntdll, "NtDeleteFile");

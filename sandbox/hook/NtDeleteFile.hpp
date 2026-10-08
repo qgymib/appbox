@@ -45,6 +45,23 @@ NTSTATUS DeleteViewPath(const std::wstring& path, ULONG Attributes);
  */
 NTSTATUS DeleteViewPath(const filesystem::ResolveResult& resolve, ULONG Attributes);
 
+/**
+ * @brief Record the delete of an entry of the view inside the upper layer.
+ *
+ * The entry disappears from the view while the host filesystem stays
+ * untouched: the copy the upper layer holds is deleted and the whiteout marker
+ * which hides the layers below it is written, which is the state a delete
+ * leaves behind when the isolation of the path does not name the host layer.
+ *
+ * The helper is the tail of a rename as well: the object moved away from the
+ * path it had, so every layer which still holds the old name has to be hidden.
+ *
+ * @param[in] path View path of the entry which is gone.
+ * @param[in] Attributes Name attributes. Only `OBJ_CASE_INSENSITIVE` matters.
+ * @return Status code.
+ */
+NTSTATUS HideViewPath(const std::wstring& path, ULONG Attributes);
+
 } // namespace appbox
 
 #endif
