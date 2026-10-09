@@ -34,6 +34,12 @@ isolation domain, not this one.
   the caller passed into this form first.
 * **Layer path** — the path of the same object inside a concrete layer
   (upper / lower / host). One view path maps to at most one layer path per layer.
+* **Alternate data stream** — the content a file carries beside its default data
+  stream, addressed by a colon after the name of the file:
+  `\??\C:\dir\file.txt:stream` names the stream `stream` of the file `file.txt`.
+  A stream belongs to that file: the entry the view decides the mode, the
+  visibility and the layer of a modification from is the entry of the file which
+  carries the stream.
 * **Whiteout** — an empty marker file named `<name>.$APPBOX_DELETE$` placed next to
   the object it hides. It hides that object (file or directory subtree) from every
   lower layer.
@@ -234,7 +240,13 @@ filesystem.
 
 * Whiteout: `<name>.$APPBOX_DELETE$` — a sibling of the object it hides. A
   whiteout on a directory hides the whole subtree, because the marker of every
-  ancestor component is checked as well.
+  ancestor component is checked as well. A whiteout of a file hides the streams
+  the file carries as well, because the marker of the file is checked for a path
+  which names one of them.
+* Whiteout of a stream: `<name>:<stream>.$APPBOX_DELETE$` — a stream of the file
+  itself, because a file name cannot carry a colon. The file therefore has to be
+  in the upper layer before the marker is written, which is what makes the file
+  travel into the overlay together with the stream it carries.
 * Opaque: `<dir>\.$APPBOX_OPAQUE$` — masks, for that directory, everything that
   only exists in the lower layers.
 
@@ -299,6 +311,16 @@ These rules constrain every hooked API; the implementation lives in
   `Merge` is the exception: its modification is applied to the host filesystem
   when the host holds the entry or when no layer holds it, and the folders above
   the entry are created in that layer first.
+* **An alternate data stream belongs to the file which carries it.** The path of
+  a stream (`file.txt:stream`) is decided by the entry of `file.txt`, so the mode
+  of a file covers the streams of that file, a whiteout of the file hides them,
+  and a modification of a stream is a modification of the file. The file is
+  therefore copied into the upper layer together with the stream it carries
+  before the stream is written there: a stream cannot exist without its file, and
+  the file the file system creates on its own for a stream the upper layer does
+  not hold would carry nothing but that stream and shadow the content the view
+  reports for the file. The mode of a folder keeps covering the streams of the
+  files below it.
 * **A delete is recorded, not performed.** Deleting an object removes the upper
   copy and places a whiteout marker next to it, so lower and host layers keep
   their data while the view reports the object as gone. Deleting a directory
@@ -416,39 +438,151 @@ listed in [test/README.md](../test/README.md).
 ## Known gaps and limitations
 
 The following points are visible in the current code and should be kept in mind when
-extending or testing the isolation:
+extending or testing the isolation. They fall into two groups. The first group is about
+the semantics the view cannot express: the hook answers, but its answer is the one of a
+single layer rather than the one of the composed view. The second group is about the
+entry points the isolation does not hook at all: a call which reaches the file system
+through them acts on the layer the object of the call belongs to.
 
-1. **A mode does not reach the alternate data streams of its file.** The lookup of the
-   isolation walks the path upwards component by component, and a stream name such as
-   `file.txt:stream` is the last component of its own path, so it does not inherit the
-   mode of `file.txt`. The mode of a folder still covers the streams of the files below
-   it.
-2. **Copy-up copies the default data stream only.** Alternate data streams are not
-   handled specially: a stream name such as `file.txt:stream` is carried into the upper
-   layer path as part of the file name, while copy-up reads only the file content, and
-   whiteout / opaque markers are not stream aware.
-3. **Non-local paths bypass isolation.** UNC paths, named pipes, mailslots, network
-   volumes and drive-relative paths cannot be converted to a view path, so the hooks
-   forward them unchanged. A rename or a link whose name is such a path is forwarded as
-   well.
-4. **`ResolveFs` is fixed at injection time.** There is no way to add or remove a lower
+### The semantics the view cannot express
+
+1. **Copy-up carries the default data stream of a file and nothing else.** The helper
+   which copies an entry into the overlay (`sandbox/utils/CopyFileNt.cpp`) reads the
+   content of the source and writes it into a file it creates, so the copy carries
+   neither the attributes nor the metadata of the source: alternate data streams,
+   extended attributes, the security descriptor and the ACL, the timestamps, the
+   compression and the sparse state, the short name and the identity of the file are not
+   carried over, and the hard links of the source are not re-created at the copy. What
+   the copy holds is the content of the file and the metadata the volume of the overlay
+   assigns to a new file. The streams a copy does not carry stay readable through the
+   layers below the overlay, so a file whose default data stream was copied into the
+   overlay still reports the streams of the layer it was copied from, while a class
+   which enumerates the streams of a file (`FileStreamInformation`) reports the streams
+   of the layer the handle was opened in.
+2. **A reparse point is resolved by the layer, not by the view.** The resolver maps a
+   path by text and asks each layer whether the mapped path exists, so a junction, a
+   symbolic link or a mount point below a view path is followed by the file system of the
+   layer which holds it: the object the caller reaches is the object of the path the
+   reparse point names, while the isolation decides the visible layers and the layer a
+   modification lands in from the path the caller spelled. A folder of the host
+   filesystem which is a junction is therefore read and written as if the isolation of
+   the junction and the isolation of its target were the same, and a target which no
+   layer of the view holds is reached all the same. The data of a reparse point is not
+   translated either, because `NtFsControlFile` is not hooked: the creation of a
+   reparse point writes the target the caller passed into the object of the layer, and a
+   target which names a path of the view is resolved in the namespace of the host
+   filesystem by the next open of the entry.
+3. **The marker files live in the namespace of the view.** A whiteout and an opaque
+   marker are ordinary files of the overlay, and the view both hides them from a listing
+   and acts on them as the marker they are. A sandboxed process which creates an entry
+   whose name ends with `.$APPBOX_DELETE$` therefore hides the entry that name is
+   derived from, and a process which creates `.$APPBOX_OPAQUE$` inside a folder makes
+   that folder opaque to the lower layers. The entry such a process created is invisible
+   to it afterwards, because the merge drops the names of the markers from every
+   listing. The marker of a stream is a stream of the file it belongs to, so a process
+   which creates a stream whose name ends with `.$APPBOX_DELETE$` hides the stream that
+   name is derived from as well, and a class which enumerates the streams of a file
+   reports the markers the view holds for it.
+4. **The identity of an object is the identity of the layer.** The hook of
+   `NtQueryInformationFile` answers the classes which report the name of an object with
+   the path of the view, while every other class reports a property of the object of the
+   layer the handle was opened in. The identity of an entry is therefore the one the
+   volume of its layer assigns to it: `FileInternalInformation`, `FileIdInformation`,
+   `FileStatInformation`, `FileStatLxInformation`, `FileStatBasicInformation`, the
+   internal record of `FileAllInformation`, `FileHardLinkInformation` and
+   `FileHardLinkFullIdInformation`, and the identity a directory entry carries, all
+   report the object of the layer, and the names a class of that family reports are the
+   names of the layer as well. An entry which was copied up is a different object than
+   the entry of the host filesystem it shadows, so an application which compares
+   identities observes a change the host filesystem never made. A call which opens an
+   object by its file id is resolved through the path the id names rather than through
+   the id itself, so the id of an entry of the host filesystem reaches the copy of the
+   overlay once the overlay holds one.
+5. **A short name is the short name of the layer.** The short name (the 8.3 form) of a
+   directory entry and the answer of `FileAlternateNameInformation` are the ones of the
+   object of the layer, and the resolver matches the components of a path against the
+   volume of a layer, so whether a short name resolves is decided by the volume which
+   holds the entry. An entry the overlay shadows may therefore not be found by the short
+   name the host volume gave it, and a lookup which mixes the two forms of a name reads
+   the entry of the host filesystem instead of the copy of the overlay. A caller which
+   sets a short name is not redirected either, because `FileShortNameInformation` is not
+   a class which carries a path (see the rule of `NtSetInformationFile` above).
+6. **A directory which only a read-only layer holds cannot be copied up.** A
+   modification of an entry is applied to the overlay, and the entry is copied into it
+   first when only a read-only layer holds it. The copy-up copies a file, so a directory
+   stays in the layer which holds it: the hook opens the entry of the overlay after the
+   copy-up, which no layer holds, and reports `File Not Found` while neither layer
+   changed. A rename of such a directory fails for that reason, and so does every other
+   modification which reaches the directory through a handle: a delete of the folder
+   through a handle (`RemoveDirectoryW`), a change of its attributes and a change of its
+   ACL. A delete which names the path of the folder works, because `NtDeleteFile` does
+   not open the entry for modification: it records the delete with a marker and the
+   read-only layer keeps its content. A hard link fails for a neighbouring reason: the
+   name of a link lands in the layer of its destination while the object it links stays
+   in the layer of the handle, and a link cannot cross the boundary of a file system,
+   which is the boundary between two layers of the view.
+7. **`ResolveFs` is fixed at injection time.** There is no way to add or remove a lower
    layer while a sandboxed process is running; the layers come from the injected
    configuration and live in the `appbox::sandbox` singleton. The isolation modes are
    loaded once as well, so a mode which is changed in the packer afterwards needs a new
    archive.
-5. **A root mode which hides the host filesystem stops the process.** The mode of the
+8. **A root mode which hides the host filesystem stops the process.** The mode of the
    root of the view covers every path no other entry names, so `Full` or `Whiteout` at
    the root hides the whole host filesystem: the sandboxed process can no longer load
    the modules of the host and fails to start, which is the behaviour the mode asks for
    but which no end-to-end case can drive. A root mode of `Write Copy` or `Merge` is the
    one a workspace normally uses.
-6. **A rename of a directory which only a read-only layer holds fails.** The open of the
-   directory with the access a rename needs is a modification, and the copy-up such a
-   call asks for copies a file: a directory stays in the layer which holds it, so the
-   open of the overlay entry fails and the caller is told that the entry is missing.
-   Neither layer changes, so the read-only layers stay untouched. A directory the
-   overlay or the host filesystem holds is renamed as usual.
-7. **A delete on close of a handle the sandbox did not open is not recorded.** The
-   delete of such a handle is recorded while it is closed, and the sandbox only knows
-   the layers of a handle it opened itself: a handle which was inherited or duplicated
-   from another process removes its layer object without hiding the layers below it.
+9. **A delete on close of a handle the sandbox did not open is not recorded.** The
+    delete of such a handle is recorded while it is closed, and the sandbox only knows
+    the layers of a handle it opened itself: a handle which was inherited or duplicated
+    from another process removes its layer object without hiding the layers below it.
+
+### The entry points the isolation does not hook
+
+The hooks of the view are the ones `sandbox/hook/` installs, so an entry point which is
+not listed there reaches the file system with the path or the handle of the caller, and
+the answer of such a call is the answer of the layer the object belongs to. The points
+below are the ones which matter for the view.
+
+10. **A path which cannot be expressed as a view path is forwarded unchanged.** UNC
+    paths, named pipes, mailslots, network volumes and drive-relative paths cannot be
+    converted to a view path, so the hooks forward them, and a rename or a link whose
+    name is such a path is forwarded as well. The creation of a named pipe and of a
+    mailslot is not redirected either, because `NtCreateNamedPipeFile` and
+    `NtCreateMailslotFile` are not hooked: the pipe and the mailslot namespace is the one
+    of the machine, so a sandboxed process creates an object every process of the host
+    can open, and it can open an object another process created.
+11. **The volume of an object is the volume of its layer.** `NtQueryVolumeInformationFile`
+    is not hooked, so the volume a handle reports is the one which holds the object of
+    the layer the handle was opened in: the serial number and the label of the volume
+    (`FileFsVolumeInformation`), its size and its free space (`FileFsSizeInformation`,
+    `FileFsFullSizeInformation`), its attributes (`FileFsAttributeInformation`) and the
+    record of the volume which `FileAllInformation` carries at its end. A file the
+    overlay holds therefore reports the volume of the sandbox, which is the volume the
+    `data` directory of the run lives on, while the drive letter of its path of the view
+    may name another volume: a caller which asks the free space of a folder it wrote into
+    receives the free space of the volume of the sandbox.
+12. **The control codes are not translated.** `NtFsControlFile` and
+    `NtDeviceIoControlFile` are not hooked, so a control code reaches the object of the
+    layer with the buffers of the caller. The codes which act on the object itself are
+    the ones which matter: `FSCTL_SET_REPARSE_POINT` and `FSCTL_DELETE_REPARSE_POINT`
+    write and remove the data of a reparse point without translating it (see the rule
+    above), and `FSCTL_GET_OBJECT_ID` and `FSCTL_SET_OBJECT_ID` report and change the
+    identity of the object of the layer. The codes which name the volume or the storage
+    below the object — `FSCTL_GET_NTFS_VOLUME_DATA`, `FSCTL_QUERY_USN_JOURNAL`,
+    `FSCTL_ENUM_USN_DATA`, `FSCTL_READ_USN_JOURNAL`, `FSCTL_GET_NTFS_FILE_RECORD`,
+    `FSCTL_GET_RETRIEVAL_POINTERS`, `FSCTL_MOVE_FILE`, `FSCTL_SET_ZERO_DATA` and
+    `FSCTL_DUPLICATE_EXTENTS_TO_FILE` — report and change the volume of the layer as
+    well.
+13. **`NtQueryObject` names a file handle after its layer.** The hook translates the name
+    of an object the hive of the registry isolation mounts and leaves every other name as
+    it is, so `ObjectNameInformation` of a file handle reports the path of the layer the
+    handle was opened in, which is the path of the sandbox. An application which verifies
+    that a handle it holds names the entry it asked for reads that path, and the layout of
+    the sandbox reaches it.
+14. **The data of a read and of a write is never inspected.** `NtReadFile` and
+    `NtWriteFile` are attached for the trace only: their hook record carries no hook
+    function, because the layer a read and a write act on is the one the handle was
+    opened in, which the open already decided. A handle the sandbox did not open is
+    served by the layer of that handle as well, so the isolation never sees the bytes of
+    a transfer.

@@ -1,4 +1,5 @@
 #include "IsolationTable.hpp"
+#include "StreamName.hpp"
 #include "WString.hpp"
 #include <nlohmann/json.hpp>
 #include <cwctype>
@@ -239,6 +240,13 @@ bool appbox::filesystem::IsolationTable::Lookup(const std::wstring& view_path, F
      * below it and what lets a folder below override the folder above. The
      * walk ends on the root of the view, which is the entry stored under the
      * empty key and which covers every path no listed folder names.
+     *
+     * The path is probed as it is before the walk starts, so a document which
+     * names a stream itself is honoured: the stream is the most specific entry
+     * of the file which carries it. The entry of the file follows, because a
+     * stream belongs to that file: the mode of `file.txt` covers
+     * `file.txt:stream` as well, and only a path the file does not cover
+     * follows the folder above it.
      */
     std::wstring probe = NormalizeViewPath(view_path);
     for (;;)
@@ -254,6 +262,13 @@ bool appbox::filesystem::IsolationTable::Lookup(const std::wstring& view_path, F
         if (probe.empty())
         {
             break;
+        }
+
+        const auto entry = EntryPathOfStream(probe);
+        if (entry != probe)
+        {
+            probe = entry;
+            continue;
         }
 
         const auto separator = probe.find_last_of(L'\\');

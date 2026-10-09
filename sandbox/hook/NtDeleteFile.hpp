@@ -39,11 +39,17 @@ NTSTATUS DeleteViewPath(const std::wstring& path, ULONG Attributes);
 
 /**
  * @brief Delete path in mapped view.
+ *
+ * The path of the view is needed as well: the delete of an alternate data
+ * stream records the marker of that stream, and that marker is a stream of the
+ * file which carries it, so the file has to be in the upper layer first.
+ *
  * @param[in] resolve Resolve result.
+ * @param[in] view_path Path of the view of the entry.
  * @param[in] Attributes Name attributes. Only `OBJ_CASE_INSENSITIVE` matters.
  * @return Status code.
  */
-NTSTATUS DeleteViewPath(const filesystem::ResolveResult& resolve, ULONG Attributes);
+NTSTATUS DeleteViewPath(const filesystem::ResolveResult& resolve, const std::wstring& view_path, ULONG Attributes);
 
 /**
  * @brief Record the delete of an entry of the view inside the upper layer.

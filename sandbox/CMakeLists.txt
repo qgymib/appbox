@@ -28,6 +28,7 @@ add_library(${sandbox_name} MODULE
     "environment/Isolation.cpp"
     "environment/Table.cpp"
     "filesystem/__init__.cpp"
+    "filesystem/CopyUp.cpp"
     "filesystem/CreateDirectory.cpp"
     "filesystem/DirectoryMerge.cpp"
     "filesystem/DirName.cpp"

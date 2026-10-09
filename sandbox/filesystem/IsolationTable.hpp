@@ -86,7 +86,9 @@ struct IsolationEntry
  * The mode of a path which the document does not list is derived by walking
  * the path upwards: the closest listed entry above it covers its whole
  * subtree, which is what makes the mode of a folder reach the entries below it
- * and what lets a folder below override the folder above. The walk ends on the
+ * and what lets a folder below override the folder above. A path which names
+ * an alternate data stream belongs to the file which carries it, so the entry
+ * of that file covers the stream as well. The walk ends on the
  * **root of the view**, which is the entry whose path is empty and which is
  * stored under the empty key, so its mode decides every path no listed folder
  * covers, including the locations outside the virtual filesystem. A path which
@@ -147,7 +149,11 @@ public:
      * @brief Get the mode which applies to a path of the view.
      *
      * The lookup starts at the path itself and walks the path upwards until a
-     * listed entry is found, so a listed entry covers its whole subtree. The
+     * listed entry is found, so a listed entry covers its whole subtree. A
+     * path which names an alternate data stream is probed as the entry of the
+     * file which carries the stream as well, so the mode of a file covers the
+     * streams of that file; an entry which names the stream itself is more
+     * specific than the file and therefore wins over it. The
      * walk ends on the root of the view, whose entry decides every path no
      * listed folder covers. The kind of the entry which decided the mode is
      * reported as well, because the mode alone does not say which layers stay

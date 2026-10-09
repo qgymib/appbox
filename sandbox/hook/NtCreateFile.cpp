@@ -1,4 +1,5 @@
 #include "utils/WinAPI.h" /* Must be first include file */
+#include "filesystem/CopyUp.hpp"
 #include "filesystem/CreateDirectory.hpp"
 #include "filesystem/DirName.hpp"
 #include "filesystem/IsolationPolicy.hpp"
@@ -11,7 +12,6 @@
 #include "hook/NtQueryFullAttributesFile.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
 #include "utils/BitParser.hpp"
-#include "utils/CopyFileNt.hpp"
 #include "utils/HandleInfo.hpp"
 #include "utils/Log.hpp"
 #include "utils/MappingAsDosNtPath.hpp"
@@ -413,10 +413,17 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
         const size_t parent_base = target_host ? resolve_result->hostPathBaseSize : resolve_result->uPathBaseSize;
         appbox::filesystem::CreateDirectories(appbox::filesystem::DirName(parent), parent_base);
     }
-    if (want_edit && !target_host && resolve_result->status == appbox::filesystem::ResolveResult::Status::Exists &&
-        !resolve_result->bInUpper)
+    /*
+     * A modification lands in the overlay, so the entry has to be in it before
+     * the call opens it: an entry only a read-only layer holds is copied into
+     * the overlay, and a path which names an alternate data stream carries the
+     * file of that stream as well, see `CopyUpEntry()`. A creation which the
+     * overlay does not hold yet has nothing to copy, while the file of a stream
+     * which is created there has to travel all the same.
+     */
+    if (modifies && !target_host)
     {
-        appbox::CopyFileNt(resolve_result->hPath[0].fPath, resolve_result->uPath);
+        appbox::filesystem::CopyUpEntry(nativate_fs_path, *resolve_result);
     }
 
     std::wstring open_path;

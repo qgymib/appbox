@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "filesystem/IsolationTable.hpp"
+#include "filesystem/StreamName.hpp"
 #include "src/core/FilesystemIsolationFile.hpp"
 #include "src/core/FilesystemIsolationModel.hpp"
 #include <nlohmann/json.hpp>
@@ -923,13 +924,15 @@ TEST(Unit_FilesystemIsolation, FullTellsAFolderAndAFileApart)
  * @brief Build the text of an isolation file which lists one entry.
  * @param[in] path Path of the entry in the virtual filesystem.
  * @param[in] isolation Mode of the entry.
+ * @param[in] kind Kind of the entry.
  * @return The UTF-8 text of the document.
  */
-static std::string IsolationFileOf(const std::string& path, appbox::FilesystemIsolation isolation)
+static std::string IsolationFileOf(const std::string& path, appbox::FilesystemIsolation isolation,
+                                   appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::Directory)
 {
     appbox::filesystem_isolation::Entry entry;
     entry.path = path;
-    entry.kind = appbox::FilesystemEntryKind::Directory;
+    entry.kind = kind;
     entry.isolation = isolation;
 
     appbox::filesystem_isolation::Document document;
@@ -1049,4 +1052,95 @@ TEST(Unit_FilesystemIsolation, ATableWithoutARootEntryAnswersNoUnlistedPath)
     /* A path below the listed folder still follows it. */
     ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\data", mode, kind));
     EXPECT_EQ(mode, appbox::FilesystemIsolation::Merge);
+}
+
+/**
+ * @brief The stream name of a view path is read from its last component.
+ *
+ * A stream is addressed by the colon the last component carries, while the
+ * colon of the drive names no stream: `\??\C:` is the drive and not a stream of
+ * a file which is named `C`. A path which names no stream is returned as it is.
+ */
+TEST(Unit_FilesystemIsolation, StreamNamesAreReadFromTheLastComponent)
+{
+    using appbox::filesystem::CarriesStreamName;
+    using appbox::filesystem::EntryPathOfStream;
+    using appbox::filesystem::StreamNameOf;
+
+    EXPECT_TRUE(CarriesStreamName(L"\\??\\C:\\dir\\file.txt:stream"));
+    EXPECT_EQ(StreamNameOf(L"\\??\\C:\\dir\\file.txt:stream"), L"stream");
+    EXPECT_EQ(EntryPathOfStream(L"\\??\\C:\\dir\\file.txt:stream"), L"\\??\\C:\\dir\\file.txt");
+
+    /* The drive is not a stream, and a path without a stream keeps its name. */
+    EXPECT_FALSE(CarriesStreamName(L"\\??\\C:"));
+    EXPECT_FALSE(CarriesStreamName(L"\\??\\C:\\dir\\file.txt"));
+    EXPECT_FALSE(CarriesStreamName(L"\\??\\C:\\dir\\"));
+    EXPECT_EQ(EntryPathOfStream(L"\\??\\C:"), L"\\??\\C:");
+    EXPECT_EQ(EntryPathOfStream(L"\\??\\C:\\dir\\file.txt"), L"\\??\\C:\\dir\\file.txt");
+
+    /* Only the component of the drive is that short: a name of one letter
+     * carries a stream as well. */
+    EXPECT_TRUE(CarriesStreamName(L"\\??\\C:\\dir\\b:x"));
+    EXPECT_EQ(EntryPathOfStream(L"\\??\\C:\\dir\\b:x"), L"\\??\\C:\\dir\\b");
+
+    /* The stream is the last component, which also holds for a relative name. */
+    EXPECT_TRUE(CarriesStreamName(L"file.txt:stream"));
+    EXPECT_EQ(StreamNameOf(L"file.txt:stream"), L"stream");
+    EXPECT_EQ(EntryPathOfStream(L"file.txt:stream"), L"file.txt");
+}
+
+/**
+ * @brief The mode of a file covers the streams the file carries.
+ *
+ * A stream is the last component of its own path, so a lookup which only walks
+ * the path upwards would reach the folder above the file and never the file
+ * itself. The entry of the file is therefore probed as well, which is what
+ * makes the mode of a file cover its streams; a path the file does not cover
+ * keeps following the folder above it, and a document which names the stream
+ * itself is more specific than the file and wins over it.
+ */
+TEST(Unit_FilesystemIsolation, AStreamFollowsTheFileWhichCarriesIt)
+{
+    const std::vector<appbox::filesystem::IsolationLayer> layers = {
+        { L"#ProgramFiles#", L"\\??\\C:\\Program Files" },
+    };
+
+    appbox::filesystem::IsolationTable table;
+    std::vector<std::wstring>          unmapped;
+    std::string                        error;
+
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Full), layers,
+                            unmapped, error))
+        << error;
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp\\app.exe", appbox::FilesystemIsolation::Whiteout,
+                                            appbox::FilesystemEntryKind::File),
+                            layers, unmapped, error))
+        << error;
+
+    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::Full;
+    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::Directory;
+
+    /* The mode and the kind of the file reach the streams it carries. */
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe:stream", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::Whiteout);
+    EXPECT_EQ(kind, appbox::FilesystemEntryKind::File);
+
+    /* A stream of another file keeps following the folder above it. */
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\other.exe:stream", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(kind, appbox::FilesystemEntryKind::Directory);
+
+    /* The file itself is decided by its own entry, as it was before. */
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::Whiteout);
+    EXPECT_EQ(kind, appbox::FilesystemEntryKind::File);
+
+    /* A document which names the stream itself is more specific than the file. */
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp\\app.exe:stream", appbox::FilesystemIsolation::Full,
+                                            appbox::FilesystemEntryKind::File),
+                            layers, unmapped, error))
+        << error;
+    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe:stream", mode, kind));
+    EXPECT_EQ(mode, appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(kind, appbox::FilesystemEntryKind::File);
 }

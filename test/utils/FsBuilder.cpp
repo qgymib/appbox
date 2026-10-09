@@ -120,7 +120,50 @@ static bool WriteSandboxModules(const std::filesystem::path& root)
 }
 
 /**
+ * @brief Count the alternate data streams an entry carries.
+ *
+ * A stream is no entry of the directory which holds its file, so the entries
+ * alone do not describe the content of a directory: a case which declares a
+ * stream of a file declares a node of its own for it. The default stream of a
+ * file (`::$DATA`) is the file itself and is not counted, and an entry which
+ * carries no stream at all reports none.
+ *
+ * @param[in] path Path of the entry to inspect.
+ * @return The number of streams of the entry.
+ */
+static size_t CountStreams(const std::filesystem::path& path)
+{
+    WIN32_FIND_STREAM_DATA data = {};
+    const HANDLE           find = FindFirstStreamW(path.c_str(), FindStreamInfoStandard, &data, 0);
+    if (find == INVALID_HANDLE_VALUE)
+    {
+        return 0;
+    }
+
+    size_t count = 0;
+    for (;;)
+    {
+        if (std::wstring(data.cStreamName) != L"::$DATA")
+        {
+            count++;
+        }
+
+        if (!FindNextStreamW(find, &data))
+        {
+            break;
+        }
+    }
+
+    FindClose(find);
+    return count;
+}
+
+/**
  * @brief Count the entries a case declared below a directory.
+ *
+ * The streams of an entry are part of the content of the directory as well,
+ * see CountStreams().
+ *
  * @param[in] root Directory to scan.
  * @return The number of entries which are not part of the fixed layout.
  */
@@ -134,6 +177,7 @@ static size_t CountFiles(const std::filesystem::path& root)
             continue;
         }
         count++;
+        count += CountStreams(entry.path());
     }
     return count;
 }

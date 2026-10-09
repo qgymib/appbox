@@ -75,11 +75,13 @@ holds is the one the isolation mode decides:
 | **delete value** (`NtDeleteValueKey`) | the value of the hive is removed and the visible host value is recorded as deleted | the visible host value is recorded as deleted (a whiteout) |
 | **save** (`NtSaveKey`, `NtSaveKeyEx`) | the merged view of the key is written into the caller file | the visible real entries are written into the caller file |
 
-A sandboxed process therefore never modifies the real registry: every
-modification lands in the hive, while values which only exist in the real
-registry remain readable. A delete which runs on a handle of the host layer is
-refused with `STATUS_ACCESS_DENIED`, because a handle which the caller opened
-without the right to delete must not become the right to delete.
+A sandboxed process therefore never modifies the real registry through an entry
+point the isolation hooks: every modification lands in the hive, while values
+which only exist in the real registry remain readable. A delete which runs on a
+handle of the host layer is refused with `STATUS_ACCESS_DENIED`, because a
+handle which the caller opened without the right to delete must not become the
+right to delete. The entry points which the isolation does not hook at all are
+listed in [Known gaps and limitations](#known-gaps-and-limitations).
 
 The registry workspace of the packer, which describes the registry the
 packaged application will see, is documented in [README.md](../README.md).
@@ -273,6 +275,12 @@ Handles below the private hive mount run the merged logic; every other handle
 redirected handle is translated back into the view path wherever its name is
 queried, so it behaves exactly like the key it shadows.
 
+The table is the whole surface of the isolation: an entry point which is not
+named in it is forwarded to the real registry with the path or the handle of the
+caller, and the answer of such a call is the answer of the layer the object
+belongs to. [Known gaps and limitations](#known-gaps-and-limitations) lists the
+points which matter.
+
 ## Tests
 
 The unit tests and the end-to-end cases of the registry isolation are
@@ -280,42 +288,43 @@ listed in [test/README.md](../test/README.md).
 
 ## Known gaps and limitations
 
-1. **The remaining write side APIs are not hooked.** `NtRenameKey`,
-   `NtReplaceKey`, `NtRestoreKey`, `NtLoadKey*` and `NtUnloadKey*` are not
-   hooked. They act on a key handle, and a handle which permits a modification
-   is a handle of the hive (an open which asks for a write right is copied up),
-   so none of them can reach the real registry — but the isolation adds no
-   policy of its own to them either: a rename of a shadow key renames the key
-   inside the hive, for example, and leaves the host key of the old name in
-   place, where the merged view then shows both.
-2. **A delete is recorded, not replayed.** The host entry which the sandbox
+The points below are visible in the current code and have to be kept in mind
+when the isolation is extended or tested. They fall into two groups. The first
+group is about the semantics the view cannot express: the hook answers, but its
+answer is the one of a single layer — or of a single mount of the hive — rather
+than the one of the composed view. The second group is about the entry points
+the isolation does not hook at all: a call which reaches the registry through
+them acts on the layer of the object of the call.
+
+### The semantics the view cannot express
+
+1. **A delete is recorded, not replayed.** The host entry which the sandbox
    deleted stays in the real registry; only the view of the sandbox hides it.
    Another process which reads the real registry still sees the entry, and a
    second sandbox which mounts the same hive hides it as well, because the
-   marker lives in the hive. Markers are never removed again, so an entry which
-   was deleted once stays invisible for the sandbox even when the host creates
-   it again — the merged view then shows the shadow of the sandbox only, which
-   is what a delete followed by a create does in the real registry as well.
-3. **A save exports a snapshot.** The file holds the merged view at the time of
+   marker lives in the hive. The marker is never removed again, so the entry
+   stays invisible for the whole life of the hive: a delete the sandbox runs and
+   the create which follows it inside the sandbox are consistent, because the
+   hive holds the key that create made, while an entry which the host creates
+   again after the delete is never reported, which the real registry would
+   report.
+2. **A save exports a snapshot.** The file holds the merged view at the time of
    the call: a host value which the mode hides is not part of it, and a value
    which the sandbox writes after the call is not either. The save needs
    `SeBackupPrivilege`, which the caller has to enable like a direct save does.
-4. **The private mount path is visible to other name queries.**
+3. **The private mount path is visible to the other name queries.**
    `NtQueryObject` and `NtQueryKey` translate names of redirected handles back
    into the view path, but other name sources (for example
-   `NtQueryKey(KeyFlagsInformation)` variants or handle duplication across
-   processes) may still expose the mount.
-5. **`HKEY_CLASSES_ROOT` is a root key of its own.** The kernel merges
+   `NtQueryKey(KeyFlagsInformation)` variants, handle duplication across
+   processes, or a query entry point the isolation does not hook, see the second
+   group below) may still expose the mount.
+4. **`HKEY_CLASSES_ROOT` is a root key of its own.** The kernel merges
    `HKCU\Software\Classes` into the classes root of the machine hive when the
    real path is used. The virtual registry keeps `HKEY_CLASSES_ROOT` as an
    independent sub tree of the hive, and entries below
    `HKEY_CURRENT_USER\Software\Classes` are reached through the current user
    root only.
-6. **A sandbox which creates its own hive has no modes.** An archive without
-   the two registry artifacts of the packer still redirects every write into
-   the hive, but every entry keeps the default `WriteCopy`, so the host
-   registry stays visible.
-7. **A value mode needs a key of the hive.** The value modes of an isolation
+5. **A value mode needs a key of the hive.** The value modes of an isolation
    file are applied by the merged view of a key the hive holds. A value of a
    key which only the host holds is read through the real key, whose handle is
    forwarded unchanged, so a `Full` or `Hide` mode of such a value has no
@@ -326,3 +335,92 @@ listed in [test/README.md](../test/README.md).
    holds has no effect, because a package adds further files which name modes
    and does not change how a mode is read. The end-to-end cases of the patch
    layers pin that by listing the modes of a key the hive of the archive holds.
+6. **A sandbox which creates its own hive has no modes.** An archive without
+   the two registry artifacts of the packer still redirects every write into
+   the hive, but every entry keeps the default `WriteCopy`, so the host
+   registry stays visible.
+7. **The registry view of a 32 bit process is not applied to the hive.** The
+   kernel separates the views of the registry by rewriting the path of a key
+   for `KEY_WOW64_32KEY`, for `KEY_WOW64_64KEY` and for the default view of a
+   32 bit process, and the hive lives below `\REGISTRY\A`, which is none of the
+   paths it rewrites. Both views therefore address one key of the hive: a value
+   a 32 bit process writes to `HKEY_LOCAL_MACHINE\SOFTWARE` is the value a 64
+   bit process of the same sandbox reads there, while the real registry keeps
+   the two apart. The host layer behaves the other way round: the read through
+   passes the access mask of the caller to the open of the real key, so the
+   kernel rewrites that open, while the merged enumeration and the merged counts
+   open the real key with a fixed mask (`KEY_QUERY_VALUE` and
+   `KEY_ENUMERATE_SUB_KEYS`) and therefore with the view of the process. An
+   enumeration and a read of one key can therefore describe two different views
+   of the real registry, and the entries of the hive are described by neither of
+   them.
+8. **The hive is mounted by the sandboxed process.** The sandbox library of
+   every process of the sandbox mounts the hive file itself, and an application
+   hive is private to the process which mounted it. Two processes of one sandbox
+   therefore hold two mounts of the same file: a key or a value one of them
+   writes is not visible to another one which is already running, and every
+   mount writes the file back when its process ends, so the file keeps the state
+   of the mount which wrote last. An application which starts a helper process
+   reads the registry of the helper only after the run. The mount also fails
+   when the token of the process may not load a hive (an AppContainer, for
+   example), and a failed mount fails the sandbox of that process, because the
+   registry isolation would otherwise stop silently.
+9. **A key handle which enters the sandbox from outside is used unchanged.**
+   The isolation decides at the open and at the create, and it never hands out a
+   handle which permits a modification of a key of the host layer (an open which
+   asks for a write right is copied up into the hive). A handle which the
+   sandbox receives from another process — a duplicated handle, an inherited
+   handle, or a handle a host process passes over an IPC channel — was not
+   opened by the hooks, so it addresses the key of the layer it was opened in,
+   and the value level API which acts on it (`NtSetValueKey`, for example) is
+   not hooked. The isolation covers the keys a sandboxed process opens itself.
+
+### The entry points the isolation does not hook at all
+
+The hooks of the isolation are the ones `sandbox/hook/` installs, so an entry
+point which is not named in [Hooked entry points](#hooked-entry-points) reaches
+the registry with the path or the handle of the caller, and the answer of such a
+call is the answer of the layer the object belongs to. The points below are the
+ones which matter for the view.
+
+10. **The transacted open and the transacted create.** `NtOpenKeyTransacted`,
+    `NtOpenKeyTransactedEx` and `NtCreateKeyTransacted` are not hooked, so the
+    isolation does not see the call at all: the open and the create run against
+    the real registry with the path of the caller, no isolation mode and no
+    whiteout is consulted, and a key the caller creates this way is a key of the
+    real registry. Every other write path of the isolation starts from a key
+    handle the hooks handed out; this one does not.
+11. **The load and the unload of a hive.** `NtLoadKey`, `NtLoadKey2`,
+    `NtLoadKey3` and `NtLoadKeyEx` name the key a hive is loaded into with an
+    `OBJECT_ATTRIBUTES` and not with a key handle, and `NtUnloadKey`,
+    `NtUnloadKey2` and `NtUnloadKeyEx` name the key they unload the same way, so
+    the rule of the handle does not cover them: a sandboxed process which holds
+    the right to load a hive (a process which runs elevated, for example) can
+    load one at a path of the view and unload a hive of the host, and both
+    modify the real registry.
+12. **The rename of a key.** `NtRenameKey` is not hooked, so the isolation adds
+    no policy of its own to it: a rename of a shadow key renames the key inside
+    the hive and leaves the host key of the old name in place, where the merged
+    view then shows both. `NtReplaceKey` and `NtRestoreKey` are not hooked
+    either, but they act on a key handle, and a handle which permits a
+    modification is a handle of the hive.
+13. **`NtSaveMergedKeys`.** The call is not hooked, so the layers it writes into
+    the file are the ones of the two key handles the caller passes: a read
+    through handle of the host layer contributes the entries of the real key,
+    including the ones an isolation mode or a whiteout hides, and the merged
+    view `NtSaveKey` exports is not assembled here.
+14. **The change notification.** `NtNotifyChangeKey` and
+    `NtNotifyChangeMultipleKeys` are not hooked. A watch a sandboxed process
+    registers on a key it opened for reading is a watch of the real key, so the
+    process is notified about a change another process makes to the real
+    registry and it is not notified about the change the sandbox itself makes,
+    because that one lands in the hive. A watch on a handle of the hive observes
+    the hive alone, so neither kind of watch describes the merged view.
+15. **The remaining key APIs.** `NtQueryInformationKey`, `NtSetInformationKey`,
+    `NtQueryOpenSubKeys`, `NtQueryOpenSubKeysEx`, `NtFlushKey`, `NtCompressKey`,
+    `NtLockRegistryKey` and `NtInitializeRegistry` are forwarded unchanged, so
+    the property they report or change is the property of the object of the layer
+    the call names: the hive of a redirected handle, the real key of a read
+    through handle, and the real registry of a key a path names. None of them is
+    part of a path an ordinary application uses; they are listed so that a call
+    which reaches one of them is not read as a call the isolation answered.

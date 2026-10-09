@@ -1,9 +1,9 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "utils/MappingAsDosNtPath.hpp"
-#include "utils/CopyFileNt.hpp"
 #include "utils/HandleInfo.hpp"
 #include "utils/ConvertToFullNtPath.hpp"
+#include "filesystem/CopyUp.hpp"
 #include "filesystem/IsolationPolicy.hpp"
 #include "filesystem/Resolve.hpp"
 #include "hook/NtCreateFile.hpp"
@@ -101,7 +101,7 @@ static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
 
     if (want_edit && !target_host && !resolve_result->bInUpper)
     {
-        appbox::CopyFileNt(resolve_result->hPath[0].fPath, resolve_result->uPath);
+        appbox::filesystem::CopyUpEntry(nativate_fs_path, *resolve_result);
         resolve_result->bInUpper = true;
 
         appbox::filesystem::ResolveResult::Path p;

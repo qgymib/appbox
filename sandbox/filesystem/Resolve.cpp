@@ -1,6 +1,7 @@
 #include <vector>
 #include "filesystem/IsolationPolicy.hpp"
 #include "filesystem/Sequence.hpp"
+#include "filesystem/StreamName.hpp"
 #include "utils/CheckPathExist.hpp"
 #include "utils/MappingAsSandboxNtPath.hpp"
 #include "utils/Defines.hpp"
@@ -97,6 +98,27 @@ static void SearchInSingleLayer(const std::vector<std::wstring>& path_seq, size_
             search_result.whiteout_found = true;
             resolve_result.whiteoutPath = whiteout_path;
             return;
+        }
+
+        /*
+         * A stream belongs to the file which carries it, so a marker which
+         * hides the file hides every stream of it as well. The stream is the
+         * last component of its own path, which is why the marker of the file
+         * is checked here and not by the loop above: the loop only ever sees
+         * the components the caller spelled, and the file is not one of them
+         * while the path addresses a stream.
+         */
+        const auto entry_path = appbox::filesystem::EntryPathOfStream(comp_path);
+        if (entry_path != comp_path)
+        {
+            const auto entry_whiteout_path = entry_path + APPBOX_SANDBOX_WHITEOUT_SUFFIX_W;
+            st = appbox::CheckPathExist(entry_whiteout_path, resolve_result.NameAttributes, nullptr);
+            if (NT_SUCCESS(st))
+            {
+                search_result.whiteout_found = true;
+                resolve_result.whiteoutPath = entry_whiteout_path;
+                return;
+            }
         }
 
         /* Check parent path. */

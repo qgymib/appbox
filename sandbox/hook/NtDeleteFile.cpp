@@ -2,6 +2,7 @@
 #include "utils/Defines.hpp"
 #include "utils/Log.hpp"
 #include "utils/MappingAsDosNtPath.hpp"
+#include "filesystem/CopyUp.hpp"
 #include "filesystem/CreateDirectory.hpp"
 #include "filesystem/DirName.hpp"
 #include "filesystem/IsolationPolicy.hpp"
@@ -142,12 +143,24 @@ static bool NeedsWhiteout(const appbox::filesystem::ResolveResult& resolve_resul
  * only a lower layer or the host filesystem holds, in which case the upper
  * layer does not carry its folders yet.
  *
+ * The marker of an alternate data stream is a stream of the file itself,
+ * because a file name cannot carry a colon: the file has to be in the upper
+ * layer before the marker is written, or the file system would create it for
+ * the marker alone and shadow the content the view reports for the file.
+ *
+ * @param[in] view_path Path of the view of the entry.
  * @param[in] resolve_result Resolve result of the entry.
  * @param[in] Attributes File attributes.
  * @return NTSTATUS
  */
-static NTSTATUS CreateWhiteoutOfEntry(const appbox::filesystem::ResolveResult& resolve_result, ULONG Attributes)
+static NTSTATUS CreateWhiteoutOfEntry(const std::wstring&                      view_path,
+                                      const appbox::filesystem::ResolveResult& resolve_result, ULONG Attributes)
 {
+    if (!appbox::filesystem::CopyUpStreamFile(view_path))
+    {
+        LOG_W("failed to copy the file of the stream into the upper layer");
+    }
+
     appbox::filesystem::CreateDirectories(appbox::filesystem::DirName(resolve_result.uPath),
                                           resolve_result.uPathBaseSize);
     return CreateWhiteout(resolve_result.uPath, Attributes);
@@ -155,11 +168,13 @@ static NTSTATUS CreateWhiteoutOfEntry(const appbox::filesystem::ResolveResult& r
 
 /**
  * @brief Delete file
+ * @param[in] view_path Path of the view of the entry.
  * @param[in] resolve_result Resolve result.
  * @param[in] Attributes File attributes.
  * @return NTSTATUS
  */
-static NTSTATUS DeleteAsFile(const appbox::filesystem::ResolveResult& resolve_result, ULONG Attributes)
+static NTSTATUS DeleteAsFile(const std::wstring& view_path, const appbox::filesystem::ResolveResult& resolve_result,
+                             ULONG Attributes)
 {
     NTSTATUS st = STATUS_SUCCESS;
 
@@ -186,7 +201,7 @@ static NTSTATUS DeleteAsFile(const appbox::filesystem::ResolveResult& resolve_re
     /* The marker hides the layers which still hold the entry. */
     if (NeedsWhiteout(resolve_result, deletes_host))
     {
-        st = CreateWhiteoutOfEntry(resolve_result, Attributes);
+        st = CreateWhiteoutOfEntry(view_path, resolve_result, Attributes);
     }
     return st;
 }
@@ -280,11 +295,13 @@ static NTSTATUS DeleteHostDirectory(const appbox::filesystem::ResolveResult& res
 
 /**
  * @brief Delete directory
+ * @param[in] view_path Path of the view of the entry.
  * @param[in] resolve_result Resolve result.
  * @param[in] Attributes File attributes.
  * @return NTSTATUS
  */
-static NTSTATUS DeleteAsDirectory(const appbox::filesystem::ResolveResult& resolve_result, ULONG Attributes)
+static NTSTATUS DeleteAsDirectory(const std::wstring&                      view_path,
+                                  const appbox::filesystem::ResolveResult& resolve_result, ULONG Attributes)
 {
     NTSTATUS st = 0;
 
@@ -323,7 +340,7 @@ static NTSTATUS DeleteAsDirectory(const appbox::filesystem::ResolveResult& resol
     }
     if (NeedsWhiteout(resolve_result, deletes_host))
     {
-        st = CreateWhiteoutOfEntry(resolve_result, Attributes);
+        st = CreateWhiteoutOfEntry(view_path, resolve_result, Attributes);
         if (!NT_SUCCESS(st))
         {
             return st;
@@ -354,10 +371,11 @@ NTSTATUS appbox::DeleteViewPath(const std::wstring& path, ULONG Attributes)
     auto resolve_result = appbox::filesystem::Resolve(path, resolve_option);
     LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
 
-    return DeleteViewPath(*resolve_result, Attributes);
+    return DeleteViewPath(*resolve_result, path, Attributes);
 }
 
-NTSTATUS appbox::DeleteViewPath(const appbox::filesystem::ResolveResult& resolve, ULONG Attributes)
+NTSTATUS appbox::DeleteViewPath(const appbox::filesystem::ResolveResult& resolve, const std::wstring& view_path,
+                                ULONG Attributes)
 {
     if (!resolve.bParentExist)
     {
@@ -371,10 +389,10 @@ NTSTATUS appbox::DeleteViewPath(const appbox::filesystem::ResolveResult& resolve
     if (!(resolve.hPath[0].fInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY))
     {
         LOG_T("delete as file");
-        return DeleteAsFile(resolve, Attributes);
+        return DeleteAsFile(view_path, resolve, Attributes);
     }
     LOG_T("delete as dir");
-    return DeleteAsDirectory(resolve, Attributes);
+    return DeleteAsDirectory(view_path, resolve, Attributes);
 }
 
 NTSTATUS appbox::HideViewPath(const std::wstring& path, ULONG Attributes)
@@ -404,7 +422,7 @@ NTSTATUS appbox::HideViewPath(const std::wstring& path, ULONG Attributes)
     /* The marker hides the layers which still hold the entry. */
     if (NeedsWhiteout(*resolve_result, false))
     {
-        st = CreateWhiteoutOfEntry(*resolve_result, Attributes);
+        st = CreateWhiteoutOfEntry(path, *resolve_result, Attributes);
     }
     return st;
 }
