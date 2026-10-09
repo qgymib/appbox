@@ -256,6 +256,40 @@ static nlohmann::json ProbeListDirNt_Entry(const nlohmann::json& data)
         return rsp;
     }
 
+    /*
+     * A request which asks for a handle the sandbox did not open duplicates the
+     * handle and closes the original: the duplicate denotes the same object
+     * while it carries no record of the open, like the handle a process
+     * inherits or duplicates from another process.
+     */
+    if (req.duplicate)
+    {
+        HANDLE copy = nullptr;
+        if (!DuplicateHandle(GetCurrentProcess(), handle, GetCurrentProcess(), &copy, 0, FALSE, DUPLICATE_SAME_ACCESS))
+        {
+            const long error = static_cast<long>(HRESULT_FROM_WIN32(::GetLastError()));
+            CloseHandle(handle);
+            rsp.status = error;
+            return rsp;
+        }
+
+        CloseHandle(handle);
+        handle = copy;
+    }
+
+    /*
+     * A request which asks for a directory the view no longer holds removes it
+     * before the query, which leaves the handle above as the only one which
+     * denotes the object.
+     */
+    if (req.remove_before_query && !RemoveDirectoryW(path.c_str()))
+    {
+        const long error = static_cast<long>(HRESULT_FROM_WIN32(::GetLastError()));
+        CloseHandle(handle);
+        rsp.status = error;
+        return rsp;
+    }
+
     const std::wstring pattern = L"*";
     UNICODE_STRING     us_pattern;
     InitString(us_pattern, pattern);

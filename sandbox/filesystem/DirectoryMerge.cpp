@@ -13,6 +13,7 @@
 #include "hook/NtQueryDirectoryFileEx.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
 #include "Resolve.hpp"
+#include "ViewPathOfHandle.hpp"
 #include "DirectoryMerge.hpp"
 
 /**
@@ -46,6 +47,134 @@ struct FullDirectoryInformationMeta : appbox::HandleInfo::Meta
  */
 static const char     s_meta_key = 0;
 static const uint64_t FullDirectoryInformationMetaKey = reinterpret_cast<uint64_t>(&s_meta_key);
+
+/**
+ * @brief What the view does with a directory handle an enumeration names.
+ */
+struct DirectoryHandle
+{
+    /** What the view does with the call. */
+    enum class Action
+    {
+        Merge,   /* The record of the handle answers the enumeration. */
+        Forward, /* The handle denotes no directory of the view. */
+        Refuse,  /* The view refuses the call with `status`. */
+    };
+
+    Action                  action = Action::Forward; /* Action of the view. */
+    appbox::HandleInfo::Ptr info;                     /* Record of the handle. */
+    NTSTATUS                status = STATUS_SUCCESS;  /* Status of a refusal. */
+};
+
+/**
+ * @brief The record of the directory handle an enumeration names.
+ *
+ * The record of an open the sandbox performed is authoritative. A handle the
+ * sandbox did not open, which is the handle a process inherited or duplicated,
+ * is adopted here: the path of the view the handle denotes is looked up in the
+ * file system (see `ViewPathOfHandle`) and resolved, and the record which is
+ * built from the result is what the merge reads the layers of the directory
+ * from. The record is dropped while the handle is closed, like the record of an
+ * open, so the state of the enumeration lives exactly as long as the handle.
+ *
+ * @param[in] handle Handle to look up.
+ * @return What the view does with the call, together with the record it
+ *         answers with.
+ */
+static DirectoryHandle ResolveDirectoryHandle(HANDLE handle)
+{
+    DirectoryHandle result;
+
+    auto info = appbox::HandleInfo::Find(handle);
+    if (info.get() != nullptr && !info->viewPath.empty())
+    {
+        result.action = DirectoryHandle::Action::Merge;
+        result.info = info;
+        return result;
+    }
+
+    std::wstring viewPath;
+    switch (appbox::filesystem::ViewPathOfHandle(handle, viewPath))
+    {
+    case appbox::filesystem::HandlePathStatus::Foreign:
+        /* The object belongs to another isolation domain, which answers it. */
+        return result;
+
+    case appbox::filesystem::HandlePathStatus::Unnamed:
+        /*
+         * A local object the view cannot name: the answer of the layer the
+         * handle was opened with would show the entries the view hides and the
+         * markers of the view themselves, so the call is refused instead of
+         * being forwarded.
+         */
+        result.action = DirectoryHandle::Action::Refuse;
+        result.status = STATUS_NOT_SUPPORTED;
+        return result;
+
+    case appbox::filesystem::HandlePathStatus::View:
+        break;
+    }
+
+    /*
+     * The merge walks every layer which holds the directory, and the layers
+     * decide whether the view holds the entry at all, so the resolver is asked
+     * for all of them.
+     */
+    appbox::filesystem::ResolveOption option;
+    option.NameAttributes = OBJ_CASE_INSENSITIVE;
+    option.bStopOnFirstFound = false;
+
+    auto resolve = appbox::filesystem::Resolve(viewPath, option);
+    LOG_T(L"adopt: {}", viewPath);
+    LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve)));
+
+    if (resolve->status != appbox::filesystem::ResolveResult::Status::Exists)
+    {
+        /*
+         * The entry is not part of the view: a whiteout, an opaque marker or
+         * the isolation of the view hides it, and the answer a call which names
+         * the path receives is that the entry does not exist.
+         */
+        result.action = DirectoryHandle::Action::Refuse;
+        result.status = STATUS_OBJECT_NAME_NOT_FOUND;
+        return result;
+    }
+
+    if (resolve->hPath.empty() || (resolve->hPath[0].fInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+    {
+        /*
+         * The handle denotes no directory, so the view has nothing to merge and
+         * the file system reports its own failure for the enumeration.
+         */
+        return result;
+    }
+
+    auto adopted = appbox::HandleInfo::Create(handle, [&viewPath, &resolve](appbox::HandleInfo::Ptr record) {
+        record->viewPath = viewPath;
+        record->resolve = resolve;
+        record->ObjAttributes = OBJ_CASE_INSENSITIVE;
+        record->bDeleteOnClose = false;
+        record->bAdopted = true;
+    });
+
+    if (adopted.get() == nullptr)
+    {
+        /*
+         * The record could not be created: another thread adopted the handle
+         * first, or the module is not initialized. The record of that thread
+         * describes the same directory, so it is used here.
+         */
+        adopted = appbox::HandleInfo::Find(handle);
+        if (adopted.get() == nullptr || adopted->viewPath.empty())
+        {
+            return result;
+        }
+    }
+
+    result.action = DirectoryHandle::Action::Merge;
+    result.info = adopted;
+    return result;
+}
 
 static std::wstring ToLower(const std::wstring& str)
 {
@@ -236,8 +365,32 @@ static NTSTATUS QueryLayerDirectory(bool extended, HANDLE dir, PIO_STATUS_BLOCK 
 NTSTATUS appbox::filesystem::QueryDirectoryInformation(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
                                                        PVOID FileInformation, ULONG Length, ULONG QueryFlags,
                                                        PUNICODE_STRING        FileName,
-                                                       FILE_INFORMATION_CLASS FileInformationClass, bool extended)
+                                                       FILE_INFORMATION_CLASS FileInformationClass, bool extended,
+                                                       bool& handled)
 {
+    handled = false;
+
+    /*
+     * The handle decides whether the view answers the call at all: the record
+     * of an open the sandbox performed, or the record the sandbox adopts here,
+     * names the layers of the enumeration, while a handle which denotes no
+     * directory of the view is left to the file system.
+     */
+    auto directory = ResolveDirectoryHandle(FileHandle);
+    if (directory.action == DirectoryHandle::Action::Forward)
+    {
+        return STATUS_INVALID_HANDLE;
+    }
+
+    handled = true;
+    if (directory.action == DirectoryHandle::Action::Refuse)
+    {
+        return directory.status;
+    }
+
+    auto info = directory.info;
+    LOG_T("info={}", (void*)info.get());
+
     appbox::DirectoryInformationLayout layout;
     if (!appbox::DirectoryInformationLayoutOf(FileInformationClass, layout))
     {
@@ -249,13 +402,6 @@ NTSTATUS appbox::filesystem::QueryDirectoryInformation(HANDLE FileHandle, PIO_ST
          * themselves.
          */
         return STATUS_NOT_SUPPORTED;
-    }
-
-    auto info = appbox::HandleInfo::Find(FileHandle);
-    LOG_T("info={}", (void*)info.get());
-    if (info.get() == nullptr)
-    { /* The caller checks the handle before it calls. */
-        return STATUS_INVALID_HANDLE;
     }
 
     if ((QueryFlags & kQueryRestartScan) != 0)

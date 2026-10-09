@@ -114,6 +114,7 @@ appbox::HandleInfo::HandleInfo()
     handle = nullptr;
     ObjAttributes = 0;
     bDeleteOnClose = false;
+    bAdopted = false;
 }
 
 appbox::HandleInfo::~HandleInfo()

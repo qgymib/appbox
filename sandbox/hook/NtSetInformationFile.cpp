@@ -3,15 +3,13 @@
 #include "filesystem/DirName.hpp"
 #include "filesystem/FileInformationClass.hpp"
 #include "filesystem/IsolationPolicy.hpp"
-#include "filesystem/LayerPath.hpp"
 #include "filesystem/RemoveAll.hpp"
 #include "filesystem/Resolve.hpp"
+#include "filesystem/ViewPathOfHandle.hpp"
 #include "hook/NtDeleteFile.hpp"
 #include "utils/ConvertToFullNtPath.hpp"
-#include "utils/HandleInfo.hpp"
 #include "utils/Log.hpp"
 #include "utils/MappingAsDosNtPath.hpp"
-#include "utils/QueryHandlePath.hpp"
 #include "NtSetInformationFile.hpp"
 #include <cstddef>
 #include <cwctype>
@@ -251,53 +249,6 @@ static std::wstring JoinPath(const std::wstring& parent, const std::wstring& chi
 }
 
 /**
- * @brief Query the path of the view which a handle denotes.
- *
- * The information the sandbox recorded while it opened the handle is
- * authoritative, because the handle may denote the copy the upper layer holds
- * while the application knows the path of the view. A handle which the sandbox
- * did not open is looked up in the file system instead, and its path is
- * translated back into the path of the view.
- *
- * @param[in] handle Handle to query.
- * @param[out] viewPath Path of the view the handle denotes.
- * @return false when the path cannot be expressed as a path of the view.
- */
-static bool ViewPathOfHandle(HANDLE handle, std::wstring& viewPath)
-{
-    auto info = appbox::HandleInfo::Find(handle);
-    if (info.get() != nullptr && !info->viewPath.empty())
-    {
-        viewPath = info->viewPath;
-        return true;
-    }
-
-    std::wstring native_path;
-    if (!NT_SUCCESS(appbox::QueryHandlePath(handle, native_path)))
-    {
-        return false;
-    }
-
-    /*
-     * The path of the object is a device path of the file system. A path which
-     * belongs to a layer is translated back into the path of the view, and a
-     * path which belongs to the host filesystem is the path of the view
-     * already.
-     */
-    if (!appbox::MappingAsDosNtPath(native_path, viewPath))
-    {
-        return false;
-    }
-
-    std::wstring rebased;
-    if (appbox::filesystem::RebaseLayerPathToView(viewPath, rebased))
-    {
-        viewPath = rebased;
-    }
-    return true;
-}
-
-/**
  * @brief Build the path of the view a rename or a link names.
  *
  * @param[in] request Request of the caller.
@@ -317,7 +268,8 @@ static bool DestinationViewPath(const SetNameRequest& request, const std::wstrin
     if (request.rootDirectory != nullptr)
     {
         std::wstring rootViewPath;
-        if (!ViewPathOfHandle(request.rootDirectory, rootViewPath))
+        if (appbox::filesystem::ViewPathOfHandle(request.rootDirectory, rootViewPath) !=
+            appbox::filesystem::HandlePathStatus::View)
         {
             return false;
         }
@@ -365,7 +317,7 @@ static bool RedirectSetName(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
                             NTSTATUS& status)
 {
     std::wstring sourceViewPath;
-    if (!ViewPathOfHandle(FileHandle, sourceViewPath))
+    if (appbox::filesystem::ViewPathOfHandle(FileHandle, sourceViewPath) != appbox::filesystem::HandlePathStatus::View)
     {
         LOG_D("the view path of the handle is unknown");
         return false;

@@ -39,6 +39,7 @@ add_library(${sandbox_name} MODULE
     "filesystem/RemoveAll.cpp"
     "filesystem/Resolve.cpp"
     "filesystem/Sequence.cpp"
+    "filesystem/ViewPathOfHandle.cpp"
     "fonts/Isolation.cpp"
     "hook/__init__.cpp"
     "hook/closesocket.cpp"

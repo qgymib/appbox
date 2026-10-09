@@ -14,12 +14,15 @@ struct ProtocolListDirNt
 {
     struct Req
     {
-        std::string path;                /* Directory path. */
-        bool        extended = false;    /* Use NtQueryDirectoryFileEx. */
-        std::string info_class;          /* Information class, empty for FileFullDirectoryInformation. */
-        bool        create_file = false; /* Open the directory with CreateFileW. */
+        std::string path;                        /* Directory path. */
+        bool        extended = false;            /* Use NtQueryDirectoryFileEx. */
+        std::string info_class;                  /* Information class, empty for FileFullDirectoryInformation. */
+        bool        create_file = false;         /* Open the directory with CreateFileW. */
+        bool        duplicate = false;           /* Enumerate a duplicate of the handle. */
+        bool        remove_before_query = false; /* Remove the directory before the query. */
 
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, path, extended, info_class, create_file)
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, path, extended, info_class, create_file, duplicate,
+                                                    remove_before_query)
     };
 
     struct Rsp
@@ -46,6 +49,13 @@ struct ProtocolListDirNt
  * directory handle. The probe reads the name of an entry with its own table of
  * the classes, so a case which compares the answer with the names it created
  * itself pins the merge and the layout of the class at once.
+ *
+ * A request may also ask for a handle the sandbox did not open: the probe
+ * duplicates the handle it opened and closes the original, which leaves a
+ * handle of the same object which carries no record of the open, like the
+ * handle a process inherits or duplicates from another process. Such a request
+ * may remove the entry before it queries it, which is the state of a handle
+ * whose object the view no longer holds.
  */
 extern Probe ProbeListDirNt;
 

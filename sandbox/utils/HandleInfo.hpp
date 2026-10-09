@@ -105,6 +105,19 @@ public:
      */
     bool bDeleteOnClose;
 
+    /**
+     * @brief Whether the record was created for a handle the sandbox did not
+     *        open itself.
+     *
+     * The enumeration of a directory adopts the handle of a directory of the
+     * view which the sandbox did not open, so an enumeration through a handle
+     * which a process inherited or duplicated is merged as well. Such a record
+     * carries no knowledge of the call which opened the handle, so the close
+     * does not record a delete for it: whether the handle may remove its object
+     * is a property of that call, which the record cannot report.
+     */
+    bool bAdopted;
+
     ~HandleInfo();
     HandleInfo(const HandleInfo&) = delete;
     HandleInfo(HandleInfo&&) = delete;

@@ -42,8 +42,13 @@ static NTSTATUS Hook_NtClose(HANDLE Handle)
          * delete for it, so the flag of the record decides that case. Every
          * other handle is asked for the state of the object: only a handle
          * which carries the access to delete it can have a pending delete.
+         *
+         * A record the directory enumeration adopted carries no knowledge of
+         * the call which opened the handle, so the close does not record a
+         * delete for it: whether the handle may remove its object is a property
+         * of that call, which the record cannot report.
          */
-        bPendingDelete = info->bDeleteOnClose || IsPendingDelete(Handle);
+        bPendingDelete = !info->bAdopted && (info->bDeleteOnClose || IsPendingDelete(Handle));
         LOG_T(L"path:{}, bPendingDelete:{}", info->viewPath, bPendingDelete);
     }
 

@@ -319,20 +319,55 @@ These rules constrain every hooked API; the implementation lives in
   upper layer already emitted hides the same name of the lower layers, and
   entries which a whiteout, an opaque marker or the isolation hides are dropped.
   The merge covers every information class which reports the name of an entry
-  and every directory handle the sandbox opened itself, because the record of
-  the open names the layers which hold the directory. A class which reports no
-  name of an entry cannot be merged, because the view cannot decide which layer
-  holds an entry it cannot name: the view answers such a class with
-  `STATUS_NOT_SUPPORTED` instead of forwarding it, because the answer of the
-  single layer the handle was opened with would show the entries a whiteout, an
-  opaque marker or the isolation hides, together with the markers of the view
-  themselves (see [Known gaps and limitations](#known-gaps-and-limitations)).
-  A handle the sandbox did not open is not part of the view, so a query through
-  it is forwarded unchanged, like a path which cannot be expressed as a view
-  path. `NtQueryDirectoryFile` and `NtQueryDirectoryFileEx` share the merge, so
+  and every handle which denotes a directory of the view, whatever call opened
+  it. The layers of a handle the sandbox opened itself come from the record of
+  that open, and a handle the sandbox did not open, which is the handle a
+  process inherited or duplicated from another process, is adopted: the path of
+  the view the handle denotes is looked up in the file system and translated
+  back into the path of the view, which is what makes an enumeration through
+  such a handle report the view as well. The object the handle denotes decides
+  the answer: a handle which denotes no directory of a disk file system, or an
+  object another isolation domain owns, is forwarded unchanged, like a path
+  which cannot be expressed as a view path, and the file system reports its own
+  failure; a directory the view does not hold reports `File Not Found`, and a
+  local object the view cannot name at all is refused with
+  `STATUS_NOT_SUPPORTED`, because the answer of the single layer the handle was
+  opened with would show the entries the view hides and the markers of the view
+  themselves. A directory which was removed while its handle stayed open is one
+  of the objects the view cannot name, which is why a listing through such a
+  handle is refused as well: the file system reports it below its own metadata
+  directory (`\??\C:\$Extend\$Deleted\...`), which no layer of the view holds.
+  No answer of the view shows an entry of the single layer the handle was opened
+  with. A class which reports no name of an entry is refused as well (see the
+  rule below).
+  `NtQueryDirectoryFile` and `NtQueryDirectoryFileEx` share the merge, so
   both entry points answer the same view. A hook which runs inside a kernel call
   must never read more than the caller declared and never throw: a failure
   inside a hook is a failure of the application.
+* **A class which reports no name of an entry is refused.** The merge reads and
+  rewrites the entry list, so it understands every class which reports the name
+  of an entry: `FileDirectoryInformation`, `FileFullDirectoryInformation`,
+  `FileBothDirectoryInformation`, `FileNamesInformation`,
+  `FileIdBothDirectoryInformation`, `FileIdFullDirectoryInformation`,
+  `FileIdExtdDirectoryInformation`, `FileIdExtdBothDirectoryInformation` and
+  `FileIdGlobalTxDirectoryInformation`. A class which carries no name cannot be
+  merged, because the view cannot decide which layer holds an entry it cannot
+  name. The classes of that kind report the identity of a storage object of the
+  volume of one layer rather than an entry of a directory — the report of an
+  object identity (`FileObjectIdInformation`) and the report of a reparse point
+  (`FileReparsePointInformation`) — and an entry of the view has no such
+  identity: the view is the composition of its layers, so an answer which names
+  one of them would be the answer of the single layer the handle was opened
+  with, which the view never gives. The view therefore refuses such a class with
+  `STATUS_NOT_SUPPORTED` instead of forwarding it. The file system refuses both
+  classes for a directory of a volume as well, with `STATUS_INVALID_INFO_CLASS`
+  (the report of a reparse point is only valid for the metadata stream
+  `\$Extend\$Reparse:$R:$INDEX_ALLOCATION` of an NTFS or ReFS volume, whose
+  records name the reparse points of the volume rather than the entries of a
+  directory), so an application which asks for one of them through a directory of
+  the view receives a refusal either way. A handle which denotes no directory of
+  the view is not part of the view, so a query through it is forwarded unchanged
+  (see the merge rule above).
 * **Name based queries are redirected.** `NtQueryAttributesFile`,
   `NtQueryFullAttributesFile` and `NtQueryInformationByName` resolve the name
   they were given through the view and query the first layer which the
@@ -351,7 +386,11 @@ These rules constrain every hooked API; the implementation lives in
   up first when only a read-only layer holds it and it is a file (a directory is
   the exception, see [Known gaps and limitations](#known-gaps-and-limitations)),
   and a rename records the delete of the name it moved away from with a whiteout
-  marker, so the layers below the overlay stop showing it. `NtQueryInformationFile`
+  marker, so the layers below the overlay stop showing it. The path of the view
+  a handle denotes is looked up in the file system when the sandbox did not open
+  the handle itself, which is the same lookup the merge of a directory listing
+  uses (see above), so a rename or a link of an object the application inherited
+  reaches the view as well. `NtQueryInformationFile`
   answers the classes which report a name (`FileNameInformation`,
   `FileNormalizedNameInformation` and `FileAllInformation`) with the path of the
   view instead of the path of the layer the handle was opened in, so the layout
@@ -379,64 +418,37 @@ listed in [test/README.md](../test/README.md).
 The following points are visible in the current code and should be kept in mind when
 extending or testing the isolation:
 
-1. **Directory merging covers the information classes which carry a name.** The merge
-   reads and rewrites the entry list, so it understands every class which reports the
-   name of an entry: `FileDirectoryInformation`, `FileFullDirectoryInformation`,
-   `FileBothDirectoryInformation`, `FileNamesInformation`,
-   `FileIdBothDirectoryInformation`, `FileIdFullDirectoryInformation`,
-   `FileIdExtdDirectoryInformation`, `FileIdExtdBothDirectoryInformation` and
-   `FileIdGlobalTxDirectoryInformation`. A class which carries no name cannot be
-   merged, because the view cannot decide which layer holds an entry it cannot name,
-   and the view answers such a class with `STATUS_NOT_SUPPORTED` instead of answering it
-   from the layer the handle was opened with: that answer would show the entries a
-   whiteout, an opaque marker or the isolation hides, together with the markers of the
-   view themselves. The classes of that kind are the report of a reparse point
-   (`FileReparsePointInformation`) and the report of an object identity
-   (`FileObjectIdInformation`); the file system refuses both for a directory of a volume
-   with `STATUS_INVALID_INFO_CLASS` (the report of a reparse point is only valid for the
-   metadata stream `\$Extend\$Reparse:$R:$INDEX_ALLOCATION` of an NTFS or ReFS volume,
-   whose records name the reparse points of the volume rather than the entries of a
-   directory), so an application which asks for one of them through the view receives a
-   refusal either way. A handle the sandbox did not open is not part of the view (see
-   the point below), so a query through it is forwarded unchanged.
-2. **A directory handle the sandbox did not open is not merged.** The merge reads the
-   layers which hold the directory from the record the sandbox wrote while it opened
-   the handle, so a handle of `NtOpenFile` and a handle of `NtCreateFile` which denotes
-   a directory are merged (a `CreateFileW` handle is one of the latter, because
-   `CreateFileW` opens its handle through `NtCreateFile`). A handle which was inherited
-   or duplicated from another process carries no such record, so an enumeration through
-   it reports the single layer the handle was opened with.
-3. **A mode does not reach the alternate data streams of its file.** The lookup of the
+1. **A mode does not reach the alternate data streams of its file.** The lookup of the
    isolation walks the path upwards component by component, and a stream name such as
    `file.txt:stream` is the last component of its own path, so it does not inherit the
    mode of `file.txt`. The mode of a folder still covers the streams of the files below
    it.
-4. **Copy-up copies the default data stream only.** Alternate data streams are not
+2. **Copy-up copies the default data stream only.** Alternate data streams are not
    handled specially: a stream name such as `file.txt:stream` is carried into the upper
    layer path as part of the file name, while copy-up reads only the file content, and
    whiteout / opaque markers are not stream aware.
-5. **Non-local paths bypass isolation.** UNC paths, named pipes, mailslots, network
+3. **Non-local paths bypass isolation.** UNC paths, named pipes, mailslots, network
    volumes and drive-relative paths cannot be converted to a view path, so the hooks
    forward them unchanged. A rename or a link whose name is such a path is forwarded as
    well.
-6. **`ResolveFs` is fixed at injection time.** There is no way to add or remove a lower
+4. **`ResolveFs` is fixed at injection time.** There is no way to add or remove a lower
    layer while a sandboxed process is running; the layers come from the injected
    configuration and live in the `appbox::sandbox` singleton. The isolation modes are
    loaded once as well, so a mode which is changed in the packer afterwards needs a new
    archive.
-7. **A root mode which hides the host filesystem stops the process.** The mode of the
+5. **A root mode which hides the host filesystem stops the process.** The mode of the
    root of the view covers every path no other entry names, so `Full` or `Whiteout` at
    the root hides the whole host filesystem: the sandboxed process can no longer load
    the modules of the host and fails to start, which is the behaviour the mode asks for
    but which no end-to-end case can drive. A root mode of `Write Copy` or `Merge` is the
    one a workspace normally uses.
-8. **A rename of a directory which only a read-only layer holds fails.** The open of the
+6. **A rename of a directory which only a read-only layer holds fails.** The open of the
    directory with the access a rename needs is a modification, and the copy-up such a
    call asks for copies a file: a directory stays in the layer which holds it, so the
    open of the overlay entry fails and the caller is told that the entry is missing.
    Neither layer changes, so the read-only layers stay untouched. A directory the
    overlay or the host filesystem holds is renamed as usual.
-9. **A delete on close of a handle the sandbox did not open is not recorded.** The
+7. **A delete on close of a handle the sandbox did not open is not recorded.** The
    delete of such a handle is recorded while it is closed, and the sandbox only knows
    the layers of a handle it opened itself: a handle which was inherited or duplicated
    from another process removes its layer object without hiding the layers below it.

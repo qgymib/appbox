@@ -580,8 +580,10 @@ comment.
 | `DeleteOnClose_UpperOnly` | `data.txt` | – | open `data.txt` the same way | success, file of the state deleted, no whiteout (nothing to hide) |
 | `DeleteOnClose_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | create `data.txt` again (`CREATE_NEW`) the same way | success, file of the state deleted, the whiteout is written again, the view reports `File Not Found` |
 | `ListDir_CreateFileHandle` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder with a handle of `CreateFileW` and with a handle of `NtOpenFile`, through both NT entry points and with two information classes | both handles report the same merged view: the file of the lower layer and the file of the host, while the file the whiteout hides and the marker are not listed |
+| `ListDir_DuplicatedHandle` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder through a handle the probe duplicated and closed the original of, through both NT entry points and with both ways a directory handle reaches the sandbox | every enumeration reports the same merged view as a handle the sandbox opened: the file of the lower layer and the file of the host, while the file the whiteout hides and the marker are not listed |
 | `ListDir_InformationClasses` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder with both NT entry points and with every information class which carries a name | every class reports the same merged view: the file of the lower layer and the file of the host, while the file the whiteout hides and the marker are not listed |
 | `ListDir_LowerLayer` | – | `F.txt` | list `#USERPROFILE#` | `F.txt` appears exactly once, host entries also listed |
+| `ListDir_UnregisteredNotInView` | folder which is removed while its handle stays open | a file, the character device `NUL` | enumerate a duplicated handle of a file, of the device and of the removed folder | the calls of the file and of the device are forwarded to the file system, the call of the removed folder is refused by the view, and no call reports an entry of a layer |
 | `ListDir_UnsupportedClass` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder with the information classes which carry no name of an entry (`FileObjectIdInformation`, `FileReparsePointInformation`), through both NT entry points and with both ways a directory handle reaches the sandbox | every call is refused by the view with `STATUS_NOT_SUPPORTED` and reports no entry, so the view never answers with the content of the single layer the handle was opened with |
 | `ListDir_WhiteoutInUpper` | `F.txt.$APPBOX_DELETE$` | `F.txt`, `F2.txt` | list `#USERPROFILE#` | `F.txt` hidden, `F2.txt` listed once |
 | `NewFile_WhiteoutInLower` | – | `data.txt.$APPBOX_DELETE$` | create `data.txt` (`CREATE_NEW`) | success, file created in the state |
@@ -1135,7 +1137,11 @@ header comment.
   classes, so a case which compares the answer with the names it created itself
   pins the layout of the class as well. A class which carries no name of an
   entry is not read at all: the probe reports the status of the call alone, so a
-  case pins the refusal of the view for such a class.
+  case pins the refusal of the view for such a class. A request may ask for a
+  handle the sandbox did not open, which the probe builds by duplicating the
+  handle it opened and closing the original, and may remove the entry before it
+  queries it, which is the state of a handle whose object the view no longer
+  holds.
   `QueryAttributes` asks the user mode
   wrapper of the attributes, while `QueryFullAttributes` and
   `QueryInformationByName` call `NtQueryFullAttributesFile` and
