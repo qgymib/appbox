@@ -35,6 +35,20 @@ struct DirectoryInformationLayout
 /**
  * @brief Get the layout of a directory information class.
  *
+ * The classes the function understands are the ones which carry the name of an
+ * entry: `FileDirectoryInformation`, `FileFullDirectoryInformation`,
+ * `FileBothDirectoryInformation`, `FileNamesInformation`,
+ * `FileIdBothDirectoryInformation`, `FileIdFullDirectoryInformation`,
+ * `FileIdExtdDirectoryInformation`, `FileIdExtdBothDirectoryInformation` and
+ * `FileIdGlobalTxDirectoryInformation`. A class which carries no name cannot be
+ * merged or filtered, because the view cannot decide which layer holds an entry
+ * it cannot name, so it is not understood here: the report of a reparse point
+ * and the report of an object identity are of that kind, and the file system
+ * refuses both for a directory of a volume with `STATUS_INVALID_INFO_CLASS`.
+ * The view refuses such a class with `STATUS_NOT_SUPPORTED` instead of
+ * forwarding the call, so that it never answers with the content of a single
+ * layer (see `DirectoryMerge.hpp`).
+ *
  * @param[in] info_class Information class of a directory query.
  * @param[out] layout Layout of the class.
  * @return true when the class carries the name of an entry, which is what the

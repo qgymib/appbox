@@ -792,6 +792,146 @@ typedef struct _FILE_BOTH_DIR_INFORMATION
     WCHAR         FileName[1];
 } FILE_BOTH_DIR_INFORMATION, *PFILE_BOTH_DIR_INFORMATION;
 
+/**
+ * @brief Name of an entry, without any other property.
+ *
+ * The record carries the name alone, so the merge of the layers reads and
+ * filters it like the records which carry more of the entry.
+ *
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_names_information
+ */
+typedef struct _FILE_NAMES_INFORMATION
+{
+    ULONG NextEntryOffset;
+    ULONG FileIndex;
+    ULONG FileNameLength;
+    WCHAR FileName[1];
+} FILE_NAMES_INFORMATION, *PFILE_NAMES_INFORMATION;
+
+/**
+ * @brief Entry of a directory together with the identity of the entry.
+ *
+ * The identity follows the short name of the entry and is followed by the
+ * name, which is the last member of the record: a caller which reads the name
+ * of an entry only has to know where the name begins.
+ *
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_id_both_dir_information
+ */
+typedef struct _FILE_ID_BOTH_DIR_INFORMATION
+{
+    ULONG         NextEntryOffset;
+    ULONG         FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG         FileAttributes;
+    ULONG         FileNameLength;
+    ULONG         EaSize;
+    CCHAR         ShortNameLength;
+    WCHAR         ShortName[12];
+    LARGE_INTEGER FileId;
+    WCHAR         FileName[1];
+} FILE_ID_BOTH_DIR_INFORMATION, *PFILE_ID_BOTH_DIR_INFORMATION;
+
+/**
+ * @brief Entry of a directory together with the identity of the entry.
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_id_full_dir_information
+ */
+typedef struct _FILE_ID_FULL_DIR_INFORMATION
+{
+    ULONG         NextEntryOffset;
+    ULONG         FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG         FileAttributes;
+    ULONG         FileNameLength;
+    ULONG         EaSize;
+    LARGE_INTEGER FileId;
+    WCHAR         FileName[1];
+} FILE_ID_FULL_DIR_INFORMATION, *PFILE_ID_FULL_DIR_INFORMATION;
+
+/**
+ * @brief Entry of a directory together with its 128 bit identity.
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_id_extd_dir_information
+ */
+typedef struct _FILE_ID_EXTD_DIR_INFORMATION
+{
+    ULONG         NextEntryOffset;
+    ULONG         FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG         FileAttributes;
+    ULONG         FileNameLength;
+    ULONG         EaSize;
+    ULONG         ReparsePointTag;
+    FILE_ID_128   FileId;
+    WCHAR         FileName[1];
+} FILE_ID_EXTD_DIR_INFORMATION, *PFILE_ID_EXTD_DIR_INFORMATION;
+
+/**
+ * @brief Entry of a directory together with its 128 bit identity and its short name.
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_id_extd_both_dir_information
+ */
+typedef struct _FILE_ID_EXTD_BOTH_DIR_INFORMATION
+{
+    ULONG         NextEntryOffset;
+    ULONG         FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG         FileAttributes;
+    ULONG         FileNameLength;
+    ULONG         EaSize;
+    ULONG         ReparsePointTag;
+    FILE_ID_128   FileId;
+    CCHAR         ShortNameLength;
+    WCHAR         ShortName[12];
+    WCHAR         FileName[1];
+} FILE_ID_EXTD_BOTH_DIR_INFORMATION, *PFILE_ID_EXTD_BOTH_DIR_INFORMATION;
+
+/**
+ * @brief Entry of a directory together with the transactional visibility of the entry.
+ *
+ * The record carries the name of the entry at a fixed offset like the other
+ * records which report an entry of a directory, so the merge of the layers
+ * reads and filters it the same way. The file system reports the record for a
+ * directory handle which is not part of a transaction as well, with the flags
+ * of the record naming no transaction.
+ *
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_id_global_tx_dir_information
+ */
+typedef struct _FILE_ID_GLOBAL_TX_DIR_INFORMATION
+{
+    ULONG         NextEntryOffset;
+    ULONG         FileIndex;
+    LARGE_INTEGER CreationTime;
+    LARGE_INTEGER LastAccessTime;
+    LARGE_INTEGER LastWriteTime;
+    LARGE_INTEGER ChangeTime;
+    LARGE_INTEGER EndOfFile;
+    LARGE_INTEGER AllocationSize;
+    ULONG         FileAttributes;
+    ULONG         FileNameLength;
+    LARGE_INTEGER FileId;
+    GUID          LockingTransactionId;
+    ULONG         TxInfoFlags;
+    WCHAR         FileName[1];
+} FILE_ID_GLOBAL_TX_DIR_INFORMATION, *PFILE_ID_GLOBAL_TX_DIR_INFORMATION;
+
 typedef void(NTAPI* PIO_APC_ROUTINE)(IN PVOID ApcContext, IN PIO_STATUS_BLOCK IoStatusBlock, IN ULONG Reserved);
 
 /**

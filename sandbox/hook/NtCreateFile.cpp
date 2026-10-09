@@ -166,7 +166,53 @@ static bool MayDeleteOnClose(ACCESS_MASK DesiredAccess, ULONG CreateOptions)
 }
 
 /**
- * @brief Record the information of a handle which may be marked for deletion.
+ * @brief Whether the handle of the call denotes a directory.
+ *
+ * The kind of the entry decides whether the merge of a directory enumeration
+ * can use the handle. It is taken from the layers the call resolved to, which
+ * the file system filled for every entry it holds: a call which creates the
+ * entry names the kind in its options instead, because no layer holds the entry
+ * while the call resolves it.
+ *
+ * @param[in] resolve_result Layers the call resolved to.
+ * @param[in] CreateOptions Options of the call.
+ * @return true when the handle denotes a directory.
+ */
+static bool IsDirectoryHandle(const appbox::filesystem::ResolveResult& resolve_result, ULONG CreateOptions)
+{
+    if ((CreateOptions & FILE_DIRECTORY_FILE) != 0)
+    {
+        return true;
+    }
+
+    return !resolve_result.hPath.empty() &&
+           (resolve_result.hPath[0].fInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+}
+
+/**
+ * @brief Whether the handle of the call has to be recorded.
+ *
+ * `NtClose` records the delete of a handle which carries a pending delete and
+ * the directory entry points merge the layers of a directory handle, so both
+ * need the record `NtOpenFile` writes for every handle it opens: a handle which
+ * may be marked for deletion and a handle which denotes a directory are
+ * recorded here as well. A directory is recorded whatever access the caller
+ * asked for, because the access a call asks for is a generic right of the
+ * caller which the file system maps afterwards.
+ *
+ * @param[in] resolve_result Layers the call resolved to.
+ * @param[in] DesiredAccess Access the caller asked for.
+ * @param[in] CreateOptions Options of the call.
+ * @return true when the call has to record the handle.
+ */
+static bool NeedsHandleRecord(const appbox::filesystem::ResolveResult& resolve_result, ACCESS_MASK DesiredAccess,
+                              ULONG CreateOptions)
+{
+    return MayDeleteOnClose(DesiredAccess, CreateOptions) || IsDirectoryHandle(resolve_result, CreateOptions);
+}
+
+/**
+ * @brief Record the information of a handle the sandbox opened.
  *
  * `NtClose` is where the sandbox records the delete of a handle which carries
  * a pending delete, so such a handle needs the information `NtOpenFile` writes
@@ -176,20 +222,25 @@ static bool MayDeleteOnClose(ACCESS_MASK DesiredAccess, ULONG CreateOptions)
  * the only place that information is available: the object is gone by the time
  * the close runs.
  *
+ * A record of a directory carries every layer which holds it, because the
+ * merge of a directory enumeration walks them one after the other, which is
+ * what the resolver is asked for all of them here.
+ *
  * The path is resolved again here instead of reusing the result of the call,
  * because the call changes what the layers hold: it creates the entry, copies
  * it up into the upper layer and removes a whiteout marker which hid the entry
  * of a lower layer, and a record taken before the call would name the wrong
  * layers. A path the record cannot be built for stays unrecorded, in which
- * case the close removes the layer object without hiding the layers below it.
+ * case the close removes the layer object without hiding the layers below it
+ * and an enumeration reports the layer of the handle.
  *
  * @param[in] handle Handle the call opened.
  * @param[in] viewPath Path of the view the handle denotes.
  * @param[in] ObjectAttributes Attributes of the call.
  * @param[in] CreateOptions Options of the call.
  */
-static void RecordDeletableHandle(HANDLE handle, const std::wstring& viewPath, POBJECT_ATTRIBUTES ObjectAttributes,
-                                  ULONG CreateOptions)
+static void RecordHandle(HANDLE handle, const std::wstring& viewPath, POBJECT_ATTRIBUTES ObjectAttributes,
+                         ULONG CreateOptions)
 {
     appbox::filesystem::ResolveOption resolve_option;
     resolve_option.NameAttributes = ObjectAttributes->Attributes;
@@ -387,15 +438,17 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
                                            CreateDisposition, CreateOptions, EaBuffer, EaLength);
 
     /*
-     * A handle which the caller may mark for deletion records the same
-     * information `NtOpenFile` records, so the close of the handle can hide
-     * the layers which still hold the name. The handle is only known once the
-     * call succeeded, and a caller which passed no handle keeps the internal
-     * one of the helper, which the helper closed already.
+     * A handle which the caller may mark for deletion or which denotes a
+     * directory records the same information `NtOpenFile` records, so the
+     * close of the handle can hide the layers which still hold the name and the
+     * entry points which enumerate a directory can merge the layers which hold
+     * it. The handle is only known once the call succeeded, and a caller which
+     * passed no handle keeps the internal one of the helper, which the helper
+     * closed already.
      */
-    if (NT_SUCCESS(st) && FileHandle != nullptr && MayDeleteOnClose(DesiredAccess, CreateOptions))
+    if (NT_SUCCESS(st) && FileHandle != nullptr && NeedsHandleRecord(*resolve_result, DesiredAccess, CreateOptions))
     {
-        RecordDeletableHandle(*FileHandle, nativate_fs_path, ObjectAttributes, CreateOptions);
+        RecordHandle(*FileHandle, nativate_fs_path, ObjectAttributes, CreateOptions);
     }
 
     return st;

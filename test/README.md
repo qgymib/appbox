@@ -579,7 +579,10 @@ comment.
 | `DeleteOnClose_MergeHost` | – | folder `Merge`, `packed.txt` | open the file `data.txt` of the host filesystem the same way | success, the file of the host filesystem is really removed, no whiteout in the state |
 | `DeleteOnClose_UpperOnly` | `data.txt` | – | open `data.txt` the same way | success, file of the state deleted, no whiteout (nothing to hide) |
 | `DeleteOnClose_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | create `data.txt` again (`CREATE_NEW`) the same way | success, file of the state deleted, the whiteout is written again, the view reports `File Not Found` |
+| `ListDir_CreateFileHandle` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder with a handle of `CreateFileW` and with a handle of `NtOpenFile`, through both NT entry points and with two information classes | both handles report the same merged view: the file of the lower layer and the file of the host, while the file the whiteout hides and the marker are not listed |
+| `ListDir_InformationClasses` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder with both NT entry points and with every information class which carries a name | every class reports the same merged view: the file of the lower layer and the file of the host, while the file the whiteout hides and the marker are not listed |
 | `ListDir_LowerLayer` | – | `F.txt` | list `#USERPROFILE#` | `F.txt` appears exactly once, host entries also listed |
+| `ListDir_UnsupportedClass` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder with the information classes which carry no name of an entry (`FileObjectIdInformation`, `FileReparsePointInformation`), through both NT entry points and with both ways a directory handle reaches the sandbox | every call is refused by the view with `STATUS_NOT_SUPPORTED` and reports no entry, so the view never answers with the content of the single layer the handle was opened with |
 | `ListDir_WhiteoutInUpper` | `F.txt.$APPBOX_DELETE$` | `F.txt`, `F2.txt` | list `#USERPROFILE#` | `F.txt` hidden, `F2.txt` listed once |
 | `NewFile_WhiteoutInLower` | – | `data.txt.$APPBOX_DELETE$` | create `data.txt` (`CREATE_NEW`) | success, file created in the state |
 | `NewFile_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | create `data.txt` (`CREATE_NEW`) | success, whiteout removed, file created in the state |
@@ -1123,19 +1126,27 @@ header comment.
   cases (`LaunchProcess`, `QueryAttributes`, `QueryFullAttributes`,
   `QueryInformationByName`, `QueryInformationFile`, `SetInformationFile`,
   `ConsoleWindow`).
-  `ListDirNt` opens a directory with `NtOpenFile` and enumerates it with
-  `NtQueryDirectoryFile` or `NtQueryDirectoryFileEx`, so it pins both entry
-  points of the merged view directly, while the user mode wrappers may use
-  either of them. `QueryAttributes` asks the user mode wrapper of the
-  attributes, while `QueryFullAttributes` and `QueryInformationByName` call
-  `NtQueryFullAttributesFile` and `NtQueryInformationByName` themselves, so
-  every name based query of the view is pinned directly. `QueryInformationFile`
-  calls `NtQueryInformationFile` with the three classes which report a name and
-  reports every name together with the size of the buffer it was asked with, and
-  `SetInformationFile` calls `NtSetInformationFile` with the classes of a rename
-  and of a link, so both entry points which act on a handle are pinned directly
-  as well. The probes answer one item per question of their request, which keeps
-  the number of calls into the sandbox low.
+  `ListDirNt` opens a directory with `NtOpenFile` or, when the request asks for
+  it, with `CreateFileW`, and enumerates it with `NtQueryDirectoryFile` or
+  `NtQueryDirectoryFileEx`, so it pins both entry points of the merged view and
+  both ways a directory handle reaches the sandbox, while the user mode wrappers
+  may use either of them. A request may also name the information class of the
+  query, and the probe reads the name of an entry with its own table of the
+  classes, so a case which compares the answer with the names it created itself
+  pins the layout of the class as well. A class which carries no name of an
+  entry is not read at all: the probe reports the status of the call alone, so a
+  case pins the refusal of the view for such a class.
+  `QueryAttributes` asks the user mode
+  wrapper of the attributes, while `QueryFullAttributes` and
+  `QueryInformationByName` call `NtQueryFullAttributesFile` and
+  `NtQueryInformationByName` themselves, so every name based query of the view is
+  pinned directly. `QueryInformationFile` calls `NtQueryInformationFile` with the
+  three classes which report a name and reports every name together with the size
+  of the buffer it was asked with, and `SetInformationFile` calls
+  `NtSetInformationFile` with the classes of a rename and of a link, so both entry
+  points which act on a handle are pinned directly as well. The probes answer one
+  item per question of their request, which keeps the number of calls into the
+  sandbox low.
 * `test/probe/RegWriteValue.cpp` / `RegReadValue.cpp` — the operations
   executed inside the sandbox; both address the key through a root key of the
   view, so a case can pin that two roots name the same key.

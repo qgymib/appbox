@@ -19,19 +19,6 @@ inline constexpr ULONG kQueryRestartScan = 0x00000001;
 inline constexpr ULONG kQueryReturnSingleEntry = 0x00000002;
 
 /**
- * @brief Whether the merge understands an information class.
- *
- * The view of a directory is the merge of every layer which holds it, which
- * only an entry list the merge can read and rewrite allows: the classes which
- * carry the name of an entry are supported, every other class is forwarded to
- * the layer the handle was opened with.
- *
- * @param[in] info_class Information class of a directory query.
- * @return true when the class can be merged and filtered.
- */
-bool IsSupportedDirectoryInformationClass(FILE_INFORMATION_CLASS info_class);
-
-/**
  * @brief Query a directory of the view with the merged content of its layers.
  *
  * The function is shared by `NtQueryDirectoryFileEx` and
@@ -41,12 +28,19 @@ bool IsSupportedDirectoryInformationClass(FILE_INFORMATION_CLASS info_class);
  * marker or the isolation of the view hides are filtered out, which keeps the
  * enumeration and the isolation of a single path consistent.
  *
+ * A class which carries no name of an entry cannot be merged (see
+ * `DirectoryInformationLayoutOf`), and the view answers it with
+ * `STATUS_NOT_SUPPORTED` instead of forwarding the call: the answer of the
+ * layer the handle was opened with would show the entries the view hides and
+ * the markers of the view themselves, so the view never answers with the
+ * content of a single layer.
+ *
  * The state of an enumeration is kept per handle, so a caller may mix the two
  * entry points and the information classes on the same handle;
  * `kQueryRestartScan` discards the state and starts at the upper layer again.
  *
- * The handle has to be registered by `NtOpenFile` and the class has to be
- * supported; the caller checks both before it calls.
+ * The handle has to be registered by `NtOpenFile`, which is what the callers
+ * check before they call.
  *
  * @param[in] FileHandle Handle of the directory, registered by `NtOpenFile`.
  * @param[in] IoStatusBlock Status block of the call.

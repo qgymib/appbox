@@ -233,12 +233,6 @@ static NTSTATUS QueryLayerDirectory(bool extended, HANDLE dir, PIO_STATUS_BLOCK 
                                     (QueryFlags & appbox::filesystem::kQueryRestartScan) != 0);
 }
 
-bool appbox::filesystem::IsSupportedDirectoryInformationClass(FILE_INFORMATION_CLASS info_class)
-{
-    appbox::DirectoryInformationLayout layout;
-    return appbox::DirectoryInformationLayoutOf(info_class, layout);
-}
-
 NTSTATUS appbox::filesystem::QueryDirectoryInformation(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
                                                        PVOID FileInformation, ULONG Length, ULONG QueryFlags,
                                                        PUNICODE_STRING        FileName,
@@ -247,7 +241,14 @@ NTSTATUS appbox::filesystem::QueryDirectoryInformation(HANDLE FileHandle, PIO_ST
     appbox::DirectoryInformationLayout layout;
     if (!appbox::DirectoryInformationLayoutOf(FileInformationClass, layout))
     {
-        return STATUS_INVALID_PARAMETER;
+        /*
+         * The view never answers with the content of a single layer: a class
+         * the merge cannot read is refused, because the answer of the layer the
+         * handle was opened with would list the entries a whiteout, an opaque
+         * marker or the isolation hides, together with the markers of the view
+         * themselves.
+         */
+        return STATUS_NOT_SUPPORTED;
     }
 
     auto info = appbox::HandleInfo::Find(FileHandle);

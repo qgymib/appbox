@@ -38,12 +38,19 @@ static NTSTATUS Hook_NtQueryDirectoryFile(HANDLE FileHandle, HANDLE Event, PIO_A
                ReturnSingleEntry, FileName, RestartScan);
 
     /*
+     * A handle the view opened is answered by the view, whatever the
+     * information class: the merge answers a class which carries the name of an
+     * entry, and refuses every other class instead of forwarding it, because
+     * the answer of the layer the handle was opened with would show the entries
+     * a whiteout, an opaque marker or the isolation hides, and the markers
+     * themselves. A handle the view did not open is not part of the view, so
+     * its call is forwarded unchanged.
+     *
      * The plain entry point reports a directory of the view like the extended
      * one: both share the merge of the layers, which is what keeps the two
      * enumerations of the same handle consistent.
      */
-    if (appbox::filesystem::IsSupportedDirectoryInformationClass(FileInformationClass) &&
-        appbox::HandleInfo::Find(FileHandle) != nullptr)
+    if (appbox::HandleInfo::Find(FileHandle) != nullptr)
     {
         ULONG query_flags = 0;
         if (ReturnSingleEntry)

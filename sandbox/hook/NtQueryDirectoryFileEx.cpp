@@ -36,12 +36,15 @@ static NTSTATUS Hook_NtQueryDirectoryFileEx(HANDLE FileHandle, HANDLE Event, PIO
                QueryFlags, FileName);
 
     /*
-     * Only a directory of the view can be merged: the handle has to be one of
-     * the handles `NtOpenFile` registered and the information class has to be
-     * one which carries the name of an entry.
+     * Only a directory of the view can be answered here: the handle has to be
+     * one of the handles `NtOpenFile` registered. The merge answers a class
+     * which carries the name of an entry and refuses every other class instead
+     * of forwarding it, because the answer of the layer the handle was opened
+     * with would show the entries a whiteout, an opaque marker or the isolation
+     * hides, and the markers themselves. A handle the view did not open is not
+     * part of the view, so its call is forwarded unchanged.
      */
-    if (appbox::filesystem::IsSupportedDirectoryInformationClass(FileInformationClass) &&
-        appbox::HandleInfo::Find(FileHandle) != nullptr)
+    if (appbox::HandleInfo::Find(FileHandle) != nullptr)
     {
         return appbox::filesystem::QueryDirectoryInformation(FileHandle, IoStatusBlock, FileInformation, Length,
                                                              QueryFlags, FileName, FileInformationClass, true);

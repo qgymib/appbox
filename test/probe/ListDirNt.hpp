@@ -14,10 +14,12 @@ struct ProtocolListDirNt
 {
     struct Req
     {
-        std::string path;             /* Directory path. */
-        bool        extended = false; /* Use NtQueryDirectoryFileEx. */
+        std::string path;                /* Directory path. */
+        bool        extended = false;    /* Use NtQueryDirectoryFileEx. */
+        std::string info_class;          /* Information class, empty for FileFullDirectoryInformation. */
+        bool        create_file = false; /* Open the directory with CreateFileW. */
 
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, path, extended)
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, path, extended, info_class, create_file)
     };
 
     struct Rsp
@@ -37,6 +39,13 @@ struct ProtocolListDirNt
  * `NtQueryDirectoryFileEx`, one entry per call. It therefore pins the merged
  * view of both entry points, while the other probes exercise the user mode
  * wrappers which may use either of them.
+ *
+ * A request may name the information class of the query (empty asks for
+ * `FileFullDirectoryInformation`) and may ask for a handle of `CreateFileW`
+ * instead of one of `NtOpenFile`, which is the second way the sandbox learns a
+ * directory handle. The probe reads the name of an entry with its own table of
+ * the classes, so a case which compares the answer with the names it created
+ * itself pins the merge and the layout of the class at once.
  */
 extern Probe ProbeListDirNt;
 

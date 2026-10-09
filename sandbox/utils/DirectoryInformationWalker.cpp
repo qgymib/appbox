@@ -2,6 +2,48 @@
 #include <cstddef>
 #include <cstring>
 
+/*
+ * The walker rewrites the buffers the file system filled, so the layout of a
+ * class is pinned here: the offsets are the ones the file system of the machine
+ * writes, which the end-to-end cases of the directory enumeration verify
+ * against the names a case created itself.
+ */
+static_assert(offsetof(FILE_DIRECTORY_INFORMATION, FileNameLength) == 60,
+              "FileDirectoryInformation: the length of the name follows the attributes");
+static_assert(offsetof(FILE_DIRECTORY_INFORMATION, FileName) == 64,
+              "FileDirectoryInformation: the name is the last member of an entry");
+static_assert(offsetof(FILE_FULL_DIR_INFORMATION, FileNameLength) == 60,
+              "FileFullDirectoryInformation: the length of the name follows the attributes");
+static_assert(offsetof(FILE_FULL_DIR_INFORMATION, FileName) == 68,
+              "FileFullDirectoryInformation: the size of the extended attributes precedes the name");
+static_assert(offsetof(FILE_BOTH_DIR_INFORMATION, FileNameLength) == 60,
+              "FileBothDirectoryInformation: the length of the name follows the attributes");
+static_assert(offsetof(FILE_BOTH_DIR_INFORMATION, FileName) == 94,
+              "FileBothDirectoryInformation: the short name precedes the name");
+static_assert(offsetof(FILE_NAMES_INFORMATION, FileNameLength) == 8,
+              "FileNamesInformation: the entry carries no other member");
+static_assert(offsetof(FILE_NAMES_INFORMATION, FileName) == 12, "FileNamesInformation: the name follows its length");
+static_assert(offsetof(FILE_ID_BOTH_DIR_INFORMATION, FileNameLength) == 60,
+              "FileIdBothDirectoryInformation: the length of the name follows the attributes");
+static_assert(offsetof(FILE_ID_BOTH_DIR_INFORMATION, FileName) == 104,
+              "FileIdBothDirectoryInformation: the identity of the entry precedes the name");
+static_assert(offsetof(FILE_ID_FULL_DIR_INFORMATION, FileNameLength) == 60,
+              "FileIdFullDirectoryInformation: the length of the name follows the attributes");
+static_assert(offsetof(FILE_ID_FULL_DIR_INFORMATION, FileName) == 80,
+              "FileIdFullDirectoryInformation: the identity of the entry precedes the name");
+static_assert(offsetof(FILE_ID_EXTD_DIR_INFORMATION, FileNameLength) == 60,
+              "FileIdExtdDirectoryInformation: the length of the name follows the attributes");
+static_assert(offsetof(FILE_ID_EXTD_DIR_INFORMATION, FileName) == 88,
+              "FileIdExtdDirectoryInformation: the identity of the entry precedes the name");
+static_assert(offsetof(FILE_ID_EXTD_BOTH_DIR_INFORMATION, FileNameLength) == 60,
+              "FileIdExtdBothDirectoryInformation: the length of the name follows the attributes");
+static_assert(offsetof(FILE_ID_EXTD_BOTH_DIR_INFORMATION, FileName) == 114,
+              "FileIdExtdBothDirectoryInformation: the identity and the short name precede the name");
+static_assert(offsetof(FILE_ID_GLOBAL_TX_DIR_INFORMATION, FileNameLength) == 60,
+              "FileIdGlobalTxDirectoryInformation: the length of the name follows the attributes");
+static_assert(offsetof(FILE_ID_GLOBAL_TX_DIR_INFORMATION, FileName) == 92,
+              "FileIdGlobalTxDirectoryInformation: the identity and the transaction precede the name");
+
 namespace
 {
 
@@ -100,6 +142,36 @@ bool appbox::DirectoryInformationLayoutOf(FILE_INFORMATION_CLASS info_class, Dir
     case FileBothDirectoryInformation:
         layout.name_length_offset = offsetof(FILE_BOTH_DIR_INFORMATION, FileNameLength);
         layout.name_offset = offsetof(FILE_BOTH_DIR_INFORMATION, FileName);
+        return true;
+
+    case FileNamesInformation:
+        layout.name_length_offset = offsetof(FILE_NAMES_INFORMATION, FileNameLength);
+        layout.name_offset = offsetof(FILE_NAMES_INFORMATION, FileName);
+        return true;
+
+    case FileIdBothDirectoryInformation:
+        layout.name_length_offset = offsetof(FILE_ID_BOTH_DIR_INFORMATION, FileNameLength);
+        layout.name_offset = offsetof(FILE_ID_BOTH_DIR_INFORMATION, FileName);
+        return true;
+
+    case FileIdFullDirectoryInformation:
+        layout.name_length_offset = offsetof(FILE_ID_FULL_DIR_INFORMATION, FileNameLength);
+        layout.name_offset = offsetof(FILE_ID_FULL_DIR_INFORMATION, FileName);
+        return true;
+
+    case FileIdExtdDirectoryInformation:
+        layout.name_length_offset = offsetof(FILE_ID_EXTD_DIR_INFORMATION, FileNameLength);
+        layout.name_offset = offsetof(FILE_ID_EXTD_DIR_INFORMATION, FileName);
+        return true;
+
+    case FileIdExtdBothDirectoryInformation:
+        layout.name_length_offset = offsetof(FILE_ID_EXTD_BOTH_DIR_INFORMATION, FileNameLength);
+        layout.name_offset = offsetof(FILE_ID_EXTD_BOTH_DIR_INFORMATION, FileName);
+        return true;
+
+    case FileIdGlobalTxDirectoryInformation:
+        layout.name_length_offset = offsetof(FILE_ID_GLOBAL_TX_DIR_INFORMATION, FileNameLength);
+        layout.name_offset = offsetof(FILE_ID_GLOBAL_TX_DIR_INFORMATION, FileName);
         return true;
 
     default:
