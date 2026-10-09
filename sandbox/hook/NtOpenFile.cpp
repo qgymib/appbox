@@ -5,6 +5,7 @@
 #include "utils/ConvertToFullNtPath.hpp"
 #include "filesystem/CopyUp.hpp"
 #include "filesystem/IsolationPolicy.hpp"
+#include "filesystem/MarkerName.hpp"
 #include "filesystem/Resolve.hpp"
 #include "hook/NtCreateFile.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
@@ -67,6 +68,21 @@ static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
     if (!NtOpenFileGetDosNtPath(ObjectAttributes, nativate_fs_path))
     {
         return sys_NtOpenFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, ShareAccess, OpenOptions);
+    }
+
+    /*
+     * The names of the markers are reserved: a path which carries one names
+     * the view rather than an entry it holds, see `MarkerName.hpp`. The open
+     * reports the entry as missing, like an entry the view hides.
+     */
+    const auto marker_placement = appbox::filesystem::ReservedMarkerNamePlacement(nativate_fs_path);
+    if (marker_placement == appbox::filesystem::MarkerNamePlacement::Parent)
+    {
+        return STATUS_OBJECT_PATH_NOT_FOUND;
+    }
+    if (marker_placement == appbox::filesystem::MarkerNamePlacement::Entry)
+    {
+        return STATUS_OBJECT_NAME_NOT_FOUND;
     }
 
     /* Resolve path in sandbox. */

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "filesystem/IsolationTable.hpp"
+#include "filesystem/MarkerName.hpp"
 #include "filesystem/StreamName.hpp"
 #include "src/core/FilesystemIsolationFile.hpp"
 #include "src/core/FilesystemIsolationModel.hpp"
@@ -1143,4 +1144,59 @@ TEST(Unit_FilesystemIsolation, AStreamFollowsTheFileWhichCarriesIt)
     ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe:stream", mode, kind));
     EXPECT_EQ(mode, appbox::FilesystemIsolation::Full);
     EXPECT_EQ(kind, appbox::FilesystemEntryKind::File);
+}
+
+/**
+ * @brief The names of the markers are reserved by the view.
+ *
+ * A whiteout marker is named after the entry it hides (`<name>.$APPBOX_DELETE$`)
+ * and the marker which makes a folder opaque carries a name of its own
+ * (`.$APPBOX_OPAQUE$`), so neither of them names an entry of the view. The
+ * comparison ignores the case, because the volumes of the layers do, and it
+ * covers the name of a stream, because the marker of a stream is a stream of
+ * the file which carries it.
+ */
+TEST(Unit_FilesystemIsolation, MarkerNamesAreReserved)
+{
+    using appbox::filesystem::IsReservedMarkerComponent;
+    using appbox::filesystem::IsReservedMarkerName;
+    using appbox::filesystem::MarkerNamePlacement;
+    using appbox::filesystem::ReservedMarkerNamePlacement;
+
+    /* Both markers are reserved, whatever the case of their characters is. */
+    EXPECT_TRUE(IsReservedMarkerName(L"data.txt.$APPBOX_DELETE$"));
+    EXPECT_TRUE(IsReservedMarkerName(L"data.txt.$appbox_delete$"));
+    EXPECT_TRUE(IsReservedMarkerName(L".$APPBOX_OPAQUE$"));
+    EXPECT_TRUE(IsReservedMarkerName(L".$appbox_opaque$"));
+    EXPECT_FALSE(IsReservedMarkerName(L"data.txt"));
+    EXPECT_FALSE(IsReservedMarkerName(L"$APPBOX_DELETE$"));
+    EXPECT_FALSE(IsReservedMarkerName(L""));
+
+    /* The marker of a stream is a stream of the file which carries it, and the
+     * streams of a file whose own name is reserved are refused as well. */
+    EXPECT_TRUE(IsReservedMarkerComponent(L"data.txt:stream.$APPBOX_DELETE$"));
+    EXPECT_TRUE(IsReservedMarkerComponent(L"data.txt.$APPBOX_DELETE$:stream"));
+    EXPECT_FALSE(IsReservedMarkerComponent(L"data.txt:stream"));
+
+    /* The entry a path names, and a path which hangs below a reserved name. */
+    EXPECT_EQ(ReservedMarkerNamePlacement(L"\\??\\C:\\dir\\data.txt"), MarkerNamePlacement::None);
+    EXPECT_EQ(ReservedMarkerNamePlacement(L"\\??\\C:\\dir\\data.txt.$APPBOX_DELETE$"), MarkerNamePlacement::Entry);
+    EXPECT_EQ(ReservedMarkerNamePlacement(L"\\??\\C:\\dir\\.$APPBOX_OPAQUE$"), MarkerNamePlacement::Entry);
+    EXPECT_EQ(ReservedMarkerNamePlacement(L"\\??\\C:\\dir\\data.txt:stream.$APPBOX_DELETE$"),
+              MarkerNamePlacement::Entry);
+    EXPECT_EQ(ReservedMarkerNamePlacement(L"\\??\\C:\\dir\\data.txt.$APPBOX_DELETE$\\file.txt"),
+              MarkerNamePlacement::Parent);
+    EXPECT_EQ(ReservedMarkerNamePlacement(L"\\??\\C:\\.$APPBOX_OPAQUE$\\file.txt"), MarkerNamePlacement::Parent);
+
+    /* The drive, the prefix of the object namespace and a trailing separator
+     * name no entry. */
+    EXPECT_EQ(ReservedMarkerNamePlacement(L"\\??\\C:"), MarkerNamePlacement::None);
+    EXPECT_EQ(ReservedMarkerNamePlacement(L"\\??\\C:\\"), MarkerNamePlacement::None);
+    EXPECT_EQ(ReservedMarkerNamePlacement(L"\\??\\C:\\dir\\"), MarkerNamePlacement::None);
+    EXPECT_EQ(ReservedMarkerNamePlacement(L"C:\\dir\\data.txt"), MarkerNamePlacement::None);
+
+    /* The path of a marker is built from the entry it hides. */
+    EXPECT_EQ(appbox::filesystem::WhiteoutPathOf(L"\\??\\C:\\dir\\data.txt"),
+              L"\\??\\C:\\dir\\data.txt.$APPBOX_DELETE$");
+    EXPECT_EQ(appbox::filesystem::OpaquePathOf(L"\\??\\C:\\dir"), L"\\??\\C:\\dir\\.$APPBOX_OPAQUE$");
 }

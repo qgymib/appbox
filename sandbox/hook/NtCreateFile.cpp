@@ -3,6 +3,7 @@
 #include "filesystem/CreateDirectory.hpp"
 #include "filesystem/DirName.hpp"
 #include "filesystem/IsolationPolicy.hpp"
+#include "filesystem/MarkerName.hpp"
 #include "filesystem/Resolve.hpp"
 #include "filesystem/RemoveAll.hpp"
 #include "hook/NtClose.hpp"
@@ -15,7 +16,6 @@
 #include "utils/HandleInfo.hpp"
 #include "utils/Log.hpp"
 #include "utils/MappingAsDosNtPath.hpp"
-#include "utils/Defines.hpp"
 #include "utils/QueryHandlePath.hpp"
 #include "utils/ConvertToFullNtPath.hpp"
 #include "WString.hpp"
@@ -292,12 +292,30 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
         return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
                                 FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
     }
+
     CreateOptions &= ~FILE_OPEN_BY_FILE_ID;
 
     const bool want_create = (CreateDisposition == FILE_SUPERSEDE || CreateDisposition == FILE_CREATE ||
                               CreateDisposition == FILE_OPEN_IF || CreateDisposition == FILE_OVERWRITE_IF);
     const bool want_edit = (DesiredAccess & (DELETE | FILE_WRITE_DATA | FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA |
                                              FILE_APPEND_DATA | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE | GENERIC_ALL));
+
+    /*
+     * The names of the markers are reserved: a path which carries one names
+     * the view rather than an entry it holds, see `MarkerName.hpp`. A call
+     * which may create an entry reports the name it refuses, so a process can
+     * neither forge a marker nor hide an entry with one, while a call which
+     * only looks the entry up reports an entry which is missing.
+     */
+    const auto marker_placement = appbox::filesystem::ReservedMarkerNamePlacement(nativate_fs_path);
+    if (marker_placement == appbox::filesystem::MarkerNamePlacement::Parent)
+    {
+        return STATUS_OBJECT_PATH_NOT_FOUND;
+    }
+    if (marker_placement == appbox::filesystem::MarkerNamePlacement::Entry)
+    {
+        return want_create ? STATUS_OBJECT_NAME_INVALID : STATUS_OBJECT_NAME_NOT_FOUND;
+    }
 
     /*
      * A call which may create or write the entry is a modification, and the
@@ -378,7 +396,7 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
                 NtCreateFileOpenFS(resolve_result->uPath, ObjectAttributes->Attributes, nullptr, DesiredAccess,
                                    IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition,
                                    CreateOptions, EaBuffer, EaLength);
-                return NtCreateFileOpenFS(resolve_result->uPath + L"\\" + APPBOX_SANDBOX_OPAQUE_NAME_W,
+                return NtCreateFileOpenFS(appbox::filesystem::OpaquePathOf(resolve_result->uPath),
                                           ObjectAttributes->Attributes, nullptr, DELETE | FILE_WRITE_DATA, nullptr,
                                           nullptr, FILE_ATTRIBUTE_NORMAL,
                                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN_IF,

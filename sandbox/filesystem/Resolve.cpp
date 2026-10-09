@@ -1,10 +1,10 @@
 #include <vector>
 #include "filesystem/IsolationPolicy.hpp"
+#include "filesystem/MarkerName.hpp"
 #include "filesystem/Sequence.hpp"
 #include "filesystem/StreamName.hpp"
 #include "utils/CheckPathExist.hpp"
 #include "utils/MappingAsSandboxNtPath.hpp"
-#include "utils/Defines.hpp"
 #include "Sandbox.hpp"
 #include "WString.hpp"
 #include "__init__.hpp"
@@ -91,7 +91,7 @@ static void SearchInSingleLayer(const std::vector<std::wstring>& path_seq, size_
         auto comp_path = path_seq[j];
 
         /* Check if whiteout file exists. */
-        const auto whiteout_path = comp_path + APPBOX_SANDBOX_WHITEOUT_SUFFIX_W;
+        const auto whiteout_path = appbox::filesystem::WhiteoutPathOf(comp_path);
         st = appbox::CheckPathExist(whiteout_path, resolve_result.NameAttributes, nullptr);
         if (NT_SUCCESS(st))
         {
@@ -111,7 +111,7 @@ static void SearchInSingleLayer(const std::vector<std::wstring>& path_seq, size_
         const auto entry_path = appbox::filesystem::EntryPathOfStream(comp_path);
         if (entry_path != comp_path)
         {
-            const auto entry_whiteout_path = entry_path + APPBOX_SANDBOX_WHITEOUT_SUFFIX_W;
+            const auto entry_whiteout_path = appbox::filesystem::WhiteoutPathOf(entry_path);
             st = appbox::CheckPathExist(entry_whiteout_path, resolve_result.NameAttributes, nullptr);
             if (NT_SUCCESS(st))
             {
@@ -144,7 +144,7 @@ static void SearchInSingleLayer(const std::vector<std::wstring>& path_seq, size_
             }
 
             /* For parent path, check if opaque file exists. */
-            const auto opaque_path = comp_path + L"\\" + APPBOX_SANDBOX_OPAQUE_NAME_W;
+            const auto opaque_path = appbox::filesystem::OpaquePathOf(comp_path);
             st = appbox::CheckPathExist(opaque_path, resolve_result.NameAttributes, nullptr);
             if (NT_SUCCESS(st))
             {

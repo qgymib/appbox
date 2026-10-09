@@ -1,11 +1,11 @@
 #include "utils/WinAPI.h" /* Must be first include file */
-#include "utils/Defines.hpp"
 #include "utils/Log.hpp"
 #include "utils/MappingAsDosNtPath.hpp"
 #include "filesystem/CopyUp.hpp"
 #include "filesystem/CreateDirectory.hpp"
 #include "filesystem/DirName.hpp"
 #include "filesystem/IsolationPolicy.hpp"
+#include "filesystem/MarkerName.hpp"
 #include "filesystem/Resolve.hpp"
 #include "filesystem/RemoveAll.hpp"
 #include "hook/NtClose.hpp"
@@ -49,7 +49,7 @@ static NTSTATUS NtDeleteFileWrap(const std::wstring& path, ULONG Attributes)
 
 static NTSTATUS CreateWhiteout(const std::wstring& path, ULONG Attributes)
 {
-    auto whiteout_path = path + APPBOX_SANDBOX_WHITEOUT_SUFFIX_W;
+    auto whiteout_path = appbox::filesystem::WhiteoutPathOf(path);
 
     IO_STATUS_BLOCK   iosb;
     OBJECT_ATTRIBUTES oa;
@@ -261,17 +261,6 @@ static FolderTraversalResult FolderTraversal(const std::wstring& path, ULONG Att
     return result;
 }
 
-static bool EndsWith(const std::wstring& str, const std::wstring& suffix)
-{
-    auto str_sz = str.size();
-    auto suffix_sz = suffix.size();
-    if (suffix_sz > str_sz)
-    {
-        return false;
-    }
-    return str.compare(str_sz - suffix_sz, suffix_sz, suffix) == 0;
-}
-
 /**
  * @brief Remove the folder of the host filesystem which the isolation names.
  *
@@ -305,13 +294,16 @@ static NTSTATUS DeleteAsDirectory(const std::wstring&                      view_
 {
     NTSTATUS st = 0;
 
-    /* In fs view, check if any file (except whiteout and opaque file) exist. */
+    /*
+     * In fs view, check if any file (except the markers of the view) exists:
+     * the names of the markers are reserved, see `MarkerName.hpp`.
+     */
     for (const auto& fs : resolve_result.hPath)
     {
         auto traversal_result = FolderTraversal(fs.fPath, Attributes);
         for (const auto& item : traversal_result.items)
         {
-            if (item.name != APPBOX_SANDBOX_OPAQUE_NAME_W && !EndsWith(item.name, APPBOX_SANDBOX_WHITEOUT_SUFFIX_W))
+            if (!appbox::filesystem::IsReservedMarkerName(item.name))
             {
                 return STATUS_DIRECTORY_NOT_EMPTY;
             }
@@ -377,6 +369,22 @@ NTSTATUS appbox::DeleteViewPath(const std::wstring& path, ULONG Attributes)
 NTSTATUS appbox::DeleteViewPath(const appbox::filesystem::ResolveResult& resolve, const std::wstring& view_path,
                                 ULONG Attributes)
 {
+    /*
+     * The names of the markers are reserved: a path which carries one names
+     * the view rather than an entry it holds, see `MarkerName.hpp`. The delete
+     * reports the entry as missing, which keeps a caller from removing the
+     * markers of the view and from unhiding the entries they hide.
+     */
+    const auto marker_placement = appbox::filesystem::ReservedMarkerNamePlacement(view_path);
+    if (marker_placement == appbox::filesystem::MarkerNamePlacement::Parent)
+    {
+        return STATUS_OBJECT_PATH_NOT_FOUND;
+    }
+    if (marker_placement == appbox::filesystem::MarkerNamePlacement::Entry)
+    {
+        return STATUS_OBJECT_NAME_NOT_FOUND;
+    }
+
     if (!resolve.bParentExist)
     {
         return STATUS_OBJECT_PATH_NOT_FOUND;

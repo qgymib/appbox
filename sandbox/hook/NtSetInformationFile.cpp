@@ -3,6 +3,7 @@
 #include "filesystem/DirName.hpp"
 #include "filesystem/FileInformationClass.hpp"
 #include "filesystem/IsolationPolicy.hpp"
+#include "filesystem/MarkerName.hpp"
 #include "filesystem/RemoveAll.hpp"
 #include "filesystem/Resolve.hpp"
 #include "filesystem/ViewPathOfHandle.hpp"
@@ -328,6 +329,24 @@ static bool RedirectSetName(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
     {
         LOG_D("the destination is not a path of the view");
         return false;
+    }
+
+    /*
+     * The names of the markers are reserved: a path which carries one names
+     * the view rather than an entry it holds, see `MarkerName.hpp`. A rename
+     * and a link report the name they refuse, so neither of them can create a
+     * marker.
+     */
+    const auto marker_placement = appbox::filesystem::ReservedMarkerNamePlacement(destinationViewPath);
+    if (marker_placement == appbox::filesystem::MarkerNamePlacement::Parent)
+    {
+        status = STATUS_OBJECT_PATH_NOT_FOUND;
+        return true;
+    }
+    if (marker_placement == appbox::filesystem::MarkerNamePlacement::Entry)
+    {
+        status = STATUS_OBJECT_NAME_INVALID;
+        return true;
     }
 
     /*

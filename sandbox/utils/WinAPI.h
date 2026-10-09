@@ -809,6 +809,27 @@ typedef struct _FILE_NAMES_INFORMATION
 } FILE_NAMES_INFORMATION, *PFILE_NAMES_INFORMATION;
 
 /**
+ * @brief One stream of a file, reported by `FileStreamInformation`.
+ *
+ * The answer of the class is a chain of these records, which is why the record
+ * carries the offset of the one which follows it and the length of its name:
+ * the name is the last member of the record, and the file system aligns the
+ * record which comes after it. The name is spelled as the file system
+ * addresses a stream, so the default data stream of a file is reported as
+ * `::$DATA` and a named stream as `:<name>:$DATA`.
+ *
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_stream_information
+ */
+typedef struct _FILE_STREAM_INFORMATION
+{
+    ULONG         NextEntryOffset;
+    ULONG         StreamNameLength;
+    LARGE_INTEGER StreamSize;
+    LARGE_INTEGER StreamAllocationSize;
+    WCHAR         StreamName[1];
+} FILE_STREAM_INFORMATION, *PFILE_STREAM_INFORMATION;
+
+/**
  * @brief Entry of a directory together with the identity of the entry.
  *
  * The identity follows the short name of the entry and is followed by the

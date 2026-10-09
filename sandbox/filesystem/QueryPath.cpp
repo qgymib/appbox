@@ -2,6 +2,7 @@
 #include "utils/ConvertToFullNtPath.hpp"
 #include "utils/Log.hpp"
 #include "utils/MappingAsDosNtPath.hpp"
+#include "filesystem/MarkerName.hpp"
 #include "Resolve.hpp"
 #include "QueryPath.hpp"
 
@@ -35,6 +36,23 @@ appbox::filesystem::QueryPathResult appbox::filesystem::QueryPathFromResolve(con
 appbox::filesystem::QueryPathResult appbox::filesystem::ResolveViewPath(const std::wstring& viewPath,
                                                                         ULONG nameAttributes, bool stopOnFirstFound)
 {
+    QueryPathResult result;
+
+    /*
+     * The names of the markers are reserved: a path which carries one names
+     * the view rather than an entry it holds, see `MarkerName.hpp`. A query
+     * reports the entry as missing, like an entry the view hides, and reports
+     * a missing path for a name which hangs below a reserved component.
+     */
+    const auto marker_placement = ReservedMarkerNamePlacement(viewPath);
+    if (marker_placement != MarkerNamePlacement::None)
+    {
+        result.outcome = QueryPathResult::Outcome::NotFound;
+        result.status = marker_placement == MarkerNamePlacement::Parent ? STATUS_OBJECT_PATH_NOT_FOUND
+                                                                        : STATUS_OBJECT_NAME_NOT_FOUND;
+        return result;
+    }
+
     ResolveOption resolve_option;
     resolve_option.NameAttributes = nameAttributes;
     resolve_option.bStopOnFirstFound = stopOnFirstFound;

@@ -1,6 +1,7 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "filesystem/FileInformationClass.hpp"
 #include "filesystem/LayerPath.hpp"
+#include "filesystem/MarkerName.hpp"
 #include "utils/Log.hpp"
 #include "NtQueryInformationFile.hpp"
 #include <cstddef>
@@ -187,10 +188,148 @@ static NTSTATUS AnswerNameFromLocalQuery(HANDLE FileHandle, FILE_INFORMATION_CLA
     return STATUS_SUCCESS;
 }
 
+/**
+ * @brief Whether a stream the file system reports is a marker of the view.
+ *
+ * The name of a stream is reported the way the file system addresses it, so
+ * the default data stream of a file is `::$DATA` and a named stream is
+ * `:<name>:$DATA`. The name of the stream is what the view reserves, see
+ * `MarkerName.hpp`: the marker of a stream is a stream of the file which
+ * carries it (`file.txt:stream.$APPBOX_DELETE$`).
+ *
+ * @param[in] streamName Name of the stream, as the class reports it.
+ * @return true when the stream is a marker of the view.
+ */
+static bool IsMarkerStreamName(const std::wstring& streamName)
+{
+    std::wstring name = streamName;
+    if (!name.empty() && name.front() == L':')
+    {
+        name.erase(0, 1);
+    }
+
+    /* A named stream is reported as `<name>:$DATA`. */
+    constexpr wchar_t     kDataTypeSuffix[] = L":$DATA";
+    constexpr std::size_t kDataTypeSuffixLength = (sizeof(kDataTypeSuffix) / sizeof(wchar_t)) - 1;
+    if (appbox::filesystem::MarkerNameEndsWith(name, kDataTypeSuffix))
+    {
+        name.resize(name.size() - kDataTypeSuffixLength);
+    }
+
+    return appbox::filesystem::IsReservedMarkerName(name);
+}
+
+/**
+ * @brief Drop the marker streams from the answer of `FileStreamInformation`.
+ *
+ * The answer is a chain of `FILE_STREAM_INFORMATION` records which the file
+ * system filled as far as the buffer of the caller allowed. The records which
+ * name a marker of the view are removed from the chain and the records which
+ * stay are moved to the front, so the application reads the streams of the
+ * file and never the bookkeeping of the view.
+ *
+ * The rewrite happens inside the buffer of the caller: only the records which
+ * stay are moved, and the offsets between them are rewritten. A record the
+ * answer does not carry in full ends the walk, which keeps the status of the
+ * call the one of the file system.
+ *
+ * @param[in,out] FileInformation Answer of the system, rewritten in place.
+ * @param[in] Length Number of bytes the answer uses.
+ * @param[in,out] IoStatusBlock Status block of the call, may be null.
+ * @return Number of bytes the rewritten answer uses.
+ */
+static ULONG DropMarkerStreams(PVOID FileInformation, ULONG Length, PIO_STATUS_BLOCK IoStatusBlock)
+{
+    constexpr ULONG kRecordHeaderSize = static_cast<ULONG>(offsetof(FILE_STREAM_INFORMATION, StreamName));
+
+    auto* base = static_cast<BYTE*>(FileInformation);
+    ULONG write = 0;    /* Offset the next record which stays is moved to. */
+    ULONG previous = 0; /* Offset of the record which stays before that one. */
+    bool  has_previous = false;
+
+    ULONG offset = 0;
+    for (;;)
+    {
+        if (offset + kRecordHeaderSize > Length)
+        {
+            /* The answer carries no further record. */
+            break;
+        }
+
+        /*
+         * The members of the record are read before the record is moved: the
+         * copy of a record which stays may overlap the record it is read from.
+         */
+        auto*       record = reinterpret_cast<FILE_STREAM_INFORMATION*>(base + offset);
+        const ULONG name_bytes = record->StreamNameLength;
+        const ULONG next_entry = record->NextEntryOffset;
+
+        if ((name_bytes % sizeof(WCHAR)) != 0 || name_bytes > Length - offset - kRecordHeaderSize)
+        {
+            /* A record the answer does not carry in full: the rest stays. */
+            break;
+        }
+
+        const std::wstring stream_name(record->StreamName, name_bytes / sizeof(WCHAR));
+        const ULONG        record_size = kRecordHeaderSize + name_bytes;
+        if (!IsMarkerStreamName(stream_name))
+        {
+            if (write != offset)
+            {
+                memmove(base + write, base + offset, record_size);
+            }
+
+            if (has_previous)
+            {
+                reinterpret_cast<FILE_STREAM_INFORMATION*>(base + previous)->NextEntryOffset = write - previous;
+            }
+
+            reinterpret_cast<FILE_STREAM_INFORMATION*>(base + write)->NextEntryOffset = 0;
+            previous = write;
+            has_previous = true;
+            write += record_size;
+        }
+
+        if (next_entry == 0 || next_entry > Length - offset)
+        {
+            break;
+        }
+        offset += next_entry;
+    }
+
+    if (IoStatusBlock != nullptr)
+    {
+        IoStatusBlock->Information = write;
+    }
+    return write;
+}
+
 static NTSTATUS Hook_NtQueryInformationFile(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation,
                                             ULONG Length, FILE_INFORMATION_CLASS FileInformationClass)
 {
     logger.Log(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
+
+    if (FileInformationClass == FileStreamInformation)
+    {
+        /*
+         * The view records the delete of a stream with a marker stream of the
+         * file which carries it, see `MarkerName.hpp`. The streams of the view
+         * are not part of the answer the application receives.
+         */
+        const NTSTATUS st =
+            sys_NtQueryInformationFile(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
+        if (FileInformation != nullptr && IoStatusBlock != nullptr && IoStatusBlock->Information != 0 &&
+            (NT_SUCCESS(st) || st == STATUS_BUFFER_OVERFLOW))
+        {
+            ULONG filled = static_cast<ULONG>(IoStatusBlock->Information);
+            if (filled > Length)
+            {
+                filled = Length;
+            }
+            DropMarkerStreams(FileInformation, filled, IoStatusBlock);
+        }
+        return st;
+    }
 
     if (!appbox::filesystem::QueryInformationCarriesName(FileInformationClass))
     {

@@ -614,7 +614,10 @@ The cases which exercise the isolation modes of the workspace write the
 isolation file of the case into the filesystem domain of the resources
 (`test/utils/FsIsolationBuilder.*`, `app/filesystem/isolation.json`) and use a
 folder below `#USERPROFILE#` of the host as the entry of the host layer
-(`test/utils/RealFsFolder.*`, which removes it again when the case ends):
+(`test/utils/RealFsFolder.*`, which removes it again when the case ends). The
+cases of the markers (`Marker_*`) write the same file and keep the folder of the
+case in the lower layer or in the overlay, so they never reach the host
+filesystem: they pin what the view does with the names of its own markers.
 
 | Case | Isolation | Operation | Expected |
 | --- | --- | --- | --- |
@@ -652,6 +655,12 @@ folder below `#USERPROFILE#` of the host as the entry of the host layer
 | `Stream_WhiteoutFileHidesItsStream` | file `Whiteout`, host file which carries a stream | read, query and delete the stream, then create another stream of the file | the read, the query and the delete report `File Not Found`, the create lands in the overlay, and the host file and its stream are unchanged |
 | `Stream_DeletedFileHidesItsStream` | file `Full`, host file which carries a stream | delete the file, then read the file and the stream | the delete records the delete in the overlay and both the file and the stream report `File Not Found`, while the host filesystem keeps both |
 | `Stream_DeleteOfAStreamWritesTheMarker` | file `Full`, host file which carries a stream | delete the stream, then read the file and the stream | the delete records the marker of the stream, which is a stream of the file itself, so the file travels into the overlay with the content the view reports for it, the stream reports `File Not Found`, and the host filesystem keeps the file and its stream |
+| `Marker_ForgeWhiteoutIsRefused` | folder `Write Copy`, packed file | create `victim.txt.$APPBOX_DELETE$` and `victim.txt:stream.$APPBOX_DELETE$` | both creations report `Invalid Name`, because the names of the markers are reserved, the packed entry stays readable, and the overlay records neither a marker nor a copy of the entry |
+| `Marker_ForgeOpaqueIsRefused` | folder `Write Copy`, packed folder | create `.$APPBOX_OPAQUE$` inside the folder | the creation reports `Invalid Name`, the packed file is listed and readable, and the overlay holds no marker |
+| `Marker_CannotBeAddressedByTheProcess` | folder `Write Copy`, packed file and its whiteout in the overlay | open, query and delete the name of the whiteout | every call reports `File Not Found`, the marker survives, and the entry it hides stays hidden |
+| `Marker_PathBelowAReservedName` | folder `Write Copy`, packed folder which carries a reserved name | query the name, read the file below it and list the folder above it | the name reports `File Not Found`, the path below it reports `Path Not Found`, and the listing drops the name as well |
+| `Marker_RenameToAReservedNameIsRefused` | folder `Write Copy`, packed file | rename the file onto the name of a marker and onto a name below one, and link it at the name of a marker | the calls report `Object Name Invalid`, `Object Path Not Found` and `Object Name Invalid`, the file keeps its name and its content, and the overlay records no marker |
+| `Marker_StreamIsNotReported` | folder `Write Copy`, file of the overlay with a stream and with a marker stream | enumerate the streams of the file, read the marker stream and create a reserved stream name | the enumeration reports the streams of the file without the marker, the marker stream reports `File Not Found`, the creation reports `Invalid Name`, and the overlay keeps the marker stream |
 
 ### Registry isolation cases
 

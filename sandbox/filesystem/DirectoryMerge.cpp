@@ -3,7 +3,6 @@
 #include <mutex>
 #include <set>
 #include <string>
-#include "utils/Defines.hpp"
 #include "utils/DirectoryInformationWalker.hpp"
 #include "utils/HandleInfo.hpp"
 #include "utils/Log.hpp"
@@ -12,6 +11,7 @@
 #include "hook/NtQueryDirectoryFile.hpp"
 #include "hook/NtQueryDirectoryFileEx.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
+#include "filesystem/MarkerName.hpp"
 #include "Resolve.hpp"
 #include "ViewPathOfHandle.hpp"
 #include "DirectoryMerge.hpp"
@@ -187,15 +187,6 @@ static std::wstring ToLower(const std::wstring& str)
     return result;
 }
 
-static bool EndWith(const std::wstring& str, const std::wstring& shuffix)
-{
-    if (shuffix.size() > str.size())
-    {
-        return false;
-    }
-    return str.compare(str.size() - shuffix.size(), shuffix.size(), shuffix) == 0;
-}
-
 /**
  * @brief Drop the entries of one buffer which the view does not show.
  *
@@ -216,8 +207,11 @@ static void FixNameInfo(FullDirectoryInformationMeta::Ptr meta, PIO_STATUS_BLOCK
         FileInformation, IoStatusBlock->Information, layout, [&meta](void* entry, const std::wstring& name) {
             (void)entry;
 
-            /* The markers of the view are never part of it. */
-            if (EndWith(name, APPBOX_SANDBOX_WHITEOUT_SUFFIX_W) || name == APPBOX_SANDBOX_OPAQUE_NAME_W)
+            /*
+             * The names of the markers are reserved, so they are never part of
+             * the view, see `MarkerName.hpp`.
+             */
+            if (appbox::filesystem::IsReservedMarkerName(name))
             {
                 return true;
             }
