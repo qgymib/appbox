@@ -328,6 +328,44 @@ These rules constrain every hooked API; the implementation lives in
   not hold would carry nothing but that stream and shadow the content the view
   reports for the file. The mode of a folder keeps covering the streams of the
   files below it.
+* **A reparse point is resolved by the view.** A path is mapped to the layers by
+  text, so a junction, a symbolic link or a volume mount point below a view path
+  would be followed by the file system of the layer which holds it: the object
+  the caller reaches would be the object of the path the reparse point names,
+  while the isolation decides the visible layers and the layer a modification
+  lands in from the path the caller spelled. The view therefore resolves the
+  reparse points of a path itself. It reads the data of the link out of the
+  layer which holds it, turns the target into a path of the view — a target which
+  the link declares as relative is resolved against the directory of the link —
+  and resolves that path again, so the isolation of the **target** decides the
+  answer, whether the target is an entry of the host filesystem, of a lower layer
+  or of the upper layer. The tags which redirect the namespace are
+  `IO_REPARSE_TAG_MOUNT_POINT` and `IO_REPARSE_TAG_SYMLINK`; every other tag
+  describes the entry itself and is left to the layer, so an entry which carries
+  one is reported and modified like the layer reports it. A target which cannot
+  be expressed as a path of the view (a volume no drive letter maps, a device
+  path, a network path), data which cannot be read and a chain of links which is
+  deeper than the limit fail the call with `STATUS_REPARSE_POINT_NOT_RESOLVED`
+  instead of being forwarded, because the file system of the layer would follow a
+  link the view could not resolve and reach an object the view never decided
+  about. The **final** component of a path is only followed by a call which asks
+  for the object the link names: `NtCreateFile` and `NtOpenFile` follow it unless
+  the call carries `FILE_OPEN_REPARSE_POINT`, the creation of a process follows
+  the image path, and a delete, the target name of a rename or a link, an
+  attribute query and every call which asks for the reparse point itself reach
+  the link. The components above the entry are resolved by the view for every
+  call.
+* **The data of a reparse point names a path of the view.** `NtFsControlFile`
+  translates `FSCTL_SET_REPARSE_POINT`, so the target of a link which redirects
+  the namespace is turned into a path of the view before it is stored: a caller
+  which links an object it holds writes the path it knows, and a target which
+  names a path of a layer is stored as the path of the view that layer maps to.
+  The data the view reports is the data it stored, so reading a reparse point
+  back never shows the layout of the sandbox, and the target the view reads is
+  resolved exactly like the target of a link of the host. `FSCTL_GET_REPARSE_POINT`
+  and `FSCTL_DELETE_REPARSE_POINT` act on that data and are forwarded unchanged,
+  and a control code which carries no reparse point reaches the object of the
+  layer with the buffers of the caller.
 * **A delete is recorded, not performed.** Deleting an object removes the upper
   copy and places a whiteout marker next to it, so lower and host layers keep
   their data while the view reports the object as gone. Deleting a directory
@@ -481,20 +519,22 @@ through them acts on the layer the object of the call belongs to.
    layers below the overlay, so a file whose default data stream was copied into the
    overlay still reports the streams of the layer it was copied from, while a class
    which enumerates the streams of a file (`FileStreamInformation`) reports the streams
-   of the layer the handle was opened in.
-2. **A reparse point is resolved by the layer, not by the view.** The resolver maps a
-   path by text and asks each layer whether the mapped path exists, so a junction, a
-   symbolic link or a mount point below a view path is followed by the file system of the
-   layer which holds it: the object the caller reaches is the object of the path the
-   reparse point names, while the isolation decides the visible layers and the layer a
-   modification lands in from the path the caller spelled. A folder of the host
-   filesystem which is a junction is therefore read and written as if the isolation of
-   the junction and the isolation of its target were the same, and a target which no
-   layer of the view holds is reached all the same. The data of a reparse point is not
-   translated either, because `NtFsControlFile` is not hooked: the creation of a
-   reparse point writes the target the caller passed into the object of the layer, and a
-   target which names a path of the view is resolved in the namespace of the host
-   filesystem by the next open of the entry.
+   of the layer the handle was opened in. The one property of the source which the copy
+   does carry is the reparse point of the entry: a source which is a link is not copied
+   by the content it reaches, because the copy would shadow the link with a different
+   entry. The copy creates the object and writes the data of the link into it, and a
+   link whose data cannot be carried fails the copy.
+2. **A reparse point which the view cannot express fails the call.** The view resolves
+   the tags which redirect the namespace itself (see the rules above). A target which
+   cannot be expressed as a path of the view — a volume no drive letter maps, a device
+   path, a network path — the data of a link which cannot be read, and a chain of links
+   which is deeper than the limit fail the call with `STATUS_REPARSE_POINT_NOT_RESOLVED`,
+   because the file system of the layer would follow a link the view could not resolve
+   and reach an object the view never decided about. A caller which asks for such an
+   entry therefore receives the failure of the view instead of the answer of the layer.
+   The tags which describe the entry itself (a cloud placeholder, a layer of a container
+   image, an application execution alias) are left to the layer, so their data is
+   neither resolved nor translated by the view.
 3. **The identity of an object is the identity of the layer.** The hook of
    `NtQueryInformationFile` answers the classes which report the name of an object with
    the path of the view, while every other class reports a property of the object of the
@@ -533,18 +573,13 @@ through them acts on the layer the object of the call belongs to.
    name of a link lands in the layer of its destination while the object it links stays
    in the layer of the handle, and a link cannot cross the boundary of a file system,
    which is the boundary between two layers of the view.
-6. **`ResolveFs` is fixed at injection time.** There is no way to add or remove a lower
-   layer while a sandboxed process is running; the layers come from the injected
-   configuration and live in the `appbox::sandbox` singleton. The isolation modes are
-   loaded once as well, so a mode which is changed in the packer afterwards needs a new
-   archive.
-7. **A root mode which hides the host filesystem stops the process.** The mode of the
+6. **A root mode which hides the host filesystem stops the process.** The mode of the
    root of the view covers every path no other entry names, so `Full` or `Whiteout` at
    the root hides the whole host filesystem: the sandboxed process can no longer load
    the modules of the host and fails to start, which is the behaviour the mode asks for
    but which no end-to-end case can drive. A root mode of `Write Copy` or `Merge` is the
    one a workspace normally uses.
-8. **A delete on close of a handle the sandbox did not open is not recorded.** The
+7. **A delete on close of a handle the sandbox did not open is not recorded.** The
     delete of such a handle is recorded while it is closed, and the sandbox only knows
     the layers of a handle it opened itself: a handle which was inherited or duplicated
     from another process removes its layer object without hiding the layers below it.
@@ -556,7 +591,7 @@ not listed there reaches the file system with the path or the handle of the call
 the answer of such a call is the answer of the layer the object belongs to. The points
 below are the ones which matter for the view.
 
-9. **A path which cannot be expressed as a view path is forwarded unchanged.** UNC
+1. **A path which cannot be expressed as a view path is forwarded unchanged.** UNC
     paths, named pipes, mailslots, network volumes and drive-relative paths cannot be
     converted to a view path, so the hooks forward them, and a rename or a link whose
     name is such a path is forwarded as well. The creation of a named pipe and of a
@@ -564,7 +599,7 @@ below are the ones which matter for the view.
     `NtCreateMailslotFile` are not hooked: the pipe and the mailslot namespace is the one
     of the machine, so a sandboxed process creates an object every process of the host
     can open, and it can open an object another process created.
-10. **The volume of an object is the volume of its layer.** `NtQueryVolumeInformationFile`
+2. **The volume of an object is the volume of its layer.** `NtQueryVolumeInformationFile`
     is not hooked, so the volume a handle reports is the one which holds the object of
     the layer the handle was opened in: the serial number and the label of the volume
     (`FileFsVolumeInformation`), its size and its free space (`FileFsSizeInformation`,
@@ -574,25 +609,25 @@ below are the ones which matter for the view.
     `data` directory of the run lives on, while the drive letter of its path of the view
     may name another volume: a caller which asks the free space of a folder it wrote into
     receives the free space of the volume of the sandbox.
-11. **The control codes are not translated.** `NtFsControlFile` and
-    `NtDeviceIoControlFile` are not hooked, so a control code reaches the object of the
-    layer with the buffers of the caller. The codes which act on the object itself are
-    the ones which matter: `FSCTL_SET_REPARSE_POINT` and `FSCTL_DELETE_REPARSE_POINT`
-    write and remove the data of a reparse point without translating it (see the rule
-    above), and `FSCTL_GET_OBJECT_ID` and `FSCTL_SET_OBJECT_ID` report and change the
-    identity of the object of the layer. The codes which name the volume or the storage
-    below the object — `FSCTL_GET_NTFS_VOLUME_DATA`, `FSCTL_QUERY_USN_JOURNAL`,
-    `FSCTL_ENUM_USN_DATA`, `FSCTL_READ_USN_JOURNAL`, `FSCTL_GET_NTFS_FILE_RECORD`,
+3. **The control codes are translated for the reparse points and for nothing else.**
+    `NtFsControlFile` is hooked for `FSCTL_SET_REPARSE_POINT`, whose target is turned
+    into a path of the view before it is stored (see the rules above); every other
+    control code reaches the object of the layer with the buffers of the caller. The
+    codes which act on the object itself are the ones which matter:
+    `FSCTL_GET_OBJECT_ID` and `FSCTL_SET_OBJECT_ID` report and change the identity of the
+    object of the layer. The codes which name the volume or the storage below the object
+    — `FSCTL_GET_NTFS_VOLUME_DATA`, `FSCTL_QUERY_USN_JOURNAL`, `FSCTL_ENUM_USN_DATA`,
+    `FSCTL_READ_USN_JOURNAL`, `FSCTL_GET_NTFS_FILE_RECORD`,
     `FSCTL_GET_RETRIEVAL_POINTERS`, `FSCTL_MOVE_FILE`, `FSCTL_SET_ZERO_DATA` and
     `FSCTL_DUPLICATE_EXTENTS_TO_FILE` — report and change the volume of the layer as
     well.
-12. **`NtQueryObject` names a file handle after its layer.** The hook translates the name
+4. **`NtQueryObject` names a file handle after its layer.** The hook translates the name
     of an object the hive of the registry isolation mounts and leaves every other name as
     it is, so `ObjectNameInformation` of a file handle reports the path of the layer the
     handle was opened in, which is the path of the sandbox. An application which verifies
     that a handle it holds names the entry it asked for reads that path, and the layout of
     the sandbox reaches it.
-13. **The data of a read and of a write is never inspected.** `NtReadFile` and
+5. **The data of a read and of a write is never inspected.** `NtReadFile` and
     `NtWriteFile` are attached for the trace only: their hook record carries no hook
     function, because the layer a read and a write act on is the one the handle was
     opened in, which the open already decided. A handle the sandbox did not open is

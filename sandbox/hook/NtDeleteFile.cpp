@@ -219,9 +219,15 @@ static FolderTraversalResult FolderTraversal(const std::wstring& path, ULONG Att
     HANDLE          hDir = nullptr;
     IO_STATUS_BLOCK iosb;
 
+    /*
+     * The folder is opened without following it, so a folder which is a link
+     * is checked as the empty object it is instead of the content of the
+     * object it names: the delete of a link removes the link and leaves the
+     * target alone.
+     */
     auto st = sys_NtOpenFile(&hDir, FILE_LIST_DIRECTORY | SYNCHRONIZE, &oa, &iosb,
                              FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                             FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
+                             FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT);
     if (!NT_SUCCESS(st))
     {
         return result;
@@ -324,8 +330,17 @@ static NTSTATUS DeleteAsDirectory(const std::wstring&                      view_
 
     if (resolve_result.bInUpper)
     {
+        /*
+         * The copy of the overlay is removed before the marker hides the
+         * layers below it, and an entry which is already gone is not an error:
+         * a handle which was opened on the copy and marked for deletion
+         * removes it when it is closed, before the sandbox records the delete.
+         * The record then only has to hide the layers which still hold the
+         * name, which is what the marker does.
+         */
         st = appbox::filesystem::RemoveAll(resolve_result.uPath, Attributes);
-        if (!NT_SUCCESS(st))
+        if (!NT_SUCCESS(st) && st != STATUS_OBJECT_NAME_NOT_FOUND && st != STATUS_OBJECT_PATH_NOT_FOUND &&
+            st != STATUS_DELETE_PENDING)
         {
             return st;
         }
@@ -360,10 +375,28 @@ NTSTATUS appbox::DeleteViewPath(const std::wstring& path, ULONG Attributes)
     appbox::filesystem::ResolveOption resolve_option;
     resolve_option.bStopOnFirstFound = false;
 
+    /*
+     * A delete removes the entry the caller names, so the entry itself is not
+     * followed: a delete of a link removes the link and leaves its target
+     * alone, like the file system does for the same call. The components above
+     * the entry are resolved by the view all the same.
+     */
+    resolve_option.reparseFollow = appbox::filesystem::ReparseFollowMode::Parent;
+
     auto resolve_result = appbox::filesystem::Resolve(path, resolve_option);
     LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
 
-    return DeleteViewPath(*resolve_result, path, Attributes);
+    /*
+     * A reparse point of the path which the view could not resolve fails the
+     * call: forwarding it to the layer would let the file system of that layer
+     * follow the link and reach an object the view never decided about.
+     */
+    if (!NT_SUCCESS(resolve_result->reparseStatus))
+    {
+        return resolve_result->reparseStatus;
+    }
+
+    return DeleteViewPath(*resolve_result, resolve_result->viewPath, Attributes);
 }
 
 NTSTATUS appbox::DeleteViewPath(const appbox::filesystem::ResolveResult& resolve, const std::wstring& view_path,
@@ -407,9 +440,15 @@ NTSTATUS appbox::HideViewPath(const std::wstring& path, ULONG Attributes)
 {
     appbox::filesystem::ResolveOption resolve_option;
     resolve_option.bStopOnFirstFound = false;
+    resolve_option.reparseFollow = appbox::filesystem::ReparseFollowMode::Parent;
 
     auto resolve_result = appbox::filesystem::Resolve(path, resolve_option);
     LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
+
+    if (!NT_SUCCESS(resolve_result->reparseStatus))
+    {
+        return resolve_result->reparseStatus;
+    }
 
     if (resolve_result->status != appbox::filesystem::ResolveResult::Status::Exists)
     {
@@ -430,7 +469,7 @@ NTSTATUS appbox::HideViewPath(const std::wstring& path, ULONG Attributes)
     /* The marker hides the layers which still hold the entry. */
     if (NeedsWhiteout(*resolve_result, false))
     {
-        st = CreateWhiteoutOfEntry(path, *resolve_result, Attributes);
+        st = CreateWhiteoutOfEntry(resolve_result->viewPath, *resolve_result, Attributes);
     }
     return st;
 }

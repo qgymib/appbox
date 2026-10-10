@@ -1,9 +1,11 @@
 #include <vector>
 #include "filesystem/IsolationPolicy.hpp"
 #include "filesystem/MarkerName.hpp"
+#include "filesystem/ReparsePoint.hpp"
 #include "filesystem/Sequence.hpp"
 #include "filesystem/StreamName.hpp"
 #include "utils/CheckPathExist.hpp"
+#include "utils/Log.hpp"
 #include "utils/MappingAsSandboxNtPath.hpp"
 #include "Sandbox.hpp"
 #include "WString.hpp"
@@ -14,6 +16,19 @@ struct SearchResult
 {
     bool whiteout_found = false;
     bool opaque_found = false;
+
+    /**
+     * @brief Whether a component of the path carries the attribute of a
+     *        reparse point.
+     *
+     * The flag is a hint: the search already asks every component whether it
+     * exists, so the attributes of the parents are read as well and a path
+     * which carries no reparse point costs nothing. The expansion of a
+     * reparse point runs only when the hint is set, and the hint is
+     * deliberately conservative: a component which the isolation hides does
+     * not set it, and a path whose parents no layer holds sets it never.
+     */
+    bool reparse_point_found = false;
 };
 
 struct FileLayer
@@ -130,9 +145,15 @@ static void SearchInSingleLayer(const std::vector<std::wstring>& path_seq, size_
                 comp_path += L"\\";
             }
 
-            st = appbox::CheckPathExist(comp_path, resolve_result.NameAttributes, nullptr);
+            FILE_BASIC_INFORMATION parent_info = {};
+            st = appbox::CheckPathExist(comp_path, resolve_result.NameAttributes, &parent_info);
             if (NT_SUCCESS(st))
             { /* All parents must exists. */
+                if ((parent_info.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+                { /* The view has to resolve the link itself. */
+                    search_result.reparse_point_found = true;
+                }
+
                 if (path_seq_sz >= 2 && j == path_seq_sz - 2)
                 { /* Mark if direct parent exists. */
                     resolve_result.bParentExist = true;
@@ -163,6 +184,11 @@ static void SearchInSingleLayer(const std::vector<std::wstring>& path_seq, size_
             /* For file self, check if exists. */
             if (NT_SUCCESS(st))
             {
+                if ((path.fInfo.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+                { /* The entry itself is a link the view has to resolve. */
+                    search_result.reparse_point_found = true;
+                }
+
                 path.fPath = comp_path + (has_trailing_slash ? L"\\" : L"");
                 resolve_result.hPath.emplace_back(path);
             }
@@ -273,9 +299,32 @@ static void ApplyIsolation(const appbox::filesystem::IsolationTable* isolation, 
     resolve_result.hPath.swap(visible);
 }
 
-appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveFull(const ResolveFs& fs, const std::wstring& vPath,
-                                                                       const appbox::filesystem::ResolveOption& option,
-                                                                       const IsolationTable* isolation)
+namespace appbox::filesystem
+{
+namespace
+{
+
+/**
+ * @brief Result of the text based resolution of a path of the view.
+ *
+ * The resolution maps a path to the layers by text and asks each layer whether
+ * the mapped path exists. It does not resolve a reparse point, which is what
+ * the caller decides afterwards: the flag says whether the path carries one at
+ * all, so the expansion runs only for a path which needs it.
+ */
+struct ResolvePlainResult
+{
+    appbox::filesystem::ResolveResult::Ptr result;
+
+    /** Path of the view which was resolved, without a trailing separator. */
+    std::wstring viewPath;
+
+    /** Whether a component of the path carries the attribute of a reparse point. */
+    bool hasReparsePoint = false;
+};
+
+static ResolvePlainResult ResolvePlain(const ResolveFs& fs, const std::wstring& vPath,
+                                       const appbox::filesystem::ResolveOption& option, const IsolationTable* isolation)
 {
     auto resolve_result = std::make_shared<appbox::filesystem::ResolveResult>();
     resolve_result->status = appbox::filesystem::ResolveResult::Status::Exists;
@@ -378,19 +427,28 @@ appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveFull(const Res
         }
     }
 
+    /*
+     * The path the result describes is the one which was mapped, so a caller
+     * which acts on the entry afterwards does not have to repeat the
+     * normalization the resolver applies to the path it was given.
+     */
+    resolve_result->viewPath = copy_v_path;
+
+    const ResolvePlainResult plain = { resolve_result, copy_v_path, search_result.reparse_point_found };
+
     /* Fix status. */
     if (resolve_result->hPath.empty())
     {
         if (!resolve_result->whiteoutPath.empty())
         {
             resolve_result->status = appbox::filesystem::ResolveResult::Status::HiddenByWhiteout;
-            return resolve_result;
+            return plain;
         }
 
         if (search_result.opaque_found)
         {
             resolve_result->status = appbox::filesystem::ResolveResult::Status::BlockedByOpaque;
-            return resolve_result;
+            return plain;
         }
 
         if (resolve_result->bIsolationListed && HidesEntry(resolve_result->isolation))
@@ -398,13 +456,55 @@ appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveFull(const Res
             /* `Whiteout`: the entry is visible in no layer, so it does not
              * exist in the view until the sandboxed process creates it. */
             resolve_result->status = appbox::filesystem::ResolveResult::Status::HiddenByIsolation;
-            return resolve_result;
+            return plain;
         }
 
         resolve_result->status = appbox::filesystem::ResolveResult::Status::NotFound;
     }
 
-    return resolve_result;
+    return plain;
+}
+
+} // namespace
+} // namespace appbox::filesystem
+
+appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveFull(const ResolveFs& fs, const std::wstring& vPath,
+                                                                       const ResolveOption&  option,
+                                                                       const IsolationTable* isolation)
+{
+    ResolvePlainResult plain = ResolvePlain(fs, vPath, option, isolation);
+
+    if (option.reparseFollow == ReparseFollowMode::None || !plain.hasReparsePoint)
+    {
+        return plain.result;
+    }
+
+    /*
+     * The path carries a reparse point, so the view resolves it itself: the
+     * target is read out of the layer which holds the link and turned into a
+     * path of the view, which is resolved again. That is what makes the
+     * isolation of the target decide the answer instead of the isolation of
+     * the path the caller spelled, and it keeps the file system of a layer
+     * from following a link the view never decided about.
+     */
+    std::wstring   expanded;
+    const NTSTATUS status =
+        ExpandReparsePoints(fs, plain.viewPath, option.reparseFollow, option.NameAttributes, isolation, expanded);
+    if (!NT_SUCCESS(status))
+    {
+        LOG_W(L"failed to resolve the reparse point of {}: {}", plain.viewPath, status);
+        plain.result->reparseStatus = status;
+        return plain.result;
+    }
+
+    if (expanded == plain.viewPath)
+    {
+        /* The path carries no link which redirects the namespace. */
+        return plain.result;
+    }
+
+    ResolvePlainResult resolved = ResolvePlain(fs, expanded, option, isolation);
+    return resolved.result;
 }
 
 appbox::filesystem::ResolveResult::Ptr appbox::filesystem::Resolve(const std::wstring&  vPath,
@@ -468,4 +568,7 @@ void appbox::filesystem::to_json(nlohmann::json& j, const ResolveResult& r)
     j["bIsolationMasked"] = r.bIsolationMasked;
     j["isolation"] = appbox::filesystem_isolation::IsolationToken(r.isolation);
     j["isolationSource"] = appbox::filesystem_isolation::EntryKindToken(r.isolationSource);
+
+    j["viewPath"] = appbox::WideToUTF8(r.viewPath);
+    j["reparseStatus"] = r.reparseStatus;
 }

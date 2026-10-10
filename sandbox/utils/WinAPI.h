@@ -46,6 +46,33 @@
 #define FILE_OPEN_NO_RECALL                         0x00400000
 #define FILE_OPEN_FOR_FREE_SPACE_QUERY              0x00800000
 
+/*
+ * The control codes of the reparse points of an object. The SDK declares them
+ * in `winioctl.h`, which the headers of the sandbox may or may not bring in,
+ * so the values are spelled out for the case the header is not there: each one
+ * is the code `CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 41|42|43, METHOD_BUFFERED,
+ * FILE_SPECIAL_ACCESS|FILE_ANY_ACCESS)` computes, where the device type of a
+ * file system is 9 and both access masks are 0.
+ */
+#ifndef FSCTL_SET_REPARSE_POINT
+#define FSCTL_SET_REPARSE_POINT                     0x000900A4
+#endif
+#ifndef FSCTL_GET_REPARSE_POINT
+#define FSCTL_GET_REPARSE_POINT                     0x000900A8
+#endif
+#ifndef FSCTL_DELETE_REPARSE_POINT
+#define FSCTL_DELETE_REPARSE_POINT                  0x000900AC
+#endif
+
+/*
+ * The flag which marks the target of a symbolic link as relative to the
+ * directory of the link. The SDK declares it in `ntifs.h`, which the headers
+ * of the sandbox do not bring in.
+ */
+#ifndef SYMLINK_FLAG_RELATIVE
+#define SYMLINK_FLAG_RELATIVE                       0x00000001
+#endif
+
 #define FILE_SUPERSEDE                              0x00000000
 #define FILE_OPEN                                   0x00000001
 #define FILE_CREATE                                 0x00000002
@@ -952,6 +979,53 @@ typedef struct _FILE_ID_GLOBAL_TX_DIR_INFORMATION
     ULONG         TxInfoFlags;
     WCHAR         FileName[1];
 } FILE_ID_GLOBAL_TX_DIR_INFORMATION, *PFILE_ID_GLOBAL_TX_DIR_INFORMATION;
+
+/**
+ * @brief The data of a reparse point of an object.
+ *
+ * The layout is the one the file system reads and writes for the control codes
+ * `FSCTL_GET_REPARSE_POINT` and `FSCTL_SET_REPARSE_POINT`. The structure lives
+ * in `ntifs.h`, which the sandbox does not include, so it is declared here: a
+ * caller which reads the target of a link has to know the layout of the two
+ * variants the view understands, the mount point and the symbolic link.
+ *
+ * The two variants name their target as a pair of counted strings inside
+ * `PathBuffer`: `SubstituteName` is the name the file system follows and
+ * `PrintName` is the name the shell shows. Only the substitute name decides
+ * the object a caller reaches.
+ *
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_reparse_data_buffer
+ */
+typedef struct _REPARSE_DATA_BUFFER
+{
+    ULONG  ReparseTag;
+    USHORT ReparseDataLength;
+    USHORT Reserved;
+    union
+    {
+        struct
+        {
+            USHORT SubstituteNameOffset;
+            USHORT SubstituteNameLength;
+            USHORT PrintNameOffset;
+            USHORT PrintNameLength;
+            ULONG  Flags;
+            WCHAR  PathBuffer[1];
+        } SymbolicLinkReparseBuffer;
+        struct
+        {
+            USHORT SubstituteNameOffset;
+            USHORT SubstituteNameLength;
+            USHORT PrintNameOffset;
+            USHORT PrintNameLength;
+            WCHAR  PathBuffer[1];
+        } MountPointReparseBuffer;
+        struct
+        {
+            UCHAR DataBuffer[1];
+        } GenericReparseBuffer;
+    } ReparseBuffer;
+} REPARSE_DATA_BUFFER, *PREPARSE_DATA_BUFFER;
 
 typedef void(NTAPI* PIO_APC_ROUTINE)(IN PVOID ApcContext, IN PIO_STATUS_BLOCK IoStatusBlock, IN ULONG Reserved);
 

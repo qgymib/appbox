@@ -238,13 +238,20 @@ static bool NeedsHandleRecord(const appbox::filesystem::ResolveResult& resolve_r
  * @param[in] viewPath Path of the view the handle denotes.
  * @param[in] ObjectAttributes Attributes of the call.
  * @param[in] CreateOptions Options of the call.
+ * @param[in] reparseFollow How the call treated the reparse points of the
+ *                          path. The record has to describe the entry the
+ *                          handle denotes, so it resolves the path the same
+ *                          way the call did: a call which asks for the
+ *                          reparse point itself records the link and not the
+ *                          object it names.
  */
 static void RecordHandle(HANDLE handle, const std::wstring& viewPath, POBJECT_ATTRIBUTES ObjectAttributes,
-                         ULONG CreateOptions)
+                         ULONG CreateOptions, appbox::filesystem::ReparseFollowMode reparseFollow)
 {
     appbox::filesystem::ResolveOption resolve_option;
     resolve_option.NameAttributes = ObjectAttributes->Attributes;
     resolve_option.bStopOnFirstFound = false;
+    resolve_option.reparseFollow = reparseFollow;
 
     auto resolve_result = appbox::filesystem::Resolve(viewPath, resolve_option);
     LOG_T("resolve for handle: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
@@ -327,9 +334,44 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
     appbox::filesystem::ResolveOption resolve_option;
     resolve_option.bStopOnFirstFound = !(want_create || want_edit);
 
+    /*
+     * A caller which asks for the reparse point itself reaches the link, which
+     * is what `FILE_OPEN_REPARSE_POINT` asks for; every other caller reaches
+     * the object the link names, which the view resolves itself so that the
+     * isolation of the target decides the layers of the call.
+     */
+    resolve_option.reparseFollow = (CreateOptions & FILE_OPEN_REPARSE_POINT) != 0
+                                       ? appbox::filesystem::ReparseFollowMode::Parent
+                                       : appbox::filesystem::ReparseFollowMode::All;
+
     /* Resolve path in sandbox. */
     auto resolve_result = appbox::filesystem::Resolve(nativate_fs_path, resolve_option);
     LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
+
+    /*
+     * A reparse point of the path which the view could not resolve fails the
+     * call: forwarding it to the layer would let the file system of that layer
+     * follow the link and reach an object the view never decided about.
+     */
+    if (!NT_SUCCESS(resolve_result->reparseStatus))
+    {
+        return resolve_result->reparseStatus;
+    }
+
+    /*
+     * The view resolves the reparse points of the path itself, so the entry the
+     * call reaches may differ from the name the caller spelled. Every step
+     * below acts on that entry, and a link which names one of the markers of
+     * the view is refused like a name which carries one.
+     */
+    const std::wstring view_path = resolve_result->viewPath;
+    const NTSTATUS     expanded_marker = appbox::filesystem::ReservedMarkerNameFailure(
+        view_path, want_create ? STATUS_OBJECT_NAME_INVALID : STATUS_OBJECT_NAME_NOT_FOUND);
+    if (!NT_SUCCESS(expanded_marker))
+    {
+        return expanded_marker;
+    }
+
     /* In all of conditions, the parent path must exist. */
     if (!resolve_result->bParentExist)
     {
@@ -378,14 +420,14 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
          */
         if (resolve_result->isolation == appbox::FilesystemIsolation::Merge)
         {
-            resolve_result = appbox::filesystem::Resolve(nativate_fs_path, resolve_option);
+            resolve_result = appbox::filesystem::Resolve(view_path, resolve_option);
             LOG_T("resolve after whiteout: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
         }
 
         /* If want to create directory, search again to check if we need to create opaque file */
         if (CreateOptions & FILE_DIRECTORY_FILE)
         {
-            auto rResult = appbox::filesystem::Resolve(nativate_fs_path);
+            auto rResult = appbox::filesystem::Resolve(view_path);
             if (rResult->status == appbox::filesystem::ResolveResult::Status::Exists)
             {
                 /*
@@ -441,7 +483,15 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
      */
     if (modifies && !target_host)
     {
-        appbox::filesystem::CopyUpEntry(nativate_fs_path, *resolve_result);
+        const bool copied = appbox::filesystem::CopyUpEntry(view_path, *resolve_result);
+        if (!copied && !resolve_result->hPath.empty() &&
+            (resolve_result->hPath[0].fInfo.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+        {
+            /* A link which the overlay cannot carry fails the call: a copy of
+             * the object it names would shadow the link with a different
+             * entry. */
+            return STATUS_NOT_SUPPORTED;
+        }
     }
 
     std::wstring open_path;
@@ -473,7 +523,7 @@ static NTSTATUS Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
      */
     if (NT_SUCCESS(st) && FileHandle != nullptr && NeedsHandleRecord(*resolve_result, DesiredAccess, CreateOptions))
     {
-        RecordHandle(*FileHandle, nativate_fs_path, ObjectAttributes, CreateOptions);
+        RecordHandle(*FileHandle, view_path, ObjectAttributes, CreateOptions, resolve_option.reparseFollow);
     }
 
     return st;

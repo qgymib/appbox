@@ -383,14 +383,14 @@ the registry with the path or the handle of the caller, and the answer of such a
 call is the answer of the layer the object belongs to. The points below are the
 ones which matter for the view.
 
-10. **The transacted open and the transacted create.** `NtOpenKeyTransacted`,
+1. **The transacted open and the transacted create.** `NtOpenKeyTransacted`,
     `NtOpenKeyTransactedEx` and `NtCreateKeyTransacted` are not hooked, so the
     isolation does not see the call at all: the open and the create run against
     the real registry with the path of the caller, no isolation mode and no
     whiteout is consulted, and a key the caller creates this way is a key of the
     real registry. Every other write path of the isolation starts from a key
     handle the hooks handed out; this one does not.
-11. **The load and the unload of a hive.** `NtLoadKey`, `NtLoadKey2`,
+2. **The load and the unload of a hive.** `NtLoadKey`, `NtLoadKey2`,
     `NtLoadKey3` and `NtLoadKeyEx` name the key a hive is loaded into with an
     `OBJECT_ATTRIBUTES` and not with a key handle, and `NtUnloadKey`,
     `NtUnloadKey2` and `NtUnloadKeyEx` name the key they unload the same way, so
@@ -398,25 +398,25 @@ ones which matter for the view.
     the right to load a hive (a process which runs elevated, for example) can
     load one at a path of the view and unload a hive of the host, and both
     modify the real registry.
-12. **The rename of a key.** `NtRenameKey` is not hooked, so the isolation adds
+3. **The rename of a key.** `NtRenameKey` is not hooked, so the isolation adds
     no policy of its own to it: a rename of a shadow key renames the key inside
     the hive and leaves the host key of the old name in place, where the merged
     view then shows both. `NtReplaceKey` and `NtRestoreKey` are not hooked
     either, but they act on a key handle, and a handle which permits a
     modification is a handle of the hive.
-13. **`NtSaveMergedKeys`.** The call is not hooked, so the layers it writes into
+4. **`NtSaveMergedKeys`.** The call is not hooked, so the layers it writes into
     the file are the ones of the two key handles the caller passes: a read
     through handle of the host layer contributes the entries of the real key,
     including the ones an isolation mode or a whiteout hides, and the merged
     view `NtSaveKey` exports is not assembled here.
-14. **The change notification.** `NtNotifyChangeKey` and
+5. **The change notification.** `NtNotifyChangeKey` and
     `NtNotifyChangeMultipleKeys` are not hooked. A watch a sandboxed process
     registers on a key it opened for reading is a watch of the real key, so the
     process is notified about a change another process makes to the real
     registry and it is not notified about the change the sandbox itself makes,
     because that one lands in the hive. A watch on a handle of the hive observes
     the hive alone, so neither kind of watch describes the merged view.
-15. **The remaining key APIs.** `NtQueryInformationKey`, `NtSetInformationKey`,
+6. **The remaining key APIs.** `NtQueryInformationKey`, `NtSetInformationKey`,
     `NtQueryOpenSubKeys`, `NtQueryOpenSubKeysEx`, `NtFlushKey`, `NtCompressKey`,
     `NtLockRegistryKey` and `NtInitializeRegistry` are forwarded unchanged, so
     the property they report or change is the property of the object of the layer

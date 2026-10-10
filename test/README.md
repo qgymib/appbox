@@ -662,6 +662,25 @@ filesystem: they pin what the view does with the names of its own markers.
 | `Marker_RenameToAReservedNameIsRefused` | folder `Write Copy`, packed file | rename the file onto the name of a marker and onto a name below one, and link it at the name of a marker | the calls report `Object Name Invalid`, `Object Path Not Found` and `Object Name Invalid`, the file keeps its name and its content, and the overlay records no marker |
 | `Marker_StreamIsNotReported` | folder `Write Copy`, file of the overlay with a stream and with a marker stream | enumerate the streams of the file, read the marker stream and create a reserved stream name | the enumeration reports the streams of the file without the marker, the marker stream reports `File Not Found`, the creation reports `Invalid Name`, and the overlay keeps the marker stream |
 
+The cases of the reparse points (`Fs_ReparsePoint_*`) write the isolation file
+of the case and use a folder below `#USERPROFILE#` of the host as the entry of
+the host layer, like the cases of the isolation modes. A host folder which needs
+a link carries a junction which `test/utils/RealFsFolder.*` creates with
+`FSCTL_SET_REPARSE_POINT`, and the probe creates the links of the sandbox with
+the same control code and with `CreateSymbolicLinkW`
+(`test/probe/ReparsePoint.*`): the two sides of a link are what the view has to
+resolve, so the cases pin the links of the host filesystem and the links a
+sandboxed process creates.
+
+| Case | Isolation | Operation | Expected |
+| --- | --- | --- | --- |
+| `ReparsePoint_TargetIsolationDecides` | folder `Write Copy`, folder `Whiteout` | query the junction of the host, read its data back, read the file of the target directly and through two junctions, query the hidden folder | the read through the junction which names the hidden folder reports `File Not Found`, because the view resolves the link and the isolation of the target decides the answer; the read through the other junction reports the content of its target; the data of the junction names the path of the view; the hidden folder is not visible itself, while the junction is an entry which carries the attribute of a reparse point; the files of the host are unchanged |
+| `ReparsePoint_LinkInTheSandboxReachesALowerLayer` | folder `Write Copy`, packed folder | create a junction which names the path of the view of the packed folder, read the file through it, read its data back, remove its data, ask the data of a file which carries no reparse point | the link lands in the overlay, the read reports the packed content because the view resolves the target in the view and the layer mapping applies to it, the data names the path of the view and not the path of the layer, the removal of the data succeeds, and the control code of a file without a link reaches the file system unchanged |
+| `ReparsePoint_SymlinkRelativeAndAbsolute` | folder `Write Copy`, packed folder | create a symbolic link whose target is relative to the directory of the link and one which names the path of the view of the packed folder, read the file through both | both reads report the packed content, the data of the relative link carries the name the caller wrote, and the data of the absolute link carries the path of the view |
+| `ReparsePoint_DeleteOfALinkKeepsTheTarget` | folder `Write Copy`, junction of the host | query the junction, read the file of its target through it, remove the junction, query it again, read the target again | the junction carries the attribute of a reparse point and the read through it reports the content of the target; the removal acts on the junction and not on the object it names, so the name reports `File Not Found` while the target stays readable; the delete is recorded in the overlay, so the junction of the host survives and the state holds its marker |
+| `ReparsePoint_UnresolvableTargetFails` | folder `Write Copy`, junction of the host whose target names a volume no drive letter maps | open a file through the junction and query its attributes | both calls report `STATUS_REPARSE_POINT_NOT_RESOLVED`, because the view refuses a link it cannot resolve instead of letting the layer follow it, while the junction itself stays an entry of the view |
+| `ReparsePoint_UnknownTagIsForwarded` | folder `Write Copy` | create a file which carries a reparse point whose tag describes the entry itself, query its attributes, read its data back | the file is an entry of the view which carries the attribute of a reparse point and its data carries the tag the process wrote, so a tag the view does not resolve is neither refused nor rewritten |
+
 ### Registry isolation cases
 
 * `test/e2e/Reg_WriteValue_NewKey.cpp` — the closed loop: the sandboxed

@@ -90,8 +90,42 @@ static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
     resolve_option.NameAttributes = ObjectAttributes->Attributes;
     resolve_option.bStopOnFirstFound = false;
 
+    /*
+     * A caller which asks for the reparse point itself reaches the link, which
+     * is what `FILE_OPEN_REPARSE_POINT` asks for; every other caller reaches
+     * the object the link names, which the view resolves itself so that the
+     * isolation of the target decides the layers of the call.
+     */
+    resolve_option.reparseFollow = (OpenOptions & FILE_OPEN_REPARSE_POINT) != 0
+                                       ? appbox::filesystem::ReparseFollowMode::Parent
+                                       : appbox::filesystem::ReparseFollowMode::All;
+
     auto resolve_result = appbox::filesystem::Resolve(nativate_fs_path, resolve_option);
     LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
+
+    /*
+     * A reparse point of the path which the view could not resolve fails the
+     * call: forwarding it to the layer would let the file system of that layer
+     * follow the link and reach an object the view never decided about.
+     */
+    if (!NT_SUCCESS(resolve_result->reparseStatus))
+    {
+        return resolve_result->reparseStatus;
+    }
+
+    /*
+     * The view resolves the reparse points of the path itself, so the entry the
+     * call reaches may differ from the name the caller spelled. Every step
+     * below acts on that entry, and a link which names one of the markers of
+     * the view is refused like a name which carries one.
+     */
+    const std::wstring view_path = resolve_result->viewPath;
+    const NTSTATUS     expanded_marker =
+        appbox::filesystem::ReservedMarkerNameFailure(view_path, STATUS_OBJECT_NAME_NOT_FOUND);
+    if (!NT_SUCCESS(expanded_marker))
+    {
+        return expanded_marker;
+    }
 
     if (!resolve_result->bParentExist)
     {
@@ -117,7 +151,15 @@ static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
 
     if (want_edit && !target_host && !resolve_result->bInUpper)
     {
-        appbox::filesystem::CopyUpEntry(nativate_fs_path, *resolve_result);
+        const bool copied = appbox::filesystem::CopyUpEntry(view_path, *resolve_result);
+        if (!copied && (resolve_result->hPath[0].fInfo.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+        {
+            /* A link which the overlay cannot carry fails the call: a copy of
+             * the object it names would shadow the link with a different
+             * entry. */
+            return STATUS_NOT_SUPPORTED;
+        }
+
         resolve_result->bInUpper = true;
 
         appbox::filesystem::ResolveResult::Path p;
@@ -140,13 +182,13 @@ static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
 
     if (NT_SUCCESS(st))
     {
-        appbox::HandleInfo::Create(*FileHandle, [&nativate_fs_path, ObjectAttributes, &resolve_result,
-                                                 OpenOptions](appbox::HandleInfo::Ptr info) {
-            info->viewPath = nativate_fs_path;
-            info->resolve = resolve_result;
-            info->ObjAttributes = ObjectAttributes->Attributes;
-            info->bDeleteOnClose = (OpenOptions & FILE_DELETE_ON_CLOSE) != 0;
-        });
+        appbox::HandleInfo::Create(
+            *FileHandle, [&view_path, ObjectAttributes, &resolve_result, OpenOptions](appbox::HandleInfo::Ptr info) {
+                info->viewPath = view_path;
+                info->resolve = resolve_result;
+                info->ObjAttributes = ObjectAttributes->Attributes;
+                info->bDeleteOnClose = (OpenOptions & FILE_DELETE_ON_CLOSE) != 0;
+            });
     }
     return st;
 }

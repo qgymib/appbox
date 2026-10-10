@@ -370,8 +370,47 @@ static bool RedirectSetName(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
     appbox::filesystem::ResolveOption resolve_option;
     resolve_option.bStopOnFirstFound = false;
 
+    /*
+     * The name is where the object is moved to or linked at, so the entry the
+     * name addresses is not followed: a rename replaces the link and leaves its
+     * target alone, like the file system does for the same call. The components
+     * above the entry are resolved by the view all the same.
+     */
+    resolve_option.reparseFollow = appbox::filesystem::ReparseFollowMode::Parent;
+
     auto destination = appbox::filesystem::Resolve(destinationViewPath, resolve_option);
     LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*destination)));
+
+    /*
+     * A reparse point of the name which the view could not resolve fails the
+     * call: forwarding it to the layer would let the file system of that layer
+     * follow the link and reach an object the view never decided about.
+     */
+    if (!NT_SUCCESS(destination->reparseStatus))
+    {
+        status = destination->reparseStatus;
+        return true;
+    }
+
+    /*
+     * The view resolves the reparse points of the name itself, so the entry the
+     * name addresses may differ from the name the caller spelled: a name which
+     * reaches a marker of the view is refused, and a name which reaches the
+     * object itself does not move it.
+     */
+    const NTSTATUS expanded_marker =
+        appbox::filesystem::ReservedMarkerNameFailure(destination->viewPath, STATUS_OBJECT_NAME_INVALID);
+    if (!NT_SUCCESS(expanded_marker))
+    {
+        status = expanded_marker;
+        return true;
+    }
+
+    if (!request.bLink && EqualsI(sourceViewPath, destination->viewPath))
+    {
+        status = STATUS_SUCCESS;
+        return true;
+    }
 
     if (!destination->bParentExist)
     {

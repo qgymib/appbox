@@ -389,39 +389,39 @@ point which the table of [Sandbox](#sandbox) does not name acts on the block of
 the process with the arguments of the caller, and the answer of such a call is
 the answer of the host. The points below are the ones which matter for the view.
 
-11. **`RtlSetCurrentEnvironment`.** The call replaces the block of the process,
+1. **`RtlSetCurrentEnvironment`.** The call replaces the block of the process,
     and the sandbox does not see it: the table keeps the environment the process
     had, so every hooked entry point reports the old view, the state is not
     written, and a child which is started afterwards is handed the old view as
     well.
-12. **`SetEnvironmentStringsW`, `SetEnvironmentStringsA` and
+2. **`SetEnvironmentStringsW`, `SetEnvironmentStringsA` and
     `RtlSetEnvironmentStrings`.** The three entry points replace the whole
     environment of the process, and none of them is hooked, so the block of the
     process becomes the block of the caller while the table and the state stay
     as they were. The module of the runtime is built on the entry point below
     them: `kernelbase` imports `RtlSetEnvironmentStrings`, next to the
     `RtlSetEnvironmentVariable` which the isolation hooks.
-13. **`RtlCreateEnvironmentEx`.** The call builds an environment out of a source
+3. **`RtlCreateEnvironmentEx`.** The call builds an environment out of a source
     the caller picks. A caller which asks for a copy of the environment of its
     process receives the block of the host, so a child it starts with that block
     sees the values the isolation hides.
-14. **`RtlExpandEnvironmentStrings`.** The entry point without the `_U` suffix
+4. **`RtlExpandEnvironmentStrings`.** The entry point without the `_U` suffix
     exists next to the `RtlExpandEnvironmentStrings_U` which the isolation
     hooks, and it is not hooked: a caller which resolves it from `ntdll` itself
     expands the references from the block of the process. The exported
     `ExpandEnvironmentStringsW` and `ExpandEnvironmentStringsA` of the runtime
     are hooked, so the common path is covered.
-15. **`NeedCurrentDirectoryForExePathW` and `NeedCurrentDirectoryForExePathA`.**
+5. **`NeedCurrentDirectoryForExePathW` and `NeedCurrentDirectoryForExePathA`.**
     The calls answer from the `NoDefaultCurrentDirectoryInExePath` variable of
     the block of the process, so the value of the host decides whether the
     current directory is part of the search path of an image, whatever a row of
     the archive says.
-16. **`CreateEnvironmentBlock` and `ExpandEnvironmentStringsForUserW` of
+6. **`CreateEnvironmentBlock` and `ExpandEnvironmentStringsForUserW` of
     `userenv.dll`.** The calls build the environment of a user out of the
     profile of the user through the registry, so the rows of the archive and the
     state are not part of the block they report: what they report is what the
     registry isolation reports for the keys of the profile.
-17. **The process creation below `CreateProcessInternalW`.**
+7. **The process creation below `CreateProcessInternalW`.**
     `NtCreateUserProcess` and `RtlCreateUserProcess` are not hooked, and neither
     is `RtlCreateProcessParametersEx`, which builds the parameters of a process
     — the environment among them — for a caller which creates the process

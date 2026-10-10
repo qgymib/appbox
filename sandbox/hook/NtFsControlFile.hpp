@@ -1,0 +1,42 @@
+#ifndef APPBOX_SANDBOX_HOOK_NTFSCONTROLFILE_HPP
+#define APPBOX_SANDBOX_HOOK_NTFSCONTROLFILE_HPP
+
+#include "utils/WinAPI.h"
+#include "__init__.hpp"
+
+extern "C" {
+/**
+ * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntfscontrolfile
+ */
+/* clang-format off */
+typedef NTSTATUS (*T_NtFsControlFile)(
+    /* [IN] */          HANDLE              FileHandle,
+    /* [IN,OPTIONAL] */ HANDLE              Event,
+    /* [IN,OPTIONAL] */ PIO_APC_ROUTINE     ApcRoutine,
+    /* [IN,OPTIONAL] */ PVOID               ApcContext,
+    /* [OUT] */         PIO_STATUS_BLOCK    IoStatusBlock,
+    /* [IN] */          ULONG               FsControlCode,
+    /* [IN,OPTIONAL] */ PVOID               InputBuffer,
+    /* [IN] */          ULONG               InputBufferLength,
+    /* [OUT,OPTIONAL]*/ PVOID               OutputBuffer,
+    /* [IN] */          ULONG               OutputBufferLength
+);
+/* clang-format on */
+
+/**
+ * @brief NtFsControlFile() direct call.
+ */
+extern T_NtFsControlFile sys_NtFsControlFile;
+}
+
+namespace appbox
+{
+
+/**
+ * @brief Hook NtFsControlFile().
+ */
+extern HookRecord HookNtFsControlFile;
+
+} // namespace appbox
+
+#endif // APPBOX_SANDBOX_HOOK_NTFSCONTROLFILE_HPP

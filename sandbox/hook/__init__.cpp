@@ -15,6 +15,7 @@
 #include "hook/NtDeleteValueKey.hpp"
 #include "hook/NtEnumerateKey.hpp"
 #include "hook/NtEnumerateValueKey.hpp"
+#include "hook/NtFsControlFile.hpp"
 #include "hook/NtGdiAddFontResourceW.hpp"
 #include "hook/NtGdiRemoveFontResourceW.hpp"
 #include "hook/NtOpenFile.hpp"
@@ -103,6 +104,7 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtDeleteValueKey,
     &appbox::HookNtEnumerateKey,
     &appbox::HookNtEnumerateValueKey,
+    &appbox::HookNtFsControlFile,
     &appbox::HookNtGdiAddFontResourceW,
     &appbox::HookNtGdiRemoveFontResourceW,
     &appbox::HookNtOpenFile,

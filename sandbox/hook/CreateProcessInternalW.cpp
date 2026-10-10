@@ -55,10 +55,15 @@ static appbox::LoggerF logger("CreateProcessInternalW", CreateProcessInternalWLo
  *
  * @param[in] lpApplicationName Application path as passed by the caller.
  * @param[out] layer_path Host path (Win32 form) which holds the image.
+ * @param[out] reparse_failure Status of a reparse point of the path which the
+ *                             view could not resolve, `STATUS_SUCCESS`
+ *                             otherwise.
  * @return true when the path was resolved and should be rewritten.
  */
-static bool ResolveApplicationPath(LPCWSTR lpApplicationName, std::wstring& layer_path)
+static bool ResolveApplicationPath(LPCWSTR lpApplicationName, std::wstring& layer_path, NTSTATUS& reparse_failure)
 {
+    reparse_failure = STATUS_SUCCESS;
+
     if (lpApplicationName == nullptr)
     {
         return false;
@@ -75,6 +80,19 @@ static bool ResolveApplicationPath(LPCWSTR lpApplicationName, std::wstring& laye
     }
 
     auto result = appbox::filesystem::Resolve(dos_nt_path);
+
+    /*
+     * A reparse point of the image path which the view could not resolve fails
+     * the creation: the forwarded call resolves the path in the host
+     * filesystem and would load an image the view never decided about.
+     */
+    if (!NT_SUCCESS(result->reparseStatus))
+    {
+        LOG_W(L"failed to resolve the reparse point of the image {}: {}", dos_nt_path, result->reparseStatus);
+        reparse_failure = result->reparseStatus;
+        return false;
+    }
+
     if (result->status != appbox::filesystem::ResolveResult::Status::Exists)
     {
         /* The image does not exist in the view either, let the original
@@ -156,9 +174,15 @@ static BOOL Hook_CreateProcessInternalW(HANDLE hToken, LPCWSTR lpApplicationName
      */
     std::wstring layer_path;
     LPCWSTR      effective_app_name = lpApplicationName;
-    if (ResolveApplicationPath(lpApplicationName, layer_path))
+    NTSTATUS     reparse_failure = STATUS_SUCCESS;
+    if (ResolveApplicationPath(lpApplicationName, layer_path, reparse_failure))
     {
         effective_app_name = layer_path.c_str();
+    }
+    else if (!NT_SUCCESS(reparse_failure))
+    {
+        SetLastError(ERROR_FILE_NOT_FOUND);
+        return FALSE;
     }
 
 #if defined(_WIN64)

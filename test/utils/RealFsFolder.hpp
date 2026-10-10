@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace appbox::test
 {
@@ -49,6 +50,23 @@ public:
     bool FileExists(const std::wstring& relative) const;
 
     /**
+     * @brief Create a junction inside the folder.
+     *
+     * A junction is a reparse point of the kind the view resolves itself, and
+     * any user who may write the folder can create one: unlike a symbolic link
+     * it asks for no privilege, so a case which needs a link of the host does
+     * not depend on the machine it runs on. The helper removes the junctions
+     * it created before it removes the folder, because removing the folder
+     * would otherwise walk into the targets they name.
+     *
+     * @param[in] relative Path of the junction below the folder.
+     * @param[in] target Target the junction names, an absolute Win32 path or a
+     *                   path of the object namespace.
+     * @return true on success.
+     */
+    bool CreateJunction(const std::wstring& relative, const std::wstring& target);
+
+    /**
      * @brief Path of the folder.
      * @return The path of the folder.
      */
@@ -59,6 +77,11 @@ private:
      * @brief Path of the folder below the known folder.
      */
     std::filesystem::path path_;
+
+    /**
+     * @brief Junctions the helper created, removed before the folder itself.
+     */
+    std::vector<std::filesystem::path> junctions_;
 };
 
 } // namespace appbox::test

@@ -6,6 +6,7 @@
 #include <string>
 #include "filesystem/StreamName.hpp"
 #include "utils/Defines.hpp"
+#include "utils/WinAPI.h"
 
 namespace appbox::filesystem
 {
@@ -186,6 +187,32 @@ inline MarkerNamePlacement ReservedMarkerNamePlacement(const std::wstring& viewP
     }
 
     return entry_reserved ? MarkerNamePlacement::Entry : MarkerNamePlacement::None;
+}
+
+/**
+ * @brief The failure a path which carries a reserved name reports.
+ *
+ * The caller decides the failure of an entry which carries a reserved name,
+ * because a call which creates an entry reports the name it refuses while a
+ * call which looks an entry up reports an entry which is missing. A component
+ * above the entry always reports a missing path.
+ *
+ * @param[in] viewPath Path of the view to inspect.
+ * @param[in] entryStatus Failure of a call which names an entry of a reserved
+ *                        name.
+ * @return `STATUS_SUCCESS` when the path carries no reserved name.
+ */
+inline NTSTATUS ReservedMarkerNameFailure(const std::wstring& viewPath, NTSTATUS entryStatus)
+{
+    switch (ReservedMarkerNamePlacement(viewPath))
+    {
+    case MarkerNamePlacement::Parent:
+        return STATUS_OBJECT_PATH_NOT_FOUND;
+    case MarkerNamePlacement::Entry:
+        return entryStatus;
+    default:
+        return STATUS_SUCCESS;
+    }
 }
 
 /**
