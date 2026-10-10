@@ -5,6 +5,7 @@
 #define _WIN32_WINNT 0x0600
 #endif
 #include <windows.h>
+#include <cstdint>
 #include <string>
 
 namespace appbox::test
@@ -49,6 +50,25 @@ public:
      * @return true on success.
      */
     bool SetDword(const std::wstring& name, DWORD value);
+
+    /**
+     * @brief Read a `REG_SZ` value of the key.
+     * @param[in] name Name of the value.
+     * @return The text of the value, empty when the key could not be created or
+     *         the value is missing.
+     */
+    std::wstring GetString(const std::wstring& name) const;
+
+    /**
+     * @brief Last write time of the key.
+     *
+     * The time is the one the real registry holds: a test reads it before and
+     * after a sandboxed process ran, so it can tell a modification of the host
+     * key from a modification which landed in the sandbox.
+     *
+     * @return The time in FILETIME ticks, zero when it cannot be read.
+     */
+    uint64_t LastWriteTime() const;
 
     /**
      * @brief The handle of the key.

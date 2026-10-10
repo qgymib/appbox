@@ -394,6 +394,24 @@ typedef enum _KEY_INFORMATION_CLASS
 #endif
 
 /**
+ * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ne-wdm-_key_set_information_class
+ */
+#ifndef _KEY_SET_INFORMATION_CLASS
+#define _KEY_SET_INFORMATION_CLASS
+typedef enum _KEY_SET_INFORMATION_CLASS
+{
+    KeyWriteTimeInformation,
+    KeyWow64FlagsInformation,
+    KeyControlFlagsInformation,
+    KeySetVirtualizationInformation,
+    KeySetDebugInformation,
+    KeySetHandleTagsInformation,
+    KeySetLayerInformation,
+    MaxKeySetInfoClass
+} KEY_SET_INFORMATION_CLASS, *PKEY_SET_INFORMATION_CLASS;
+#endif
+
+/**
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ne-wdm-_key_value_information_class
  */
 #ifndef _KEY_VALUE_INFORMATION_CLASS
@@ -461,6 +479,11 @@ typedef struct _KEY_CACHED_INFORMATION
     ULONG         NameType;
     ULONG         Flags;
 } KEY_CACHED_INFORMATION, *PKEY_CACHED_INFORMATION;
+
+typedef struct _KEY_WRITE_TIME_INFORMATION
+{
+    LARGE_INTEGER LastWriteTime;
+} KEY_WRITE_TIME_INFORMATION, *PKEY_WRITE_TIME_INFORMATION;
 
 typedef struct _KEY_VALUE_BASIC_INFORMATION
 {

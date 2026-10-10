@@ -7,6 +7,7 @@
 #include "hook/CreateProcessInternalW.hpp"
 #include "hook/LdrQueryImageFileExecutionOptionsEx.hpp"
 #include "hook/NtClose.hpp"
+#include "hook/NtCompressKey.hpp"
 #include "hook/NtCreateFile.hpp"
 #include "hook/NtCreateKey.hpp"
 #include "hook/NtCurrentTeb.hpp"
@@ -15,9 +16,11 @@
 #include "hook/NtDeleteValueKey.hpp"
 #include "hook/NtEnumerateKey.hpp"
 #include "hook/NtEnumerateValueKey.hpp"
+#include "hook/NtFlushKey.hpp"
 #include "hook/NtFsControlFile.hpp"
 #include "hook/NtGdiAddFontResourceW.hpp"
 #include "hook/NtGdiRemoveFontResourceW.hpp"
+#include "hook/NtLockRegistryKey.hpp"
 #include "hook/NtOpenFile.hpp"
 #include "hook/NtOpenKey.hpp"
 #include "hook/NtOpenKeyEx.hpp"
@@ -35,6 +38,7 @@
 #include "hook/NtSaveKey.hpp"
 #include "hook/NtSaveKeyEx.hpp"
 #include "hook/NtSetInformationFile.hpp"
+#include "hook/NtSetInformationKey.hpp"
 #include "hook/NtWriteFile.hpp"
 #include "hook/DnsQuery_A.hpp"
 #include "hook/DnsQuery_UTF8.hpp"
@@ -96,6 +100,7 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookGetHostByName,
     &appbox::HookLdrQueryImageFileExecutionOptionsEx,
     &appbox::HookNtClose,
+    &appbox::HookNtCompressKey,
     &appbox::HookNtCreateFile,
     &appbox::HookNtCreateKey,
     &appbox::HookNtCurrentTeb,
@@ -104,9 +109,11 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtDeleteValueKey,
     &appbox::HookNtEnumerateKey,
     &appbox::HookNtEnumerateValueKey,
+    &appbox::HookNtFlushKey,
     &appbox::HookNtFsControlFile,
     &appbox::HookNtGdiAddFontResourceW,
     &appbox::HookNtGdiRemoveFontResourceW,
+    &appbox::HookNtLockRegistryKey,
     &appbox::HookNtOpenFile,
     &appbox::HookNtOpenKey,
     &appbox::HookNtOpenKeyEx,
@@ -124,6 +131,7 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtSaveKey,
     &appbox::HookNtSaveKeyEx,
     &appbox::HookNtSetInformationFile,
+    &appbox::HookNtSetInformationKey,
     &appbox::HookNtWriteFile,
     &appbox::HookRecvFrom,
     &appbox::HookRtlCompareUnicodeString,

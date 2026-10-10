@@ -812,6 +812,38 @@ sandboxed process creates.
   The case pins that the processes of one sandbox share the hive — a file which
   another process already mounted is served by the hive of that mount — and that
   the state of the run survives it, while the real HKCU stays untouched.
+* `test/e2e/Reg_SetInformationKey_HiveHandle.cpp` — the probe `RegKeyApi` opens
+  a key which only the host holds for writing, which the isolation answers by
+  copying the key up into the hive, and calls
+  `NtSetInformationKey(KeyWriteTimeInformation)` on that handle of the hive:
+  the call is forwarded, the key of the hive carries the time the probe wrote,
+  and the last write time of the host key is unchanged, so the modification
+  landed in the sandbox.
+* `test/e2e/Reg_SetInformationKey_ReadHandle.cpp` — the same call on a read
+  access open, which the read through answers with a handle of the host layer,
+  is refused with `STATUS_ACCESS_DENIED` and the last write time of the host key
+  is unchanged. A handle of the host layer carries read rights only, which the
+  kernel refuses for this class as well, so the case pins that the host stays
+  untouched and that the isolation is the layer which answers the call.
+* `test/e2e/Reg_FlushKey_HiveHandle.cpp` — the flush of a key of the hive is
+  forwarded and succeeds, so the sandbox persists the state of the sandbox.
+* `test/e2e/Reg_FlushKey_ReadHandle.cpp` — the flush of a key of the host layer
+  is refused with `STATUS_ACCESS_DENIED` and the host key keeps its value. The
+  call was forwarded and reported `STATUS_SUCCESS` before the isolation answered
+  it itself, which flushed the hive file of the host.
+* `test/e2e/Reg_CompressKey_HiveHandle.cpp` — the compress of a key of the hive
+  is forwarded: the kernel answers the call
+  (`STATUS_PRIVILEGE_NOT_HELD` for a caller whose token does not hold the
+  privilege the call asks for) and the isolation does not refuse a handle of the
+  hive.
+* `test/e2e/Reg_CompressKey_ReadHandle.cpp` — the compress of a key of the host
+  layer is refused with `STATUS_ACCESS_DENIED`, which is the answer of the
+  isolation and not the `STATUS_PRIVILEGE_NOT_HELD` the kernel reports for the
+  object of the host layer, and the host key keeps its value.
+* `test/e2e/Reg_LockRegistryKey_HiveHandle.cpp` — the lock of a key of the hive
+  is forwarded and the kernel answers the call, like the compress of a hive key.
+* `test/e2e/Reg_LockRegistryKey_ReadHandle.cpp` — the lock of a key of the host
+  layer is refused with `STATUS_ACCESS_DENIED` and the host key keeps its value.
 
 ### Network isolation cases
 

@@ -280,12 +280,15 @@ the host entry reappear in the view of the sandbox.
 | `NtQueryKey` | Key name translated back into the view; `SubKeys` / `Values` counts of the merged view. |
 | `NtQueryValueKey` / `NtQueryMultipleValueKey` | Read through of a value / of a batch. |
 | `NtSaveKey` / `NtSaveKeyEx` | Exports the merged view of a key. |
+| `NtSetInformationKey` / `NtFlushKey` / `NtCompressKey` / `NtLockRegistryKey` | A call which acts on the key or on the hive file of its handle: a handle of the host layer is refused with `STATUS_ACCESS_DENIED`, a handle of the hive is forwarded. |
 | `NtQueryObject` | Object names below the private hive mount are translated into the view path. |
 
-Handles below the private hive mount run the merged logic; every other handle
-(real fallback handles, handles of other roots) is forwarded unchanged. A
-redirected handle is translated back into the view path wherever its name is
-queried, so it behaves exactly like the key it shadows.
+Handles below the private hive mount run the merged logic; a handle of the host
+layer is refused where the call would act on the key of the host or on the hive
+file which holds it (see the table), and every other handle (handles of other
+roots) is forwarded unchanged. A redirected handle is translated back into the
+view path wherever its name is queried, so it behaves exactly like the key it
+shadows.
 
 The table is the whole surface of the isolation: an entry point which is not
 named in it is forwarded to the real registry with the path or the handle of the
@@ -417,11 +420,20 @@ ones which matter for the view.
     registry and it is not notified about the change the sandbox itself makes,
     because that one lands in the hive. A watch on a handle of the hive observes
     the hive alone, so neither kind of watch describes the merged view.
-6. **The remaining key APIs.** `NtQueryInformationKey`, `NtSetInformationKey`,
-    `NtQueryOpenSubKeys`, `NtQueryOpenSubKeysEx`, `NtFlushKey`, `NtCompressKey`,
-    `NtLockRegistryKey` and `NtInitializeRegistry` are forwarded unchanged, so
-    the property they report or change is the property of the object of the layer
-    the call names: the hive of a redirected handle, the real key of a read
-    through handle, and the real registry of a key a path names. None of them is
-    part of a path an ordinary application uses; they are listed so that a call
-    which reaches one of them is not read as a call the isolation answered.
+6. **The remaining key APIs.** `NtQueryOpenSubKeys`, `NtQueryOpenSubKeysEx` and
+   `NtInitializeRegistry` are forwarded unchanged. The first two name the key
+   they act on with an `OBJECT_ATTRIBUTES` and not with a key handle, and the
+   layout of their arguments is not documented, so the isolation cannot tell
+   which layer a call names; the kernel answers them with
+   `STATUS_PRIVILEGE_NOT_HELD` for a caller whose token does not hold the
+   privilege the call asks for, which is what an ordinary application receives,
+   while a sandboxed process which holds the privilege (a process which runs
+   elevated, for example) reaches the real registry through them.
+   `NtInitializeRegistry` names no key at all — it takes the boot condition of
+   the system — so there is no layer to choose and no path to redirect. The key
+   APIs which act on the object of a key handle (`NtSetInformationKey`,
+   `NtFlushKey`, `NtCompressKey` and `NtLockRegistryKey`) are hooked and refuse
+   a handle of the host layer, see
+   [Hooked entry points](#hooked-entry-points). None of the three is part of a
+   path an ordinary application uses; they are listed so that a call which
+   reaches one of them is not read as a call the isolation answered.

@@ -43,6 +43,41 @@ bool appbox::test::RealHkcuKey::SetDword(const std::wstring& name, DWORD value)
            ERROR_SUCCESS;
 }
 
+std::wstring appbox::test::RealHkcuKey::GetString(const std::wstring& name) const
+{
+    if (key_ == nullptr)
+    {
+        return std::wstring();
+    }
+
+    wchar_t buffer[256] = {};
+    DWORD   size = sizeof(buffer);
+    if (RegQueryValueExW(key_, name.c_str(), nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size) !=
+        ERROR_SUCCESS)
+    {
+        return std::wstring();
+    }
+
+    return std::wstring(buffer);
+}
+
+uint64_t appbox::test::RealHkcuKey::LastWriteTime() const
+{
+    if (key_ == nullptr)
+    {
+        return 0;
+    }
+
+    FILETIME time = {};
+    if (RegQueryInfoKeyW(key_, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                         &time) != ERROR_SUCCESS)
+    {
+        return 0;
+    }
+
+    return (static_cast<uint64_t>(time.dwHighDateTime) << 32) | time.dwLowDateTime;
+}
+
 HKEY appbox::test::RealHkcuKey::get() const
 {
     return key_;
