@@ -37,6 +37,8 @@ static const FolderMapping s_known_folders[] = {
     { L"#LocalAppDataLow#",    FOLDERID_LocalAppDataLow    }, /* %LocalAppDataLow% (%USERPROFILE%\AppData\LocalLow) */
     { L"#Downloads#",          FOLDERID_Downloads          }, /* the Downloads folder of the user (may be redirected) */
     { L"#Favorites#",          FOLDERID_Favorites          }, /* the Favorites folder of the user (may be redirected) */
+    { L"#Music#",              FOLDERID_Music              }, /* the Music folder of the user (may be redirected) */
+    { L"#Pictures#",           FOLDERID_Pictures           }, /* the Pictures folder of the user (may be redirected) */
     { L"#StartMenu#",          FOLDERID_StartMenu          }, /* the Start Menu folder of the user (may be redirected) */
     { L"#Programs#",           FOLDERID_Programs           }, /* the Programs folder inside the Start Menu of the user */
     { L"#Startup#",            FOLDERID_Startup            }, /* the Startup folder inside the Programs folder of the user */

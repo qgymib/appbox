@@ -91,6 +91,22 @@ const std::vector<PresetDirectory>& PresetDirectories();
 std::vector<PresetDirectory> ChildPresets(const std::string& parent_id);
 
 /**
+ * @brief Whether a node of the filesystem tree hangs below another node.
+ *
+ * The container (`kFilesystemContainerLabel`) is the root of the tree and the
+ * only node without a parent, so every preset directory - a top level one which
+ * hangs below the container as well as a nested one - can move up. The `Up Dir`
+ * command of the filesystem workspace follows this rule: it is offered for every
+ * node but the container, and the node it moves to is the one the tree shows
+ * above the node.
+ *
+ * @param[in] preset_id Identifier of the preset directory of the node, empty
+ *            for the container.
+ * @return true when the node hangs below another node.
+ */
+bool FilesystemNodeHasParent(const std::string& preset_id);
+
+/**
  * @brief Find a preset directory by identifier.
  * @param[in] id Preset identifier.
  * @param[out] out The preset description when found.

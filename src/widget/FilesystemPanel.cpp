@@ -1023,8 +1023,13 @@ void FilesystemPanel::UpdateToolBarState()
     }
     if (up_dir_ != nullptr)
     {
-        const auto parent = selection.IsOk() ? tree_->GetItemParent(selection) : wxTreeItemId();
-        up_dir_->Enable(parent.IsOk() && parent != tree_->GetRootItem());
+        /*
+         * The container is the root of the tree and the only node without a
+         * parent, so the command is offered for every node but the container: a
+         * top level preset directory moves to the container like a nested one
+         * moves to the preset it hangs below.
+         */
+        up_dir_->Enable(has_node && appbox::FilesystemNodeHasParent(node->preset_id));
     }
 }
 
@@ -1486,8 +1491,19 @@ void FilesystemPanel::OnUpDir(wxCommandEvent&)
         return;
     }
 
+    /*
+     * The rule of the command is the one of the toolbar state: only the
+     * container is the root of the tree, so every other node moves to the node
+     * the tree shows above it.
+     */
+    const auto* node = static_cast<const TreeNode*>(tree_->GetItemData(selection));
+    if (node == nullptr || !appbox::FilesystemNodeHasParent(node->preset_id))
+    {
+        return;
+    }
+
     const auto parent = tree_->GetItemParent(selection);
-    if (parent.IsOk() && parent != tree_->GetRootItem())
+    if (parent.IsOk())
     {
         tree_->SelectItem(parent);
     }

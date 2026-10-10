@@ -109,6 +109,8 @@ TEST(Unit_PresetDirectory, ProvidesExpectedPresets)
         { "local_application_data_low", "user_profile",  L"Local Application Data Low", L"#LocalAppDataLow#"    },
         { "downloads",                  "user_profile",  L"Downloads",                  L"#Downloads#"          },
         { "favorites",                  "user_profile",  L"Favorites",                  L"#Favorites#"          },
+        { "music",                      "user_profile",  L"Music",                      L"#Music#"              },
+        { "pictures",                   "user_profile",  L"Pictures",                   L"#Pictures#"           },
         { "start_menu",                 "user_profile",  L"Start Menu",                 L"#StartMenu#"          },
         { "programs",                   "start_menu",    L"Programs",                   L"#Programs#"           },
         { "startup",                    "programs",      L"Startup",                    L"#Startup#"            },
@@ -173,7 +175,7 @@ TEST(Unit_PresetDirectory, ChildPresetsNestThePresetTree)
     EXPECT_EQ(top[3].display_name, L"Windows");
 
     const auto profile = appbox::ChildPresets("user_profile");
-    ASSERT_EQ(profile.size(), static_cast<std::size_t>(8));
+    ASSERT_EQ(profile.size(), static_cast<std::size_t>(10));
     EXPECT_EQ(profile[0].id, "application_data");
     EXPECT_EQ(profile[0].layer_key, L"#AppData#");
     EXPECT_EQ(profile[1].id, "desktop");
@@ -188,8 +190,12 @@ TEST(Unit_PresetDirectory, ChildPresetsNestThePresetTree)
     EXPECT_EQ(profile[5].layer_key, L"#LocalAppData#");
     EXPECT_EQ(profile[6].id, "local_application_data_low");
     EXPECT_EQ(profile[6].layer_key, L"#LocalAppDataLow#");
-    EXPECT_EQ(profile[7].id, "start_menu");
-    EXPECT_EQ(profile[7].layer_key, L"#StartMenu#");
+    EXPECT_EQ(profile[7].id, "music");
+    EXPECT_EQ(profile[7].layer_key, L"#Music#");
+    EXPECT_EQ(profile[8].id, "pictures");
+    EXPECT_EQ(profile[8].layer_key, L"#Pictures#");
+    EXPECT_EQ(profile[9].id, "start_menu");
+    EXPECT_EQ(profile[9].layer_key, L"#StartMenu#");
 
     const auto start_menu = appbox::ChildPresets("start_menu");
     ASSERT_EQ(start_menu.size(), static_cast<std::size_t>(1));
@@ -222,6 +228,8 @@ TEST(Unit_PresetDirectory, ChildPresetsNestThePresetTree)
                                   "fonts",
                                   "local_application_data",
                                   "local_application_data_low",
+                                  "music",
+                                  "pictures",
                                   "program_data",
                                   "program_files_common",
                                   "startup",
@@ -273,6 +281,12 @@ TEST(Unit_PresetDirectory, FindsKnownAndRejectsUnknownIds)
     EXPECT_EQ(preset.layer_key, L"#Downloads#");
     EXPECT_TRUE(appbox::FindPresetDirectory("favorites", preset));
     EXPECT_EQ(preset.layer_key, L"#Favorites#");
+    EXPECT_TRUE(appbox::FindPresetDirectory("music", preset));
+    EXPECT_EQ(preset.layer_key, L"#Music#");
+    EXPECT_EQ(preset.parent_id, "user_profile");
+    EXPECT_TRUE(appbox::FindPresetDirectory("pictures", preset));
+    EXPECT_EQ(preset.layer_key, L"#Pictures#");
+    EXPECT_EQ(preset.parent_id, "user_profile");
     EXPECT_TRUE(appbox::FindPresetDirectory("start_menu", preset));
     EXPECT_EQ(preset.layer_key, L"#StartMenu#");
     EXPECT_TRUE(appbox::FindPresetDirectory("programs", preset));
@@ -309,6 +323,36 @@ TEST(Unit_PresetDirectory, ContainerLabelNamesTheFilesystemTreeRoot)
     for (const auto& preset : appbox::PresetDirectories())
     {
         EXPECT_STRNE(appbox::kFilesystemContainerLabel, preset.display_name.c_str());
+    }
+}
+
+/**
+ * @brief The `Up Dir` command of the filesystem workspace is offered for every
+ *        node of the tree but the container.
+ *
+ * The container is the root of the tree and the only node without a parent, so
+ * a top level preset directory moves to the container like a nested one moves
+ * to the preset it hangs below. The panel asks for this rule both for the
+ * enabled state of the button and for the node the command selects, which keeps
+ * the two from drifting apart.
+ */
+TEST(Unit_PresetDirectory, FilesystemNodeHasParentExcludesTheContainer)
+{
+    appbox::PresetDirectory preset;
+
+    /* The container carries no preset, which marks it as the root of the tree. */
+    EXPECT_FALSE(appbox::FilesystemNodeHasParent(""));
+
+    /*
+     * A top level preset directory hangs below the container, a nested one
+     * below the preset it belongs to; both are offered by the tree.
+     */
+    const char* const nodes[] = { "program_files", "program_data", "user_profile", "windows",  "documents", "music",
+                                  "pictures",      "programs",     "startup",      "system32", "fonts" };
+    for (const char* id : nodes)
+    {
+        ASSERT_TRUE(appbox::FindPresetDirectory(id, preset)) << id;
+        EXPECT_TRUE(appbox::FilesystemNodeHasParent(id)) << id;
     }
 }
 

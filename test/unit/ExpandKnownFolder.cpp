@@ -71,9 +71,10 @@ TEST(Unit_ExpandKnownFolder, PercentDelimitedTokenIsNotALayerKey)
 TEST(Unit_ExpandKnownFolder, LayerKeysUseTheHashDelimiter)
 {
     const std::wstring keys[] = {
-        L"#ProgramFiles#", L"#ProgramFilesCommon#", L"#USERPROFILE#", L"#Documents#", L"#Desktop#",   L"#AppData#",
-        L"#LocalAppData#", L"#LocalAppDataLow#",    L"#Downloads#",   L"#Favorites#", L"#StartMenu#", L"#Programs#",
-        L"#Startup#",      L"#ProgramData#",        L"#Windows#",     L"#System32#",  L"#Fonts#"
+        L"#ProgramFiles#", L"#ProgramFilesCommon#", L"#USERPROFILE#", L"#Documents#",   L"#Desktop#", L"#AppData#",
+        L"#LocalAppData#", L"#LocalAppDataLow#",    L"#Downloads#",   L"#Favorites#",   L"#Music#",   L"#Pictures#",
+        L"#StartMenu#",    L"#Programs#",           L"#Startup#",     L"#ProgramData#", L"#Windows#", L"#System32#",
+        L"#Fonts#"
     };
 
     for (const auto& key : keys)
@@ -119,17 +120,19 @@ TEST(Unit_ExpandKnownFolder, RemovedLayerKeysAreNotKnown)
 TEST(Unit_ExpandKnownFolder, VariablesFollowTheKnownFolderTable)
 {
     const std::wstring keys[] = {
-        L"#ProgramFiles#", L"#ProgramFilesCommon#", L"#USERPROFILE#", L"#Documents#", L"#Desktop#",   L"#AppData#",
-        L"#LocalAppData#", L"#LocalAppDataLow#",    L"#Downloads#",   L"#Favorites#", L"#StartMenu#", L"#Programs#",
-        L"#Startup#",      L"#ProgramData#",        L"#Windows#",     L"#System32#",  L"#Fonts#"
+        L"#ProgramFiles#", L"#ProgramFilesCommon#", L"#USERPROFILE#", L"#Documents#",   L"#Desktop#", L"#AppData#",
+        L"#LocalAppData#", L"#LocalAppDataLow#",    L"#Downloads#",   L"#Favorites#",   L"#Music#",   L"#Pictures#",
+        L"#StartMenu#",    L"#Programs#",           L"#Startup#",     L"#ProgramData#", L"#Windows#", L"#System32#",
+        L"#Fonts#"
     };
-    const char* names[] = { "ProgramFiles", "ProgramFilesCommon", "USERPROFILE", "Documents", "Desktop",   "AppData",
-                            "LocalAppData", "LocalAppDataLow",    "Downloads",   "Favorites", "StartMenu", "Programs",
-                            "Startup",      "ProgramData",        "Windows",     "System32",  "Fonts" };
+    const char* names[] = { "ProgramFiles", "ProgramFilesCommon", "USERPROFILE", "Documents",   "Desktop", "AppData",
+                            "LocalAppData", "LocalAppDataLow",    "Downloads",   "Favorites",   "Music",   "Pictures",
+                            "StartMenu",    "Programs",           "Startup",     "ProgramData", "Windows", "System32",
+                            "Fonts" };
 
     const std::vector<appbox::KnownFolderVariable> variables = appbox::KnownFolderVariables();
     ASSERT_EQ(variables.size(), std::size(keys));
-    ASSERT_EQ(variables.size(), static_cast<std::size_t>(17));
+    ASSERT_EQ(variables.size(), static_cast<std::size_t>(19));
 
     for (std::size_t index = 0; index < std::size(keys); ++index)
     {

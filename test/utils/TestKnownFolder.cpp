@@ -24,6 +24,8 @@ static const KnownFolderMap KnownFolders[] = {
     { L"#LocalAppDataLow#",    FOLDERID_LocalAppDataLow    },
     { L"#Downloads#",          FOLDERID_Downloads          },
     { L"#Favorites#",          FOLDERID_Favorites          },
+    { L"#Music#",              FOLDERID_Music              },
+    { L"#Pictures#",           FOLDERID_Pictures           },
     { L"#StartMenu#",          FOLDERID_StartMenu          },
     { L"#Programs#",           FOLDERID_Programs           },
     { L"#Startup#",            FOLDERID_Startup            },

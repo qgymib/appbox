@@ -86,23 +86,25 @@ compared ignoring the case, so `%appbox:documents%` names the same folder as
 
 | Name | Example path |
 | --- | --- |
-| `ProgramFiles` | `C:\Program Files` |
-| `ProgramFilesCommon` | `C:\Program Files\Common Files` |
-| `USERPROFILE` | `C:\Users\Alice` |
-| `Documents` | `C:\Users\Alice\Documents` |
-| `Desktop` | `C:\Users\Alice\Desktop` |
-| `AppData` | `C:\Users\Alice\AppData\Roaming` |
-| `LocalAppData` | `C:\Users\Alice\AppData\Local` |
-| `LocalAppDataLow` | `C:\Users\Alice\AppData\LocalLow` |
-| `Downloads` | `C:\Users\Alice\Downloads` |
-| `Favorites` | `C:\Users\Alice\Favorites` |
-| `StartMenu` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu` |
-| `Programs` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu\Programs` |
-| `Startup` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup` |
-| `ProgramData` | `C:\ProgramData` |
-| `Windows` | `C:\Windows` |
-| `System32` | `C:\Windows\System32` |
-| `Fonts` | `C:\Windows\Fonts` |
+| `%APPBOX:AppData%` | `C:\Users\Alice\AppData\Roaming` |
+| `%APPBOX:Desktop%` | `C:\Users\Alice\Desktop` |
+| `%APPBOX:Documents%` | `C:\Users\Alice\Documents` |
+| `%APPBOX:Downloads%` | `C:\Users\Alice\Downloads` |
+| `%APPBOX:Favorites%` | `C:\Users\Alice\Favorites` |
+| `%APPBOX:Fonts%` | `C:\Windows\Fonts` |
+| `%APPBOX:LocalAppData%` | `C:\Users\Alice\AppData\Local` |
+| `%APPBOX:LocalAppDataLow%` | `C:\Users\Alice\AppData\LocalLow` |
+| `%APPBOX:Music%` | `C:\Users\Alice\Music` |
+| `%APPBOX:Pictures%` | `C:\Users\Alice\Pictures` |
+| `%APPBOX:ProgramData%` | `C:\ProgramData` |
+| `%APPBOX:ProgramFiles%` | `C:\Program Files` |
+| `%APPBOX:ProgramFilesCommon%` | `C:\Program Files\Common Files` |
+| `%APPBOX:Programs%` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu\Programs` |
+| `%APPBOX:StartMenu%` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu` |
+| `%APPBOX:Startup%` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup` |
+| `%APPBOX:System32%` | `C:\Windows\System32` |
+| `%APPBOX:USERPROFILE%` | `C:\Users\Alice` |
+| `%APPBOX:Windows%` | `C:\Windows` |
 
 The list follows the preset directories of the Filesystem workspace: the name of
 a variable is the layer key of a preset directory without its `#` delimiters, so

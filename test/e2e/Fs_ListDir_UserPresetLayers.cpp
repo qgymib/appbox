@@ -35,6 +35,8 @@ const LayerFile s_layers[] = {
     { L"#LocalAppDataLow#", "Fs.ListDir_UserPresetLayers.LocalAppDataLow.txt" },
     { L"#Downloads#",       "Fs.ListDir_UserPresetLayers.Downloads.txt"       },
     { L"#Favorites#",       "Fs.ListDir_UserPresetLayers.Favorites.txt"       },
+    { L"#Music#",           "Fs.ListDir_UserPresetLayers.Music.txt"           },
+    { L"#Pictures#",        "Fs.ListDir_UserPresetLayers.Pictures.txt"        },
     { L"#StartMenu#",       "Fs.ListDir_UserPresetLayers.StartMenu.txt"       },
     { L"#Programs#",        "Fs.ListDir_UserPresetLayers.Programs.txt"        },
     { L"#Startup#",         "Fs.ListDir_UserPresetLayers.Startup.txt"         },
@@ -82,8 +84,8 @@ ProtocolListDir::Rsp ListLayer(const std::wstring& layer, const std::filesystem:
  * 1. The resource tree holds a lower layer for every folder of the user below
  *    `Current User Directory` -- `Documents`, `Desktop`, `Application Data`,
  *    `Local Application Data`, `Local Application Data Low`, `Downloads`,
- *    `Favorites`, `Start Menu`, `Programs` and `Startup` -- each with a file of
- *    its own.
+ *    `Favorites`, `Music`, `Pictures`, `Start Menu`, `Programs` and `Startup` --
+ *    each with a file of its own.
  * 2. The sandboxed process lists every one of those folders.
  *
  * Expected:

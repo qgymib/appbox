@@ -213,9 +213,9 @@ followed by a path separator, so `...\AppData\RoamingX` does not match the
 
 A layer key is a `#Name#` delimited token (`#ProgramFiles#`,
 `#ProgramFilesCommon#`, `#USERPROFILE#`, `#Documents#`, `#Desktop#`, `#AppData#`,
-`#LocalAppData#`, `#LocalAppDataLow#`, `#Downloads#`, `#Favorites#`,
-`#StartMenu#`, `#Programs#`, `#Startup#`, `#ProgramData#`, `#Windows#`,
-`#System32#`, `#Fonts#`, a single drive letter);
+`#LocalAppData#`, `#LocalAppDataLow#`, `#Downloads#`, `#Favorites#`, `#Music#`,
+`#Pictures#`, `#StartMenu#`, `#Programs#`, `#Startup#`, `#ProgramData#`,
+`#Windows#`, `#System32#`, `#Fonts#`, a single drive letter);
 `#REGISTRY#` and `#NETWORK#` are reserved for the other isolation domains. The packer offers one
 layer per preset directory of its filesystem workspace and names it after the
 layer key of that preset, so the launcher knows exactly the keys the packer
@@ -288,18 +288,20 @@ imported folders at their preset locations (`#ProgramFiles#\<import>`,
 `#ProgramFilesCommon#\<import>`, `#USERPROFILE#\<import>`,
 `#Documents#\<import>`, `#Desktop#\<import>`, `#AppData#\<import>`,
 `#LocalAppData#\<import>`, `#LocalAppDataLow#\<import>`, `#Downloads#\<import>`,
-`#Favorites#\<import>`, `#StartMenu#\<import>`, `#Programs#\<import>`,
-`#Startup#\<import>`, `#ProgramData#\<import>`, `#Windows#\<import>`,
-`#System32#\<import>`, `#Fonts#\<import>`) and starts the selected startup files
+`#Favorites#\<import>`, `#Music#\<import>`, `#Pictures#\<import>`,
+`#StartMenu#\<import>`, `#Programs#\<import>`, `#Startup#\<import>`,
+`#ProgramData#\<import>`, `#Windows#\<import>`, `#System32#\<import>`,
+`#Fonts#\<import>`) and starts the selected startup files
 inside the isolation. The folders of the user hang below `Current User
 Directory` in the tree of the packer, `Programs` hangs below `Start Menu` and
 `Startup` below `Programs`, while the system directory hangs below `Windows` and
 `Common` below `Program Files`; `Program Data` is a top level preset next to
 `Program Files`, `Current User Directory` and `Windows`. Yet every preset
-directory owns a layer of its own: `Documents` and `Desktop` are resolved from
-their own known folder id, which keeps them correct when the shell redirects
-them (for example into OneDrive), `Local Application Data Low` is resolved from
-its own id instead of being a subdirectory of `Local Application Data`,
+directory owns a layer of its own: `Documents`, `Desktop`, `Music` and `Pictures`
+are resolved from their own known folder id, which keeps them correct when the
+shell redirects them (for example into OneDrive), `Local Application Data Low` is
+resolved from its own id instead of being a subdirectory of `Local Application
+Data`,
 `Programs` and `Startup` are resolved from their own ids instead of being
 subdirectories of the `Start Menu` layer, and `System32` is resolved from its own
 id instead of being a subdirectory of the `Windows` layer. The `Fonts` folder of

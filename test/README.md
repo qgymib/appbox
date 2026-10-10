@@ -601,7 +601,8 @@ Four cases are not part of the matrices above:
 lower layer holds, `test/e2e/Fs_ListDir_UserPresetLayers.cpp` mounts one layer
 per folder below `Current User Directory` (`#Documents#`, `#Desktop#`,
 `#AppData#`, `#LocalAppData#`, `#LocalAppDataLow#`, `#Downloads#`,
-`#Favorites#`, `#StartMenu#`, `#Programs#`, `#Startup#`) and checks that each of
+`#Favorites#`, `#Music#`, `#Pictures#`, `#StartMenu#`, `#Programs#`,
+`#Startup#`) and checks that each of
 them is mapped to the real folder its layer key names,
 `test/e2e/Fs_QueryAttributes_SystemPresetLayers.cpp` does the same for the
 system folders (`#Windows#`, `#System32#`), and

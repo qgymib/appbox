@@ -45,6 +45,12 @@ class wxSearchCtrl;
  * decides every path no other entry covers, including the locations outside
  * the virtual filesystem.
  *
+ * The `Up Dir` command moves the tree selection to the node above the selected
+ * one. The container is the root of the tree and the only node without a
+ * parent, so the command is offered for every node but the container: a top
+ * level preset directory moves to the container like a nested one moves to the
+ * preset it hangs below.
+ *
  * The header of the `Isolation` column explains the modes the column offers,
  * see `DataViewTooltip`; the cells of the list carry no tooltip of their own.
  */

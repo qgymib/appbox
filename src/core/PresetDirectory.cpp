@@ -32,6 +32,8 @@ const PresetDefinition s_preset_definitions[] = {
     { "local_application_data_low", L"Local Application Data Low", L"#LocalAppDataLow#",    "user_profile"  },
     { "downloads",                  L"Downloads",                  L"#Downloads#",          "user_profile"  },
     { "favorites",                  L"Favorites",                  L"#Favorites#",          "user_profile"  },
+    { "music",                      L"Music",                      L"#Music#",              "user_profile"  },
+    { "pictures",                   L"Pictures",                   L"#Pictures#",           "user_profile"  },
     { "start_menu",                 L"Start Menu",                 L"#StartMenu#",          "user_profile"  },
     { "programs",                   L"Programs",                   L"#Programs#",           "start_menu"    },
     { "startup",                    L"Startup",                    L"#Startup#",            "programs"      },
@@ -123,6 +125,16 @@ std::vector<PresetDirectory> ChildPresets(const std::string& parent_id)
     });
 
     return result;
+}
+
+bool FilesystemNodeHasParent(const std::string& preset_id)
+{
+    /*
+     * The container is the root of the tree and the only node which carries no
+     * preset, which is what marks it as the node without a parent: every preset
+     * directory hangs below the container or below another preset directory.
+     */
+    return !preset_id.empty();
 }
 
 bool FindPresetDirectory(const std::string& id, PresetDirectory& out)
