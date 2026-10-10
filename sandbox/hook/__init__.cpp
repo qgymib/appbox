@@ -35,6 +35,7 @@
 #include "hook/NtQueryObject.hpp"
 #include "hook/NtQueryValueKey.hpp"
 #include "hook/NtReadFile.hpp"
+#include "hook/NtRenameKey.hpp"
 #include "hook/NtSaveKey.hpp"
 #include "hook/NtSaveKeyEx.hpp"
 #include "hook/NtSetInformationFile.hpp"
@@ -128,6 +129,7 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtQueryObject,
     &appbox::HookNtQueryValueKey,
     &appbox::HookNtReadFile,
+    &appbox::HookNtRenameKey,
     &appbox::HookNtSaveKey,
     &appbox::HookNtSaveKeyEx,
     &appbox::HookNtSetInformationFile,

@@ -33,6 +33,22 @@ bool StripKeyPrefix(const std::wstring& path, const std::wstring& prefix, std::w
 std::wstring JoinKeyPath(const std::wstring& root, const std::wstring& name);
 
 /**
+ * @brief The path of the parent key of a registry key path.
+ *
+ * The helper names the key which holds the last component of a path, which is
+ * the key a rename of the last component takes place in.
+ *
+ * ```
+ * ParentKeyPath(L"HKEY_CURRENT_USER\\Software\\Vendor") -> L"HKEY_CURRENT_USER\\Software"
+ * ```
+ *
+ * @param[in] path The key path, with or without a leading separator.
+ * @return The parent path, empty when the path has no separator and therefore
+ *         no parent component.
+ */
+std::wstring ParentKeyPath(const std::wstring& path);
+
+/**
  * @brief Split a registry key path into its components.
  *
  * The components are separated by backslashes. Empty components — a doubled

@@ -14,6 +14,7 @@
 #include "hook/NtQueryMultipleValueKey.hpp"
 #include "hook/NtQueryObject.hpp"
 #include "hook/NtQueryValueKey.hpp"
+#include "hook/NtRenameKey.hpp"
 #include "hook/NtSaveKey.hpp"
 #include "hook/NtSaveKeyEx.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
@@ -2328,6 +2329,94 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedValue(HANDLE KeyHandle, const std
     }
 
     return status;
+}
+
+NTSTATUS appbox::registry::Hive::RenameIsolatedKey(HANDLE KeyHandle, const std::wstring& view_path,
+                                                   const std::wstring& relative, const std::wstring& new_name)
+{
+    if (s_hive_data == nullptr)
+    {
+        return STATUS_INVALID_HANDLE;
+    }
+
+    /*
+     * The name of a root key of the view is the first component of every path
+     * of the hive, so a rename of one of them would make the whole subtree
+     * unreachable for the view: the mapping of a handle and of an open both
+     * start with that name. The kernel refuses the rename of the root of a
+     * hive the same way.
+     */
+    const std::wstring parent_relative = appbox::registry::ParentKeyPath(relative);
+    if (parent_relative.empty())
+    {
+        return STATUS_ACCESS_DENIED;
+    }
+
+    /*
+     * The new name of a key is a single component: a rename never moves a key
+     * into another key, so the kernel refuses a name which carries a separator
+     * with STATUS_INVALID_PARAMETER.
+     */
+    if (new_name.empty() || new_name.find(L'\\') != std::wstring::npos)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    const std::wstring new_relative = appbox::registry::JoinKeyPath(parent_relative, new_name);
+    const std::wstring new_view_path =
+        appbox::registry::JoinKeyPath(appbox::registry::ParentKeyPath(view_path), new_name);
+
+    /*
+     * The destination of the rename is a key of the merged view: a key which
+     * the hive holds blocks the rename inside the kernel, and a key which only
+     * the host holds blocks it here when the mode keeps the host entry
+     * visible. The kernel reports an existing destination key as
+     * STATUS_CANNOT_DELETE, which is the answer the caller observes for a
+     * destination of either layer — a renamed key must never be merged with a
+     * visible key of the host layer.
+     */
+    if (!appbox::registry::IsolationTable::HidesHost(KeyIsolation(new_relative)) && !IsKeyWhitedOut(new_relative) &&
+        HostHoldsKey(new_view_path))
+    {
+        return STATUS_CANNOT_DELETE;
+    }
+
+    /*
+     * The kernel removes the key from its old name and creates it under the
+     * new name, and it checks the rights of the handle of the caller, so a
+     * handle which does not permit a rename reports the failure of the real
+     * call. The name is passed through a local structure, so the call never
+     * reads the memory of the caller again.
+     */
+    UNICODE_STRING new_name_unicode;
+    sys_RtlInitUnicodeString(&new_name_unicode, new_name.c_str());
+
+    const NTSTATUS status = sys_NtRenameKey(KeyHandle, &new_name_unicode);
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+
+    /*
+     * The old name is the delete of the key in the merged view: the key of the
+     * hive is gone from it, so a visible host key of that name has to be
+     * recorded as deleted as well — without the marker the read through would
+     * report the host key of the old name next to the renamed key of the hive.
+     * The route is the one of the delete of a key, which is why the hive side
+     * is passed as held: the handle of the caller proves it.
+     */
+    const bool host_holds =
+        !appbox::registry::IsolationTable::HidesHost(KeyIsolation(relative)) && HostHoldsKey(view_path);
+    if (appbox::registry::DeleteOutcomeOf(KeyIsolation(relative), true, host_holds) ==
+            appbox::registry::DeleteTarget::HiveAndWhiteout &&
+        !RecordKeyWhiteout(relative))
+    {
+        /* Failing closed: reporting a success would let the key of the host
+         * reappear under the old name. */
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS appbox::registry::Hive::QueryMultipleValues(HANDLE KeyHandle, const std::wstring& view_path,

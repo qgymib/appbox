@@ -42,6 +42,13 @@ its data. The markers live in a reserved key at the root of the hive, which is
 not part of the view at all (see
 [Deletion and whiteouts](#deletion-and-whiteouts)).
 
+A rename is the delete of the old name followed by a create of the new one: the
+key of the hive is renamed inside the hive and the visible host key of the old
+name is recorded as deleted the same way, so the merged view reports the new
+name alone instead of both of them. A rename which the isolation cannot express
+in the view is refused instead of being forwarded to the real registry, see
+[Hooked entry points](#hooked-entry-points).
+
 ## Scope
 
 All five root keys of the view are redirected:
@@ -73,6 +80,7 @@ holds is the one the isolation mode decides:
 | **value batch query** (`NtQueryMultipleValueKey`) | merged view: every entry is answered by the layer which holds it | visible real entries only |
 | **delete key** (`NtDeleteKey`) | the key of the hive is removed and the visible host key is recorded as deleted | the visible host key is recorded as deleted (a whiteout) |
 | **delete value** (`NtDeleteValueKey`) | the value of the hive is removed and the visible host value is recorded as deleted | the visible host value is recorded as deleted (a whiteout) |
+| **rename** (`NtRenameKey`) | the key of the hive is renamed and the visible host key of the old name is recorded as deleted | the rename is refused with `STATUS_ACCESS_DENIED`: a handle of the host layer never renames a key of the real registry |
 | **save** (`NtSaveKey`, `NtSaveKeyEx`) | the merged view of the key is written into the caller file | the visible real entries are written into the caller file |
 
 A sandboxed process therefore never modifies the real registry through an entry
@@ -267,7 +275,9 @@ The store is consulted wherever the merged view decides whether a host entry
 stays visible — open, create, value query, merged enumeration and merged counts
 share one predicate, so the enumeration and the counts can never disagree. A
 failed marker write fails the whole delete call: reporting a success would let
-the host entry reappear in the view of the sandbox.
+the host entry reappear in the view of the sandbox. A rename records the `K\`
+marker of the name it leaves behind, so the old name stays invisible for the
+same reason and the merged view reports the new name alone.
 
 ## Hooked entry points
 
@@ -276,6 +286,7 @@ the host entry reappear in the view of the sandbox.
 | `NtOpenKey` / `NtOpenKeyEx` | Open policy: hive first, read through or copy-up of the host key per the isolation mode. |
 | `NtCreateKey` | Creates the key inside the hive, intermediate keys included; never reaches the real registry. |
 | `NtDeleteKey` / `NtDeleteValueKey` | Removes the hive entry and records the visible host entry as deleted (a whiteout). |
+| `NtRenameKey` | Renames the key of the hive and records the visible host key of the old name as deleted (a whiteout); a root key of the view and a destination which the merged view already holds are refused. |
 | `NtEnumerateKey` / `NtEnumerateValueKey` | Merged two layer enumeration: hive entries first, then the visible real entries. |
 | `NtQueryKey` | Key name translated back into the view; `SubKeys` / `Values` counts of the merged view. |
 | `NtQueryValueKey` / `NtQueryMultipleValueKey` | Read through of a value / of a batch. |
@@ -289,6 +300,20 @@ file which holds it (see the table), and every other handle (handles of other
 roots) is forwarded unchanged. A redirected handle is translated back into the
 view path wherever its name is queried, so it behaves exactly like the key it
 shadows.
+
+A rename which the isolation answers is a modification of the view alone, so
+the isolation adds three refusals of its own to it. A rename of a **root key of
+the view** is refused with `STATUS_ACCESS_DENIED`: the name of a root key is the
+first component of every path of the hive, so a rename would make the whole
+subtree unreachable for the view, and the kernel refuses the rename of the root
+of a hive the same way. A rename onto a name which the **merged view already
+holds** is refused with `STATUS_CANNOT_DELETE`, which is the status the kernel
+reports for a destination key which exists: the renamed key would otherwise be
+merged with a visible key of the host layer. A new name which is empty, which
+carries a separator or which cannot be read is refused with
+`STATUS_INVALID_PARAMETER`, which is what the kernel reports for a name which
+does not name a key of the same parent; a forwarded rename would leave the host
+key of the old name in the view, which is why the isolation never forwards one.
 
 The table is the whole surface of the isolation: an entry point which is not
 named in it is forwarded to the real registry with the path or the handle of the
@@ -402,12 +427,12 @@ ones which matter for the view.
     the right to load a hive (a process which runs elevated, for example) can
     load one at a path of the view and unload a hive of the host, and both
     modify the real registry.
-3. **The rename of a key.** `NtRenameKey` is not hooked, so the isolation adds
-    no policy of its own to it: a rename of a shadow key renames the key inside
-    the hive and leaves the host key of the old name in place, where the merged
-    view then shows both. `NtReplaceKey` and `NtRestoreKey` are not hooked
-    either, but they act on a key handle, and a handle which permits a
-    modification is a handle of the hive.
+3. **`NtReplaceKey` and `NtRestoreKey`.** The two are not hooked, but they act
+   on a key handle, and a handle which permits a modification is a handle of
+   the hive: a replace or a restore of a key of the view lands in the hive of
+   the sandbox and never in the real registry. A key of the host layer is not
+   reached, because a handle which permits the modification is never handed out
+   for one.
 4. **`NtSaveMergedKeys`.** The call is not hooked, so the layers it writes into
     the file are the ones of the two key handles the caller passes: a read
     through handle of the host layer contributes the entries of the real key,

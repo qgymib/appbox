@@ -766,6 +766,29 @@ sandboxed process creates.
 * `test/e2e/Reg_DeleteValue_ShadowValue.cpp` — the value of the hive is
   removed and the value of the host of the same name does not reappear (the
   delete records it as deleted), while the host keeps its own value.
+* `test/e2e/Reg_RenameKey_ShadowKeyWhiteout.cpp` — a rename of a key which the
+  hive and the host both hold leaves the new name with the content of the
+  sandbox, removes the old name from the view (the rename records the visible
+  host key of the old name as deleted, so the read through does not resurrect
+  it), and the host keeps its key under the old name.
+* `test/e2e/Reg_RenameKey_HiveOnlyKey.cpp` — a key which only the hive holds is
+  renamed: the view reports the new name alone and the real registry holds
+  neither name.
+* `test/e2e/Reg_RenameKey_ReadHandle.cpp` — a rename through a read through
+  handle of the host layer is refused with `STATUS_ACCESS_DENIED`, the key keeps
+  its name and its value in the view and the host registry is unchanged.
+* `test/e2e/Reg_RenameKey_VisibleDestination.cpp` — a rename onto a name which
+  the merged view already holds (the host holds the destination key) is refused
+  with `STATUS_CANNOT_DELETE`, which is the status the kernel reports for a
+  destination key which exists, and both keys keep their content.
+* `test/e2e/Reg_RenameKey_HiddenDestination.cpp` — a rename onto a name which
+  only the host holds and which the isolation marks `Full` succeeds: the
+  destination does not exist in the merged view, the new name shows the key of
+  the sandbox alone and the hidden host key keeps its value.
+* `test/e2e/Reg_RenameKey_ViewRootKey.cpp` — a rename of a root key of the view
+  (the case addresses `HKEY_CURRENT_USER` through `HKEY_USERS\<SID>`) is refused
+  with `STATUS_ACCESS_DENIED`, because the name of a root key is the first
+  component of every path of the hive, and the view keeps working afterwards.
 * `test/e2e/Reg_QueryMultipleValues_Mixed.cpp` — a batch which mixes a hive
   value and a host value is answered completely with the data and the type of
   every entry, a batch of hive values is answered as well, a batch which names a

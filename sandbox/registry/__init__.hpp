@@ -482,6 +482,44 @@ public:
                                         const std::wstring& value_name);
 
     /**
+     * @brief Rename a key of the merged view (NtRenameKey semantics).
+     *
+     * The rename runs inside the hive, so the real registry is never touched.
+     * The old name is the delete of the key in the merged view: the hive holds
+     * the key of the handle and the visible host key of the old name is
+     * recorded as deleted (a whiteout), because the read through would
+     * otherwise report the host key of the old name next to the renamed key of
+     * the hive. A failed whiteout fails the whole call, because reporting a
+     * success would let the host key reappear under the old name.
+     *
+     * Two calls are refused although the hive could run them:
+     *
+     * * A rename of a root key of the view — a hive relative path without a
+     *   separator — is refused with `STATUS_ACCESS_DENIED`: the name of a root
+     *   key is the first component of every path of the hive, so a rename
+     *   would make the whole subtree unreachable for the view. The kernel
+     *   refuses the rename of the root of a hive the same way.
+     * * A rename onto a name which the merged view already holds is refused
+     *   with `STATUS_CANNOT_DELETE`, which is the answer the kernel reports
+     *   for a destination key which exists: the renamed key would otherwise be
+     *   merged with a visible key of the host layer.
+     *
+     * A new name which is empty or which carries a separator is refused with
+     * `STATUS_INVALID_PARAMETER`, which is the answer the kernel reports for
+     * such a name.
+     *
+     * @param[in] KeyHandle The hive key handle of the caller. The kernel
+     *                      checks its rights, so a handle which does not permit
+     *                      a rename reports the failure of the real call.
+     * @param[in] view_path The logical path of the key in the view.
+     * @param[in] relative The key path relative to the hive root.
+     * @param[in] new_name The new name of the key, a single component.
+     * @return Status code.
+     */
+    static NTSTATUS RenameIsolatedKey(HANDLE KeyHandle, const std::wstring& view_path, const std::wstring& relative,
+                                      const std::wstring& new_name);
+
+    /**
      * @brief Query several values of the merged view (NtQueryMultipleValueKey semantics).
      *
      * Every entry is answered by the layer which holds it: the hive layer wins,

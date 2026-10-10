@@ -36,6 +36,17 @@ std::wstring appbox::registry::JoinKeyPath(const std::wstring& root, const std::
     return root + L"\\" + name;
 }
 
+std::wstring appbox::registry::ParentKeyPath(const std::wstring& path)
+{
+    const auto separator = path.find_last_of(L'\\');
+    if (separator == std::wstring::npos)
+    {
+        return {};
+    }
+
+    return path.substr(0, separator);
+}
+
 bool appbox::registry::SplitKeyPath(const std::wstring& path, std::vector<std::wstring>& components)
 {
     components.clear();

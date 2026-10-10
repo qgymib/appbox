@@ -92,6 +92,7 @@ add_library(${sandbox_name} MODULE
     "hook/NtQueryObject.cpp"
     "hook/NtQueryValueKey.cpp"
     "hook/NtReadFile.cpp"
+    "hook/NtRenameKey.cpp"
     "hook/NtSaveKey.cpp"
     "hook/NtSaveKeyEx.cpp"
     "hook/NtSetInformationFile.cpp"

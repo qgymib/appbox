@@ -3,12 +3,12 @@
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
+#include "utils/RegistryRootKey.hpp"
 #include "Random.hpp"
 #include "WString.hpp"
 #include <filesystem>
 #include <string>
 #include <vector>
-#include <sddl.h>
 
 typedef appbox::test::CommonFixture E2E_Reg;
 using namespace appbox::test;
@@ -28,43 +28,6 @@ struct RealKeyGuard
         RegDeleteTreeW(HKEY_CURRENT_USER, subkey.c_str());
     }
 };
-
-/**
- * @brief Get the SID of the current user as a text.
- *
- * `HKEY_USERS` holds one sub key per user, which is named after the SID of that
- * user, so the SID is what a path through that root starts with.
- *
- * @return The SID, empty when it cannot be read.
- */
-std::wstring CurrentUserSid()
-{
-    HANDLE token = nullptr;
-    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token))
-    {
-        return std::wstring();
-    }
-
-    DWORD size = 0;
-    GetTokenInformation(token, TokenUser, nullptr, 0, &size);
-
-    std::wstring      sid;
-    std::vector<BYTE> buffer(size);
-    if (size != 0 && GetTokenInformation(token, TokenUser, buffer.data(), size, &size))
-    {
-        const auto* user = reinterpret_cast<const TOKEN_USER*>(buffer.data());
-
-        LPWSTR text = nullptr;
-        if (ConvertSidToStringSidW(user->User.Sid, &text))
-        {
-            sid = text;
-            LocalFree(text);
-        }
-    }
-
-    CloseHandle(token);
-    return sid;
-}
 
 } // namespace
 
