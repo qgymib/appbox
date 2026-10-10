@@ -138,6 +138,103 @@ inline OpenFallback FallbackForKey(RegistryIsolation mode, ACCESS_MASK desired_a
 }
 
 /**
+ * @brief What a transacted open does when the sandbox hive does not hold the key.
+ *
+ * A transacted entry point (`NtOpenKeyTransacted`, `NtOpenKeyTransactedEx` and
+ * `NtCreateKeyTransacted`) binds the key it returns to a transaction of the
+ * caller, so every change the caller makes through that key is committed or
+ * rolled back with the transaction. The isolation redirects such a call into
+ * the sandbox hive, which the kernel enlists into the transaction of the
+ * caller: the hive is the write layer of the sandbox, so the transaction of the
+ * caller stays inside the sandbox.
+ *
+ * The host layer cannot take that route. A transacted open of a key of the real
+ * registry enlists the hive of the host — the user hive, for example — into the
+ * transaction of the sandboxed process, which is a change of the host the
+ * isolation must not cause: the kernel writes the transaction log of the real
+ * hive and the transaction of the caller can conflict with a transaction
+ * another process holds on the same hive. The read through of a transacted open
+ * is therefore refused instead of being run against the host layer.
+ *
+ * | Mode | Read access | Write access |
+ * | --- | --- | --- |
+ * | `Full` | `ReportHiveFailure` | `ReportHiveFailure` |
+ * | `WriteCopy` | `RefuseHostFallback` | `CopyUp` |
+ * | `Hide` | `ReportHiveFailure` | `ReportHiveFailure` |
+ *
+ * The rows of `Full` and `Hide` are the ones of `FallbackForKey`: the host entry
+ * of such a key must not be used at all. `WriteCopy` copies a write access open
+ * up into the hive like the plain open does — the shadow key is created with
+ * the transaction of the caller, so a rollback removes it — while a read access
+ * open is refused, because it would have to answer with a handle of the host
+ * layer.
+ *
+ * The hive of the sandbox is an application hive (`RegLoadAppKey`) and an
+ * application hive does not support transactions: the kernel answers every
+ * transacted operation on one with `STATUS_RM_NOT_ACTIVE`, which is the failure
+ * the hive layer reports. The table below still describes the route, so a hive
+ * which supports transactions is answered by the hive layer alone.
+ */
+enum class TransactedFallback
+{
+    /**
+     * @brief The host entry must not be used; the failure of the hive open is
+     *        the result of the call.
+     */
+    ReportHiveFailure,
+
+    /**
+     * @brief The key is copied up: a shadow key is created inside the hive with
+     *        the transaction of the caller and handed out.
+     */
+    CopyUp,
+
+    /**
+     * @brief The host entry would be needed, which the isolation cannot enlist
+     *        into the transaction of the caller: the call is refused.
+     */
+    RefuseHostFallback,
+};
+
+/**
+ * @brief The status a transacted call reports when the isolation refuses it.
+ *
+ * The isolation answers a transacted call with a key of the hive, with the
+ * failure of the hive layer or with this status, so a caller which observes it
+ * knows that the key is not part of the view for a transacted open: the host
+ * entry of the key would have to be enlisted into the transaction of the
+ * caller, which the isolation does not do.
+ */
+inline constexpr NTSTATUS kTransactedHostFallbackStatus = STATUS_NOT_SUPPORTED;
+
+/**
+ * @brief The fallback of a transacted open whose hive layer does not hold the key.
+ *
+ * The rows of the table are described by TransactedFallback. The rule agrees
+ * with `FallbackForKey` except for the read through: a transacted open never
+ * answers with a handle of the host layer, because the host layer would be
+ * enlisted into the transaction of the caller.
+ *
+ * @param[in] mode The isolation mode of the key.
+ * @param[in] desired_access The access mask of the open.
+ * @return The fallback the transacted open has to run.
+ */
+inline TransactedFallback FallbackForKeyTransacted(RegistryIsolation mode, ACCESS_MASK desired_access)
+{
+    switch (mode)
+    {
+    case RegistryIsolation::Full:
+    case RegistryIsolation::Hide:
+        /* The host entry is invisible for the sandbox. */
+        return TransactedFallback::ReportHiveFailure;
+    case RegistryIsolation::WriteCopy:
+        /* A write is copied up into the hive; a read has no host layer to use. */
+        return RequestsWrite(desired_access) ? TransactedFallback::CopyUp : TransactedFallback::RefuseHostFallback;
+    }
+    return TransactedFallback::ReportHiveFailure;
+}
+
+/**
  * @brief The disposition a create reports for the merged view.
  *
  * A create always lands in the sandbox hive, so the disposition of the kernel

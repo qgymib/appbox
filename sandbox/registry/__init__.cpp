@@ -2,6 +2,7 @@
 #include <fstream>
 #include <vector>
 #include "hook/NtCreateKey.hpp"
+#include "hook/NtCreateKeyTransacted.hpp"
 #include "hook/NtDeleteKey.hpp"
 #include "hook/NtDeleteValueKey.hpp"
 #include "hook/NtEnumerateKey.hpp"
@@ -9,6 +10,8 @@
 #include "hook/NtClose.hpp"
 #include "hook/NtOpenKey.hpp"
 #include "hook/NtOpenKeyEx.hpp"
+#include "hook/NtOpenKeyTransacted.hpp"
+#include "hook/NtOpenKeyTransactedEx.hpp"
 #include "hook/NtDeleteFile.hpp"
 #include "hook/NtQueryKey.hpp"
 #include "hook/NtQueryMultipleValueKey.hpp"
@@ -417,8 +420,17 @@ static void LoadIsolationTable(appbox::registry::Hive::Data& data)
  */
 static NTSTATUS CreateHiveKeyRelative(HANDLE parent, const std::wstring& name, ACCESS_MASK DesiredAccess,
                                       ULONG Attributes, PVOID SecurityDescriptor, PVOID SecurityQualityOfService,
-                                      ULONG TitleIndex, PUNICODE_STRING Class, ULONG CreateOptions, PHANDLE KeyHandle,
-                                      PULONG Disposition);
+                                      ULONG TitleIndex, PUNICODE_STRING Class, ULONG CreateOptions,
+                                      HANDLE TransactionHandle, PHANDLE KeyHandle, PULONG Disposition);
+
+/**
+ * @brief Create or open a key of the hive, the transaction handle included.
+ * @see CreateHiveKey()
+ */
+static NTSTATUS CreateHiveKey(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
+                              PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG TitleIndex,
+                              PUNICODE_STRING Class, ULONG CreateOptions, HANDLE TransactionHandle, PHANDLE KeyHandle,
+                              PULONG Disposition);
 
 /**
  * @brief Open a key of the sandbox hive when the hive holds it.
@@ -868,7 +880,7 @@ static NTSTATUS CopyMergedKey(HANDLE hive_key, const std::wstring& view_path, co
         HANDLE   child_destination = nullptr;
         NTSTATUS create_status =
             CreateHiveKeyRelative(destination, entry.name, KEY_ALL_ACCESS, OBJ_CASE_INSENSITIVE, nullptr, nullptr, 0,
-                                  nullptr, REG_OPTION_NON_VOLATILE, &child_destination, nullptr);
+                                  nullptr, REG_OPTION_NON_VOLATILE, nullptr, &child_destination, nullptr);
         if (NT_SUCCESS(create_status))
         {
             create_status = CopyMergedKey(child_hive, child_view, child_relative, child_destination, depth + 1);
@@ -1494,8 +1506,25 @@ bool appbox::registry::ReadValueName(PUNICODE_STRING ValueName, std::wstring& na
     return true;
 }
 
-NTSTATUS appbox::registry::Hive::OpenKey(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
-                                         PVOID SecurityDescriptor, PVOID SecurityQualityOfService, PHANDLE KeyHandle)
+/**
+ * @brief Open a key of the hive, the transaction handle included (NtOpenKey semantics).
+ *
+ * @param[in] relative The key path relative to the hive root.
+ * @param[in] DesiredAccess The requested access mask.
+ * @param[in] Attributes The object attributes flags of the original call.
+ * @param[in] SecurityDescriptor The security descriptor of the original call.
+ * @param[in] SecurityQualityOfService The quality of service of the original call.
+ * @param[in] TransactionHandle The transaction which receives the key, null
+ *                              for a plain open. The key is opened with the
+ *                              transacted entry point when it is not null, so
+ *                              the handle the caller receives is bound to the
+ *                              transaction.
+ * @param[out] KeyHandle The resulting key handle.
+ * @return Status code.
+ */
+static NTSTATUS OpenHiveKey(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
+                            PVOID SecurityDescriptor, PVOID SecurityQualityOfService, HANDLE TransactionHandle,
+                            PHANDLE KeyHandle)
 {
     if (s_hive_data == nullptr)
     {
@@ -1508,25 +1537,64 @@ NTSTATUS appbox::registry::Hive::OpenKey(const std::wstring& relative, ACCESS_MA
     InitializeObjectAttributes(&oa, &us, Attributes, s_hive_data->hive_root, SecurityDescriptor);
     oa.SecurityQualityOfService = SecurityQualityOfService;
 
+    if (TransactionHandle != nullptr)
+    {
+        return sys_NtOpenKeyTransacted(KeyHandle, DesiredAccess, &oa, TransactionHandle);
+    }
+
     return sys_NtOpenKey(KeyHandle, DesiredAccess, &oa);
+}
+
+/**
+ * @brief Open a key of the hive, the transaction handle included (NtOpenKeyEx semantics).
+ *
+ * @param[in] relative The key path relative to the hive root.
+ * @param[in] DesiredAccess The requested access mask.
+ * @param[in] Attributes The object attributes flags of the original call.
+ * @param[in] SecurityDescriptor The security descriptor of the original call.
+ * @param[in] SecurityQualityOfService The quality of service of the original call.
+ * @param[in] OpenOptions The open options of the original call.
+ * @param[in] TransactionHandle The transaction which receives the key, null for
+ *                              a plain open.
+ * @param[out] KeyHandle The resulting key handle.
+ * @return Status code.
+ */
+static NTSTATUS OpenHiveKeyEx(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
+                              PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG OpenOptions,
+                              HANDLE TransactionHandle, PHANDLE KeyHandle)
+{
+    if (s_hive_data == nullptr)
+    {
+        return STATUS_INVALID_HANDLE;
+    }
+
+    UNICODE_STRING    us;
+    OBJECT_ATTRIBUTES oa;
+    sys_RtlInitUnicodeString(&us, relative.c_str());
+    InitializeObjectAttributes(&oa, &us, Attributes, s_hive_data->hive_root, SecurityDescriptor);
+    oa.SecurityQualityOfService = SecurityQualityOfService;
+
+    if (TransactionHandle != nullptr)
+    {
+        return sys_NtOpenKeyTransactedEx(KeyHandle, DesiredAccess, &oa, OpenOptions, TransactionHandle);
+    }
+
+    return sys_NtOpenKeyEx(KeyHandle, DesiredAccess, &oa, OpenOptions);
+}
+
+NTSTATUS appbox::registry::Hive::OpenKey(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
+                                         PVOID SecurityDescriptor, PVOID SecurityQualityOfService, PHANDLE KeyHandle)
+{
+    return OpenHiveKey(relative, DesiredAccess, Attributes, SecurityDescriptor, SecurityQualityOfService, nullptr,
+                       KeyHandle);
 }
 
 NTSTATUS appbox::registry::Hive::OpenKeyEx(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
                                            PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG OpenOptions,
                                            PHANDLE KeyHandle)
 {
-    if (s_hive_data == nullptr)
-    {
-        return STATUS_INVALID_HANDLE;
-    }
-
-    UNICODE_STRING    us;
-    OBJECT_ATTRIBUTES oa;
-    sys_RtlInitUnicodeString(&us, relative.c_str());
-    InitializeObjectAttributes(&oa, &us, Attributes, s_hive_data->hive_root, SecurityDescriptor);
-    oa.SecurityQualityOfService = SecurityQualityOfService;
-
-    return sys_NtOpenKeyEx(KeyHandle, DesiredAccess, &oa, OpenOptions);
+    return OpenHiveKeyEx(relative, DesiredAccess, Attributes, SecurityDescriptor, SecurityQualityOfService, OpenOptions,
+                         nullptr, KeyHandle);
 }
 
 NTSTATUS appbox::registry::Hive::OpenRealKey(const std::wstring& view_path, ACCESS_MASK DesiredAccess, ULONG Attributes,
@@ -1627,21 +1695,23 @@ static NTSTATUS OpenRealKeyEntry(const std::wstring& view_path, ACCESS_MASK Desi
  * @param[in] SecurityQualityOfService The quality of service of the original call.
  * @param[in] OpenOptions The open options of the original call.
  * @param[in] extended true runs NtOpenKeyEx, false runs NtOpenKey.
+ * @param[in] TransactionHandle The transaction of the caller, null for an open
+ *                              which is not part of a transaction.
  * @param[out] KeyHandle The resulting key handle.
  * @return Status code.
  */
 static NTSTATUS OpenHiveKeyEntry(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
                                  PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG OpenOptions,
-                                 bool extended, PHANDLE KeyHandle)
+                                 bool extended, HANDLE TransactionHandle, PHANDLE KeyHandle)
 {
     if (extended)
     {
-        return appbox::registry::Hive::OpenKeyEx(relative, DesiredAccess, Attributes, SecurityDescriptor,
-                                                 SecurityQualityOfService, OpenOptions, KeyHandle);
+        return OpenHiveKeyEx(relative, DesiredAccess, Attributes, SecurityDescriptor, SecurityQualityOfService,
+                             OpenOptions, TransactionHandle, KeyHandle);
     }
 
-    return appbox::registry::Hive::OpenKey(relative, DesiredAccess, Attributes, SecurityDescriptor,
-                                           SecurityQualityOfService, KeyHandle);
+    return OpenHiveKey(relative, DesiredAccess, Attributes, SecurityDescriptor, SecurityQualityOfService,
+                       TransactionHandle, KeyHandle);
 }
 
 /**
@@ -1653,6 +1723,13 @@ static NTSTATUS OpenHiveKeyEntry(const std::wstring& relative, ACCESS_MASK Desir
  * host layer: it does not exist in the view, so the failure of the hive open
  * is the result of the call.
  *
+ * A call which carries a transaction of the caller is answered by the same
+ * policy with two differences: the key of the hive is opened with that
+ * transaction, so the handle of the caller is bound to it, and the host layer
+ * is never used — a read through would enlist the real hive into the
+ * transaction of the caller, which is why the table refuses it (see
+ * `appbox::registry::FallbackForKeyTransacted`).
+ *
  * @param[in] view_path The logical path of the key in the view.
  * @param[in] relative The key path relative to the hive root.
  * @param[in] DesiredAccess The requested access mask.
@@ -1661,13 +1738,15 @@ static NTSTATUS OpenHiveKeyEntry(const std::wstring& relative, ACCESS_MASK Desir
  * @param[in] SecurityQualityOfService The quality of service of the original call.
  * @param[in] OpenOptions The open options of the original call.
  * @param[in] extended true runs the extended entry points, false the plain ones.
+ * @param[in] TransactionHandle The transaction of the caller, null for an open
+ *                              which is not part of a transaction.
  * @param[out] KeyHandle The resulting key handle.
  * @return Status code.
  */
 static NTSTATUS OpenIsolatedKeyEntry(const std::wstring& view_path, const std::wstring& relative,
                                      ACCESS_MASK DesiredAccess, ULONG Attributes, PVOID SecurityDescriptor,
                                      PVOID SecurityQualityOfService, ULONG OpenOptions, bool extended,
-                                     PHANDLE KeyHandle)
+                                     HANDLE TransactionHandle, PHANDLE KeyHandle)
 {
     if (s_hive_data == nullptr)
     {
@@ -1678,7 +1757,7 @@ static NTSTATUS OpenIsolatedKeyEntry(const std::wstring& view_path, const std::w
 
     HANDLE   key = nullptr;
     NTSTATUS st_hive = OpenHiveKeyEntry(relative, DesiredAccess, Attributes, SecurityDescriptor,
-                                        SecurityQualityOfService, OpenOptions, extended, &key);
+                                        SecurityQualityOfService, OpenOptions, extended, TransactionHandle, &key);
     if (NT_SUCCESS(st_hive))
     {
         *KeyHandle = key;
@@ -1695,7 +1774,42 @@ static NTSTATUS OpenIsolatedKeyEntry(const std::wstring& view_path, const std::w
         return st_hive;
     }
 
-    switch (appbox::registry::FallbackForKey(mode, DesiredAccess))
+    /*
+     * The route of the fallback, chosen by the table of the call: the
+     * transacted table never sends an open to the host layer, so its refusal is
+     * translated into a return here and its copy-up into the branch below.
+     */
+    appbox::registry::OpenFallback route = appbox::registry::OpenFallback::ReportHiveFailure;
+    if (TransactionHandle != nullptr)
+    {
+        switch (appbox::registry::FallbackForKeyTransacted(mode, DesiredAccess))
+        {
+        case appbox::registry::TransactedFallback::ReportHiveFailure:
+            return st_hive;
+
+        case appbox::registry::TransactedFallback::RefuseHostFallback:
+            /*
+             * The hive layer did not answer the open and the only handle the
+             * isolation could hand out for the key is a handle of the host
+             * layer, which would enlist the real hive into the transaction of
+             * the caller. Failing closed keeps the real registry untouched.
+             */
+            LOG_W("the hive layer did not answer the transacted open of {} and the isolation never enlists the host "
+                  "layer into a transaction: {:#x}",
+                  appbox::WideToUTF8(relative), appbox::registry::kTransactedHostFallbackStatus);
+            return appbox::registry::kTransactedHostFallbackStatus;
+
+        case appbox::registry::TransactedFallback::CopyUp:
+            route = appbox::registry::OpenFallback::CopyUp;
+            break;
+        }
+    }
+    else
+    {
+        route = appbox::registry::FallbackForKey(mode, DesiredAccess);
+    }
+
+    switch (route)
     {
     case appbox::registry::OpenFallback::ReportHiveFailure:
         /* `Full` and `Hide`: the host entry does not exist for the sandbox. */
@@ -1712,6 +1826,11 @@ static NTSTATUS OpenIsolatedKeyEntry(const std::wstring& view_path, const std::w
          * key takes the place of the real key — the merged enumeration, the
          * read through of the values and the merged counts keep the entries of
          * the real key visible.
+         *
+         * The probe of the host layer is a plain open without the transaction:
+         * the host layer is never enlisted into the transaction of the caller,
+         * while the shadow key is created with it, so a rollback removes the
+         * shadow key again.
          */
         HANDLE   real = nullptr;
         NTSTATUS st_real = OpenRealKeyEntry(view_path, DesiredAccess, Attributes, SecurityDescriptor,
@@ -1726,9 +1845,9 @@ static NTSTATUS OpenIsolatedKeyEntry(const std::wstring& view_path, const std::w
         /* The real handle is only the proof that the host holds the key. */
         appbox::registry::KeyGuard guard(real);
 
-        NTSTATUS st_copy = appbox::registry::Hive::CreateKey(relative, DesiredAccess, Attributes, SecurityDescriptor,
-                                                             SecurityQualityOfService, 0, nullptr,
-                                                             REG_OPTION_NON_VOLATILE, KeyHandle, nullptr);
+        NTSTATUS st_copy =
+            CreateHiveKey(relative, DesiredAccess, Attributes, SecurityDescriptor, SecurityQualityOfService, 0, nullptr,
+                          REG_OPTION_NON_VOLATILE, TransactionHandle, KeyHandle, nullptr);
         if (!NT_SUCCESS(st_copy))
         {
             /* Failing closed: a fallback to the real key would let the writes
@@ -1747,7 +1866,7 @@ NTSTATUS appbox::registry::Hive::OpenIsolatedKey(const std::wstring& view_path, 
                                                  PVOID SecurityQualityOfService, PHANDLE KeyHandle)
 {
     return OpenIsolatedKeyEntry(view_path, relative, DesiredAccess, Attributes, SecurityDescriptor,
-                                SecurityQualityOfService, 0, false, KeyHandle);
+                                SecurityQualityOfService, 0, false, nullptr, KeyHandle);
 }
 
 NTSTATUS appbox::registry::Hive::OpenIsolatedKeyEx(const std::wstring& view_path, const std::wstring& relative,
@@ -1756,7 +1875,26 @@ NTSTATUS appbox::registry::Hive::OpenIsolatedKeyEx(const std::wstring& view_path
                                                    ULONG OpenOptions, PHANDLE KeyHandle)
 {
     return OpenIsolatedKeyEntry(view_path, relative, DesiredAccess, Attributes, SecurityDescriptor,
-                                SecurityQualityOfService, OpenOptions, true, KeyHandle);
+                                SecurityQualityOfService, OpenOptions, true, nullptr, KeyHandle);
+}
+
+NTSTATUS appbox::registry::Hive::OpenIsolatedKeyTransacted(const std::wstring& view_path, const std::wstring& relative,
+                                                           ACCESS_MASK DesiredAccess, ULONG Attributes,
+                                                           PVOID SecurityDescriptor, PVOID SecurityQualityOfService,
+                                                           HANDLE TransactionHandle, PHANDLE KeyHandle)
+{
+    return OpenIsolatedKeyEntry(view_path, relative, DesiredAccess, Attributes, SecurityDescriptor,
+                                SecurityQualityOfService, 0, false, TransactionHandle, KeyHandle);
+}
+
+NTSTATUS appbox::registry::Hive::OpenIsolatedKeyTransactedEx(const std::wstring& view_path,
+                                                             const std::wstring& relative, ACCESS_MASK DesiredAccess,
+                                                             ULONG Attributes, PVOID SecurityDescriptor,
+                                                             PVOID SecurityQualityOfService, ULONG OpenOptions,
+                                                             HANDLE TransactionHandle, PHANDLE KeyHandle)
+{
+    return OpenIsolatedKeyEntry(view_path, relative, DesiredAccess, Attributes, SecurityDescriptor,
+                                SecurityQualityOfService, OpenOptions, true, TransactionHandle, KeyHandle);
 }
 
 /**
@@ -1771,14 +1909,18 @@ NTSTATUS appbox::registry::Hive::OpenIsolatedKeyEx(const std::wstring& view_path
  * @param[in] TitleIndex The title index of the original call.
  * @param[in] Class The key class of the original call, may be null.
  * @param[in] CreateOptions The create options of the original call.
+ * @param[in] TransactionHandle The transaction which receives the key, null
+ *                              for a plain create. The key is created with the
+ *                              transacted entry point when it is not null, so
+ *                              a rollback removes it again.
  * @param[out] KeyHandle The resulting key handle.
  * @param[out] Disposition REG_CREATED_NEW_KEY or REG_OPENED_EXISTING_KEY, may be null.
  * @return Status code.
  */
 static NTSTATUS CreateHiveKeyRelative(HANDLE parent, const std::wstring& name, ACCESS_MASK DesiredAccess,
                                       ULONG Attributes, PVOID SecurityDescriptor, PVOID SecurityQualityOfService,
-                                      ULONG TitleIndex, PUNICODE_STRING Class, ULONG CreateOptions, PHANDLE KeyHandle,
-                                      PULONG Disposition)
+                                      ULONG TitleIndex, PUNICODE_STRING Class, ULONG CreateOptions,
+                                      HANDLE TransactionHandle, PHANDLE KeyHandle, PULONG Disposition)
 {
     UNICODE_STRING    us;
     OBJECT_ATTRIBUTES oa;
@@ -1786,13 +1928,41 @@ static NTSTATUS CreateHiveKeyRelative(HANDLE parent, const std::wstring& name, A
     InitializeObjectAttributes(&oa, &us, Attributes, parent, SecurityDescriptor);
     oa.SecurityQualityOfService = SecurityQualityOfService;
 
+    if (TransactionHandle != nullptr)
+    {
+        return sys_NtCreateKeyTransacted(KeyHandle, DesiredAccess, &oa, TitleIndex, Class, CreateOptions,
+                                         TransactionHandle, Disposition);
+    }
+
     return sys_NtCreateKey(KeyHandle, DesiredAccess, &oa, TitleIndex, Class, CreateOptions, Disposition);
 }
 
-NTSTATUS appbox::registry::Hive::CreateKey(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
-                                           PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG TitleIndex,
-                                           PUNICODE_STRING Class, ULONG CreateOptions, PHANDLE KeyHandle,
-                                           PULONG Disposition)
+/**
+ * @brief Create or open a key of the hive, the transaction handle included.
+ *
+ * The path is walked component by component, which is what makes a create of a
+ * path the hive does not hold yet work. Every component is created with the
+ * transaction of the caller when it is not null, so a rollback removes the
+ * whole path the create added instead of leaving the intermediate keys behind.
+ *
+ * @param[in] relative The key path relative to the hive root.
+ * @param[in] DesiredAccess The requested access mask.
+ * @param[in] Attributes The object attributes flags of the original call.
+ * @param[in] SecurityDescriptor The security descriptor of the original call.
+ * @param[in] SecurityQualityOfService The quality of service of the original call.
+ * @param[in] TitleIndex The title index of the original call.
+ * @param[in] Class The key class of the original call.
+ * @param[in] CreateOptions The create options of the original call.
+ * @param[in] TransactionHandle The transaction of the caller, null for a
+ *                              create which is not part of a transaction.
+ * @param[out] KeyHandle The resulting key handle.
+ * @param[out] Disposition REG_CREATED_NEW_KEY or REG_OPENED_EXISTING_KEY, may be null.
+ * @return Status code.
+ */
+static NTSTATUS CreateHiveKey(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
+                              PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG TitleIndex,
+                              PUNICODE_STRING Class, ULONG CreateOptions, HANDLE TransactionHandle, PHANDLE KeyHandle,
+                              PULONG Disposition)
 {
     if (s_hive_data == nullptr)
     {
@@ -1819,9 +1989,9 @@ NTSTATUS appbox::registry::Hive::CreateKey(const std::wstring& relative, ACCESS_
     for (std::size_t index = 0; index + 1 < components.size(); ++index)
     {
         HANDLE   child = nullptr;
-        NTSTATUS status =
-            CreateHiveKeyRelative(parent, components[index], KEY_ALL_ACCESS, Attributes, SecurityDescriptor,
-                                  SecurityQualityOfService, 0, nullptr, REG_OPTION_NON_VOLATILE, &child, nullptr);
+        NTSTATUS status = CreateHiveKeyRelative(parent, components[index], KEY_ALL_ACCESS, Attributes,
+                                                SecurityDescriptor, SecurityQualityOfService, 0, nullptr,
+                                                REG_OPTION_NON_VOLATILE, TransactionHandle, &child, nullptr);
         if (!NT_SUCCESS(status))
         {
             for (const HANDLE handle : intermediates)
@@ -1844,7 +2014,7 @@ NTSTATUS appbox::registry::Hive::CreateKey(const std::wstring& relative, ACCESS_
      */
     NTSTATUS status = CreateHiveKeyRelative(parent, components.back(), DesiredAccess | KEY_CREATE_SUB_KEY, Attributes,
                                             SecurityDescriptor, SecurityQualityOfService, TitleIndex, Class,
-                                            CreateOptions, KeyHandle, Disposition);
+                                            CreateOptions, TransactionHandle, KeyHandle, Disposition);
 
     for (const HANDLE handle : intermediates)
     {
@@ -1854,14 +2024,43 @@ NTSTATUS appbox::registry::Hive::CreateKey(const std::wstring& relative, ACCESS_
     return status;
 }
 
-NTSTATUS appbox::registry::Hive::CreateIsolatedKey(const std::wstring& view_path, const std::wstring& relative,
-                                                   ACCESS_MASK DesiredAccess, ULONG Attributes,
-                                                   PVOID SecurityDescriptor, PVOID SecurityQualityOfService,
-                                                   ULONG TitleIndex, PUNICODE_STRING Class, ULONG CreateOptions,
-                                                   PHANDLE KeyHandle, PULONG Disposition)
+NTSTATUS appbox::registry::Hive::CreateKey(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
+                                           PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG TitleIndex,
+                                           PUNICODE_STRING Class, ULONG CreateOptions, PHANDLE KeyHandle,
+                                           PULONG Disposition)
 {
-    const NTSTATUS status = CreateKey(relative, DesiredAccess, Attributes, SecurityDescriptor, SecurityQualityOfService,
-                                      TitleIndex, Class, CreateOptions, KeyHandle, Disposition);
+    return CreateHiveKey(relative, DesiredAccess, Attributes, SecurityDescriptor, SecurityQualityOfService, TitleIndex,
+                         Class, CreateOptions, nullptr, KeyHandle, Disposition);
+}
+
+/**
+ * @brief Create or open an isolated key and report the disposition of the merged view.
+ *
+ * @param[in] view_path The logical path of the key in the view.
+ * @param[in] relative The key path relative to the hive root.
+ * @param[in] DesiredAccess The requested access mask.
+ * @param[in] Attributes The object attributes flags of the original call.
+ * @param[in] SecurityDescriptor The security descriptor of the original call.
+ * @param[in] SecurityQualityOfService The quality of service of the original call.
+ * @param[in] TitleIndex The title index of the original call.
+ * @param[in] Class The key class of the original call.
+ * @param[in] CreateOptions The create options of the original call.
+ * @param[in] TransactionHandle The transaction of the caller, null for a
+ *                              create which is not part of a transaction.
+ * @param[out] KeyHandle The resulting key handle.
+ * @param[out] Disposition `REG_CREATED_NEW_KEY` or `REG_OPENED_EXISTING_KEY`
+ *                         as seen by the caller, may be null.
+ * @return Status code.
+ */
+static NTSTATUS CreateIsolatedKeyEntry(const std::wstring& view_path, const std::wstring& relative,
+                                       ACCESS_MASK DesiredAccess, ULONG Attributes, PVOID SecurityDescriptor,
+                                       PVOID SecurityQualityOfService, ULONG TitleIndex, PUNICODE_STRING Class,
+                                       ULONG CreateOptions, HANDLE TransactionHandle, PHANDLE KeyHandle,
+                                       PULONG Disposition)
+{
+    const NTSTATUS status =
+        CreateHiveKey(relative, DesiredAccess, Attributes, SecurityDescriptor, SecurityQualityOfService, TitleIndex,
+                      Class, CreateOptions, TransactionHandle, KeyHandle, Disposition);
     if (!NT_SUCCESS(status) || Disposition == nullptr)
     {
         return status;
@@ -1880,14 +2079,38 @@ NTSTATUS appbox::registry::Hive::CreateIsolatedKey(const std::wstring& view_path
      * The whiteout of a deleted key survives its recreation: the caller sees
      * an empty key, exactly like a delete followed by a create behaves in the
      * real registry, and the host content stays hidden.
+     *
+     * The probe of the host layer is a plain read only open: the host layer is
+     * never enlisted into the transaction of the caller.
      */
-    const RegistryIsolation mode = KeyIsolation(relative);
-    const bool host_holds_key = *Disposition == REG_CREATED_NEW_KEY &&
-                                !appbox::registry::IsolationTable::HidesHost(mode) && !IsKeyWhitedOut(relative) &&
-                                HostHoldsKey(view_path);
+    const appbox::RegistryIsolation mode = appbox::registry::Hive::KeyIsolation(relative);
+    const bool                      host_holds_key =
+        *Disposition == REG_CREATED_NEW_KEY && !appbox::registry::IsolationTable::HidesHost(mode) &&
+        !appbox::registry::Hive::IsKeyWhitedOut(relative) && appbox::registry::Hive::HostHoldsKey(view_path);
 
     *Disposition = appbox::registry::ViewCreateDisposition(mode, *Disposition, host_holds_key);
     return status;
+}
+
+NTSTATUS appbox::registry::Hive::CreateIsolatedKey(const std::wstring& view_path, const std::wstring& relative,
+                                                   ACCESS_MASK DesiredAccess, ULONG Attributes,
+                                                   PVOID SecurityDescriptor, PVOID SecurityQualityOfService,
+                                                   ULONG TitleIndex, PUNICODE_STRING Class, ULONG CreateOptions,
+                                                   PHANDLE KeyHandle, PULONG Disposition)
+{
+    return CreateIsolatedKeyEntry(view_path, relative, DesiredAccess, Attributes, SecurityDescriptor,
+                                  SecurityQualityOfService, TitleIndex, Class, CreateOptions, nullptr, KeyHandle,
+                                  Disposition);
+}
+
+NTSTATUS appbox::registry::Hive::CreateIsolatedKeyTransacted(
+    const std::wstring& view_path, const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
+    PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG TitleIndex, PUNICODE_STRING Class,
+    ULONG CreateOptions, HANDLE TransactionHandle, PHANDLE KeyHandle, PULONG Disposition)
+{
+    return CreateIsolatedKeyEntry(view_path, relative, DesiredAccess, Attributes, SecurityDescriptor,
+                                  SecurityQualityOfService, TitleIndex, Class, CreateOptions, TransactionHandle,
+                                  KeyHandle, Disposition);
 }
 
 appbox::registry::HandleView appbox::registry::Hive::MapHandleView(HANDLE KeyHandle, std::wstring& view_path)
@@ -2621,7 +2844,7 @@ NTSTATUS appbox::registry::Hive::SaveIsolatedKey(HANDLE KeyHandle, const std::ws
     HANDLE   snapshot = nullptr;
     NTSTATUS status =
         CreateHiveKeyRelative(scratch_handle, LastKeyComponent(relative), KEY_ALL_ACCESS, OBJ_CASE_INSENSITIVE, nullptr,
-                              nullptr, 0, nullptr, REG_OPTION_NON_VOLATILE, &snapshot, nullptr);
+                              nullptr, 0, nullptr, REG_OPTION_NON_VOLATILE, nullptr, &snapshot, nullptr);
     if (NT_SUCCESS(status))
     {
         status = CopyMergedKey(hive_key, view_path, relative, snapshot, 0);

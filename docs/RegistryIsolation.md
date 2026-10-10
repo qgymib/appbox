@@ -49,6 +49,11 @@ name alone instead of both of them. A rename which the isolation cannot express
 in the view is refused instead of being forwarded to the real registry, see
 [Hooked entry points](#hooked-entry-points).
 
+The same rule covers the transacted open and the transacted create: the hive
+layer answers them with the transaction of the caller, and a call which the hive
+layer cannot answer is refused instead of being read through the real registry,
+see [Hooked entry points](#hooked-entry-points).
+
 ## Scope
 
 All five root keys of the view are redirected:
@@ -90,6 +95,11 @@ handle of the host layer is refused with `STATUS_ACCESS_DENIED`, because a
 handle which the caller opened without the right to delete must not become the
 right to delete. The entry points which the isolation does not hook at all are
 listed in [Known gaps and limitations](#known-gaps-and-limitations).
+
+The transacted variants of the open (`NtOpenKeyTransacted`,
+`NtOpenKeyTransactedEx`) and of the create (`NtCreateKeyTransacted`) run the
+same table with one exception: a key which the hive does not hold is never read
+through for them, see [Hooked entry points](#hooked-entry-points).
 
 The registry workspace of the packer, which describes the registry the
 packaged application will see, is documented in [README.md](../README.md).
@@ -284,7 +294,9 @@ same reason and the merged view reports the new name alone.
 | Hook | Responsibility |
 | --- | --- |
 | `NtOpenKey` / `NtOpenKeyEx` | Open policy: hive first, read through or copy-up of the host key per the isolation mode. |
+| `NtOpenKeyTransacted` / `NtOpenKeyTransactedEx` | The same open policy with the transaction of the caller: the hive layer is opened with it, the host layer is never used. |
 | `NtCreateKey` | Creates the key inside the hive, intermediate keys included; never reaches the real registry. |
+| `NtCreateKeyTransacted` | Creates the key and its intermediate keys inside the hive with the transaction of the caller; never reaches the real registry. |
 | `NtDeleteKey` / `NtDeleteValueKey` | Removes the hive entry and records the visible host entry as deleted (a whiteout). |
 | `NtRenameKey` | Renames the key of the hive and records the visible host key of the old name as deleted (a whiteout); a root key of the view and a destination which the merged view already holds are refused. |
 | `NtEnumerateKey` / `NtEnumerateValueKey` | Merged two layer enumeration: hive entries first, then the visible real entries. |
@@ -314,6 +326,34 @@ carries a separator or which cannot be read is refused with
 `STATUS_INVALID_PARAMETER`, which is what the kernel reports for a name which
 does not name a key of the same parent; a forwarded rename would leave the host
 key of the old name in the view, which is why the isolation never forwards one.
+
+The three transacted entry points run the open policy and the create policy of
+the isolation with one difference: the transaction of the caller is forwarded to
+the hive layer, so a handle the caller receives from them is bound to that
+transaction and the changes the caller makes through it are committed or rolled
+back with it, inside the sandbox. The host layer is never opened with the
+transaction: a handle of the host layer would enlist the real hive into the
+transaction of the sandboxed process, which writes the transaction log of the
+real hive and lets the transaction of the caller collide with a transaction
+another process holds on that hive. A transacted call is never answered with a
+plain (non transacted) operation either, because the rollback of the caller
+would silently stop working. The rows of the transacted policy are therefore:
+
+| Call | The hive layer answers | The hive layer does not answer |
+| --- | --- | --- |
+| open, read access | the key of the hive, bound to the transaction | `STATUS_NOT_SUPPORTED`: the answer would be a handle of the host layer |
+| open, write access | the key of the hive, bound to the transaction | the key is copied up into the hive with the transaction, or the failure of the hive layer is reported |
+| create | the key of the hive, its intermediate keys included, bound to the transaction | a create always lands in the hive |
+
+The hive of the sandbox is an application hive (`RegLoadAppKey`), and an
+application hive does not support transactions: the kernel refuses every
+transacted operation on one with `STATUS_RM_NOT_ACTIVE`. A transacted call of a
+key of the view therefore fails — with `STATUS_RM_NOT_ACTIVE` for the create and
+for the write access open, which is the failure of the hive layer reported as it
+is, and with `STATUS_NOT_SUPPORTED` for the read access open, which the
+isolation refuses instead of reading it through. The call fails closed instead
+of being forwarded to the real registry, which is the layer a sandboxed process
+would reach without the isolation.
 
 The table is the whole surface of the isolation: an entry point which is not
 named in it is forwarded to the real registry with the path or the handle of the
@@ -412,14 +452,7 @@ the registry with the path or the handle of the caller, and the answer of such a
 call is the answer of the layer the object belongs to. The points below are the
 ones which matter for the view.
 
-1. **The transacted open and the transacted create.** `NtOpenKeyTransacted`,
-    `NtOpenKeyTransactedEx` and `NtCreateKeyTransacted` are not hooked, so the
-    isolation does not see the call at all: the open and the create run against
-    the real registry with the path of the caller, no isolation mode and no
-    whiteout is consulted, and a key the caller creates this way is a key of the
-    real registry. Every other write path of the isolation starts from a key
-    handle the hooks handed out; this one does not.
-2. **The load and the unload of a hive.** `NtLoadKey`, `NtLoadKey2`,
+1. **The load and the unload of a hive.** `NtLoadKey`, `NtLoadKey2`,
     `NtLoadKey3` and `NtLoadKeyEx` name the key a hive is loaded into with an
     `OBJECT_ATTRIBUTES` and not with a key handle, and `NtUnloadKey`,
     `NtUnloadKey2` and `NtUnloadKeyEx` name the key they unload the same way, so
@@ -427,25 +460,25 @@ ones which matter for the view.
     the right to load a hive (a process which runs elevated, for example) can
     load one at a path of the view and unload a hive of the host, and both
     modify the real registry.
-3. **`NtReplaceKey` and `NtRestoreKey`.** The two are not hooked, but they act
+2. **`NtReplaceKey` and `NtRestoreKey`.** The two are not hooked, but they act
    on a key handle, and a handle which permits a modification is a handle of
    the hive: a replace or a restore of a key of the view lands in the hive of
    the sandbox and never in the real registry. A key of the host layer is not
    reached, because a handle which permits the modification is never handed out
    for one.
-4. **`NtSaveMergedKeys`.** The call is not hooked, so the layers it writes into
+3. **`NtSaveMergedKeys`.** The call is not hooked, so the layers it writes into
     the file are the ones of the two key handles the caller passes: a read
     through handle of the host layer contributes the entries of the real key,
     including the ones an isolation mode or a whiteout hides, and the merged
     view `NtSaveKey` exports is not assembled here.
-5. **The change notification.** `NtNotifyChangeKey` and
+4. **The change notification.** `NtNotifyChangeKey` and
     `NtNotifyChangeMultipleKeys` are not hooked. A watch a sandboxed process
     registers on a key it opened for reading is a watch of the real key, so the
     process is notified about a change another process makes to the real
     registry and it is not notified about the change the sandbox itself makes,
     because that one lands in the hive. A watch on a handle of the hive observes
     the hive alone, so neither kind of watch describes the merged view.
-6. **The remaining key APIs.** `NtQueryOpenSubKeys`, `NtQueryOpenSubKeysEx` and
+5. **The remaining key APIs.** `NtQueryOpenSubKeys`, `NtQueryOpenSubKeysEx` and
    `NtInitializeRegistry` are forwarded unchanged. The first two name the key
    they act on with an `OBJECT_ATTRIBUTES` and not with a key handle, and the
    layout of their arguments is not documented, so the isolation cannot tell

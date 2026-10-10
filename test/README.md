@@ -867,6 +867,36 @@ sandboxed process creates.
   is forwarded and the kernel answers the call, like the compress of a hive key.
 * `test/e2e/Reg_LockRegistryKey_ReadHandle.cpp` — the lock of a key of the host
   layer is refused with `STATUS_ACCESS_DENIED` and the host key keeps its value.
+* `test/e2e/Reg_Transacted_CreateIsRefused.cpp` — the probe `RegTransacted`
+  creates a key of the view inside a transaction of its own
+  (`NtCreateKeyTransacted`) and writes a value through the handle. The call is
+  refused with `STATUS_RM_NOT_ACTIVE`: the create lands in the sandbox hive and
+  an application hive does not support transactions, so the isolation reports
+  the failure of the hive layer instead of answering the call with a plain
+  (non transacted) create. The view does not hold the key afterwards and the
+  real HKCU never receives it, which is what the call would have done without
+  the isolation.
+* `test/e2e/Reg_Transacted_OpenIsRefused.cpp` — a read only transacted open of a
+  key the hive holds is refused with `STATUS_NOT_SUPPORTED`, once through
+  `NtOpenKeyTransacted` and once through `NtOpenKeyTransactedEx`: the hive layer
+  cannot answer a transacted open and the isolation never answers one with a
+  handle of the host layer, because that handle would enlist the real hive into
+  the transaction of the sandboxed process. The key stays readable with the
+  value of the sandbox through the plain open, so the view keeps working.
+* `test/e2e/Reg_Transacted_ReadThroughIsRefused.cpp` — a key which only the host
+  holds: the read only transacted open is refused with `STATUS_NOT_SUPPORTED`
+  and the write access one with `STATUS_RM_NOT_ACTIVE`, which is the failure of
+  the copy-up create inside the hive. The host key keeps its own value and never
+  receives the value of the probe, so neither the read through nor the copy-up
+  of a transacted call touched the real registry, while the plain open of the
+  key keeps its read through.
+* `test/e2e/Reg_Transacted_ForeignHiveIsForwarded.cpp` — the probe mounts an
+  application hive of its own, which lives below `\REGISTRY\A` and is therefore
+  outside the root keys of the view, and creates a key inside it with
+  `NtCreateKeyTransacted`. The call is forwarded unchanged: the kernel answers
+  it with the status of the application hive (`STATUS_RM_NOT_ACTIVE`), so the
+  arguments of the caller reach the kernel in their own order, and neither the
+  hive of the probe nor the hive of the sandbox holds the key afterwards.
 
 ### Network isolation cases
 

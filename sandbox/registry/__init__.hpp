@@ -109,6 +109,12 @@ enum class MergedResolve
  *   follows the merged view of the mode (`ViewCreateDisposition`), so a key
  *   which only the host holds is reported as existing for `WriteCopy`, while
  *   `Full` and `Hide` report the creation of a key the host holds.
+ * * Transacted open and create (`OpenIsolatedKeyTransacted`,
+ *   `OpenIsolatedKeyTransactedEx` and `CreateIsolatedKeyTransacted`): the same
+ *   policy with the transaction of the caller, which the hive layer is opened
+ *   and created with. The host layer is never enlisted into that transaction,
+ *   which is why a transacted open whose answer would be a handle of the host
+ *   layer is refused (`kTransactedHostFallbackStatus`).
  * * The isolation modes of the isolation file decide which host entries stay
  *   invisible; the table defaults to `WriteCopy`, which is the read through of
  *   a sandbox without an isolation file.
@@ -375,6 +381,58 @@ public:
                                       PVOID SecurityQualityOfService, ULONG OpenOptions, PHANDLE KeyHandle);
 
     /**
+     * @brief Open an isolated key with the route of its isolation mode (NtOpenKeyTransacted semantics).
+     *
+     * Same policy as OpenIsolatedKey(), with one difference: the key of the hive
+     * is opened with the transaction of the caller, so the handle the caller
+     * receives is bound to it and every change the caller makes through it is
+     * committed or rolled back with the transaction.
+     *
+     * The host layer is never enlisted into the transaction of the caller, which
+     * is why the read through of a transacted open is refused: a key which the
+     * hive does not hold and which the mode keeps visible is answered with
+     * `appbox::registry::kTransactedHostFallbackStatus` instead of a handle of
+     * the real registry. `Full` and `Hide` keep the answer of the plain open and
+     * report the failure of the hive layer.
+     *
+     * @param[in] view_path The logical path of the key in the view.
+     * @param[in] relative The key path relative to the hive root.
+     * @param[in] DesiredAccess The requested access mask.
+     * @param[in] Attributes The object attributes flags of the original call.
+     * @param[in] SecurityDescriptor The security descriptor of the original call.
+     * @param[in] SecurityQualityOfService The quality of service of the original call.
+     * @param[in] TransactionHandle The transaction of the caller, never null.
+     * @param[out] KeyHandle The resulting key handle.
+     * @return Status code.
+     */
+    static NTSTATUS OpenIsolatedKeyTransacted(const std::wstring& view_path, const std::wstring& relative,
+                                              ACCESS_MASK DesiredAccess, ULONG Attributes, PVOID SecurityDescriptor,
+                                              PVOID SecurityQualityOfService, HANDLE TransactionHandle,
+                                              PHANDLE KeyHandle);
+
+    /**
+     * @brief Open an isolated key with the route of its isolation mode (NtOpenKeyTransactedEx semantics).
+     *
+     * Same policy as OpenIsolatedKeyTransacted(), with the open options of the
+     * caller forwarded to every attempt.
+     *
+     * @param[in] view_path The logical path of the key in the view.
+     * @param[in] relative The key path relative to the hive root.
+     * @param[in] DesiredAccess The requested access mask.
+     * @param[in] Attributes The object attributes flags of the original call.
+     * @param[in] SecurityDescriptor The security descriptor of the original call.
+     * @param[in] SecurityQualityOfService The quality of service of the original call.
+     * @param[in] OpenOptions The open options of the original call.
+     * @param[in] TransactionHandle The transaction of the caller, never null.
+     * @param[out] KeyHandle The resulting key handle.
+     * @return Status code.
+     */
+    static NTSTATUS OpenIsolatedKeyTransactedEx(const std::wstring& view_path, const std::wstring& relative,
+                                                ACCESS_MASK DesiredAccess, ULONG Attributes, PVOID SecurityDescriptor,
+                                                PVOID SecurityQualityOfService, ULONG OpenOptions,
+                                                HANDLE TransactionHandle, PHANDLE KeyHandle);
+
+    /**
      * @brief Create or open a key inside the hive (NtCreateKey semantics).
      *
      * The path is walked component by component and every intermediate key is
@@ -435,6 +493,43 @@ public:
                                       ACCESS_MASK DesiredAccess, ULONG Attributes, PVOID SecurityDescriptor,
                                       PVOID SecurityQualityOfService, ULONG TitleIndex, PUNICODE_STRING Class,
                                       ULONG CreateOptions, PHANDLE KeyHandle, PULONG Disposition);
+
+    /**
+     * @brief Create or open an isolated key with the transaction of the caller
+     *        (NtCreateKeyTransacted semantics).
+     *
+     * Same policy as CreateIsolatedKey(), with one difference: the key and every
+     * intermediate key are created with the transaction of the caller, so a
+     * rollback removes the key the create added — the intermediate keys the
+     * create made for it included — while a commit keeps it. The real registry
+     * is never touched by either route, because the create always lands in the
+     * sandbox hive.
+     *
+     * The probe of the host layer, which decides the disposition of the merged
+     * view, is a read only open without the transaction: the host layer is never
+     * enlisted into the transaction of the caller.
+     *
+     * @param[in] view_path The logical path of the key in the view.
+     * @param[in] relative The key path relative to the hive root.
+     * @param[in] DesiredAccess The requested access mask.
+     * @param[in] Attributes The object attributes flags of the original call.
+     * @param[in] SecurityDescriptor The security descriptor of the original call.
+     * @param[in] SecurityQualityOfService The quality of service of the original call.
+     * @param[in] TitleIndex The title index of the original call.
+     * @param[in] Class The key class of the original call.
+     * @param[in] CreateOptions The create options of the original call.
+     * @param[in] TransactionHandle The transaction of the caller, never null.
+     * @param[out] KeyHandle The resulting key handle.
+     * @param[out] Disposition `REG_CREATED_NEW_KEY` or
+     *                         `REG_OPENED_EXISTING_KEY` as seen by the caller,
+     *                         may be null.
+     * @return Status code.
+     */
+    static NTSTATUS CreateIsolatedKeyTransacted(const std::wstring& view_path, const std::wstring& relative,
+                                                ACCESS_MASK DesiredAccess, ULONG Attributes, PVOID SecurityDescriptor,
+                                                PVOID SecurityQualityOfService, ULONG TitleIndex, PUNICODE_STRING Class,
+                                                ULONG CreateOptions, HANDLE TransactionHandle, PHANDLE KeyHandle,
+                                                PULONG Disposition);
 
     /**
      * @brief Delete a key of the merged view (NtDeleteKey semantics).

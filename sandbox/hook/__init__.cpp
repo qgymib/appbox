@@ -10,6 +10,7 @@
 #include "hook/NtCompressKey.hpp"
 #include "hook/NtCreateFile.hpp"
 #include "hook/NtCreateKey.hpp"
+#include "hook/NtCreateKeyTransacted.hpp"
 #include "hook/NtCurrentTeb.hpp"
 #include "hook/NtDeleteFile.hpp"
 #include "hook/NtDeleteKey.hpp"
@@ -24,6 +25,8 @@
 #include "hook/NtOpenFile.hpp"
 #include "hook/NtOpenKey.hpp"
 #include "hook/NtOpenKeyEx.hpp"
+#include "hook/NtOpenKeyTransacted.hpp"
+#include "hook/NtOpenKeyTransactedEx.hpp"
 #include "hook/NtQueryAttributesFile.hpp"
 #include "hook/NtQueryDirectoryFile.hpp"
 #include "hook/NtQueryDirectoryFileEx.hpp"
@@ -104,6 +107,7 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtCompressKey,
     &appbox::HookNtCreateFile,
     &appbox::HookNtCreateKey,
+    &appbox::HookNtCreateKeyTransacted,
     &appbox::HookNtCurrentTeb,
     &appbox::HookNtDeleteFile,
     &appbox::HookNtDeleteKey,
@@ -118,6 +122,8 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtOpenFile,
     &appbox::HookNtOpenKey,
     &appbox::HookNtOpenKeyEx,
+    &appbox::HookNtOpenKeyTransacted,
+    &appbox::HookNtOpenKeyTransactedEx,
     &appbox::HookNtQueryAttributesFile,
     &appbox::HookNtQueryDirectoryFile,
     &appbox::HookNtQueryDirectoryFileEx,
