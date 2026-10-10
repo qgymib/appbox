@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 #include <base64.hpp>
 #include "probe/__init__.hpp"
+#include "probe/RegChildProcess.hpp"
 #include "utils/Coredump.hpp"
 #include "utils/NameResolutionProbe.hpp"
 #include "utils/TestLog.hpp"
@@ -47,6 +48,13 @@ int wmain(int argc, wchar_t* argv[])
     CLI::App app("AppBox tests");
     appbox::test::SetupTestConfig(app);
     appbox::test::ProbeInit(app);
+
+    /*
+     * The worker a sandboxed probe starts as a child process of its own. It is
+     * a subcommand of this executable like the probe, so the sandbox injects
+     * the same module into it.
+     */
+    appbox::test::RegChildProcessInit(app);
 
     testing::InitGoogleTest(&argc, argv);
     CLI11_PARSE(app, argc, argv);

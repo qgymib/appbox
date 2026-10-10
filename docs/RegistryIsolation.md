@@ -163,6 +163,18 @@ marker lives in the same file. Deleting the state directory (or just these
 files) discards every registry modification the sandboxed process ever made and
 brings back the registry of the archive.
 
+Every process of the sandbox mounts the file itself, and a file which another
+process already mounted is served by the hive of that mount: the second process
+reports the mount name of the first one and addresses the same hive. The
+processes of one sandbox therefore share their registry state — a key or a
+value one of them writes is visible to the others while they run, a process
+which starts a helper process reads the registry of the helper while both of
+them run, and the state of the whole run reaches the file when the last mount
+is closed, so no process overwrites the state of another one. The mount is a
+call of the process: a mount which fails — the token of the process may not
+load a hive, an AppContainer for example — fails the sandbox of that process,
+because the registry isolation would otherwise stop silently.
+
 The isolation file is UTF-8 JSON:
 
 ```json
@@ -291,10 +303,10 @@ listed in [test/README.md](../test/README.md).
 The points below are visible in the current code and have to be kept in mind
 when the isolation is extended or tested. They fall into two groups. The first
 group is about the semantics the view cannot express: the hook answers, but its
-answer is the one of a single layer — or of a single mount of the hive — rather
-than the one of the composed view. The second group is about the entry points
-the isolation does not hook at all: a call which reaches the registry through
-them acts on the layer of the object of the call.
+answer is the one of a single layer rather than the one of the composed view.
+The second group is about the entry points the isolation does not hook at all:
+a call which reaches the registry through them acts on the layer of the object
+of the call.
 
 ### The semantics the view cannot express
 
@@ -354,18 +366,7 @@ them acts on the layer of the object of the call.
    enumeration and a read of one key can therefore describe two different views
    of the real registry, and the entries of the hive are described by neither of
    them.
-8. **The hive is mounted by the sandboxed process.** The sandbox library of
-   every process of the sandbox mounts the hive file itself, and an application
-   hive is private to the process which mounted it. Two processes of one sandbox
-   therefore hold two mounts of the same file: a key or a value one of them
-   writes is not visible to another one which is already running, and every
-   mount writes the file back when its process ends, so the file keeps the state
-   of the mount which wrote last. An application which starts a helper process
-   reads the registry of the helper only after the run. The mount also fails
-   when the token of the process may not load a hive (an AppContainer, for
-   example), and a failed mount fails the sandbox of that process, because the
-   registry isolation would otherwise stop silently.
-9. **A key handle which enters the sandbox from outside is used unchanged.**
+8. **A key handle which enters the sandbox from outside is used unchanged.**
    The isolation decides at the open and at the create, and it never hands out a
    handle which permits a modification of a key of the host layer (an open which
    asks for a write right is copied up into the hive). A handle which the

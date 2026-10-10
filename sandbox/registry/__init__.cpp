@@ -1238,8 +1238,11 @@ NTSTATUS appbox::registry::Hive::Init()
 
     /*
      * Mount the hive. RegLoadAppKeyW creates the hive file when it does not
-     * exist yet, so no template is needed. The hive is process private and
-     * can only be opened relative to the returned root handle.
+     * exist yet, so no template is needed. The mount is not part of the global
+     * registry namespace and is reached only through the returned root handle.
+     * A file which another process of the sandbox already mounted is served by
+     * the hive of that mount, so the processes of one sandbox share the
+     * registry state of the run.
      */
     HKEY hive_root = nullptr;
     LONG err = fn_load_app_key(data->hive_path.c_str(), &hive_root, KEY_ALL_ACCESS, 0, 0);

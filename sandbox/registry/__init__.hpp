@@ -82,10 +82,13 @@ enum class MergedResolve
 /**
  * @brief The sandbox registry hive.
  *
- * The hive is a real registry file mounted as a private application hive
- * (RegLoadAppKey) when the sandbox DLL is injected in isolation mode. It is
- * visible only inside the sandboxed process and can be opened exclusively
- * relative to the root handle, which is exactly what the redirection needs.
+ * The hive is a real registry file mounted as an application hive
+ * (RegLoadAppKey) when the sandbox DLL is injected in isolation mode. The mount
+ * is not part of the global registry namespace: it is reached only through the
+ * root handle of the mount, which is exactly what the redirection needs. Every
+ * process of the sandbox mounts the file, and a file which another process
+ * already mounted is served by the hive of that mount, so the processes of one
+ * sandbox share their registry state.
  *
  * The hive holds one sub key per root key of the view (`HKEY_LOCAL_MACHINE`,
  * `HKEY_CURRENT_USER`, ...), so the path of an entry inside the hive equals

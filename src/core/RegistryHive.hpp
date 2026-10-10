@@ -14,9 +14,9 @@ namespace appbox
  *
  * The hive is a real registry file: it is created by mounting a fresh file
  * with `RegLoadAppKeyW`, filled with the content of the model and flushed and
- * closed again, which writes it back to disk. The sandbox mounts the very same
- * file as its private application hive, so the packed registry is exactly the
- * registry the sandboxed process sees.
+ * closed again, which writes it back to disk. The sandbox mounts that file as
+ * its application hive, so the packed registry is exactly the registry the
+ * sandboxed process sees.
  *
  * The hive holds one sub key per root key of the model (`HKEY_LOCAL_MACHINE`,
  * `HKEY_CURRENT_USER`, ...), so the path of an entry inside the hive equals its

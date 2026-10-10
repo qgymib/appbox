@@ -803,6 +803,14 @@ sandboxed process creates.
   and a `REG_BINARY` value whose bytes spell the same reference keep their own
   bytes. The hive of the resources is byte identical afterwards, so the archive
   keeps the reference and the expansion happens while the sandbox runs.
+* `test/e2e/Reg_TwoProcesses_ShareTheHive.cpp` — two processes of one sandbox
+  exchange registry values. The probe process writes a value, starts the
+  `regchild` worker as a child process of its own, the worker reads that value
+  and writes its own while it stays alive, the probe reads the value of the
+  worker while the worker runs, and a second sandbox run reads both values back.
+  The case pins that the processes of one sandbox share the hive — a file which
+  another process already mounted is served by the hive of that mount — and that
+  the state of the run survives it, while the real HKCU stays untouched.
 
 ### Network isolation cases
 
@@ -1201,6 +1209,15 @@ header comment.
   inside the sandbox, followed by a value write and a read back.
 * `test/probe/RegSaveKey.cpp` — a save of a key of the view, with
   `RegSaveKeyW` or, when the request asks for it, with `RegSaveKeyExW`.
+* `test/probe/RegTwoProcesses.*` — a probe which runs a second process of the
+  same sandbox (`regchild`, the worker of `test/probe/RegChildProcess.*`) and
+  exchanges registry values with it. The parent writes a value, the worker reads
+  it and writes values of its own while it stays alive, the parent reads the
+  value of the worker while the worker runs, and one response carries every
+  observation of the run. The worker does not talk to the RPC server of the
+  case: it reports its work through the exit code bits of `RegChildExitCode`,
+  which is what a case reads when the registry of the worker is not visible to
+  the parent.
 * `test/probe/ResolveName.*` — resolves hostnames inside the sandbox with one
   of the seven entry points the sandbox hooks and reports the return code and
   the addresses of every answer.
