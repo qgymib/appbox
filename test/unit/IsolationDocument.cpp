@@ -175,13 +175,13 @@ TEST(Unit_IsolationDocument, RegistryDocumentRoundTrips)
 
     appbox::registry_isolation::KeyEntry key;
     key.path = "HKEY_CURRENT_USER\\Software\\Vendor";
-    key.isolation = appbox::RegistryIsolation::Full;
+    key.isolation = appbox::RegistryKeyIsolation::Full;
     document.keys.push_back(key);
 
     appbox::registry_isolation::ValueEntry value;
     value.path = "HKEY_CURRENT_USER\\Software\\Vendor";
     value.name = "Server";
-    value.isolation = appbox::RegistryIsolation::Hide;
+    value.isolation = appbox::RegistryValueIsolation::Hide;
     document.values.push_back(value);
 
     const auto text = nlohmann::json(document).dump(2);
@@ -190,11 +190,11 @@ TEST(Unit_IsolationDocument, RegistryDocumentRoundTrips)
     EXPECT_EQ(back.version, appbox::registry_isolation::kVersion);
     ASSERT_EQ(back.keys.size(), 1u);
     EXPECT_EQ(back.keys[0].path, "HKEY_CURRENT_USER\\Software\\Vendor");
-    EXPECT_EQ(back.keys[0].isolation, appbox::RegistryIsolation::Full);
+    EXPECT_EQ(back.keys[0].isolation, appbox::RegistryKeyIsolation::Full);
     ASSERT_EQ(back.values.size(), 1u);
     EXPECT_EQ(back.values[0].path, "HKEY_CURRENT_USER\\Software\\Vendor");
     EXPECT_EQ(back.values[0].name, "Server");
-    EXPECT_EQ(back.values[0].isolation, appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(back.values[0].isolation, appbox::RegistryValueIsolation::Hide);
 }
 
 TEST(Unit_IsolationDocument, RegistryDocumentRefusesWhatTheSchemaDoesNotAllow)
@@ -218,7 +218,19 @@ TEST(Unit_IsolationDocument, RegistryDocumentRefusesWhatTheSchemaDoesNotAllow)
     EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "keys": [ { "path": "a", "name": 7, "isolation": "full" } ] })"),
               "the 'name' member of an isolation file entry is not a string");
     EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "keys": [ { "path": "a", "isolation": "sandbox" } ] })"),
-              "unknown isolation mode 'sandbox' in the isolation file");
+              "unknown key isolation mode 'sandbox' in the isolation file");
+
+    /*
+     * A value carries the two value modes alone: a value is never copied up and
+     * a value write never reaches the host registry, so the modes of a key are
+     * refused for a value entry.
+     */
+    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "values": [ { "path": "a", "name": "b",
+                                                                   "isolation": "merge" } ] })"),
+              "unknown value isolation mode 'merge' in the isolation file");
+    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "values": [ { "path": "a", "name": "b",
+                                                                   "isolation": "write_copy" } ] })"),
+              "unknown value isolation mode 'write_copy' in the isolation file");
 
     /* A document which lists neither a key nor a value sets no mode. */
     const auto empty = ParseOrFail<Document>(R"({ "version": 1 })");

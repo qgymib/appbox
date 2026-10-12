@@ -136,7 +136,7 @@ TEST_F(E2E_Reg, IsolationInheritance_KeyModeReachesChildKey)
 
     HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + child, L"ChildSandbox", REG_SZ, StringData(L"child-sandbox"));
-    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey, appbox::RegistryIsolation::Full);
+    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey, appbox::RegistryKeyIsolation::Full);
 
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;
@@ -159,8 +159,8 @@ TEST_F(E2E_Reg, IsolationInheritance_KeyModeReachesChildKey)
     /* A mode of the child key overrides the mode of the ancestor. */
     HiveBuilder overriding(GetCWD());
     overriding.SetValue(L"HKEY_CURRENT_USER\\" + child, L"ChildSandbox", REG_SZ, StringData(L"child-sandbox"));
-    overriding.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey, appbox::RegistryIsolation::Full);
-    overriding.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + child, appbox::RegistryIsolation::WriteCopy);
+    overriding.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey, appbox::RegistryKeyIsolation::Full);
+    overriding.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + child, appbox::RegistryKeyIsolation::WriteCopy);
     ASSERT_TRUE(overriding.Write(error)) << error;
 
     {
@@ -206,7 +206,7 @@ TEST_F(E2E_Reg, IsolationInheritance_ValueModeHidesTheValue)
 
     HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"SandboxValue", REG_SZ, StringData(L"sandbox"));
-    builder.SetValueIsolation(L"HKEY_CURRENT_USER\\" + subkey, L"HiddenByValue", appbox::RegistryIsolation::Hide);
+    builder.SetValueIsolation(L"HKEY_CURRENT_USER\\" + subkey, L"HiddenByValue", appbox::RegistryValueIsolation::Hide);
 
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;

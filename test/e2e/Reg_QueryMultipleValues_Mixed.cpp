@@ -62,7 +62,7 @@ TEST_F(E2E_Reg, QueryMultipleValues_Mixed)
 
     HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"Sandbox", REG_SZ, StringData(L"sandbox"));
-    builder.SetValueIsolation(L"HKEY_CURRENT_USER\\" + subkey, L"HostB", appbox::RegistryIsolation::Full);
+    builder.SetValueIsolation(L"HKEY_CURRENT_USER\\" + subkey, L"HostB", appbox::RegistryValueIsolation::Full);
 
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;

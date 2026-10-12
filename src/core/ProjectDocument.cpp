@@ -183,20 +183,40 @@ appbox::ProjectType ReadProjectType(const Json& json)
 }
 
 /**
- * @brief Read the isolation mode of a registry entry.
+ * @brief Read the isolation mode of a registry key of a document.
  * @param[in] json Object to read from.
  * @param[in] key Name of the member.
  * @return The isolation mode of the member.
  * @throw appbox::ProjectDocumentError The mode is unknown or not a string.
  */
-appbox::RegistryIsolation ReadRegistryIsolation(const Json& json, const char* key)
+appbox::RegistryKeyIsolation ReadRegistryKeyIsolation(const Json& json, const char* key)
 {
     const auto text = ReadRequiredString(json, key);
 
-    appbox::RegistryIsolation isolation = appbox::RegistryIsolation::WriteCopy;
-    if (!appbox::registry_isolation::ParseIsolationToken(text, isolation))
+    appbox::RegistryKeyIsolation isolation = appbox::RegistryKeyIsolation::Merge;
+    if (!appbox::registry_isolation::ParseKeyIsolationToken(text, isolation))
     {
-        throw appbox::ProjectDocumentError("unknown isolation mode '" + text + "'");
+        throw appbox::ProjectDocumentError("unknown key isolation mode '" + text + "'");
+    }
+
+    return isolation;
+}
+
+/**
+ * @brief Read the isolation mode of a registry value of a document.
+ * @param[in] json Object to read from.
+ * @param[in] key Name of the member.
+ * @return The isolation mode of the member.
+ * @throw appbox::ProjectDocumentError The mode is unknown or not a string.
+ */
+appbox::RegistryValueIsolation ReadRegistryValueIsolation(const Json& json, const char* key)
+{
+    const auto text = ReadRequiredString(json, key);
+
+    appbox::RegistryValueIsolation isolation = appbox::RegistryValueIsolation::Full;
+    if (!appbox::registry_isolation::ParseValueIsolationToken(text, isolation))
+    {
+        throw appbox::ProjectDocumentError("unknown value isolation mode '" + text + "'");
     }
 
     return isolation;
@@ -580,7 +600,7 @@ void to_json(nlohmann::ordered_json& json, const ProjectRegistryValueRecord& rec
     json[kNameKey] = WideToUTF8(record.name);
     json[kTypeKey] = WideToUTF8(RegistryValueTypeName(record.type));
     json[kDataKey] = WideToUTF8(FormatRegistryHexText(record.data));
-    json[kIsolationKey] = registry_isolation::IsolationToken(record.isolation);
+    json[kIsolationKey] = registry_isolation::ValueIsolationToken(record.isolation);
 }
 
 void from_json(const nlohmann::ordered_json& json, ProjectRegistryValueRecord& record)
@@ -591,7 +611,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectRegistryValueRecord& r
     candidate.name = ReadRequiredText(json, kNameKey);
     candidate.type = ReadRegistryValueType(json, kTypeKey);
     candidate.data = ReadRegistryValueData(json, kDataKey);
-    candidate.isolation = ReadRegistryIsolation(json, kIsolationKey);
+    candidate.isolation = ReadRegistryValueIsolation(json, kIsolationKey);
 
     record = std::move(candidate);
 }
@@ -600,7 +620,7 @@ void to_json(nlohmann::ordered_json& json, const ProjectRegistryKeyRecord& recor
 {
     json = nlohmann::ordered_json::object();
     json[kNameKey] = WideToUTF8(record.name);
-    json[kIsolationKey] = registry_isolation::IsolationToken(record.isolation);
+    json[kIsolationKey] = registry_isolation::KeyIsolationToken(record.isolation);
     json[kValuesKey] = record.values;
     json[kChildrenKey] = record.children;
 }
@@ -611,7 +631,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectRegistryKeyRecord& rec
 
     ProjectRegistryKeyRecord candidate;
     candidate.name = ReadRequiredText(json, kNameKey);
-    candidate.isolation = ReadRegistryIsolation(json, kIsolationKey);
+    candidate.isolation = ReadRegistryKeyIsolation(json, kIsolationKey);
     ReadRecordArray(json, kValuesKey, candidate.values);
     ReadRecordArray(json, kChildrenKey, candidate.children);
 

@@ -3,51 +3,12 @@
 
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "RegistryIsolation.hpp"
-#include "registry/IsolationTable.hpp"
+#include <optional>
 
 namespace appbox
 {
 namespace registry
 {
-
-/**
- * @brief What an isolated open does when the sandbox hive does not hold the key.
- *
- * The registry isolation redirects every key below one of the root keys of the
- * view into the private hive. The isolation mode of the key decides which host
- * entries stay visible and where a modification lands, so the open entry points
- * cannot answer every key the same way. The fallback below describes the second
- * half of that decision, the one which is taken when the hive layer does not
- * hold the key:
- *
- * | Mode | Read access | Write access |
- * | --- | --- | --- |
- * | `Full` | `ReportHiveFailure` | `ReportHiveFailure` |
- * | `WriteCopy` | `UseHost` | `CopyUp` |
- * | `Hide` | `ReportHiveFailure` | `ReportHiveFailure` |
- *
- * The rows of `Full` and `Hide` are the same rule `IsolationTable::HidesHost()`
- * applies to the host entries: the host entry of such a key must not be used.
- */
-enum class OpenFallback
-{
-    /**
-     * @brief The host entry must not be used; the failure of the hive open is
-     *        the result of the call.
-     */
-    ReportHiveFailure,
-
-    /**
-     * @brief The key is read through the host registry.
-     */
-    UseHost,
-
-    /**
-     * @brief The key is copied up: a shadow key is created inside the hive and
-     *        handed out, so every modification lands in the sandbox.
-     */
-    CopyUp,
-};
 
 /**
  * @brief Whether an access mask may permit a modification of the key.
@@ -58,10 +19,6 @@ enum class OpenFallback
  * the generic rights a caller may pass to the NT entry points. A read only mask
  * such as `KEY_READ` or `KEY_QUERY_VALUE` is the only case which is reported as
  * a read, which keeps the read through of the sandbox working.
- *
- * An unnecessary copy-up costs one empty shadow key inside the hive, which the
- * merged enumeration and the value read through hide completely, while a missed
- * write access would let a modification escape into the host registry.
  *
  * @param[in] access The access mask of the open.
  * @return true when the mask may permit a modification of the key.
@@ -112,25 +69,148 @@ inline NTSTATUS PickOpenFailure(NTSTATUS real_status, NTSTATUS hive_status)
 }
 
 /**
+ * @brief Whether the isolation mode of a key keeps the host entry invisible.
+ *
+ * `Full` and `Hide` both describe a key the sandboxed process may only see
+ * through the virtual registry: a key which the hive does not hold is reported
+ * as not found instead of falling back to the host. `Merge` and `WriteCopy`
+ * keep the host entry visible.
+ *
+ * @param[in] mode The isolation mode of the key.
+ * @return true when the host key must stay invisible.
+ */
+inline bool KeyHidesHost(RegistryKeyIsolation mode)
+{
+    return mode == RegistryKeyIsolation::Full || mode == RegistryKeyIsolation::Hide;
+}
+
+/**
+ * @brief Whether the effective mode of a value keeps the host value invisible.
+ *
+ * A value has two modes of its own and both of them hide the host value:
+ * `Full` shows the value of the virtual registry and `Hide` hides the value
+ * altogether. A value which the isolation file does not list follows the mode
+ * of the key which holds it, so a value below a `Merge` or `WriteCopy` key
+ * shows the host value.
+ *
+ * @param[in] value_mode The listed mode of the value, empty when the file does
+ *                       not list the value.
+ * @param[in] key_mode The effective mode of the key which holds the value.
+ * @return true when the host value must stay invisible.
+ */
+inline bool ValueHidesHost(std::optional<RegistryValueIsolation> value_mode, RegistryKeyIsolation key_mode)
+{
+    if (value_mode.has_value())
+    {
+        /* `Full` hides the host value and `Hide` hides the value itself. */
+        return true;
+    }
+
+    return KeyHidesHost(key_mode);
+}
+
+/**
+ * @brief Whether a modification of a value lands in the host registry.
+ *
+ * `Merge` is the only mode which lets a modification of a value reach the host
+ * registry, and it does so by the rule of the mode: a value the sandbox holds
+ * — the value of the hive or a value the sandbox deleted, which the whiteout
+ * store keeps — is modified inside the sandbox, a value the sandbox does not
+ * hold is modified in the real registry.
+ *
+ * Every other mode redirects the modification into the sandbox, which is what
+ * keeps the host registry untouched outside `Merge`.
+ *
+ * @param[in] value_mode The listed mode of the value, empty when the file does
+ *                       not list the value.
+ * @param[in] key_mode The effective mode of the key which holds the value.
+ * @param[in] sandbox_holds Whether the sandbox holds the value, the whiteout of
+ *                          a deleted value included.
+ * @return true when the modification has to be applied to the host registry.
+ */
+inline bool ValueWritesToHost(std::optional<RegistryValueIsolation> value_mode, RegistryKeyIsolation key_mode,
+                              bool sandbox_holds)
+{
+    if (value_mode.has_value())
+    {
+        /* A value mode always redirects the writes of the value into the sandbox. */
+        return false;
+    }
+
+    if (key_mode != RegistryKeyIsolation::Merge)
+    {
+        return false;
+    }
+
+    return !sandbox_holds;
+}
+
+/**
+ * @brief What an isolated open does when the sandbox hive does not hold the key.
+ *
+ * The registry isolation redirects every key below one of the root keys of the
+ * view into the private hive. The isolation mode of the key decides which host
+ * entries stay visible and where a modification lands, so the open entry points
+ * cannot answer every key the same way. The fallback below describes the second
+ * half of that decision, the one which is taken when the hive layer does not
+ * hold the key:
+ *
+ * | Mode | Read access | Write access |
+ * | --- | --- | --- |
+ * | `Full` | `ReportHiveFailure` | `ReportHiveFailure` |
+ * | `Hide` | `ReportHiveFailure` | `ReportHiveFailure` |
+ * | `Merge` | `UseHost` | `UseHost` |
+ * | `WriteCopy` | `UseHost` | `CopyUp` |
+ *
+ * The rows of `Full` and `Hide` are the rule `KeyHidesHost()` describes: the
+ * host entry of such a key must not be used. `Merge` hands the key of the host
+ * layer out for a write access open as well, because a modification of a key
+ * the sandbox does not hold lands in the host registry; `WriteCopy` copies the
+ * key up instead, so the modification lands in the sandbox.
+ */
+enum class OpenFallback
+{
+    /**
+     * @brief The host entry must not be used; the failure of the hive open is
+     *        the result of the call.
+     */
+    ReportHiveFailure,
+
+    /**
+     * @brief The key is opened in the host registry.
+     */
+    UseHost,
+
+    /**
+     * @brief The key is copied up: a shadow key is created inside the hive and
+     *        handed out, so every modification lands in the sandbox.
+     */
+    CopyUp,
+};
+
+/**
  * @brief The fallback of an isolated open whose hive layer does not hold the key.
  *
  * The rows of the table are described by OpenFallback; the rule of `Full` and
- * `Hide` agrees with `IsolationTable::HidesHost()`, so a key whose host entry
- * is invisible never reaches the host registry.
+ * `Hide` agrees with `KeyHidesHost()`, so a key whose host entry is invisible
+ * never reaches the host registry.
  *
  * @param[in] mode The isolation mode of the key.
  * @param[in] desired_access The access mask of the open.
  * @return The fallback the open has to run.
  */
-inline OpenFallback FallbackForKey(RegistryIsolation mode, ACCESS_MASK desired_access)
+inline OpenFallback FallbackForKey(RegistryKeyIsolation mode, ACCESS_MASK desired_access)
 {
     switch (mode)
     {
-    case RegistryIsolation::Full:
-    case RegistryIsolation::Hide:
+    case RegistryKeyIsolation::Full:
+    case RegistryKeyIsolation::Hide:
         /* The host entry is invisible for the sandbox. */
         return OpenFallback::ReportHiveFailure;
-    case RegistryIsolation::WriteCopy:
+    case RegistryKeyIsolation::Merge:
+        /* A modification of a key the sandbox does not hold lands in the host. */
+        return OpenFallback::UseHost;
+    case RegistryKeyIsolation::WriteCopy:
         /* The sandbox takes precedence: every modification lands in the hive. */
         return RequestsWrite(desired_access) ? OpenFallback::CopyUp : OpenFallback::UseHost;
     }
@@ -153,21 +233,22 @@ inline OpenFallback FallbackForKey(RegistryIsolation mode, ACCESS_MASK desired_a
  * transaction of the sandboxed process, which is a change of the host the
  * isolation must not cause: the kernel writes the transaction log of the real
  * hive and the transaction of the caller can conflict with a transaction
- * another process holds on the same hive. The read through of a transacted open
- * is therefore refused instead of being run against the host layer.
+ * another process holds on the same hive. The host layer is therefore never
+ * used by a transacted call, whatever the isolation mode says about a plain
+ * call.
  *
  * | Mode | Read access | Write access |
  * | --- | --- | --- |
  * | `Full` | `ReportHiveFailure` | `ReportHiveFailure` |
- * | `WriteCopy` | `RefuseHostFallback` | `CopyUp` |
  * | `Hide` | `ReportHiveFailure` | `ReportHiveFailure` |
+ * | `Merge` | `RefuseHostFallback` | `RefuseHostFallback` |
+ * | `WriteCopy` | `RefuseHostFallback` | `CopyUp` |
  *
  * The rows of `Full` and `Hide` are the ones of `FallbackForKey`: the host entry
  * of such a key must not be used at all. `WriteCopy` copies a write access open
- * up into the hive like the plain open does — the shadow key is created with
- * the transaction of the caller, so a rollback removes it — while a read access
- * open is refused, because it would have to answer with a handle of the host
- * layer.
+ * up into the hive — the shadow key is created with the transaction of the
+ * caller, so a rollback removes it — while every call which would have to answer
+ * with a handle of the host layer is refused.
  *
  * The hive of the sandbox is an application hive (`RegLoadAppKey`) and an
  * application hive does not support transactions: the kernel answers every
@@ -211,7 +292,7 @@ inline constexpr NTSTATUS kTransactedHostFallbackStatus = STATUS_NOT_SUPPORTED;
  * @brief The fallback of a transacted open whose hive layer does not hold the key.
  *
  * The rows of the table are described by TransactedFallback. The rule agrees
- * with `FallbackForKey` except for the read through: a transacted open never
+ * with `FallbackForKey()` except for the host layer: a transacted call never
  * answers with a handle of the host layer, because the host layer would be
  * enlisted into the transaction of the caller.
  *
@@ -219,15 +300,18 @@ inline constexpr NTSTATUS kTransactedHostFallbackStatus = STATUS_NOT_SUPPORTED;
  * @param[in] desired_access The access mask of the open.
  * @return The fallback the transacted open has to run.
  */
-inline TransactedFallback FallbackForKeyTransacted(RegistryIsolation mode, ACCESS_MASK desired_access)
+inline TransactedFallback FallbackForKeyTransacted(RegistryKeyIsolation mode, ACCESS_MASK desired_access)
 {
     switch (mode)
     {
-    case RegistryIsolation::Full:
-    case RegistryIsolation::Hide:
+    case RegistryKeyIsolation::Full:
+    case RegistryKeyIsolation::Hide:
         /* The host entry is invisible for the sandbox. */
         return TransactedFallback::ReportHiveFailure;
-    case RegistryIsolation::WriteCopy:
+    case RegistryKeyIsolation::Merge:
+        /* The key lives in the host, which the transaction must not enlist. */
+        return TransactedFallback::RefuseHostFallback;
+    case RegistryKeyIsolation::WriteCopy:
         /* A write is copied up into the hive; a read has no host layer to use. */
         return RequestsWrite(desired_access) ? TransactedFallback::CopyUp : TransactedFallback::RefuseHostFallback;
     }
@@ -237,31 +321,31 @@ inline TransactedFallback FallbackForKeyTransacted(RegistryIsolation mode, ACCES
 /**
  * @brief The disposition a create reports for the merged view.
  *
- * A create always lands in the sandbox hive, so the disposition of the kernel
- * describes the hive layer alone. The view of the sandboxed process is the
- * hive layer merged with the visible entries of the host layer, so the value
- * the caller observes has to be derived from both layers:
+ * A create of the hive layer lands in the sandbox hive, so the disposition of
+ * the kernel describes the hive layer alone. The view of the sandboxed process
+ * is the hive layer merged with the visible entries of the host layer, so the
+ * value the caller observes has to be derived from both layers:
  *
  * | Hive disposition | Mode | Host holds the key | Reported disposition |
  * | --- | --- | --- | --- |
  * | `REG_OPENED_EXISTING_KEY` | every mode | not consulted | `REG_OPENED_EXISTING_KEY` |
  * | `REG_CREATED_NEW_KEY` | `Full`, `Hide` | not consulted | `REG_CREATED_NEW_KEY` |
- * | `REG_CREATED_NEW_KEY` | `WriteCopy` | yes | `REG_OPENED_EXISTING_KEY` |
- * | `REG_CREATED_NEW_KEY` | `WriteCopy` | no | `REG_CREATED_NEW_KEY` |
+ * | `REG_CREATED_NEW_KEY` | `Merge`, `WriteCopy` | yes | `REG_OPENED_EXISTING_KEY` |
+ * | `REG_CREATED_NEW_KEY` | `Merge`, `WriteCopy` | no | `REG_CREATED_NEW_KEY` |
  *
  * A key which the hive already holds exists in the view of every mode, so the
  * hive disposition is reported unchanged: the hive wins the merged view. A key
  * which the hive just created does not exist in the view of `Full` and `Hide`,
  * because those modes keep the host entry invisible — reporting a creation is
- * exactly what the sandboxed process has to observe. `WriteCopy` keeps the host
- * entry visible, so a key which only the host holds is an existing key for the
- * caller: reporting a creation would let a caller which initializes a key it
- * believes to be new write defaults into the shadow key, which the hive wins
- * against the real values of the host key.
+ * exactly what the sandboxed process has to observe. `Merge` and `WriteCopy`
+ * keep the host entry visible, so a key which only the host holds is an existing
+ * key for the caller: reporting a creation would let a caller which initializes
+ * a key it believes to be new write defaults into the shadow key, which the hive
+ * wins against the real values of the host key.
  *
- * The rule is the create counterpart of `IsolationTable::HidesHost()`, which
- * the open path and the merged enumeration use, so the disposition cannot
- * drift away from the merged view.
+ * The rule is the create counterpart of `KeyHidesHost()`, which the open path
+ * and the merged enumeration use, so the disposition cannot drift away from the
+ * merged view.
  *
  * @param[in] mode The isolation mode of the key.
  * @param[in] hive_disposition The disposition reported by the hive create.
@@ -270,7 +354,7 @@ inline TransactedFallback FallbackForKeyTransacted(RegistryIsolation mode, ACCES
  *                           the mode keeps the host entry visible.
  * @return `REG_CREATED_NEW_KEY` or `REG_OPENED_EXISTING_KEY` for the caller.
  */
-inline ULONG ViewCreateDisposition(RegistryIsolation mode, ULONG hive_disposition, bool host_holds_key)
+inline ULONG ViewCreateDisposition(RegistryKeyIsolation mode, ULONG hive_disposition, bool host_holds_key)
 {
     if (hive_disposition != REG_CREATED_NEW_KEY)
     {
@@ -278,7 +362,7 @@ inline ULONG ViewCreateDisposition(RegistryIsolation mode, ULONG hive_dispositio
         return hive_disposition;
     }
 
-    if (IsolationTable::HidesHost(mode))
+    if (KeyHidesHost(mode))
     {
         /* `Full` and `Hide`: the host entry is invisible, so the key is new for
          * the sandbox even when the host holds it. */
@@ -287,8 +371,8 @@ inline ULONG ViewCreateDisposition(RegistryIsolation mode, ULONG hive_dispositio
 
     if (host_holds_key)
     {
-        /* `WriteCopy`: the host entry stays visible, so the key already exists
-         * in the merged view. */
+        /* `Merge` and `WriteCopy`: the host entry stays visible, so the key
+         * already exists in the merged view. */
         return REG_OPENED_EXISTING_KEY;
     }
 
@@ -298,31 +382,34 @@ inline ULONG ViewCreateDisposition(RegistryIsolation mode, ULONG hive_dispositio
 /**
  * @brief What a delete of a key or of a value has to do in the merged view.
  *
- * The isolation never modifies the real registry, so a delete which the host
- * layer would have received has to be turned into a **whiteout** instead: the
- * entry of the hive is removed (when the hive holds one) and the entry of the
- * host is recorded as deleted, so the merged view reports it as gone while the
- * real registry stays untouched.
+ * The isolation modifies the real registry for `Merge` alone, so a delete which
+ * the host layer would have received is either applied to the host entry (the
+ * `Merge` rule) or turned into a **whiteout**: the entry of the hive is removed
+ * (when the hive holds one) and the entry of the host is recorded as deleted, so
+ * the merged view reports it as gone while the real registry stays untouched.
  *
- * The decision table is shared by the delete of a key and the delete of a
- * value; the caller passes the effective mode of the entry, which is
- * `ValueIsolation()` for a value and `KeyIsolation()` for a key.
+ * The decision table is shared by the delete of a key and the delete of a value;
+ * the caller passes the effective mode of the entry, which is the listed value
+ * mode for a value and the key mode for a key.
  *
  * | Hive holds the entry | Host holds the entry | Mode | Result |
  * | --- | --- | --- | --- |
  * | no | no | every mode | `ReportMissing` |
  * | no | yes | `Full`, `Hide` | `ReportMissing` |
  * | no | yes | `WriteCopy` | `WhiteoutOnly` |
+ * | no | yes | `Merge` | `HostDelete` |
  * | yes | no | every mode | `HiveOnly` |
  * | yes | yes | `Full`, `Hide` | `HiveOnly` |
- * | yes | yes | `WriteCopy` | `HiveAndWhiteout` |
+ * | yes | yes | `Merge`, `WriteCopy` | `HiveAndWhiteout` |
  *
  * An entry which only the host holds does not exist for a mode which keeps the
  * host entry invisible, so the delete reports the failure of the hive layer —
- * the same answer the open of that entry gives. An entry which the hive holds
- * is deleted from the hive for every mode, because the hive wins the merged
- * view. The whiteout is only recorded when the host entry would otherwise
- * become visible again, which is exactly `WriteCopy`.
+ * the same answer the open of that entry gives. An entry which the hive holds is
+ * deleted from the hive for every mode, because the hive wins the merged view;
+ * the whiteout is recorded when the host entry would otherwise become visible
+ * again, which is `Merge` and `WriteCopy`. `Merge` deletes the entry of the host
+ * registry when the sandbox does not hold it, which is the write rule of the
+ * mode.
  *
  * A failed whiteout must fail the delete instead of reporting a success: the
  * host entry would otherwise reappear in the view.
@@ -353,21 +440,27 @@ enum class DeleteTarget
      *        deleted and the entry of the host is recorded as deleted.
      */
     HiveAndWhiteout,
+
+    /**
+     * @brief The entry of the real registry is deleted (`Merge`): the sandbox
+     *        does not hold the entry, so the modification lands in the host.
+     */
+    HostDelete,
 };
 
 /**
- * @brief The delete route of an entry in the merged view.
+ * @brief The delete route of a key in the merged view.
  *
  * The rows of the table are described by DeleteTarget. The rule agrees with
- * `IsolationTable::HidesHost()`: an entry whose host entry is invisible never
- * reaches the host registry, so the delete cannot succeed through it.
+ * `KeyHidesHost()`: an entry whose host entry is invisible never reaches the
+ * host registry, so the delete cannot succeed through it.
  *
- * @param[in] mode The effective isolation mode of the entry.
- * @param[in] hive_holds Whether the sandbox hive holds the entry.
- * @param[in] host_holds Whether the real registry holds the entry.
+ * @param[in] mode The isolation mode of the key.
+ * @param[in] hive_holds Whether the sandbox hive holds the key.
+ * @param[in] host_holds Whether the real registry holds the key.
  * @return What the delete has to do.
  */
-inline DeleteTarget DeleteOutcomeOf(RegistryIsolation mode, bool hive_holds, bool host_holds)
+inline DeleteTarget KeyDeleteOutcomeOf(RegistryKeyIsolation mode, bool hive_holds, bool host_holds)
 {
     if (!host_holds)
     {
@@ -375,14 +468,54 @@ inline DeleteTarget DeleteOutcomeOf(RegistryIsolation mode, bool hive_holds, boo
         return hive_holds ? DeleteTarget::HiveOnly : DeleteTarget::ReportMissing;
     }
 
-    if (IsolationTable::HidesHost(mode))
+    if (KeyHidesHost(mode))
     {
-        /* The host entry is invisible for the sandbox, so the entry does not
+        /* The host entry is invisible for the sandbox, so the key does not
          * exist in its view at all. */
         return hive_holds ? DeleteTarget::HiveOnly : DeleteTarget::ReportMissing;
     }
 
-    return hive_holds ? DeleteTarget::HiveAndWhiteout : DeleteTarget::WhiteoutOnly;
+    if (hive_holds)
+    {
+        return DeleteTarget::HiveAndWhiteout;
+    }
+
+    return mode == RegistryKeyIsolation::Merge ? DeleteTarget::HostDelete : DeleteTarget::WhiteoutOnly;
+}
+
+/**
+ * @brief The delete route of a value in the merged view.
+ *
+ * The rows of the table are the ones of `KeyDeleteOutcomeOf()`; the effective
+ * mode of the value decides about the host layer (`ValueHidesHost()`) and about
+ * the layer the delete lands in (`ValueWritesToHost()`).
+ *
+ * @param[in] value_mode The listed mode of the value, empty when the file does
+ *                       not list the value.
+ * @param[in] key_mode The effective mode of the key which holds the value.
+ * @param[in] hive_holds Whether the sandbox hive holds the value.
+ * @param[in] host_holds Whether the real registry holds the value.
+ * @return What the delete has to do.
+ */
+inline DeleteTarget ValueDeleteOutcomeOf(std::optional<RegistryValueIsolation> value_mode,
+                                         RegistryKeyIsolation key_mode, bool hive_holds, bool host_holds)
+{
+    if (!host_holds)
+    {
+        return hive_holds ? DeleteTarget::HiveOnly : DeleteTarget::ReportMissing;
+    }
+
+    if (ValueHidesHost(value_mode, key_mode))
+    {
+        return hive_holds ? DeleteTarget::HiveOnly : DeleteTarget::ReportMissing;
+    }
+
+    if (hive_holds)
+    {
+        return DeleteTarget::HiveAndWhiteout;
+    }
+
+    return ValueWritesToHost(value_mode, key_mode, false) ? DeleteTarget::HostDelete : DeleteTarget::WhiteoutOnly;
 }
 
 } // namespace registry

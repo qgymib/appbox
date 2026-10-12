@@ -3,6 +3,7 @@
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
 #include "Random.hpp"
+#include "SandboxLayout.hpp"
 #include "WString.hpp"
 #include <filesystem>
 #include <string>
@@ -72,6 +73,7 @@ bool WriteRealValue(const std::wstring& subkey, const std::wstring& name, const 
  * @param[in] cwd Working directory of the case.
  * @param[in] config Launcher configuration of the sandbox.
  * @return The response of the probe.
+ * @throw std::exception The sandbox refused the start.
  */
 ProtocolRegReadValue::Rsp ReadSandboxValue(const std::wstring& subkey, const std::wstring& name,
                                            const std::filesystem::path& cwd, const appbox::LauncherConfig& config)
@@ -82,26 +84,39 @@ ProtocolRegReadValue::Rsp ReadSandboxValue(const std::wstring& subkey, const std
     return ProbeRegReadValue.Call(req, cwd, config).get<ProtocolRegReadValue::Rsp>();
 }
 
+/**
+ * @brief Path of the isolation file of the resources of the case.
+ * @param[in] cwd Working directory of the case.
+ * @return The path of the file.
+ */
+std::filesystem::path IsolationFilePath(const std::filesystem::path& cwd)
+{
+    return cwd / appbox::layout::kAppDirNameW / appbox::layout::kRegistryDirNameW / appbox::layout::kIsolationFileNameW;
+}
+
 } // namespace
 
 /**
  * Condition:
  * 1. The key exists in the real HKCU with the value `HostValue`, the sandbox
  *    hive holds the same key with the value `SandboxValue`.
- * 2. The isolation file of the overlay cannot be used: it is not a JSON
- *    document in the first half of the case and it carries a version the
- *    sandbox does not know in the second one. The document of the last half is
- *    the valid one which hides the host value.
+ * 2. The isolation file of the archive is replaced one after the other by a
+ *    document which is not JSON, by a document of a version the sandbox does not
+ *    know, by a document which names no root key of the view and by no document
+ *    at all.
+ * 3. The sandboxed process reads the value of the hive in every one of the four
+ *    cases, and once more after the resources carry a usable document again.
  *
  * Expected:
- * 1. A document which cannot be read is ignored: the sandbox behaves like one
- *    without an isolation file, so the host value stays readable while the
- *    value of the hive is readable as well.
- * 2. The same entry hides the host value as soon as the document is readable,
- *    which is what makes the two runs above a check of the fallback instead of
- *    a check of the default mode.
+ * 1. Every one of the four cases refuses the start of the sandbox: the modes of
+ *    the view cannot be resolved without a usable document, and there is no
+ *    default mode to fall back to, so a run which would show the host registry
+ *    never starts.
+ * 2. The usable document starts the sandbox and the value of the hive is
+ *    readable, which is what makes the four runs above a check of the refusal
+ *    instead of a check of a broken case.
  */
-TEST_F(E2E_Reg, MalformedIsolationFile_FallsBack)
+TEST_F(E2E_Reg, MalformedIsolationFile_FailsTheStart)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
@@ -122,16 +137,11 @@ TEST_F(E2E_Reg, MalformedIsolationFile_FallsBack)
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;
 
-    /* A document which is not JSON at all is ignored. */
+    /* A document which is not JSON at all. */
     ASSERT_TRUE(builder.WriteRawIsolation("{ \"version\": 1, \"keys\": [", error)) << error;
-    {
-        const auto rsp = ReadSandboxValue(subkey, L"HostValue", GetCWD(), config);
-        ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
-        ASSERT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_SUCCESS));
-        EXPECT_EQ(rsp.data, "host");
-    }
+    EXPECT_THROW(ReadSandboxValue(subkey, L"SandboxValue", GetCWD(), config), std::exception);
 
-    /* A document of a version the sandbox does not know is ignored as well. */
+    /* A document of a version the sandbox does not know. */
     {
         nlohmann::json document;
         document[appbox::registry_isolation::kVersionKey] = kUnknownVersion;
@@ -139,24 +149,25 @@ TEST_F(E2E_Reg, MalformedIsolationFile_FallsBack)
         document[appbox::registry_isolation::kValuesKey] = nlohmann::json::array();
         ASSERT_TRUE(builder.WriteRawIsolation(document.dump(2), error)) << error;
     }
-    {
-        const auto rsp = ReadSandboxValue(subkey, L"HostValue", GetCWD(), config);
-        ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
-        ASSERT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_SUCCESS));
-        EXPECT_EQ(rsp.data, "host");
-    }
+    EXPECT_THROW(ReadSandboxValue(subkey, L"SandboxValue", GetCWD(), config), std::exception);
 
-    /* The mode of a readable document hides the host value, so the two runs
-     * above really are the fallback of a refused document. */
-    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey, appbox::RegistryIsolation::Full);
+    /* A document which names no root key of the view. */
+    {
+        nlohmann::json document;
+        document[appbox::registry_isolation::kVersionKey] = appbox::registry_isolation::kVersion;
+        document[appbox::registry_isolation::kKeysKey] = nlohmann::json::array();
+        document[appbox::registry_isolation::kValuesKey] = nlohmann::json::array();
+        ASSERT_TRUE(builder.WriteRawIsolation(document.dump(2), error)) << error;
+    }
+    EXPECT_THROW(ReadSandboxValue(subkey, L"SandboxValue", GetCWD(), config), std::exception);
+
+    /* No document at all. */
+    std::error_code ec;
+    std::filesystem::remove(IsolationFilePath(GetCWD()), ec);
+    EXPECT_THROW(ReadSandboxValue(subkey, L"SandboxValue", GetCWD(), config), std::exception);
+
+    /* The usable document starts the sandbox, and the hive is the hive of it. */
     ASSERT_TRUE(builder.Write(error)) << error;
-    {
-        const auto rsp = ReadSandboxValue(subkey, L"HostValue", GetCWD(), config);
-        ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
-        EXPECT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
-    }
-
-    /* The value of the hive is visible in every one of them. */
     {
         const auto rsp = ReadSandboxValue(subkey, L"SandboxValue", GetCWD(), config);
         ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));

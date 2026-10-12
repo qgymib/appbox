@@ -734,6 +734,34 @@ sandboxed process creates.
   which is marked `Hide` is created inside the hive, the closed loop of the
   write and the read back runs against the hive, and the host key is
   unchanged.
+* `test/e2e/Reg_Hide_WriteThenRestart.cpp` — the packed content of an entry
+  which is marked `Hide` lives in the hidden store of the hive, so the key of the
+  entry is not part of the view at all and the open reports `File Not Found`; the
+  write of the sandbox makes the entry visible in the same run and in the next
+  one, because the write belongs to the state directory and not to the hidden
+  store.
+* `test/e2e/Reg_Merge_WritesTheHostValue.cpp` — a value which the sandbox does
+  not hold below a merged key is written in the real registry: the host value
+  carries the data of the sandbox, the read back of the sandbox reports the same
+  data (the host layer is visible through the merged view) and the value of the
+  hive is untouched.
+* `test/e2e/Reg_Merge_KeepsTheHiveValue.cpp` — a value the sandbox holds below a
+  merged key is written in the sandbox: the read back reports the data of the
+  sandbox and the value of the real registry keeps the data of the host.
+* `test/e2e/Reg_Merge_DeletesTheHostValue.cpp` — the delete of a value the
+  sandbox does not hold below a merged key removes the value of the real
+  registry, the read back and the merged enumeration of the sandbox no longer
+  report the name, and the value does not come back.
+* `test/e2e/Reg_Merge_ValueDeletedInTheSandboxStaysInTheSandbox.cpp` — a value
+  which the sandbox holds is deleted in the sandbox (the value of the hive is
+  removed and the deletion is recorded, so the value of the host of the same name
+  stays hidden); the write which follows lands in the sandbox again, because a
+  value the sandbox deleted counts as held, and the real registry keeps the data
+  of the host.
+* `test/e2e/Reg_Merge_CreatesTheSubKeyInTheHost.cpp` — a sub key which the
+  sandbox does not hold below a merged key is created in the real registry, the
+  merged view reports the sub key of the host, and the key of the hive keeps its
+  own value.
 * `test/e2e/Reg_Full_HiveWinsOverReal.cpp` — a key which exists in the hive
   and in the host is answered by the hive.
 * `test/e2e/Reg_Full_HidesRealValue.cpp` — a single value of the host which
@@ -810,11 +838,13 @@ sandboxed process creates.
   overrides the mode of its parent; the second one pins that the mode of a
   single value hides the value of the host without touching the other values of
   the key.
-* `test/e2e/Reg_MalformedIsolationFile_FallsBack.cpp` — a document which is
-  not JSON and a document of an unknown version are both ignored, so the host
-  value stays readable; the valid document of the last half hides it, which is
-  what makes the run a check of the fallback instead of a check of the default
-  mode. The value of the hive is visible in every one of them.
+* `test/e2e/Reg_MalformedIsolationFile_FailsTheStart.cpp` — a document which is
+  not JSON, a document of a version the sandbox does not know, a document which
+  names no root key of the view and no document at all each fail the start of the
+  sandbox: the modes of the view cannot be resolved without a usable document, so
+  a run which would show the host registry never starts. A usable document starts
+  the sandbox afterwards, which is what makes the four runs a check of the
+  refusal instead of a check of a broken case.
 * `test/e2e/Reg_UsersRoot_MapsToTheCurrentUserHive.cpp` — a write through
   `HKEY_USERS` and the SID of the current user is visible through
   `HKEY_CURRENT_USER`, so the two roots name the same key of the hive layer,
@@ -1123,9 +1153,9 @@ header comment.
 | `BrokenPackageIsSkipped` | `00-bad.zip` is not an archive and `01-good.zip` carries the file of the case | the read returns the content of the good package, the run succeeds, and the package which cannot be read left no cache entry behind |
 | `NoPackageKeepsTheCacheEmpty` | the user created the `patch` directory, but it holds a file which is not a package | the read returns the content of the archive, and the `cache` directory was not created |
 | `RegistryHiveOfTheLastLayerWins` | the hive of `app` carries the values `Value` and `Kept` of a key; `00-foo.zip` overrides `Value` and adds `Added`, `01-bar.zip` overrides `Value` and adds `AddedByBar` | `Value` is the value of `01-bar.zip`, because the hives of the packages are applied in ascending order, `Added` is the value of `00-foo.zip`, `Kept` is the value of the archive, and the hive of the resources is byte identical to the one the case built |
-| `RegistryIsolationModeOfTheLastLayerWins` | the hive of `app` holds the key, the real HKCU holds its three values; the archive keeps `ByThePackage` visible and hides `OfTheArchive` and `ByTheArchive`, `01-bar.zip` hides `ByThePackage` and keeps `ByTheArchive` visible | `ByThePackage` and `OfTheArchive` do not exist, because the mode of the package wins over the mode of the archive while a value no package names keeps the mode of the layers below it, `ByTheArchive` is the value of the host again, and the real key is untouched |
+| `RegistryIsolationModeOfTheLastLayerWins` | the hive of `app` holds the key with the values `Own` and `Packed` and hides `Packed`, so the content of the value lives in the hidden store of the hive; the real HKCU holds `HostA` and `HostB` of the same key; `01-bar.zip` marks the key `Full` and the value `Packed` `Full` | `HostA` and `HostB` do not exist, because the mode of the package hides the key of the host with everything below it, which is the mode of the last layer; `Own` is the value of the archive; `Packed` is the content of the archive which the package made visible again, which is the materialization the launcher runs for the package; the real key is untouched |
 | `RegistryWithoutResourcesKeepsTheApp` | `00-foo.zip` carries a file of the filesystem domain and no resource of the registry domain at all | the value and the mode of the archive stay the value and the mode of the run, and the hive of the resources is byte identical to the one the case built |
-| `BrokenRegistryResourcesAreSkipped` | `01-bar.zip` carries a file which is not a hive as `registry/user.hiv` and a document which is not an isolation file as `registry/isolation.json` | the run succeeds, the value of the archive stays the value of the run, and the mode of the archive keeps hiding the value of the host |
+| `BrokenRegistryResourcesAreSkipped` | `01-bar.zip` carries a file which is not a hive as `registry/user.hiv` and no isolation file at all | the run succeeds, the value of the archive stays the value of the run, and the mode of the archive keeps hiding the value of the host; a package which carries a document the sandbox cannot use fails the start instead, see `Reg_MalformedIsolationFile_FailsTheStart` |
 | `RegistryStateBelowThePatchIsKept` | `01-bar.zip` overrides `Value` of the key, the first run writes `Runtime` into the same key, which no package names | the second run returns `package` for `Value`, because the hives of the packages are applied at every start, and `written` for `Runtime`, because an entry no package names keeps the state of the sandbox |
 | `NetworkDnsOfTheLastLayerWins` | the archive redirects a shared hostname and a hostname of its own; `00-foo.zip` redirects the shared hostname and adds a hostname of its own, `01-bar.zip` redirects the shared hostname a third time | the shared hostname resolves to the address of `01-bar.zip`, the hostname only the archive redirects keeps the address of the archive, and the hostname only the first package redirects is answered as well |
 | `NetworkProxyOfTheLastLayerWins` | two SOCKS5 servers of the case are listening; `00-foo.zip` configures the first one as its proxy and `01-bar.zip` the second one | the connection is carried by the server of `01-bar.zip` and the server of `00-foo.zip` received no request at all, so the proxy of a package replaces the proxy below it |
@@ -1146,10 +1176,17 @@ header comment.
   directory of the case. The resource directories are named after the known folder token
   (`app\filesystem\#USERPROFILE#`) so that `MapBaseFS` resolves them. The builder also
   links the sandbox injection modules of the run into the resource root of the case,
-  because every case which starts the launcher needs them there. `Verify()` re-reads
+  because every case which starts the launcher needs them there, and writes the registry
+  isolation file of a case which declares no registry domain: the sandbox refuses a run
+  whose archive carries no isolation file, so the builder writes the five root keys of
+  the view with the mode `Write Copy` — which keeps the entries of the host visible and
+  redirects every write into the sandbox, the behavior a sandbox without an isolation
+  file has, so a case which does not exercise the modes keeps the expectations of such a
+  sandbox. A case which declares its own registry domain, with the `FsRoot` content or
+  with the `HiveBuilder`, keeps it. `Verify()` re-reads
   everything a case declared and fails if the content changed; the isolation files which
-  the helpers of the suite write and the injection modules are not part of the declared
-  content.
+  the helpers of the suite write, the registry domain and the injection modules are not
+  part of the declared content.
 * `test/utils/CommonFixture.*` — gives every case a private working directory, and
   skips the case when the run provided no sandbox injection modules, because the launcher
   of a case cannot inject anything without them.
@@ -1186,7 +1223,14 @@ header comment.
   (`app/registry`), which is where the launcher looks for them: it seeds the hive into
   the state directory of the sandbox, so a case exercises the seeding as well. The
   content of the hive and the isolation modes are tracked apart, so a mode can be
-  listed for a key which the hive does not hold. `WriteRawIsolation()` writes a text
+  listed for a key which the hive does not hold. The builder lists the five root keys of
+  the view, which the sandbox requires of every isolation file, and a root key a case does
+  not name keeps the mode of the builder, `Write Copy`; the preset of the packer is
+  `Merge`, which lets a write reach the real registry, so a case which pins that behavior
+  names the mode itself. The content of an entry whose mode is `Hide` is written into the
+  hidden store of the hive instead of the view, which is what the packer does, so a case
+  observes the packed content of a hidden entry the way the sandbox does.
+  `WriteRawIsolation()` writes a text
   which is not the document of the builder, which is what a case about a refused
   document needs, and `BuildRegistryIsolationText()` returns the document of a
   list of modes without writing it, which is what the builder of a patch package

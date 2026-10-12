@@ -33,19 +33,122 @@ const char* const kIsolationColumnLead =
 
 /**
  * @brief Describe the modes the `Isolation` column offers.
+ *
+ * A key and a value carry different modes, so the description names the modes
+ * of both kinds of row.
+ *
  * @return The description of the column.
  */
 wxString IsolationColumnTooltip()
 {
     wxString text = kIsolationColumnLead;
-    for (const auto isolation :
-         { appbox::RegistryIsolation::Full, appbox::RegistryIsolation::WriteCopy, appbox::RegistryIsolation::Hide })
+
+    text += "\n\nA key offers:";
+    for (const auto isolation : { appbox::RegistryKeyIsolation::Full, appbox::RegistryKeyIsolation::Merge,
+                                  appbox::RegistryKeyIsolation::WriteCopy, appbox::RegistryKeyIsolation::Hide })
     {
         text += "\n\n";
-        text += wxString(appbox::RegistryIsolationDescription(isolation));
+        text += wxString(appbox::RegistryKeyIsolationDescription(isolation));
     }
+
+    text += "\n\nA value offers:";
+    for (const auto isolation : { appbox::RegistryValueIsolation::Full, appbox::RegistryValueIsolation::Hide })
+    {
+        text += "\n\n";
+        text += wxString(appbox::RegistryValueIsolationDescription(isolation));
+    }
+
     return text;
 }
+
+/**
+ * @brief Renderer of the `Isolation` column.
+ *
+ * The column offers the isolation modes of a row, and the modes of a key differ
+ * from the modes of a value, so the choices depend on the row and cannot be the
+ * fixed list of a choice renderer. The renderer draws the mode of the row as
+ * text and asks the panel for the modes which fit the row when the cell is
+ * activated.
+ */
+class IsolationRenderer : public wxDataViewCustomRenderer
+{
+public:
+    /**
+     * @brief Create the renderer of a panel.
+     * @param[in] panel The panel which owns the table and the rows.
+     */
+    explicit IsolationRenderer(RegistryPanel* panel)
+        : wxDataViewCustomRenderer("string", wxDATAVIEW_CELL_ACTIVATABLE, wxALIGN_LEFT), panel_(panel)
+    {
+    }
+
+    /**
+     * @brief Store the text of the cell.
+     * @param[in] value Text of the mode of the row.
+     * @return true.
+     */
+    bool SetValue(const wxVariant& value) override
+    {
+        text_ = value.GetString();
+        return true;
+    }
+
+    /**
+     * @brief Report the text of the cell.
+     * @param[out] value Text of the mode of the row.
+     * @return true.
+     */
+    bool GetValue(wxVariant& value) const override
+    {
+        value = text_;
+        return true;
+    }
+
+    /**
+     * @brief Get the size the cell needs.
+     * @return The size of the text plus the room of the dropdown marker.
+     */
+    wxSize GetSize() const override
+    {
+        return GetTextExtent(text_) + wxSize(20, 4);
+    }
+
+    /**
+     * @brief Draw the mode of the row.
+     * @param[in] rect Rectangle of the cell.
+     * @param[in] dc Device context to draw into.
+     * @param[in] state State of the cell.
+     * @return true.
+     */
+    bool Render(wxRect rect, wxDC* dc, int state) override
+    {
+        RenderText(text_, 0, rect, dc, state);
+        return true;
+    }
+
+    /**
+     * @brief Offer the modes which fit the row.
+     *
+     * The model, the column and the mouse event of the call are not used: the
+     * panel resolves the row of the item and draws the popup itself.
+     *
+     * @param[in] cell Rectangle of the cell.
+     * @param[in] item Item of the row.
+     * @return true when a mode was chosen and applied.
+     */
+    bool ActivateCell(const wxRect& cell, wxDataViewModel*, const wxDataViewItem& item, unsigned int,
+                      const wxMouseEvent*) override
+    {
+        return panel_ != nullptr && panel_->PopupIsolationMenu(item, cell);
+    }
+
+private:
+    /** @brief The panel which owns the table and the rows. */
+    RegistryPanel* panel_ = nullptr;
+
+    /** @brief Text of the cell, the name of the mode of the row. */
+    wxString text_;
+};
 
 /**
  * @brief Get the name shown by the name column of a row.
@@ -141,24 +244,18 @@ void RegistryPanel::CreateList(wxWindow* parent)
     list_->AppendIconTextColumn("Name", wxDATAVIEW_CELL_INERT, 260);
 
     /*
-     * The isolation column uses a choice renderer: the mode of a row is picked
-     * from a dropdown instead of being typed, so the table never holds a mode
-     * the model does not know. The renderer is added through AppendColumn()
-     * because it has to claim the model column of the table explicitly.
+     * The isolation column offers the modes which fit the kind of a row: a key
+     * carries the four modes of a key and a value the two modes of a value, so
+     * the column uses a renderer which asks the panel for the choices of the row
+     * it draws. The renderer is added through AppendColumn() because it has to
+     * claim the model column of the table explicitly.
      */
-    wxArrayString choices;
-    for (const auto& name : appbox::RegistryIsolationNames())
-    {
-        choices.Add(wxString(name));
-    }
-    list_->AppendColumn(new wxDataViewColumn(
-        "Isolation", new wxDataViewChoiceRenderer(choices, wxDATAVIEW_CELL_EDITABLE), kIsolationColumn, 110));
+    list_->AppendColumn(new wxDataViewColumn("Isolation", new IsolationRenderer(this), kIsolationColumn, 110));
 
     list_->AppendTextColumn("Type", wxDATAVIEW_CELL_INERT, 140);
     list_->AppendTextColumn("Value", wxDATAVIEW_CELL_INERT, 300);
 
     list_->Bind(wxEVT_DATAVIEW_ITEM_ACTIVATED, &RegistryPanel::OnItemActivated, this);
-    list_->Bind(wxEVT_DATAVIEW_ITEM_VALUE_CHANGED, &RegistryPanel::OnIsolationChanged, this);
     list_->Bind(wxEVT_DATAVIEW_SELECTION_CHANGED, [this](wxDataViewEvent& event) {
         UpdateToolBarState();
         event.Skip();
@@ -187,22 +284,27 @@ wxWindow* RegistryPanel::CreateToolBarRow(wxWindow* parent)
     auto* row = new wxPanel(parent, wxID_ANY);
     row->SetBackgroundColour(kToolBarBackground);
 
-    add_value_ = new wxButton(row, wxID_ANY, "Add value", wxDefaultPosition, wxSize(-1, 26));
-    add_value_->SetToolTip("Add a value to the selected key");
-    add_value_->Bind(wxEVT_BUTTON, &RegistryPanel::OnAddValue, this);
-
     add_key_ = new wxButton(row, wxID_ANY, "Add key", wxDefaultPosition, wxSize(-1, 26));
     add_key_->SetToolTip("Add a sub key to the selected key");
     add_key_->Bind(wxEVT_BUTTON, &RegistryPanel::OnAddKey, this);
+
+    add_value_ = new wxButton(row, wxID_ANY, "Add value", wxDefaultPosition, wxSize(-1, 26));
+    add_value_->SetToolTip("Add a value to the selected key");
+    add_value_->Bind(wxEVT_BUTTON, &RegistryPanel::OnAddValue, this);
 
     remove_ = new wxButton(row, wxID_ANY, "Remove", wxDefaultPosition, wxSize(-1, 26));
     remove_->SetToolTip("Remove the selected sub key or value");
     remove_->Bind(wxEVT_BUTTON, &RegistryPanel::OnRemove, this);
 
+    up_dir_ = new wxButton(row, wxID_ANY, "Up Dir", wxDefaultPosition, wxSize(-1, 26));
+    up_dir_->SetToolTip("Move the tree selection to the parent key");
+    up_dir_->Bind(wxEVT_BUTTON, &RegistryPanel::OnUpDir, this);
+
     auto* sizer = new wxBoxSizer(wxHORIZONTAL);
-    sizer->Add(add_value_, 0, wxALL, 4);
-    sizer->Add(add_key_, 0, wxTOP | wxBOTTOM | wxRIGHT, 4);
+    sizer->Add(add_key_, 0, wxALL, 4);
+    sizer->Add(add_value_, 0, wxTOP | wxBOTTOM | wxRIGHT, 4);
     sizer->Add(remove_, 0, wxTOP | wxBOTTOM | wxRIGHT, 4);
+    sizer->Add(up_dir_, 0, wxTOP | wxBOTTOM | wxRIGHT, 4);
     sizer->AddStretchSpacer();
 
     row->SetSizer(sizer);
@@ -315,7 +417,8 @@ void RegistryPanel::RefreshList()
         RowInfo info;
         info.kind = row.kind == appbox::RegistryRow::Kind::Key ? RowInfo::Kind::Key : RowInfo::Kind::Value;
         info.name = row.name;
-        info.isolation = row.isolation;
+        info.key_isolation = row.key_isolation;
+        info.value_isolation = row.value_isolation;
         info.type = row.type;
         info.data = row.data;
         rows_.push_back(std::move(info));
@@ -344,9 +447,16 @@ void RegistryPanel::AppendRow(const RowInfo& row, std::size_t index)
     wxVariant name;
     name << wxDataViewIconText(RowLabel(row.name, is_value), IconOf(row));
 
+    /*
+     * The mode of a row comes from the list which fits its kind: a value carries
+     * the two value modes alone.
+     */
+    const wxString isolation = is_value ? wxString(appbox::RegistryValueIsolationName(row.value_isolation))
+                                        : wxString(appbox::RegistryKeyIsolationName(row.key_isolation));
+
     wxVector<wxVariant> values;
     values.push_back(name);
-    values.push_back(wxVariant(wxString(appbox::RegistryIsolationName(row.isolation))));
+    values.push_back(wxVariant(isolation));
     values.push_back(wxVariant(is_value ? wxString(appbox::RegistryValueTypeName(row.type)) : wxString()));
     values.push_back(wxVariant(
         is_value ? wxString(appbox::FormatRegistryValueData(row.type, row.data, kValuePreviewLength)) : wxString()));
@@ -371,6 +481,16 @@ void RegistryPanel::UpdateToolBarState()
     if (add_key_ != nullptr)
     {
         add_key_->Enable(has_key);
+    }
+    if (up_dir_ != nullptr)
+    {
+        /*
+         * The container is the root of the tree and the only node without a
+         * parent, so the command is offered for every node but the container: a
+         * root key moves to the container like a sub key moves to the key it
+         * hangs below.
+         */
+        up_dir_->Enable(has_key);
     }
 
     if (remove_ == nullptr)
@@ -421,23 +541,65 @@ int RegistryPanel::SelectedRowIndex() const
     return RowIndex(list_->RowToItem(selected));
 }
 
-void RegistryPanel::ApplyIsolation(const RowInfo& row, appbox::RegistryIsolation isolation)
+void RegistryPanel::ApplyIsolation(const RowInfo& row, appbox::RegistryKeyIsolation isolation)
 {
-    if (row.kind == RowInfo::Kind::Key)
+    /*
+     * The mode of a row reaches the row itself: the sub keys and the values
+     * below it keep their modes. The subtree of a key is only overwritten
+     * through the isolation dialog of the tree.
+     */
+    model_.SetKeyIsolation(appbox::JoinRegistryPath(current_path_, row.name), isolation);
+    RefreshList();
+}
+
+void RegistryPanel::ApplyIsolation(const RowInfo& row, appbox::RegistryValueIsolation isolation)
+{
+    model_.SetValueIsolation(current_path_, row.name, isolation);
+    RefreshList();
+}
+
+bool RegistryPanel::PopupIsolationMenu(const wxDataViewItem& item, const wxRect& cell)
+{
+    const int index = RowIndex(item);
+    if (index < 0)
     {
-        /*
-         * The mode of a row reaches the row itself: the sub keys and the
-         * values below it keep their modes. The subtree of a key is only
-         * overwritten through the isolation dialog of the tree.
-         */
-        model_.SetKeyIsolation(appbox::JoinRegistryPath(current_path_, row.name), isolation);
+        return false;
+    }
+
+    const RowInfo row = rows_[static_cast<std::size_t>(index)];
+    const bool    is_value = row.kind == RowInfo::Kind::Value;
+    const auto&   names = is_value ? appbox::RegistryValueIsolationNames() : appbox::RegistryKeyIsolationNames();
+
+    wxMenu menu;
+    int    chosen = -1;
+    for (std::size_t position = 0; position < names.size(); ++position)
+    {
+        const int id = wxWindow::NewControlId();
+        menu.Append(id, wxString(names[position]));
+        menu.Bind(wxEVT_MENU, [&chosen, position](wxCommandEvent&) { chosen = static_cast<int>(position); }, id);
+    }
+
+    list_->PopupMenu(&menu, list_->ClientToScreen(cell.GetTopLeft()));
+    if (chosen < 0)
+    {
+        return false;
+    }
+
+    /*
+     * The table is rebuilt once the control finished the activation; doing it
+     * inside the handler would delete the row the control still holds while it
+     * processes the click.
+     */
+    if (is_value)
+    {
+        CallAfter([this, row, chosen]() { ApplyIsolation(row, static_cast<appbox::RegistryValueIsolation>(chosen)); });
     }
     else
     {
-        model_.SetValueIsolation(current_path_, row.name, isolation);
+        CallAfter([this, row, chosen]() { ApplyIsolation(row, static_cast<appbox::RegistryKeyIsolation>(chosen)); });
     }
 
-    RefreshList();
+    return true;
 }
 
 void RegistryPanel::EditKey(int index)
@@ -463,7 +625,7 @@ void RegistryPanel::EditKey(int index)
      * model decide whether a name is accepted without being duplicated here
      * and without a rejected name changing the registry.
      */
-    RegistryKeyDialog dialog(this, "Edit Key", wxString(current_path_), wxString(row.name),
+    RegistryKeyDialog dialog(this, "Edit Key", wxString(current_path_), wxString(row.name), row.key_isolation,
                              [this, path](const std::wstring& name) -> std::string {
                                  appbox::RegistryModel copy = model_;
                                  std::string           error;
@@ -485,6 +647,16 @@ void RegistryPanel::EditKey(int index)
         return;
     }
 
+    /*
+     * The isolation mode of the dialog reaches the renamed key as well: the
+     * rename only changes the name, so the mode is stored under the new path.
+     */
+    if (!model_.SetKeyIsolation(appbox::JoinRegistryPath(current_path_, dialog.Name()), dialog.Isolation()))
+    {
+        wxMessageBox("The isolation mode of the renamed key could not be stored.", "Edit Key", wxOK | wxICON_ERROR,
+                     this);
+    }
+
     BuildTree();
     SelectTreePath(current_path_);
     RefreshList();
@@ -497,6 +669,7 @@ void RegistryPanel::EditValue(int index)
     const auto old_name = row.name;
 
     RegistryValueDialog dialog(this, "Edit Value", wxString(key_path), wxString(old_name), row.type, row.data,
+                               row.value_isolation,
                                [this, key_path, old_name](const std::wstring& name, appbox::RegistryValueType type,
                                                           const std::vector<std::uint8_t>& data) -> std::string {
                                    appbox::RegistryModel copy = model_;
@@ -517,6 +690,17 @@ void RegistryPanel::EditValue(int index)
     {
         wxMessageBox(wxString::FromUTF8(error), "Edit Value", wxOK | wxICON_ERROR, this);
         return;
+    }
+
+    /*
+     * The isolation mode of the dialog reaches the edited value as well: the
+     * update only changes the name, the type and the data, so the mode is
+     * stored under the name the dialog reports.
+     */
+    if (!model_.SetValueIsolation(key_path, dialog.Name(), dialog.Isolation()))
+    {
+        wxMessageBox("The isolation mode of the edited value could not be stored.", "Edit Value", wxOK | wxICON_ERROR,
+                     this);
     }
 
     RefreshList();
@@ -573,9 +757,9 @@ void RegistryPanel::EditIsolation(const std::wstring& path)
         return;
     }
 
-    if (dialog.ApplyToSubKeys())
+    if (dialog.Recursive())
     {
-        model_.ApplyIsolationToSubtree(path, dialog.Isolation(), dialog.ApplyToValues());
+        model_.ApplyIsolationToSubtree(path, dialog.Isolation());
     }
     else
     {
@@ -606,45 +790,6 @@ void RegistryPanel::OnItemActivated(wxDataViewEvent& event)
     }
 }
 
-void RegistryPanel::OnIsolationChanged(wxDataViewEvent& event)
-{
-    if (updating_ || event.GetColumn() != kIsolationColumn)
-    {
-        event.Skip();
-        return;
-    }
-
-    const int index = RowIndex(event.GetItem());
-    if (index < 0)
-    {
-        return;
-    }
-
-    const int row_in_control = list_->ItemToRow(event.GetItem());
-    if (row_in_control == wxNOT_FOUND)
-    {
-        return;
-    }
-
-    const auto chosen = list_->GetTextValue(static_cast<unsigned int>(row_in_control), kIsolationColumn).ToStdWstring();
-    const auto& names = appbox::RegistryIsolationNames();
-    for (std::size_t position = 0; position < names.size(); ++position)
-    {
-        if (names[position] == chosen)
-        {
-            /*
-             * The table is rebuilt once the control finished its edit; doing
-             * it inside the event would delete the row the control still
-             * holds while it commits the value.
-             */
-            const auto row = rows_[static_cast<std::size_t>(index)];
-            const auto isolation = static_cast<appbox::RegistryIsolation>(position);
-            CallAfter([this, row, isolation]() { ApplyIsolation(row, isolation); });
-            return;
-        }
-    }
-}
-
 void RegistryPanel::OnAddKey(wxCommandEvent&)
 {
     if (current_path_.empty())
@@ -652,7 +797,14 @@ void RegistryPanel::OnAddKey(wxCommandEvent&)
         return;
     }
 
-    RegistryKeyDialog dialog(this, "Add Key", wxString(current_path_), wxEmptyString,
+    /*
+     * A new key follows the key it is created in, so the mode the dialog offers
+     * starts at the mode of the selected key.
+     */
+    const auto* parent = model_.FindKey(current_path_);
+    const auto  initial_isolation = parent != nullptr ? parent->isolation : appbox::RegistryKeyIsolation::Merge;
+
+    RegistryKeyDialog dialog(this, "Add Key", wxString(current_path_), wxEmptyString, initial_isolation,
                              [this](const std::wstring& name) -> std::string {
                                  appbox::RegistryModel copy = model_;
                                  std::string           error;
@@ -674,6 +826,12 @@ void RegistryPanel::OnAddKey(wxCommandEvent&)
         return;
     }
 
+    /* The mode the user picked replaces the mode the new key inherited. */
+    if (!model_.SetKeyIsolation(appbox::JoinRegistryPath(current_path_, dialog.Name()), dialog.Isolation()))
+    {
+        wxMessageBox("The isolation mode of the new key could not be stored.", "Add Key", wxOK | wxICON_ERROR, this);
+    }
+
     BuildTree();
     SelectTreePath(current_path_);
     RefreshList();
@@ -686,8 +844,17 @@ void RegistryPanel::OnAddValue(wxCommandEvent&)
         return;
     }
 
+    /*
+     * A new value follows the key it is created in, so the mode the dialog
+     * offers starts at the mode DefaultValueIsolation() reports for the
+     * selected key.
+     */
+    const auto* parent = model_.FindKey(current_path_);
+    const auto  initial_isolation =
+        appbox::DefaultValueIsolation(parent != nullptr ? parent->isolation : appbox::RegistryKeyIsolation::Merge);
+
     RegistryValueDialog dialog(this, "Add Value", wxString(current_path_), wxEmptyString,
-                               appbox::RegistryValueType::String, {},
+                               appbox::RegistryValueType::String, {}, initial_isolation,
                                [this](const std::wstring& name, appbox::RegistryValueType type,
                                       const std::vector<std::uint8_t>& data) -> std::string {
                                    appbox::RegistryModel copy = model_;
@@ -708,6 +875,13 @@ void RegistryPanel::OnAddValue(wxCommandEvent&)
     {
         wxMessageBox(wxString::FromUTF8(error), "Add Value", wxOK | wxICON_ERROR, this);
         return;
+    }
+
+    /* The mode the user picked replaces the mode the new value inherited. */
+    if (!model_.SetValueIsolation(current_path_, dialog.Name(), dialog.Isolation()))
+    {
+        wxMessageBox("The isolation mode of the new value could not be stored.", "Add Value", wxOK | wxICON_ERROR,
+                     this);
     }
 
     RefreshList();
@@ -756,4 +930,21 @@ void RegistryPanel::OnRemove(wxCommandEvent&)
     BuildTree();
     SelectTreePath(current_path_);
     RefreshList();
+}
+
+void RegistryPanel::OnUpDir(wxCommandEvent&)
+{
+    /*
+     * The rule of the command is the one of the toolbar state: the container is
+     * the root of the tree and the only node without a parent, so every other
+     * key moves to the key the tree shows above it. The path of the selection
+     * names that key, which keeps the command on the model and not on the shape
+     * of the tree; the selection change refreshes the table.
+     */
+    if (current_path_.empty())
+    {
+        return;
+    }
+
+    SelectTreePath(appbox::RegistryParentPath(current_path_));
 }

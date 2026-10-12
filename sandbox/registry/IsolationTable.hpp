@@ -4,6 +4,7 @@
 #include "RegistryIsolation.hpp"
 #include <cstddef>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -62,14 +63,15 @@ struct IsolationValueKeyLess
 /**
  * @brief The isolation modes of the virtual registry inside the sandbox.
  *
- * The table is the sandbox side of the isolation files of the layers of a
- * run. It holds the entries those files list, which is every key and every
- * value of the packer workspace; the mode of every other entry — a key the
- * sandboxed process creates while it runs, or an entry of a hand written file
- * — is derived by walking the path upwards, so a key which was set to `Full`
- * also covers the keys and values below it which no file lists. An entry
- * without any listed ancestor follows the default mode `WriteCopy`, which is
- * the behaviour of a sandbox without an isolation file.
+ * The table is the sandbox side of the isolation files of the layers of a run.
+ * It holds the entries those files list, which is every key and every value of
+ * the packer workspace; the mode of every other entry — a key the sandboxed
+ * process creates while it runs, or an entry of a hand written file — is
+ * derived by walking the path upwards. There is no default mode: the file of
+ * the archive has to list the five root keys of the view (see
+ * `NamesRootKeys()`), so the mode of every path of the view resolves. A table
+ * which misses a root key was never validated and reports `Hide`, which keeps
+ * the host registry out of the view instead of showing it.
  *
  * The files are applied one after the other, the file of the resources of the
  * archive first and the file of every patch package after it, so a mode a
@@ -118,53 +120,58 @@ public:
     std::size_t ValueCount() const;
 
     /**
+     * @brief Whether the table names every root key of the view.
+     *
+     * The five root keys are the first component of every path of the view, so
+     * a table which names all of them resolves the mode of every entry. A
+     * loaded table which misses one of them cannot describe the run and fails
+     * the start of the sandbox.
+     *
+     * @return true when all five root keys are listed.
+     */
+    bool NamesRootKeys() const;
+
+    /**
      * @brief Get the effective isolation mode of a key.
      *
      * The lookup starts at the key itself and walks the path upwards until a
      * listed entry is found, so a listed ancestor covers its whole subtree.
+     * `Hide` covers the subtree as well: a key below a hidden key is hidden,
+     * whatever mode it names itself, because the whole subtree lives in the
+     * hidden store of the hive.
      *
      * @param[in] key_path Path of the key relative to the hive root, for
      *                     example `HKEY_CURRENT_USER\Software`.
-     * @return The mode of the key, `WriteCopy` when neither the key nor one of
-     *         its ancestors is listed.
+     * @return The mode of the key. A path which resolves to no listed entry is
+     *         reported as `Hide`, which keeps the host registry invisible.
      */
-    RegistryIsolation KeyMode(const std::wstring& key_path) const;
+    RegistryKeyIsolation KeyMode(const std::wstring& key_path) const;
 
     /**
-     * @brief Get the effective isolation mode of a value.
+     * @brief Get the listed isolation mode of a value.
      *
-     * A value which is not listed follows the effective mode of the key which
-     * holds it.
+     * A value which the table does not list has no mode of its own: it follows
+     * the mode of the key which holds it, which is what the caller applies with
+     * `appbox::registry::ValueHidesHost()` and
+     * `appbox::registry::ValueWritesToHost()`.
      *
      * @param[in] key_path Path of the key which holds the value.
      * @param[in] value_name Name of the value, empty for the default value.
-     * @return The mode of the value.
+     * @return The listed mode, empty when the value is not listed.
      */
-    RegistryIsolation ValueMode(const std::wstring& key_path, const std::wstring& value_name) const;
-
-    /**
-     * @brief Whether a mode keeps the entry of the host registry invisible.
-     *
-     * `Full` and `Hide` both describe an entry the sandboxed process may only
-     * see through the virtual registry: a key or value which the hive does not
-     * hold is reported as not found instead of falling back to the host.
-     * `WriteCopy` keeps the host entry visible.
-     *
-     * @param[in] mode The isolation mode to classify.
-     * @return true when the host entry must stay invisible.
-     */
-    static bool HidesHost(RegistryIsolation mode);
+    std::optional<RegistryValueIsolation> ListedValueMode(const std::wstring& key_path,
+                                                          const std::wstring& value_name) const;
 
 private:
     /**
      * @brief The listed key modes, ordered by path.
      */
-    std::map<std::wstring, RegistryIsolation, IsolationKeyLess> keys_;
+    std::map<std::wstring, RegistryKeyIsolation, IsolationKeyLess> keys_;
 
     /**
      * @brief The listed value modes, ordered by key path and value name.
      */
-    std::map<IsolationValueKey, RegistryIsolation, IsolationValueKeyLess> values_;
+    std::map<IsolationValueKey, RegistryValueIsolation, IsolationValueKeyLess> values_;
 };
 
 } // namespace registry

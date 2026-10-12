@@ -41,7 +41,7 @@ TEST_F(E2E_Reg, Full_HidesRealKey)
 
     /* The hive stays empty, the isolation file marks the key of the host. */
     HiveBuilder builder(GetCWD());
-    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey, appbox::RegistryIsolation::Full);
+    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey, appbox::RegistryKeyIsolation::Full);
 
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;

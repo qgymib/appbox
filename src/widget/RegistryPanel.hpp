@@ -19,15 +19,23 @@ class wxButton;
  * Left side: the tree of the virtual registry. Its top item is the
  * `Sandbox Registry` container with the five root keys, which are always
  * shown even when no `.reg` file was imported. Right side: a toolbar row
- * (Add value, Add key, Remove) above the table of the child view of the
- * selected key.
+ * (Add key, Add value, Remove, Up Dir) above the table of the child view of
+ * the selected key.
  *
  * The table shows the sub keys and the values of the selected key with the
- * columns Name, Isolation, Type and Value. The isolation mode of every row is
- * edited through a dropdown in the row itself, which changes the row alone;
- * every other column is edited by double clicking the row, which opens the key
- * or value dialog. The context menu of the tree offers `Isolation Mode...`,
- * which applies a mode to a whole subtree when the dialog asks for it.
+ * columns Name, Isolation, Type and Value. The isolation mode of a row is picked
+ * from a popup which the `Isolation` column opens when the cell is activated; the
+ * popup offers the modes which fit the kind of the row, because a key and a value
+ * carry different modes. A mode chosen in the table changes the row alone; every
+ * other column is edited by double clicking the row, which opens the key or value
+ * dialog, and both dialogs pick the isolation mode of the entry as well. The
+ * context menu of the tree offers `Isolation Mode...`, which applies a key mode
+ * to the key alone or to its whole subtree, as the dialog asks for.
+ *
+ * The `Up Dir` command moves the tree selection to the key above the selected
+ * one. The container is the root of the tree and the only node without a parent,
+ * so the command is offered for every node but the container: a root key moves to
+ * the container like a sub key moves to the key it hangs below.
  *
  * The header of the `Isolation` column explains the modes the column offers,
  * see `DataViewTooltip`; the cells of the table carry no tooltip of their own.
@@ -46,6 +54,19 @@ public:
      * @brief Rebuild tree and table after the model changed externally.
      */
     void RefreshModel();
+
+    /**
+     * @brief Offer the isolation modes of a row and apply the chosen one.
+     *
+     * The renderer of the `Isolation` column calls this when a cell of the
+     * column is activated. The modes a row offers depend on its kind: a key row
+     * offers the modes of a key and a value row the modes of a value.
+     *
+     * @param[in] item Table item of the row.
+     * @param[in] cell Rectangle of the cell, in client coordinates.
+     * @return true when a mode was chosen and applied.
+     */
+    bool PopupIsolationMenu(const wxDataViewItem& item, const wxRect& cell);
 
 private:
     /**
@@ -84,9 +105,17 @@ private:
         std::wstring name;
 
         /**
-         * @brief Isolation mode of the entry behind the row.
+         * @brief Isolation mode of the key behind a key row.
+         *
+         * A value carries the two value modes alone, so the field which matches
+         * the kind of the row is the one the table shows and edits.
          */
-        appbox::RegistryIsolation isolation = appbox::RegistryIsolation::WriteCopy;
+        appbox::RegistryKeyIsolation key_isolation = appbox::RegistryKeyIsolation::Merge;
+
+        /**
+         * @brief Isolation mode of the value behind a value row.
+         */
+        appbox::RegistryValueIsolation value_isolation = appbox::RegistryValueIsolation::Full;
 
         /**
          * @brief Type of the value, only meaningful for value rows.
@@ -200,7 +229,7 @@ private:
     int SelectedRowIndex() const;
 
     /**
-     * @brief Apply an isolation mode chosen in the table.
+     * @brief Apply an isolation mode chosen in the table to a key row.
      *
      * The mode reaches the row itself and nothing else; a whole subtree is only
      * changed through EditIsolation().
@@ -208,7 +237,14 @@ private:
      * @param[in] row Row whose isolation was changed.
      * @param[in] isolation New isolation mode.
      */
-    void ApplyIsolation(const RowInfo& row, appbox::RegistryIsolation isolation);
+    void ApplyIsolation(const RowInfo& row, appbox::RegistryKeyIsolation isolation);
+
+    /**
+     * @brief Apply an isolation mode chosen in the table to a value row.
+     * @param[in] row Row whose isolation was changed.
+     * @param[in] isolation New isolation mode.
+     */
+    void ApplyIsolation(const RowInfo& row, appbox::RegistryValueIsolation isolation);
 
     /**
      * @brief Open the isolation dialog of a key.
@@ -251,12 +287,6 @@ private:
     void OnItemActivated(wxDataViewEvent& event);
 
     /**
-     * @brief Apply an isolation mode chosen in the isolation column.
-     * @param[in] event Table item value change event.
-     */
-    void OnIsolationChanged(wxDataViewEvent& event);
-
-    /**
      * @brief Add a sub key to the selected key.
      * @param[in] event Command event.
      */
@@ -274,6 +304,12 @@ private:
      */
     void OnRemove(wxCommandEvent& event);
 
+    /**
+     * @brief Move the tree selection to the parent key.
+     * @param[in] event Command event.
+     */
+    void OnUpDir(wxCommandEvent& event);
+
     appbox::RegistryModel& model_;
 
     /**
@@ -283,9 +319,10 @@ private:
 
     wxTreeCtrl*         tree_ = nullptr;
     wxDataViewListCtrl* list_ = nullptr;
-    wxButton*           add_value_ = nullptr;
     wxButton*           add_key_ = nullptr;
+    wxButton*           add_value_ = nullptr;
     wxButton*           remove_ = nullptr;
+    wxButton*           up_dir_ = nullptr;
 
     /**
      * @brief Icon shown before the name of a sub key row of the table.

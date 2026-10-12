@@ -117,7 +117,7 @@ TEST_F(E2E_Reg, SaveKey_MergedSnapshot)
 
     HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"SandboxValue", REG_SZ, StringData(L"sandbox"));
-    builder.SetValueIsolation(L"HKEY_CURRENT_USER\\" + subkey, L"Hidden", appbox::RegistryIsolation::Full);
+    builder.SetValueIsolation(L"HKEY_CURRENT_USER\\" + subkey, L"Hidden", appbox::RegistryValueIsolation::Full);
     builder.SetValue(L"HKEY_CURRENT_USER\\" + hive_only, L"OnlyValue", REG_SZ, StringData(L"only"));
 
     std::string error;
@@ -213,7 +213,7 @@ TEST_F(E2E_Reg, SaveKeyEx_MergedSnapshot)
 
     HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"SandboxValue", REG_SZ, StringData(L"sandbox"));
-    builder.SetValueIsolation(L"HKEY_CURRENT_USER\\" + subkey, L"Hidden", appbox::RegistryIsolation::Full);
+    builder.SetValueIsolation(L"HKEY_CURRENT_USER\\" + subkey, L"Hidden", appbox::RegistryValueIsolation::Full);
 
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;

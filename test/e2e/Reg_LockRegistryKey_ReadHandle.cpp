@@ -1,9 +1,11 @@
 #include "probe/RegKeyApi.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
+#include "utils/HiveBuilder.hpp"
 #include "utils/RealHkcuKey.hpp"
 #include "Random.hpp"
 #include "WString.hpp"
+#include <string>
 
 typedef appbox::test::CommonFixture E2E_Reg;
 using namespace appbox::test;
@@ -11,8 +13,9 @@ using namespace appbox::test;
 /**
  * Condition:
  * 1. The key and the value `HostValue` exist in the real HKCU only, so a read
- *    access open of the key is answered by the real registry (the read through)
- *    and the caller holds a handle of the host layer.
+ *    access open of the key is answered by the real registry (the read through
+ *    of the `Merge` mode the key inherits) and the caller holds a handle of the
+ *    host layer.
  * 2. Call `NtLockRegistryKey` on that handle inside the sandbox.
  *
  * Expected:
@@ -32,6 +35,7 @@ TEST_F(E2E_Reg, LockRegistryKey_ReadHandle)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
+        FsDir(L"app", { FsDir(L"filesystem", {}) }),
         FsDir(L"data")
     });
     /* clang-format on */
@@ -44,6 +48,13 @@ TEST_F(E2E_Reg, LockRegistryKey_ReadHandle)
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
     ASSERT_TRUE(real_key.SetString(L"HostValue", L"host"));
+
+    /* The key inherits the `Merge` mode of the root key of the view. */
+    HiveBuilder builder(GetCWD());
+    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\AppBoxTest", appbox::RegistryKeyIsolation::Merge);
+
+    std::string error;
+    ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegKeyApi::Req req;
     req.Key = appbox::WideToUTF8(subkey);

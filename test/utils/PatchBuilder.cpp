@@ -193,8 +193,9 @@ bool BuildArchive(const std::filesystem::path& path, const std::vector<appbox::t
         const std::string registry_isolation =
             !registry.raw_isolation.empty()
                 ? registry.raw_isolation
-                : (registry.isolation.empty() ? std::string()
-                                              : appbox::test::BuildRegistryIsolationText(registry.isolation));
+                : ((registry.key_isolation.empty() && registry.value_isolation.empty())
+                       ? std::string()
+                       : appbox::test::BuildRegistryIsolationText(registry.key_isolation, registry.value_isolation));
 
         if (!registry_isolation.empty() &&
             !writer.AddFileBuffer(EntryNameIn(appbox::layout::kRegistryDirName, appbox::layout::kIsolationFileNameW),

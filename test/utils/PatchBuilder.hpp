@@ -79,9 +79,14 @@ struct PatchRegistry
     std::vector<PatchRegistryValue> values;
 
     /**
-     * @brief Modes the isolation file of the package lists.
+     * @brief Key modes the isolation file of the package lists.
      */
-    std::vector<RegistryIsolationEntry> isolation;
+    std::vector<RegistryKeyIsolationEntry> key_isolation;
+
+    /**
+     * @brief Value modes the isolation file of the package lists.
+     */
+    std::vector<RegistryValueIsolationEntry> value_isolation;
 
     /**
      * @brief Text written as the hive of the package instead of a built hive.

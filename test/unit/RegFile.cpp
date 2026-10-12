@@ -378,9 +378,9 @@ TEST(Unit_RegFile, MergeKeepsTheIsolationModesOfTheModel)
     ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Name", appbox::RegistryValueType::String,
                                appbox::RegistryStringData(L"Old"), error))
         << error;
-    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::Hide));
+    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryKeyIsolation::Hide));
     ASSERT_TRUE(
-        model.SetValueIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Name", appbox::RegistryIsolation::Full));
+        model.SetValueIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Name", appbox::RegistryValueIsolation::Full));
 
     std::vector<appbox::RegFileEntry> entries;
     ASSERT_TRUE(appbox::ParseRegText(L"Windows Registry Editor Version 5.00\r\n"
@@ -397,15 +397,15 @@ TEST(Unit_RegFile, MergeKeepsTheIsolationModesOfTheModel)
     /* The existing value is replaced, its isolation mode survives. */
     ASSERT_EQ(vendor->values.size(), 1u);
     EXPECT_EQ(appbox::RegistryStringValue(vendor->values[0].data), L"New");
-    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryIsolation::Full);
+    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryValueIsolation::Full);
 
     /* The isolation of the key survives as well. */
-    EXPECT_EQ(vendor->isolation, appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(vendor->isolation, appbox::RegistryKeyIsolation::Hide);
 
     /* A key created by the merge follows the key it is created below. */
     ASSERT_EQ(vendor->children.size(), 1u);
     EXPECT_EQ(vendor->children[0].name, L"Child");
-    EXPECT_EQ(vendor->children[0].isolation, appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(vendor->children[0].isolation, appbox::RegistryKeyIsolation::Hide);
 }
 
 TEST(Unit_RegFile, MergeRemovesKeysAndValues)

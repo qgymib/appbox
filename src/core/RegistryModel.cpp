@@ -186,20 +186,38 @@ namespace appbox
 
 const std::vector<std::wstring>& RegistryRootKeyNames()
 {
-    static const std::vector<std::wstring> names = { L"HKEY_CLASSES_ROOT", L"HKEY_CURRENT_USER", L"HKEY_LOCAL_MACHINE",
-                                                     L"HKEY_USERS", L"HKEY_CURRENT_CONFIG" };
+    /*
+     * The five root keys are shared knowledge: the sandbox checks that the
+     * isolation file names all of them, so the list is built from the single
+     * source of `common/RegistryIsolation.hpp` instead of being repeated.
+     */
+    static const std::vector<std::wstring> names = [] {
+        std::vector<std::wstring> roots;
+        roots.reserve(registry_isolation::kRootKeyCount);
+        for (const wchar_t* root : registry_isolation::kRootKeyNames)
+        {
+            roots.emplace_back(root);
+        }
+        return roots;
+    }();
     return names;
 }
 
-const std::vector<std::wstring>& RegistryIsolationNames()
+const std::vector<std::wstring>& RegistryKeyIsolationNames()
 {
-    static const std::vector<std::wstring> names = { L"Full", L"Write Copy", L"Hide" };
+    static const std::vector<std::wstring> names = { L"Full", L"Merge", L"Write Copy", L"Hide" };
     return names;
 }
 
-std::wstring RegistryIsolationName(RegistryIsolation isolation)
+const std::vector<std::wstring>& RegistryValueIsolationNames()
 {
-    const auto& names = RegistryIsolationNames();
+    static const std::vector<std::wstring> names = { L"Full", L"Hide" };
+    return names;
+}
+
+std::wstring RegistryKeyIsolationName(RegistryKeyIsolation isolation)
+{
+    const auto& names = RegistryKeyIsolationNames();
     const auto  index = static_cast<std::size_t>(isolation);
     if (index >= names.size())
     {
@@ -208,21 +226,58 @@ std::wstring RegistryIsolationName(RegistryIsolation isolation)
     return names[index];
 }
 
-std::wstring RegistryIsolationDescription(RegistryIsolation isolation)
+std::wstring RegistryValueIsolationName(RegistryValueIsolation isolation)
+{
+    const auto& names = RegistryValueIsolationNames();
+    const auto  index = static_cast<std::size_t>(isolation);
+    if (index >= names.size())
+    {
+        return names.front();
+    }
+    return names[index];
+}
+
+std::wstring RegistryKeyIsolationDescription(RegistryKeyIsolation isolation)
 {
     switch (isolation)
     {
-    case RegistryIsolation::Full:
-        return L"Isolation mode 'Full': only the sandbox registry is visible; the host entry and everything below it "
-               L"are hidden, and every modification lands in the sandbox.";
-    case RegistryIsolation::WriteCopy:
-        return L"Isolation mode 'Write Copy': the host entry and the sandbox entry are both visible with the sandbox "
-               L"taking precedence, and a write copies the host entry up into the sandbox. This is the default mode.";
-    case RegistryIsolation::Hide:
-        return L"Isolation mode 'Hide': the entry is invisible for the application, even while the host holds it; "
-               L"creating the entry succeeds inside the sandbox.";
+    case RegistryKeyIsolation::Full:
+        return L"Isolation mode 'Full': only the sandbox registry is visible; the host key and everything below it are "
+               L"hidden, and every modification lands in the sandbox.";
+    case RegistryKeyIsolation::Merge:
+        return L"Isolation mode 'Merge': the host key and the sandbox key are both visible with the sandbox taking "
+               L"precedence; a key or a value the sandbox does not hold is modified in the real registry, everything "
+               L"else in the sandbox. This is the default mode of the preset nodes.";
+    case RegistryKeyIsolation::WriteCopy:
+        return L"Isolation mode 'Write Copy': the host key and the sandbox key are both visible with the sandbox "
+               L"taking "
+               L"precedence, and every modification lands in the sandbox; a host key is copied up before it is "
+               L"written.";
+    case RegistryKeyIsolation::Hide:
+        return L"Isolation mode 'Hide': the key, its sub keys and its values are invisible for the application, even "
+               L"while the host or the virtual registry holds them; a write lands in the sandbox and the entry is "
+               L"visible from then on.";
     }
     return L"";
+}
+
+std::wstring RegistryValueIsolationDescription(RegistryValueIsolation isolation)
+{
+    switch (isolation)
+    {
+    case RegistryValueIsolation::Full:
+        return L"Isolation mode 'Full': the host value is invisible and the virtual registry defines the value; a "
+               L"write of the value lands in the sandbox.";
+    case RegistryValueIsolation::Hide:
+        return L"Isolation mode 'Hide': the value is invisible, even while the virtual registry holds it; a write "
+               L"lands in the sandbox and the written value is visible from then on.";
+    }
+    return L"";
+}
+
+RegistryValueIsolation DefaultValueIsolation(RegistryKeyIsolation key_isolation)
+{
+    return key_isolation == RegistryKeyIsolation::Hide ? RegistryValueIsolation::Hide : RegistryValueIsolation::Full;
 }
 
 const std::vector<RegistryValueType>& RegistryValueTypes()
@@ -847,7 +902,8 @@ std::vector<RegistryRow> RegistryModel::Rows(const std::wstring& path) const
         row.kind = RegistryRow::Kind::Key;
         row.key_path = key_path;
         row.name = child.name;
-        row.isolation = child.isolation;
+        row.key_isolation = child.isolation;
+        row.value_isolation = DefaultValueIsolation(child.isolation);
         rows.push_back(std::move(row));
     }
 
@@ -857,7 +913,8 @@ std::vector<RegistryRow> RegistryModel::Rows(const std::wstring& path) const
         row.kind = RegistryRow::Kind::Value;
         row.key_path = key_path;
         row.name = value.name;
-        row.isolation = value.isolation;
+        row.key_isolation = key->isolation;
+        row.value_isolation = value.isolation;
         row.type = value.type;
         row.data = value.data;
         rows.push_back(std::move(row));
@@ -999,7 +1056,7 @@ bool RegistryModel::AddValue(const std::wstring& parent, const std::wstring& nam
     value.type = type;
     value.data = data;
     /* A value which is created now follows the key it is created in. */
-    value.isolation = node->isolation;
+    value.isolation = DefaultValueIsolation(node->isolation);
     node->values.push_back(std::move(value));
     SortKey(*node);
     return true;
@@ -1033,7 +1090,7 @@ bool RegistryModel::SetValue(const std::wstring& parent, const std::wstring& nam
         value.type = type;
         value.data = data;
         /* A value which is created now follows the key it is created in. */
-        value.isolation = node->isolation;
+        value.isolation = DefaultValueIsolation(node->isolation);
         node->values.push_back(std::move(value));
         SortKey(*node);
         return true;
@@ -1106,7 +1163,7 @@ bool RegistryModel::RemoveValue(const std::wstring& parent, const std::wstring& 
     return true;
 }
 
-bool RegistryModel::SetKeyIsolation(const std::wstring& path, RegistryIsolation isolation)
+bool RegistryModel::SetKeyIsolation(const std::wstring& path, RegistryKeyIsolation isolation)
 {
     RegistryKeyNode* node = FindKey(path);
     if (node == nullptr)
@@ -1123,7 +1180,8 @@ bool RegistryModel::SetKeyIsolation(const std::wstring& path, RegistryIsolation 
     return true;
 }
 
-bool RegistryModel::SetValueIsolation(const std::wstring& parent, const std::wstring& name, RegistryIsolation isolation)
+bool RegistryModel::SetValueIsolation(const std::wstring& parent, const std::wstring& name,
+                                      RegistryValueIsolation isolation)
 {
     RegistryKeyNode* node = FindKey(parent);
     if (node == nullptr)
@@ -1142,7 +1200,7 @@ bool RegistryModel::SetValueIsolation(const std::wstring& parent, const std::wst
     return true;
 }
 
-bool RegistryModel::ApplyIsolationToSubtree(const std::wstring& path, RegistryIsolation isolation, bool include_values)
+bool RegistryModel::ApplyIsolationToSubtree(const std::wstring& path, RegistryKeyIsolation isolation)
 {
     RegistryKeyNode* node = FindKey(path);
     if (node == nullptr)
@@ -1150,7 +1208,7 @@ bool RegistryModel::ApplyIsolationToSubtree(const std::wstring& path, RegistryIs
         return false;
     }
 
-    ApplyIsolation(*node, isolation, include_values);
+    ApplyIsolation(*node, isolation);
     return true;
 }
 
@@ -1189,26 +1247,29 @@ void RegistryModel::SortKey(RegistryKeyNode& key)
               });
 }
 
-void RegistryModel::ApplyIsolation(RegistryKeyNode& key, RegistryIsolation isolation, bool include_values)
+void RegistryModel::ApplyIsolation(RegistryKeyNode& key, RegistryKeyIsolation isolation)
 {
     /*
-     * The mode is overwritten without an exception: a sub key or a value which
-     * the user changed before is set to the new mode as well, which is what
-     * the explicit recursion of the user interface asks for.
+     * The mode is overwritten without an exception: a sub key which the user
+     * changed before is set to the new mode as well, which is what the explicit
+     * recursion of the user interface asks for.
      */
     key.isolation = isolation;
 
-    if (include_values)
+    /*
+     * The values follow the mode of the key which holds them, because a value
+     * carries the two value modes alone: a hidden subtree hides its values,
+     * every other subtree keeps them `Full`.
+     */
+    const RegistryValueIsolation value_isolation = DefaultValueIsolation(isolation);
+    for (auto& value : key.values)
     {
-        for (auto& value : key.values)
-        {
-            value.isolation = isolation;
-        }
+        value.isolation = value_isolation;
     }
 
     for (auto& child : key.children)
     {
-        ApplyIsolation(child, isolation, include_values);
+        ApplyIsolation(child, isolation);
     }
 }
 

@@ -3,6 +3,7 @@
 
 #include "IsolationDocument.hpp"
 #include <nlohmann/json.hpp>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -11,32 +12,68 @@ namespace appbox
 {
 
 /**
- * @brief Isolation mode of a registry key or value.
+ * @brief Isolation mode of a registry key.
  *
- * The modes describe how a sandboxed process sees the entry. No mode ever
- * modifies the real registry: every write of the sandboxed process lands in
- * the overlay hive.
+ * The mode describes how a sandboxed process sees the key, the sub keys and
+ * the values below it, and where a modification of the key lands:
  *
- * - `Full` - only the sandbox registry is visible, every access is redirected
- *   into the overlay hive even when the host holds the entry.
- * - `WriteCopy` - both registries are visible with the sandbox taking
- *   precedence, and every write is redirected into the sandbox: a key which
- *   the host holds but the hive does not is copied up into the hive as soon as
- *   the caller asks for write access. This is the default mode of the
- *   workspace.
- * - `Hide` - the entry is invisible for the sandboxed process: opening,
- *   reading and writing report `Key Not Found`, while creating the entry
- *   succeeds inside the sandbox.
+ * - `Full` - the host entry is invisible: the sandboxed process sees the sub
+ *   keys and the values of the virtual registry alone, and every modification
+ *   of the key lands in the sandbox.
+ * - `Merge` - the host entry and the virtual registry are both visible, with
+ *   the virtual registry taking precedence. A modification lands in the layer
+ *   which holds the entry: a key or a value the sandbox does not hold is
+ *   modified in the **real registry**, while an entry the sandbox holds is
+ *   modified in the sandbox. A value which the sandbox deleted stays in the
+ *   sandbox for that rule, because the deletion is recorded there. `Merge` is
+ *   the only mode which modifies the real registry.
+ * - `WriteCopy` - the host entry and the virtual registry are both visible,
+ *   with the virtual registry taking precedence, and every modification lands
+ *   in the sandbox: a key which the host holds but the sandbox does not is
+ *   copied up into the sandbox first.
+ * - `Hide` - the key, its sub keys and its values are invisible, even while
+ *   the host holds them: a read reports `Key Not Found`, a write lands in the
+ *   sandbox, and the entry is visible from then on. The content a layer packed
+ *   for a hidden entry stays hidden as well, see the hidden store of the hive.
  *
- * The enumeration lives in `common/` because the packer and the sandbox share
- * it: the packer writes the modes into the isolation file, the sandbox reads
- * them back and enforces them.
+ * A key never has a default mode: an entry which the isolation file does not
+ * list follows the closest listed key above it, and the file has to list the
+ * root keys of the view, so the mode of every path resolves. `Hide` covers the
+ * whole subtree of the key: an entry below a hidden key is hidden as well,
+ * whatever mode it names itself.
  */
-enum class RegistryIsolation
+enum class RegistryKeyIsolation
 {
-    Full,      ///< Sandbox only.
-    WriteCopy, ///< Host and sandbox with sandbox precedence, writes copied up.
-    Hide       ///< Invisible for the sandbox, creation lands in the sandbox.
+    Full,  ///< Host invisible, every modification lands in the sandbox.
+    Merge, ///< Host visible with the sandbox taking precedence, a modification of an entry the sandbox does not hold
+           ///< lands in the host.
+    WriteCopy, ///< Host visible with the sandbox taking precedence, every modification lands in the sandbox.
+    Hide       ///< The key and its whole subtree are invisible until the sandbox writes them.
+};
+
+/**
+ * @brief Isolation mode of a registry value.
+ *
+ * The mode of a value decides whether the value of the host registry stays
+ * visible and whether the packed value of the virtual registry is part of the
+ * view. A write of the value always lands in the sandbox, so a value mode
+ * never modifies the real registry:
+ *
+ * - `Full` - the host value is invisible; the value of the virtual registry is
+ *   what the sandboxed process sees, and a value which the virtual registry
+ *   does not hold is reported as missing.
+ * - `Hide` - the value is invisible, even while the virtual registry holds it:
+ *   a read reports `Key Not Found`, a write lands in the sandbox, and the
+ *   written value is visible from then on.
+ *
+ * A value which the isolation file does not list follows the mode of the key
+ * which holds it, so a value below a `Merge` key is merged with the host like
+ * the key itself.
+ */
+enum class RegistryValueIsolation
+{
+    Full, ///< The host value is invisible, the value of the virtual registry is visible.
+    Hide  ///< The value is invisible until the sandbox writes it.
 };
 
 /**
@@ -45,17 +82,18 @@ enum class RegistryIsolation
  * The file is the JSON document which carries the isolation modes of the
  * virtual registry from the packer to the sandbox: the packer writes it next
  * to the hive inside the overlay, the sandbox reads it when it mounts the
- * hive. The packer lists every key and every value of the workspace; an entry
- * which is not listed follows the closest listed key above it and falls back
- * to `WriteCopy` when no ancestor is listed at all.
+ * hive. The packer lists every key and every value of the workspace, the five
+ * root keys of the view included, so the mode of every entry resolves without
+ * a default.
  *
  * ```
  * {
  *   "version": 1,
- *   "keys":   [ { "path": "HKEY_CURRENT_USER\\Software\\Vendor",
+ *   "keys":   [ { "path": "HKEY_CURRENT_USER", "isolation": "merge" },
+ *               { "path": "HKEY_CURRENT_USER\\Software\\Vendor",
  *                 "isolation": "full" } ],
  *   "values": [ { "path": "HKEY_CURRENT_USER\\Software\\Vendor",
- *                 "name": "Server", "isolation": "full" } ]
+ *                 "name": "Server", "isolation": "hide" } ]
  * }
  * ```
  *
@@ -69,8 +107,9 @@ namespace registry_isolation
 /**
  * @brief Version of the isolation file written by the packer.
  *
- * A file of a different version is rejected instead of being interpreted with
- * the rules of another schema.
+ * The version is the first member of the document and has to match exactly
+ * while the file is read, so a file of another schema is refused instead of
+ * being interpreted with the rules of this one.
  */
 inline constexpr int kVersion = 1;
 
@@ -93,39 +132,132 @@ inline constexpr const char* kNameKey = "name";
 inline constexpr const char* kIsolationKey = "isolation";
 
 /**
- * @brief Get the token of an isolation mode.
- * @param[in] isolation The isolation mode.
- * @return The canonical lower case token, for example `"write_copy"`.
+ * @brief Number of root keys of the view.
+ *
+ * The five root keys are the preset nodes of the registry workspace and the
+ * first component of every path of the view, so they are the entries a file
+ * has to list for the mode of every path to resolve.
  */
-inline const char* IsolationToken(RegistryIsolation isolation)
+inline constexpr std::size_t kRootKeyCount = 5;
+
+/**
+ * @brief The names of the five root keys of the view, in canonical order.
+ *
+ * The list is the single source of the root keys: the model of the packer
+ * builds its fixed nodes from it and the sandbox checks that a loaded
+ * isolation table names all of them.
+ */
+inline constexpr const wchar_t* kRootKeyNames[kRootKeyCount] = { L"HKEY_CLASSES_ROOT", L"HKEY_CURRENT_USER",
+                                                                 L"HKEY_LOCAL_MACHINE", L"HKEY_USERS",
+                                                                 L"HKEY_CURRENT_CONFIG" };
+
+/**
+ * @brief Compare a name with a root key name ignoring the case.
+ * @param[in] name The name to test.
+ * @param[in] root The root key name to compare with.
+ * @return true when both names are equal ignoring the case.
+ */
+inline bool EqualsRootKeyName(const std::wstring& name, const wchar_t* root)
 {
-    switch (isolation)
+    if (name.empty() || root == nullptr)
     {
-    case RegistryIsolation::Full:
-        return "full";
-    case RegistryIsolation::WriteCopy:
-        return "write_copy";
-    case RegistryIsolation::Hide:
-        return "hide";
+        return false;
     }
-    return "write_copy";
+
+    for (std::size_t index = 0;; ++index)
+    {
+        wchar_t left = name[index];
+        wchar_t right = root[index];
+
+        if (left >= L'A' && left <= L'Z')
+        {
+            left = static_cast<wchar_t>(left - L'A' + L'a');
+        }
+        if (right >= L'A' && right <= L'Z')
+        {
+            right = static_cast<wchar_t>(right - L'A' + L'a');
+        }
+
+        if (left != right)
+        {
+            return false;
+        }
+        if (left == L'\0')
+        {
+            return true;
+        }
+    }
 }
 
 /**
- * @brief Resolve an isolation mode from its token.
+ * @brief Whether a name is the name of one of the five root keys of the view.
+ * @param[in] name The name to test.
+ * @return true when the name names a root key.
+ */
+inline bool IsRootKeyName(const std::wstring& name)
+{
+    for (const wchar_t* root : kRootKeyNames)
+    {
+        if (EqualsRootKeyName(name, root))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * @brief Get the token of a key isolation mode.
+ * @param[in] isolation The isolation mode.
+ * @return The canonical lower case token, for example `"write_copy"`.
+ */
+inline const char* KeyIsolationToken(RegistryKeyIsolation isolation)
+{
+    switch (isolation)
+    {
+    case RegistryKeyIsolation::Full:
+        return "full";
+    case RegistryKeyIsolation::Merge:
+        return "merge";
+    case RegistryKeyIsolation::WriteCopy:
+        return "write_copy";
+    case RegistryKeyIsolation::Hide:
+        return "hide";
+    }
+    return "merge";
+}
+
+/**
+ * @brief Get the token of a value isolation mode.
+ * @param[in] isolation The isolation mode.
+ * @return The canonical lower case token, for example `"full"`.
+ */
+inline const char* ValueIsolationToken(RegistryValueIsolation isolation)
+{
+    switch (isolation)
+    {
+    case RegistryValueIsolation::Full:
+        return "full";
+    case RegistryValueIsolation::Hide:
+        return "hide";
+    }
+    return "full";
+}
+
+/**
+ * @brief Normalize a mode token for the comparison.
  *
- * The comparison ignores the case and accepts spaces and dashes in place of
- * the underscore of the canonical token, so `L"Write Copy"` and
+ * The comparison of a token ignores the case and accepts spaces and dashes in
+ * place of the underscore of the canonical token, so `L"Write Copy"` and
  * `L"write-copy"` resolve as well. The mode tokens are ASCII, so the tokens
  * are handled as narrow text like the JSON document which carries them.
  *
- * @param[in] token The token to resolve.
- * @param[out] out The resolved mode when the token is known.
- * @return true when the token names an isolation mode.
+ * @param[in] token The token to normalize.
+ * @param[out] normalized The lower case token with underscores.
  */
-inline bool ParseIsolationToken(std::string_view token, RegistryIsolation& out)
+inline void NormalizeIsolationToken(std::string_view token, std::string& normalized)
 {
-    std::string normalized;
+    normalized.clear();
     normalized.reserve(token.size());
     for (const char character : token)
     {
@@ -140,20 +272,66 @@ inline bool ParseIsolationToken(std::string_view token, RegistryIsolation& out)
         }
         normalized.push_back(lower);
     }
+}
+
+/**
+ * @brief Resolve a key isolation mode from its token.
+ * @param[in] token The token to resolve.
+ * @param[out] out The resolved mode when the token is known.
+ * @return true when the token names a key isolation mode.
+ */
+inline bool ParseKeyIsolationToken(std::string_view token, RegistryKeyIsolation& out)
+{
+    std::string normalized;
+    NormalizeIsolationToken(token, normalized);
 
     if (normalized == "full")
     {
-        out = RegistryIsolation::Full;
+        out = RegistryKeyIsolation::Full;
+        return true;
+    }
+    if (normalized == "merge")
+    {
+        out = RegistryKeyIsolation::Merge;
         return true;
     }
     if (normalized == "write_copy" || normalized == "writecopy")
     {
-        out = RegistryIsolation::WriteCopy;
+        out = RegistryKeyIsolation::WriteCopy;
         return true;
     }
     if (normalized == "hide")
     {
-        out = RegistryIsolation::Hide;
+        out = RegistryKeyIsolation::Hide;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * @brief Resolve a value isolation mode from its token.
+ *
+ * The two value modes are `full` and `hide`; a token of a key only mode
+ * (`merge` or `write_copy`) is refused, because a value write never reaches
+ * the real registry and a value is never copied up.
+ *
+ * @param[in] token The token to resolve.
+ * @param[out] out The resolved mode when the token is known.
+ * @return true when the token names a value isolation mode.
+ */
+inline bool ParseValueIsolationToken(std::string_view token, RegistryValueIsolation& out)
+{
+    std::string normalized;
+    NormalizeIsolationToken(token, normalized);
+
+    if (normalized == "full")
+    {
+        out = RegistryValueIsolation::Full;
+        return true;
+    }
+    if (normalized == "hide")
+    {
+        out = RegistryValueIsolation::Hide;
         return true;
     }
     return false;
@@ -179,8 +357,12 @@ struct KeyEntry
 
     /**
      * @brief Isolation mode of the key and of everything below it.
+     *
+     * The default is the mode of a preset node of the workspace, which is
+     * `Merge`: a file which lists the root keys without naming a mode keeps
+     * the host registry of the machine visible.
      */
-    RegistryIsolation isolation = RegistryIsolation::WriteCopy;
+    RegistryKeyIsolation isolation = RegistryKeyIsolation::Merge;
 };
 
 /**
@@ -200,8 +382,11 @@ struct ValueEntry
 
     /**
      * @brief Isolation mode of the value.
+     *
+     * The default is the mode the workspace gives a new value, which is
+     * `Full`: the host value is invisible and the virtual registry defines it.
      */
-    RegistryIsolation isolation = RegistryIsolation::WriteCopy;
+    RegistryValueIsolation isolation = RegistryValueIsolation::Full;
 };
 
 /**
@@ -238,7 +423,7 @@ inline void to_json(nlohmann::json& json, const KeyEntry& entry)
 {
     json = nlohmann::json::object();
     json[kPathKey] = entry.path;
-    json[kIsolationKey] = IsolationToken(entry.isolation);
+    json[kIsolationKey] = KeyIsolationToken(entry.isolation);
 }
 
 /**
@@ -251,7 +436,7 @@ inline void to_json(nlohmann::json& json, const ValueEntry& entry)
     json = nlohmann::json::object();
     json[kPathKey] = entry.path;
     json[kNameKey] = entry.name;
-    json[kIsolationKey] = IsolationToken(entry.isolation);
+    json[kIsolationKey] = ValueIsolationToken(entry.isolation);
 }
 
 /**
@@ -282,11 +467,11 @@ inline void from_json(const nlohmann::json& json, KeyEntry& entry)
         isolation_document::Throw("the '" + std::string(kNameKey) + "' member of " + holder + " is not a string");
     }
 
-    const std::string isolation_token = isolation_document::RequiredText(json, kIsolationKey, holder);
-    RegistryIsolation isolation = RegistryIsolation::WriteCopy;
-    if (!ParseIsolationToken(isolation_token, isolation))
+    const std::string    isolation_token = isolation_document::RequiredText(json, kIsolationKey, holder);
+    RegistryKeyIsolation isolation = RegistryKeyIsolation::Merge;
+    if (!ParseKeyIsolationToken(isolation_token, isolation))
     {
-        isolation_document::Throw("unknown isolation mode '" + isolation_token + "' in the isolation file");
+        isolation_document::Throw("unknown key isolation mode '" + isolation_token + "' in the isolation file");
     }
 
     entry.isolation = isolation;
@@ -311,11 +496,11 @@ inline void from_json(const nlohmann::json& json, ValueEntry& entry)
 
     entry.name = isolation_document::RequiredText(json, kNameKey, holder);
 
-    const std::string isolation_token = isolation_document::RequiredText(json, kIsolationKey, holder);
-    RegistryIsolation isolation = RegistryIsolation::WriteCopy;
-    if (!ParseIsolationToken(isolation_token, isolation))
+    const std::string      isolation_token = isolation_document::RequiredText(json, kIsolationKey, holder);
+    RegistryValueIsolation isolation = RegistryValueIsolation::Full;
+    if (!ParseValueIsolationToken(isolation_token, isolation))
     {
-        isolation_document::Throw("unknown isolation mode '" + isolation_token + "' in the isolation file");
+        isolation_document::Throw("unknown value isolation mode '" + isolation_token + "' in the isolation file");
     }
 
     entry.isolation = isolation;
@@ -384,7 +569,7 @@ inline void from_json(const nlohmann::json& json, Document& document)
 } // namespace registry_isolation
 
 /**
- * @brief Layout of the whiteout store inside the sandbox hive.
+ * @brief Layout of the marker store inside the sandbox hive.
  *
  * The registry isolation has no way to remove an entry of the host registry,
  * so a delete of a sandboxed process is recorded as a **whiteout**: the entry
@@ -438,6 +623,47 @@ inline constexpr const wchar_t* kKeysKey = L"K";
 inline constexpr const wchar_t* kValuesKey = L"V";
 
 } // namespace registry_whiteout
+
+/**
+ * @brief Layout of the hidden store inside the sandbox hive.
+ *
+ * A key or a value whose mode is `Hide` is invisible for the sandboxed
+ * process, and the content a layer packed for it must stay invisible as well:
+ * a hive is one file which carries the packed content and the writes of the
+ * run, so the packed content of a hidden entry cannot be told apart from a
+ * write the sandbox made. The packer therefore writes the content of a hidden
+ * entry into the **hidden store** instead of the path of the view, and the
+ * sandbox never maps a path of the view onto it:
+ *
+ * ```
+ * <root of the hive>
+ * ├── HKEY_CURRENT_USER\Software\Vendor          the view: the writes of the run
+ * └── APPBOX_HIDDEN                              the packed content of hidden entries
+ *     └── HKEY_CURRENT_USER\Software\Vendor      the same shape as the view
+ * ```
+ *
+ * The store mirrors the structure of the view, so the packer writes a hidden
+ * entry at the same relative path below the store key. A write of the
+ * sandboxed process lands in the view, which is what makes a hidden entry
+ * visible once the sandbox writes it; the content of the store stays invisible
+ * until a layer gives the entry a mode which is not `Hide`, which the launcher
+ * applies while it merges the layers of the run.
+ */
+namespace registry_hidden
+{
+
+/**
+ * @brief Name of the reserved top level key of the hive which holds the
+ *        content of the hidden entries.
+ *
+ * The key is a sub key of the hive root and therefore a sibling of the five
+ * root keys of the view and of the whiteout store. It is never part of the
+ * view: no path of the view maps onto it and no handle of it is ever handed
+ * out to the sandboxed process.
+ */
+inline constexpr const wchar_t* kStoreKey = L"APPBOX_HIDDEN";
+
+} // namespace registry_hidden
 
 } // namespace appbox
 

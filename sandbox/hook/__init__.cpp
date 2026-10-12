@@ -43,6 +43,7 @@
 #include "hook/NtSaveKeyEx.hpp"
 #include "hook/NtSetInformationFile.hpp"
 #include "hook/NtSetInformationKey.hpp"
+#include "hook/NtSetValueKey.hpp"
 #include "hook/NtWriteFile.hpp"
 #include "hook/DnsQuery_A.hpp"
 #include "hook/DnsQuery_UTF8.hpp"
@@ -140,6 +141,7 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtSaveKeyEx,
     &appbox::HookNtSetInformationFile,
     &appbox::HookNtSetInformationKey,
+    &appbox::HookNtSetValueKey,
     &appbox::HookNtWriteFile,
     &appbox::HookRecvFrom,
     &appbox::HookRtlCompareUnicodeString,

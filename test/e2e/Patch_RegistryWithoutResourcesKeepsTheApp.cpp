@@ -67,7 +67,7 @@ TEST_F(E2E_Patch, RegistryWithoutResourcesKeepsTheApp)
 
     HiveBuilder app(GetCWD());
     app.SetValue(hive_key, L"Value", REG_SZ, StringData(L"archive"));
-    app.SetValueIsolation(hive_key, L"HostHidden", appbox::RegistryIsolation::Full);
+    app.SetValueIsolation(hive_key, L"HostHidden", appbox::RegistryValueIsolation::Full);
 
     std::string error;
     ASSERT_TRUE(app.Write(error)) << error;

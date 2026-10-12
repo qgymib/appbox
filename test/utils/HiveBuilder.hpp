@@ -14,13 +14,9 @@ namespace appbox::test
 {
 
 /**
- * @brief One isolation mode of a registry isolation file.
- *
- * The entry describes a key when `is_value` is false and a value of the key
- * when it is true, which is the shape the document of
- * `common/RegistryIsolation.hpp` uses.
+ * @brief One key mode of a registry isolation file.
  */
-struct RegistryIsolationEntry
+struct RegistryKeyIsolationEntry
 {
     /**
      * @brief Path of the key from the hive root, for example
@@ -29,19 +25,30 @@ struct RegistryIsolationEntry
     std::wstring key_path;
 
     /**
-     * @brief Name of the value, empty for a key entry.
+     * @brief The mode the file lists for the key.
+     */
+    appbox::RegistryKeyIsolation isolation = appbox::RegistryKeyIsolation::Merge;
+};
+
+/**
+ * @brief One value mode of a registry isolation file.
+ */
+struct RegistryValueIsolationEntry
+{
+    /**
+     * @brief Path of the key which holds the value.
+     */
+    std::wstring key_path;
+
+    /**
+     * @brief Name of the value, empty for the default value.
      */
     std::wstring value_name;
 
     /**
-     * @brief Whether the entry describes a value instead of a key.
+     * @brief The mode the file lists for the value.
      */
-    bool is_value = false;
-
-    /**
-     * @brief The mode the file lists for the entry.
-     */
-    appbox::RegistryIsolation isolation = appbox::RegistryIsolation::WriteCopy;
+    appbox::RegistryValueIsolation isolation = appbox::RegistryValueIsolation::Full;
 };
 
 /**
@@ -51,10 +58,12 @@ struct RegistryIsolationEntry
  * can hand the modes of a layer to the resources of a case or to a patch
  * package without the packer.
  *
- * @param[in] entries The modes the document lists.
+ * @param[in] keys The key modes the document lists.
+ * @param[in] values The value modes the document lists.
  * @return The UTF-8 text of the document.
  */
-std::string BuildRegistryIsolationText(const std::vector<RegistryIsolationEntry>& entries);
+std::string BuildRegistryIsolationText(const std::vector<RegistryKeyIsolationEntry>&   keys,
+                                       const std::vector<RegistryValueIsolationEntry>& values);
 
 /**
  * @brief Builder of the registry artifacts of a test sandbox.
@@ -70,7 +79,21 @@ std::string BuildRegistryIsolationText(const std::vector<RegistryIsolationEntry>
  *
  * The content of the hive and the isolation modes are tracked apart: a mode
  * can be listed for a key which the hive does not hold, which is how a test
- * describes an entry that only exists in the host registry.
+ * describes an entry that only exists in the host registry. The five root keys
+ * of the view are always listed, because the sandbox refuses an isolation file
+ * which does not name every one of them; a test which does not set a mode for a
+ * root key gets the mode of the builder, `Write Copy`.
+ *
+ * `Write Copy` is the mode of a case which does not exercise the modes: it keeps
+ * the entries of the host visible and redirects every write into the sandbox,
+ * which is the behavior a sandbox without an isolation file has. The preset of
+ * the packer is `Merge`, which lets a write reach the real registry; a case
+ * which pins that behavior names the mode itself.
+ *
+ * The content of an entry whose mode is `Hide` is written into the hidden store
+ * of the hive instead of the view, which is what the packer does: the view of
+ * the sandbox does not carry the packed content of a hidden entry, so the entry
+ * is reported as missing until the sandboxed process writes it.
  */
 class HiveBuilder
 {
@@ -104,7 +127,7 @@ public:
      * @param[in] key_path Path of the key from the hive root.
      * @param[in] isolation The mode to list.
      */
-    void SetKeyIsolation(const std::wstring& key_path, appbox::RegistryIsolation isolation);
+    void SetKeyIsolation(const std::wstring& key_path, appbox::RegistryKeyIsolation isolation);
 
     /**
      * @brief List the isolation mode of a value in the isolation file.
@@ -113,7 +136,7 @@ public:
      * @param[in] isolation The mode to list.
      */
     void SetValueIsolation(const std::wstring& key_path, const std::wstring& value_name,
-                           appbox::RegistryIsolation isolation);
+                           appbox::RegistryValueIsolation isolation);
 
     /**
      * @brief Write the hive and the isolation file into the resources.
@@ -154,14 +177,34 @@ private:
     };
 
     /**
+     * @brief Whether a key of the view is hidden.
+     *
+     * A key is hidden when it or one of its ancestors is listed as `Hide`, which
+     * is the rule the sandbox applies to the whole subtree of a hidden key.
+     *
+     * @param[in] key_path Path of the key from the hive root.
+     * @return true when the content of the key lives in the hidden store.
+     */
+    bool KeyIsHidden(const std::wstring& key_path) const;
+
+    /**
+     * @brief Whether a value of the view is hidden.
+     * @param[in] key_path Path of the key which holds the value.
+     * @param[in] value_name Name of the value, empty for the default value.
+     * @return true when the content of the value lives in the hidden store.
+     */
+    bool ValueIsHidden(const std::wstring& key_path, const std::wstring& value_name) const;
+
+    /**
      * @brief Registry domain of the resources of the case.
      * @return The path of the folder which holds the hive and the modes.
      */
     std::filesystem::path RegistryDir() const;
 
-    std::filesystem::path               case_root_; /* Root directory of the case. */
-    std::vector<Entry>                  entries_;
-    std::vector<RegistryIsolationEntry> isolations_;
+    std::filesystem::path                    case_root_; /* Root directory of the case. */
+    std::vector<Entry>                       entries_;
+    std::vector<RegistryKeyIsolationEntry>   key_isolations_;
+    std::vector<RegistryValueIsolationEntry> value_isolations_;
 };
 
 } // namespace appbox::test

@@ -492,7 +492,7 @@ TEST(Unit_PackService, PackWritesRegistryArtifacts)
     ASSERT_TRUE(registry.SetValue(L"HKEY_CURRENT_USER\\Software\\AppBox", L"Mode", appbox::RegistryValueType::String,
                                   appbox::RegistryStringData(L"sandbox"), error))
         << error;
-    ASSERT_TRUE(registry.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\AppBox", appbox::RegistryIsolation::Full));
+    ASSERT_TRUE(registry.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\AppBox", appbox::RegistryKeyIsolation::Full));
 
     const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-registry.zip");
     const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
@@ -520,12 +520,12 @@ TEST(Unit_PackService, PackWritesRegistryArtifacts)
     EXPECT_EQ(keys[3]["path"].get<std::string>(), "HKEY_CURRENT_USER\\Software\\AppBox");
     EXPECT_EQ(keys[3]["isolation"].get<std::string>(), "full");
 
-    /* The value keeps the mode of the key it was created in. */
+    /* A value starts with the mode its key gives it, which is `Full`. */
     const auto& values = document["values"];
     ASSERT_EQ(values.size(), 1u);
     EXPECT_EQ(values[0]["path"].get<std::string>(), "HKEY_CURRENT_USER\\Software\\AppBox");
     EXPECT_EQ(values[0]["name"].get<std::string>(), "Mode");
-    EXPECT_EQ(values[0]["isolation"].get<std::string>(), "write_copy");
+    EXPECT_EQ(values[0]["isolation"].get<std::string>(), "full");
 }
 
 TEST(Unit_PackService, PackWritesFilesystemIsolationFile)

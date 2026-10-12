@@ -37,34 +37,76 @@ inline constexpr wchar_t kRegistryPathSeparator = L'\\';
 const std::vector<std::wstring>& RegistryRootKeyNames();
 
 /**
- * @brief Get the display names of the isolation modes.
+ * @brief Get the display names of the key isolation modes.
  *
- * The list is ordered the way the modes are offered by the user interface, so
- * the dropdown of the registry table and the tests share a single source.
+ * The list is ordered like the enumeration of the modes, so the selection of a
+ * dropdown is the mode itself. The user interface offers the list for the rows
+ * which name a key and the tests share the same source.
  *
- * @return The display names, one per mode.
+ * @return The display names, one per key mode.
  */
-const std::vector<std::wstring>& RegistryIsolationNames();
+const std::vector<std::wstring>& RegistryKeyIsolationNames();
 
 /**
- * @brief Get the display name of one isolation mode.
+ * @brief Get the display names of the value isolation modes.
+ *
+ * The list is ordered like the enumeration of the modes, so the selection of a
+ * dropdown is the mode itself. A value has two modes only: a value is never
+ * copied up and a value write never reaches the host registry, so `Merge` and
+ * `Write Copy` are modes of a key.
+ *
+ * @return The display names, one per value mode.
+ */
+const std::vector<std::wstring>& RegistryValueIsolationNames();
+
+/**
+ * @brief Get the display name of one key isolation mode.
  * @param[in] isolation The isolation mode.
  * @return The display name of the mode.
  */
-std::wstring RegistryIsolationName(RegistryIsolation isolation);
+std::wstring RegistryKeyIsolationName(RegistryKeyIsolation isolation);
 
 /**
- * @brief Describe an isolation mode of an entry for a tooltip.
+ * @brief Get the display name of one value isolation mode.
+ * @param[in] isolation The isolation mode.
+ * @return The display name of the mode.
+ */
+std::wstring RegistryValueIsolationName(RegistryValueIsolation isolation);
+
+/**
+ * @brief Describe a key isolation mode of an entry for a tooltip.
  *
- * The description names the mode and says what it does with the entry and with
- * the host registry. It is the text the workspace shows for the mode of a row
- * and for the modes the `Isolation` column offers, so the explanation of a mode
- * lives in one place.
+ * The description names the mode and says what it does with the key, with the
+ * entries below it and with the host registry. It is the text the workspace
+ * shows for the mode of a row and for the modes the `Isolation` column offers,
+ * so the explanation of a mode lives in one place.
  *
  * @param[in] isolation The isolation mode.
  * @return The description of the mode.
  */
-std::wstring RegistryIsolationDescription(RegistryIsolation isolation);
+std::wstring RegistryKeyIsolationDescription(RegistryKeyIsolation isolation);
+
+/**
+ * @brief Describe a value isolation mode for a tooltip.
+ * @param[in] isolation The isolation mode.
+ * @return The description of the mode.
+ */
+std::wstring RegistryValueIsolationDescription(RegistryValueIsolation isolation);
+
+/**
+ * @brief Get the isolation mode a new value of a key starts with.
+ *
+ * The mode follows the key which holds the value: a value below a hidden key
+ * is hidden as well, every other value starts as `Full`, which keeps the host
+ * value invisible and redirects the writes of the value into the sandbox. The
+ * rule is the one the recursion of the isolation dialog applies to the values
+ * below a key, so the workspace explains a new value and a recursive change
+ * the same way.
+ *
+ * @param[in] key_isolation Isolation mode of the key which holds the value.
+ * @return The mode a new value of that key starts with.
+ */
+RegistryValueIsolation DefaultValueIsolation(RegistryKeyIsolation key_isolation);
 
 /**
  * @brief Registry value types supported by the workspace.
@@ -143,10 +185,10 @@ struct RegistryValueEntry
      * @brief Isolation mode of the value.
      *
      * The mode is always explicit: a value which the user never touched holds
-     * the mode of the key it belongs to, see RegistryModel::AddValue() and
-     * RegistryModel::SetValue().
+     * the mode a new value of its key starts with, see DefaultValueIsolation(),
+     * RegistryModel::AddValue() and RegistryModel::SetValue().
      */
-    RegistryIsolation isolation = RegistryIsolation::WriteCopy;
+    RegistryValueIsolation isolation = RegistryValueIsolation::Full;
 };
 
 /**
@@ -168,9 +210,10 @@ struct RegistryKeyNode
      *
      * The mode is always explicit: a key which the user never touched holds
      * the mode of its parent, see RegistryModel::AddKey() and
-     * RegistryModel::EnsureKey().
+     * RegistryModel::EnsureKey(). The five root keys of the view are the preset
+     * nodes of the workspace and start as `Merge`.
      */
-    RegistryIsolation isolation = RegistryIsolation::WriteCopy;
+    RegistryKeyIsolation isolation = RegistryKeyIsolation::Merge;
 
     /**
      * @brief Whether the key may be renamed or removed.
@@ -225,9 +268,22 @@ struct RegistryRow
     std::wstring name;
 
     /**
-     * @brief Isolation mode of the entry behind the row.
+     * @brief Isolation mode of the key behind a key row.
+     *
+     * A key row carries the mode of its key, a value row carries the mode of
+     * the key which holds it, so the table can show the mode a new value of
+     * that key starts with. Only the field which matches the kind of the row is
+     * meaningful.
      */
-    RegistryIsolation isolation = RegistryIsolation::WriteCopy;
+    RegistryKeyIsolation key_isolation = RegistryKeyIsolation::Merge;
+
+    /**
+     * @brief Isolation mode of the value behind a value row.
+     *
+     * Only meaningful for a value row; a key row carries the mode a new value
+     * of that key starts with in this field.
+     */
+    RegistryValueIsolation value_isolation = RegistryValueIsolation::Full;
 
     /**
      * @brief Type of the value, only meaningful for value rows.
@@ -439,7 +495,9 @@ bool ParseRegistryValueText(RegistryValueType type, const std::wstring& text, st
  * The model holds the registry the packaged application will see: a virtual
  * container with the five root keys and, below them, the keys and values
  * imported from `.reg` files or entered by hand. Every key and every value
- * carries its own isolation mode, which defaults to `WriteCopy`.
+ * carries its own isolation mode: the five preset root keys start as `Merge`,
+ * a key which is created below another key follows that key, and a value
+ * starts with the mode DefaultValueIsolation() reports for its key.
  *
  * The class holds no wxWidgets dependency, so the tree rules, the isolation
  * rules and the validation are unit testable.
@@ -601,7 +659,7 @@ public:
      * @param[in] isolation New isolation mode.
      * @return true when the key exists and was updated.
      */
-    bool SetKeyIsolation(const std::wstring& path, RegistryIsolation isolation);
+    bool SetKeyIsolation(const std::wstring& path, RegistryKeyIsolation isolation);
 
     /**
      * @brief Set the isolation mode of one value.
@@ -610,22 +668,21 @@ public:
      * @param[in] isolation New isolation mode.
      * @return true when the value exists and was updated.
      */
-    bool SetValueIsolation(const std::wstring& parent, const std::wstring& name, RegistryIsolation isolation);
+    bool SetValueIsolation(const std::wstring& parent, const std::wstring& name, RegistryValueIsolation isolation);
 
     /**
      * @brief Overwrite the isolation mode of a key and of everything below it.
      *
      * The key and every sub key of every level are set to the new mode, no
-     * matter which mode they held before. When include_values is true, the
-     * values of the key and the values of its whole subtree are overwritten as
-     * well; otherwise every value keeps its own mode.
+     * matter which mode they held before, and the values below the key follow
+     * the mode of the key which holds them (see DefaultValueIsolation()): a
+     * hidden subtree hides its values, every other subtree keeps them `Full`.
      *
      * @param[in] path Path of the key.
      * @param[in] isolation New isolation mode.
-     * @param[in] include_values Whether the values below the key are overwritten too.
      * @return true when the key exists and was updated.
      */
-    bool ApplyIsolationToSubtree(const std::wstring& path, RegistryIsolation isolation, bool include_values);
+    bool ApplyIsolationToSubtree(const std::wstring& path, RegistryKeyIsolation isolation);
 
 private:
     /**
@@ -654,9 +711,8 @@ private:
      * @brief Overwrite the isolation mode of a key and of everything below it.
      * @param[in,out] key The key to update.
      * @param[in] isolation New isolation mode.
-     * @param[in] include_values Whether the values below the key are overwritten too.
      */
-    static void ApplyIsolation(RegistryKeyNode& key, RegistryIsolation isolation, bool include_values);
+    static void ApplyIsolation(RegistryKeyNode& key, RegistryKeyIsolation isolation);
 
     /**
      * @brief The virtual container holding the five root keys.

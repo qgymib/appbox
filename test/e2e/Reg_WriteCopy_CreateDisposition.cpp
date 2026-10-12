@@ -102,7 +102,7 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
 
     HiveBuilder builder(GetCWD());
     builder.EnsureKey(L"HKEY_CURRENT_USER\\" + hive_held);
-    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + full_key, appbox::RegistryIsolation::Full);
+    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + full_key, appbox::RegistryKeyIsolation::Full);
 
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;

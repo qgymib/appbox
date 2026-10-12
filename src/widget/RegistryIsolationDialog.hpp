@@ -16,11 +16,13 @@ class wxRadioBox;
  * @brief Dialog to pick the isolation mode of a registry key.
  *
  * The dialog is opened from the context menu of the registry tree. It offers
- * the isolation modes of the workspace and two options which decide how far
- * the chosen mode reaches: `Apply to all sub keys` overwrites the whole
- * subtree of the key, `Apply to all values in the subtree` overwrites the
- * values below it as well. The value option only makes sense together with the
- * sub key option, so it is disabled while the sub keys are left alone.
+ * the isolation modes of a key and one option which decides how far the chosen
+ * mode reaches: without the recursion the mode reaches the key alone, with it
+ * the whole subtree of the key follows the mode, the values of the subtree
+ * included (see `RegistryModel::ApplyIsolationToSubtree`).
+ *
+ * A value carries the two value modes alone, so the modes of a value are picked
+ * in the `Isolation` column of the table instead of this dialog.
  */
 class RegistryIsolationDialog : public wxDialog
 {
@@ -31,7 +33,7 @@ public:
      * @param[in] key_path Path of the key the dialog applies to.
      * @param[in] initial Isolation mode selected when the dialog opens.
      */
-    RegistryIsolationDialog(wxWindow* parent, const wxString& key_path, appbox::RegistryIsolation initial);
+    RegistryIsolationDialog(wxWindow* parent, const wxString& key_path, appbox::RegistryKeyIsolation initial);
 
     /**
      * @brief Get the selected isolation mode.
@@ -40,45 +42,24 @@ public:
      *
      * @return The selected mode.
      */
-    appbox::RegistryIsolation Isolation() const;
+    appbox::RegistryKeyIsolation Isolation() const;
 
     /**
      * @brief Whether the mode has to be applied to the whole subtree.
-     * @return true when the sub keys are overwritten as well.
+     * @return true when the sub keys and the values are overwritten as well.
      */
-    bool ApplyToSubKeys() const;
-
-    /**
-     * @brief Whether the values below the key are overwritten as well.
-     *
-     * The option only counts together with ApplyToSubKeys(), which is the state
-     * the dialog keeps while the option is disabled.
-     *
-     * @return true when the values are overwritten.
-     */
-    bool ApplyToValues() const;
+    bool Recursive() const;
 
 private:
-    /**
-     * @brief Follow the state of the sub key option.
-     * @param[in] event Command event of the sub key option.
-     */
-    void OnSubKeysToggled(wxCommandEvent& event);
-
     /**
      * @brief Field holding the isolation modes.
      */
     wxRadioBox* isolation_ = nullptr;
 
     /**
-     * @brief Option which overwrites the sub keys of the key.
+     * @brief Option which overwrites the subtree of the key.
      */
-    wxCheckBox* sub_keys_ = nullptr;
-
-    /**
-     * @brief Option which overwrites the values below the key.
-     */
-    wxCheckBox* values_ = nullptr;
+    wxCheckBox* recursive_ = nullptr;
 };
 
 #endif // APPBOX_PACKER_WIDGET_REGISTRY_ISOLATION_DIALOG_HPP

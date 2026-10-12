@@ -2,6 +2,7 @@
 #include <wx/button.h>
 #include <wx/choice.h>
 #include <wx/msgdlg.h>
+#include <wx/radiobox.h>
 #include <wx/settings.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
@@ -52,7 +53,8 @@ wxString HintFor(appbox::RegistryValueType type)
 
 RegistryValueDialog::RegistryValueDialog(wxWindow* parent, const wxString& title, const wxString& parent_path,
                                          const wxString& initial_name, appbox::RegistryValueType initial_type,
-                                         const std::vector<std::uint8_t>& initial_data, Validator validator)
+                                         const std::vector<std::uint8_t>& initial_data,
+                                         appbox::RegistryValueIsolation initial_isolation, Validator validator)
     : wxDialog(parent, wxID_ANY, title, wxDefaultPosition, wxDefaultSize), validator_(std::move(validator)),
       data_(initial_data)
 {
@@ -87,6 +89,22 @@ RegistryValueDialog::RegistryValueDialog(wxWindow* parent, const wxString& title
         type_->SetSelection(0);
     }
 
+    /*
+     * The names of the modes are ordered like the enumeration of the modes, so
+     * the selection of the field is the mode itself.
+     */
+    wxArrayString modes;
+    for (const auto& mode : appbox::RegistryValueIsolationNames())
+    {
+        modes.Add(wxString(mode));
+    }
+
+    isolation_ =
+        new wxRadioBox(this, wxID_ANY, "Isolation", wxDefaultPosition, wxDefaultSize, modes, 1, wxRA_SPECIFY_COLS);
+    isolation_->SetSelection(static_cast<int>(initial_isolation));
+    isolation_->SetToolTip("Isolation mode of the value, which decides what the application sees and where its "
+                           "modifications land");
+
     auto* value_label = new wxStaticText(this, wxID_ANY, "Value:");
     single_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(320, -1));
     multi_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(320, 110), wxTE_MULTILINE);
@@ -115,7 +133,8 @@ RegistryValueDialog::RegistryValueDialog(wxWindow* parent, const wxString& title
 
     auto* sizer = new wxBoxSizer(wxVERTICAL);
     sizer->Add(grid, 1, wxEXPAND | wxALL, 12);
-    sizer->Add(hint_, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
+    sizer->Add(isolation_, 0, wxEXPAND | wxLEFT | wxRIGHT, 12);
+    sizer->Add(hint_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 12);
     sizer->Add(buttons, 0, wxEXPAND | wxALL, 12);
 
     SetSizerAndFit(sizer);
@@ -149,6 +168,16 @@ appbox::RegistryValueType RegistryValueDialog::Type() const
 const std::vector<std::uint8_t>& RegistryValueDialog::Data() const
 {
     return data_;
+}
+
+appbox::RegistryValueIsolation RegistryValueDialog::Isolation() const
+{
+    const int selection = isolation_ != nullptr ? isolation_->GetSelection() : wxNOT_FOUND;
+    if (selection < 0)
+    {
+        return appbox::RegistryValueIsolation::Full;
+    }
+    return static_cast<appbox::RegistryValueIsolation>(selection);
 }
 
 void RegistryValueDialog::ShowEditorFor(appbox::RegistryValueType type, const std::vector<std::uint8_t>& data)

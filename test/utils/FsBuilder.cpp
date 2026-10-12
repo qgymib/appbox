@@ -3,6 +3,7 @@
 #include <vector>
 #include "utils/ReadFileFull.hpp"
 #include "utils/SandboxDll.hpp"
+#include "RegistryIsolation.hpp"
 #include "SandboxLayout.hpp"
 #include "FsBuilder.hpp"
 #include "WString.hpp"
@@ -43,11 +44,62 @@ static bool WriteFile(const std::filesystem::path& path, const appbox::test::FsN
 }
 
 /**
+ * @brief Write the registry isolation file a case which declares none gets.
+ *
+ * The sandbox refuses a run whose archive carries no registry isolation file,
+ * because the modes of the view cannot be resolved without it, and every archive
+ * the packer writes carries one. A case which does not spell the registry domain
+ * of its archive therefore gets the document of the builder: the five root keys
+ * of the view with the mode `Write Copy`, which keeps the entries of the host
+ * visible and redirects every write into the sandbox — the behavior a sandbox
+ * without an isolation file has, so a case which does not exercise the modes
+ * keeps the expectations of such a sandbox.
+ *
+ * A case which declares its own registry domain, with the `FsRoot` content or
+ * with the `HiveBuilder`, keeps it: the file is only written when the resources
+ * carry none.
+ *
+ * @param[in] root Root directory of the case.
+ */
+static void WriteDefaultRegistryIsolation(const std::filesystem::path& root)
+{
+    const std::filesystem::path directory(root / appbox::layout::kAppDirNameW / appbox::layout::kRegistryDirNameW);
+    const std::filesystem::path file(directory / appbox::layout::kIsolationFileNameW);
+
+    std::error_code ec;
+    if (std::filesystem::exists(file, ec))
+    {
+        return;
+    }
+
+    std::filesystem::create_directories(directory, ec);
+
+    appbox::registry_isolation::Document document;
+    for (const wchar_t* name : appbox::registry_isolation::kRootKeyNames)
+    {
+        appbox::registry_isolation::KeyEntry entry;
+        entry.path = appbox::WideToUTF8(name);
+        entry.isolation = appbox::RegistryKeyIsolation::WriteCopy;
+        document.keys.push_back(std::move(entry));
+    }
+
+    std::ofstream out(file, std::ios::binary | std::ios::trunc);
+    if (!out.is_open())
+    {
+        return;
+    }
+
+    const auto text = nlohmann::json(document).dump(2);
+    out.write(text.data(), static_cast<std::streamsize>(text.size()));
+}
+
+/**
  * @brief Whether a directory entry belongs to the fixed layout of a case.
  *
  * A case declares the content of its directories, but not the entries which
  * the harness writes into them: the isolation files which the helpers of the
- * suite create in the domain directories and the sandbox injection modules
+ * suite create in the domain directories, the registry domain which carries the
+ * hive and the isolation file of the case, and the sandbox injection modules
  * which WriteSandboxModules() links into the resource root. The verification
  * skips those entries while it counts the content of a directory, so a case
  * only has to declare what it really describes.
@@ -57,8 +109,8 @@ static bool WriteFile(const std::filesystem::path& path, const appbox::test::FsN
  */
 static bool IsLayoutEntry(const std::wstring& name)
 {
-    return name == appbox::layout::kIsolationFileNameW || name == appbox::layout::kSandbox32DllNameW ||
-           name == appbox::layout::kSandbox64DllNameW;
+    return name == appbox::layout::kIsolationFileNameW || name == appbox::layout::kRegistryDirNameW ||
+           name == appbox::layout::kSandbox32DllNameW || name == appbox::layout::kSandbox64DllNameW;
 }
 
 /**
@@ -348,6 +400,10 @@ appbox::LauncherConfig appbox::test::FsRoot::Build() const
 
     /* The modules every case needs, see WriteSandboxModules(). */
     WriteSandboxModules(data_->root_);
+
+    /* The registry isolation file of a case which declares no registry domain,
+     * see WriteDefaultRegistryIsolation(). */
+    WriteDefaultRegistryIsolation(data_->root_);
 
     /*
      * The layout of the sandbox is a fixed convention which the case spells

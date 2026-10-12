@@ -14,11 +14,13 @@
 #include <vector>
 
 class wxChoice;
+class wxRadioBox;
 class wxStaticText;
 class wxTextCtrl;
 
 /**
- * @brief Dialog to edit the name, the type and the data of a registry value.
+ * @brief Dialog to edit the name, the type, the data and the isolation mode of
+ *        a registry value.
  *
  * The dialog is used for both editing an existing value and creating a new
  * one. The data editor follows the selected type: a single line field for
@@ -29,6 +31,11 @@ class wxTextCtrl;
  * The data is parsed and the name is validated through a callback, so the
  * rules of the registry model are applied without duplicating them here. A
  * rejected input keeps the dialog open and shows the reason.
+ *
+ * The isolation mode is picked in the dialog as well. The dialog only reports
+ * the chosen mode, the caller stores it through the model, so the modes of a
+ * value are offered by one source: the names of the field are the ones the
+ * `Isolation` column of the table shows.
  */
 class RegistryValueDialog : public wxDialog
 {
@@ -52,11 +59,13 @@ public:
      * @param[in] initial_name Name shown in the name field.
      * @param[in] initial_type Type selected in the type field.
      * @param[in] initial_data Data shown by the data editor.
+     * @param[in] initial_isolation Isolation mode selected when the dialog opens.
      * @param[in] validator Validation callback of the entered value.
      */
     RegistryValueDialog(wxWindow* parent, const wxString& title, const wxString& parent_path,
                         const wxString& initial_name, appbox::RegistryValueType initial_type,
-                        const std::vector<std::uint8_t>& initial_data, Validator validator);
+                        const std::vector<std::uint8_t>& initial_data, appbox::RegistryValueIsolation initial_isolation,
+                        Validator validator);
 
     /**
      * @brief Get the accepted name.
@@ -78,6 +87,15 @@ public:
      * @return The raw data of the value.
      */
     const std::vector<std::uint8_t>& Data() const;
+
+    /**
+     * @brief Get the selected isolation mode.
+     *
+     * Only valid after ShowModal() returned wxID_OK.
+     *
+     * @return The mode selected in the isolation field.
+     */
+    appbox::RegistryValueIsolation Isolation() const;
 
 private:
     /**
@@ -122,6 +140,11 @@ private:
      * @brief Field holding the type of the value.
      */
     wxChoice* type_ = nullptr;
+
+    /**
+     * @brief Field holding the isolation modes of a value.
+     */
+    wxRadioBox* isolation_ = nullptr;
 
     /**
      * @brief Editor of the single line types.

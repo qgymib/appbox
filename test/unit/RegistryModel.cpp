@@ -44,7 +44,7 @@ TEST(Unit_RegistryModel, ResetCreatesTheFiveRootKeysInDisplayOrder)
     {
         EXPECT_EQ(container.children[index].name, roots[index]);
         EXPECT_FALSE(container.children[index].removable);
-        EXPECT_EQ(container.children[index].isolation, appbox::RegistryIsolation::WriteCopy);
+        EXPECT_EQ(container.children[index].isolation, appbox::RegistryKeyIsolation::Merge);
     }
 }
 
@@ -89,7 +89,7 @@ TEST(Unit_RegistryModel, AddKeyCreatesAndSortsSubKeys)
     EXPECT_EQ(key->children[0].name, L"Alpha");
     EXPECT_EQ(key->children[1].name, L"Vendor");
 
-    EXPECT_EQ(key->children[0].isolation, appbox::RegistryIsolation::WriteCopy);
+    EXPECT_EQ(key->children[0].isolation, appbox::RegistryKeyIsolation::Merge);
 }
 
 TEST(Unit_RegistryModel, AddKeyRejectsInvalidAndDuplicateNames)
@@ -237,6 +237,28 @@ TEST(Unit_RegistryModel, RenameKeyRejectsAnExistingSiblingAndKeepsTheCaseChange)
     EXPECT_EQ(key->children[0].name, L"ALPHA");
 }
 
+/**
+ * @brief Renaming a key keeps the isolation mode the key carries.
+ *
+ * The workspace edits the name and the isolation mode of a key in one dialog,
+ * so the rename must not drop the mode the key held before: the dialog stores
+ * the mode of its own field right after the rename.
+ */
+TEST(Unit_RegistryModel, RenameKeyKeepsTheIsolationModeOfTheKey)
+{
+    appbox::RegistryModel model;
+    std::string           error;
+
+    ASSERT_TRUE(model.AddKey(L"HKEY_CURRENT_USER", L"Vendor", error)) << error;
+    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryKeyIsolation::Hide));
+
+    ASSERT_TRUE(model.RenameKey(L"HKEY_CURRENT_USER\\Vendor", L"Renamed", error)) << error;
+
+    const auto* key = model.FindKey(L"HKEY_CURRENT_USER\\Renamed");
+    ASSERT_NE(key, nullptr);
+    EXPECT_EQ(key->isolation, appbox::RegistryKeyIsolation::Hide);
+}
+
 TEST(Unit_RegistryModel, RemoveKeyDropsTheSubtreeAndRejectsRoots)
 {
     appbox::RegistryModel model;
@@ -319,7 +341,7 @@ TEST(Unit_RegistryModel, SetValueOverwritesAndKeepsTheIsolationMode)
     ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER", L"Path", appbox::RegistryValueType::String,
                                appbox::RegistryStringData(L"C:\\Old"), error))
         << error;
-    ASSERT_TRUE(model.SetValueIsolation(L"HKEY_CURRENT_USER", L"Path", appbox::RegistryIsolation::Hide));
+    ASSERT_TRUE(model.SetValueIsolation(L"HKEY_CURRENT_USER", L"Path", appbox::RegistryValueIsolation::Hide));
 
     ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER", L"Path", appbox::RegistryValueType::String,
                                appbox::RegistryStringData(L"C:\\New"), error))
@@ -328,7 +350,7 @@ TEST(Unit_RegistryModel, SetValueOverwritesAndKeepsTheIsolationMode)
     const auto& values = model.FindKey(L"HKEY_CURRENT_USER")->values;
     ASSERT_EQ(values.size(), 1u);
     EXPECT_EQ(appbox::RegistryStringValue(values[0].data), L"C:\\New");
-    EXPECT_EQ(values[0].isolation, appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(values[0].isolation, appbox::RegistryValueIsolation::Hide);
 }
 
 TEST(Unit_RegistryModel, UpdateValueReplacesNameTypeAndData)
@@ -402,27 +424,27 @@ TEST(Unit_RegistryModel, SetKeyIsolationOnlyChangesTheKey)
     ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {}, error))
         << error;
 
-    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryIsolation::Full));
+    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryKeyIsolation::Full));
 
     const auto* vendor = model.FindKey(L"HKEY_CURRENT_USER\\Vendor");
     ASSERT_NE(vendor, nullptr);
-    EXPECT_EQ(vendor->isolation, appbox::RegistryIsolation::Full);
+    EXPECT_EQ(vendor->isolation, appbox::RegistryKeyIsolation::Full);
 
     /* The sub key and every value keep the mode they held before. */
     ASSERT_EQ(vendor->children.size(), 1u);
-    EXPECT_EQ(vendor->children[0].isolation, appbox::RegistryIsolation::WriteCopy);
+    EXPECT_EQ(vendor->children[0].isolation, appbox::RegistryKeyIsolation::Merge);
     ASSERT_EQ(vendor->children[0].values.size(), 1u);
-    EXPECT_EQ(vendor->children[0].values[0].isolation, appbox::RegistryIsolation::WriteCopy);
+    EXPECT_EQ(vendor->children[0].values[0].isolation, appbox::RegistryValueIsolation::Full);
 
     ASSERT_EQ(vendor->values.size(), 1u);
-    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryIsolation::WriteCopy);
+    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryValueIsolation::Full);
 
     /* The key above the changed key is untouched as well. */
     const auto* current_user = model.FindKey(L"HKEY_CURRENT_USER");
     ASSERT_NE(current_user, nullptr);
-    EXPECT_EQ(current_user->isolation, appbox::RegistryIsolation::WriteCopy);
+    EXPECT_EQ(current_user->isolation, appbox::RegistryKeyIsolation::Merge);
 
-    EXPECT_FALSE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Missing", appbox::RegistryIsolation::Full));
+    EXPECT_FALSE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Missing", appbox::RegistryKeyIsolation::Full));
 }
 
 TEST(Unit_RegistryModel, ApplyIsolationToSubtreeOverwritesEveryKeyAndValue)
@@ -438,55 +460,29 @@ TEST(Unit_RegistryModel, ApplyIsolationToSubtreeOverwritesEveryKeyAndValue)
         << error;
 
     /* Entries below the key are changed before the subtree is overwritten. */
-    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor\\App", appbox::RegistryIsolation::Hide));
+    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor\\App", appbox::RegistryKeyIsolation::Hide));
     ASSERT_TRUE(
-        model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path", appbox::RegistryIsolation::WriteCopy));
+        model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path", appbox::RegistryValueIsolation::Hide));
 
-    ASSERT_TRUE(model.ApplyIsolationToSubtree(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryIsolation::Full, true));
+    ASSERT_TRUE(model.ApplyIsolationToSubtree(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryKeyIsolation::Full));
 
     const auto* vendor = model.FindKey(L"HKEY_CURRENT_USER\\Vendor");
     ASSERT_NE(vendor, nullptr);
-    EXPECT_EQ(vendor->isolation, appbox::RegistryIsolation::Full);
+    EXPECT_EQ(vendor->isolation, appbox::RegistryKeyIsolation::Full);
     ASSERT_EQ(vendor->values.size(), 1u);
-    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryIsolation::Full);
+    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryValueIsolation::Full);
 
     /* A mode which was changed before is overwritten without an exception. */
     ASSERT_EQ(vendor->children.size(), 1u);
     const auto& app = vendor->children[0];
-    EXPECT_EQ(app.isolation, appbox::RegistryIsolation::Full);
+    EXPECT_EQ(app.isolation, appbox::RegistryKeyIsolation::Full);
     ASSERT_EQ(app.values.size(), 1u);
-    EXPECT_EQ(app.values[0].isolation, appbox::RegistryIsolation::Full);
+    EXPECT_EQ(app.values[0].isolation, appbox::RegistryValueIsolation::Full);
 
     ASSERT_EQ(app.children.size(), 1u);
-    EXPECT_EQ(app.children[0].isolation, appbox::RegistryIsolation::Full);
+    EXPECT_EQ(app.children[0].isolation, appbox::RegistryKeyIsolation::Full);
 
-    EXPECT_FALSE(model.ApplyIsolationToSubtree(L"HKEY_CURRENT_USER\\Missing", appbox::RegistryIsolation::Full, true));
-}
-
-TEST(Unit_RegistryModel, ApplyIsolationToSubtreeKeepsTheValuesWhenTheyAreNotIncluded)
-{
-    appbox::RegistryModel model;
-    std::string           error;
-
-    ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor\\App", error)) << error;
-    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {}, error))
-        << error;
-    ASSERT_TRUE(
-        model.SetValue(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path", appbox::RegistryValueType::String, {}, error))
-        << error;
-
-    ASSERT_TRUE(model.ApplyIsolationToSubtree(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryIsolation::Hide, false));
-
-    const auto* vendor = model.FindKey(L"HKEY_CURRENT_USER\\Vendor");
-    ASSERT_NE(vendor, nullptr);
-    EXPECT_EQ(vendor->isolation, appbox::RegistryIsolation::Hide);
-    ASSERT_EQ(vendor->values.size(), 1u);
-    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryIsolation::WriteCopy);
-
-    ASSERT_EQ(vendor->children.size(), 1u);
-    EXPECT_EQ(vendor->children[0].isolation, appbox::RegistryIsolation::Hide);
-    ASSERT_EQ(vendor->children[0].values.size(), 1u);
-    EXPECT_EQ(vendor->children[0].values[0].isolation, appbox::RegistryIsolation::WriteCopy);
+    EXPECT_FALSE(model.ApplyIsolationToSubtree(L"HKEY_CURRENT_USER\\Missing", appbox::RegistryKeyIsolation::Full));
 }
 
 TEST(Unit_RegistryModel, NewEntriesFollowTheKeyTheyAreCreatedIn)
@@ -495,16 +491,16 @@ TEST(Unit_RegistryModel, NewEntriesFollowTheKeyTheyAreCreatedIn)
     std::string           error;
 
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor", error)) << error;
-    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryIsolation::Hide));
+    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryKeyIsolation::Hide));
 
     /* The intermediate keys of an import follow the closest key above them. */
     ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor\\App\\Sub", error)) << error;
 
     const auto* app = model.FindKey(L"HKEY_CURRENT_USER\\Vendor\\App");
     ASSERT_NE(app, nullptr);
-    EXPECT_EQ(app->isolation, appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(app->isolation, appbox::RegistryKeyIsolation::Hide);
     ASSERT_EQ(app->children.size(), 1u);
-    EXPECT_EQ(app->children[0].isolation, appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(app->children[0].isolation, appbox::RegistryKeyIsolation::Hide);
 
     /* Keys and values added by hand follow the key they are added to as well. */
     ASSERT_TRUE(model.AddKey(L"HKEY_CURRENT_USER\\Vendor\\App", L"Child", error)) << error;
@@ -517,13 +513,13 @@ TEST(Unit_RegistryModel, NewEntriesFollowTheKeyTheyAreCreatedIn)
     ASSERT_NE(vendor, nullptr);
     ASSERT_EQ(vendor->values.size(), 2u);
     EXPECT_EQ(vendor->values[0].name, L"Name");
-    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryValueIsolation::Hide);
     EXPECT_EQ(vendor->values[1].name, L"Other");
-    EXPECT_EQ(vendor->values[1].isolation, appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(vendor->values[1].isolation, appbox::RegistryValueIsolation::Hide);
 
     const auto* child = model.FindKey(L"HKEY_CURRENT_USER\\Vendor\\App\\Child");
     ASSERT_NE(child, nullptr);
-    EXPECT_EQ(child->isolation, appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(child->isolation, appbox::RegistryKeyIsolation::Hide);
 }
 
 TEST(Unit_RegistryModel, SetValueIsolationOnlyChangesTheValue)
@@ -537,29 +533,91 @@ TEST(Unit_RegistryModel, SetValueIsolationOnlyChangesTheValue)
     ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Other", appbox::RegistryValueType::String, {}, error))
         << error;
 
-    ASSERT_TRUE(model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryIsolation::Full));
+    ASSERT_TRUE(model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueIsolation::Full));
 
     const auto* vendor = model.FindKey(L"HKEY_CURRENT_USER\\Vendor");
     ASSERT_NE(vendor, nullptr);
-    EXPECT_EQ(vendor->isolation, appbox::RegistryIsolation::WriteCopy);
+    EXPECT_EQ(vendor->isolation, appbox::RegistryKeyIsolation::Merge);
     ASSERT_EQ(vendor->values.size(), 2u);
     EXPECT_EQ(vendor->values[0].name, L"Name");
-    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryIsolation::Full);
-    EXPECT_EQ(vendor->values[1].isolation, appbox::RegistryIsolation::WriteCopy);
+    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryValueIsolation::Full);
+    EXPECT_EQ(vendor->values[1].isolation, appbox::RegistryValueIsolation::Full);
 
-    EXPECT_FALSE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Missing", appbox::RegistryIsolation::Full));
-    EXPECT_FALSE(model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor", L"Missing", appbox::RegistryIsolation::Full));
+    EXPECT_FALSE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Missing", appbox::RegistryKeyIsolation::Full));
+    EXPECT_FALSE(
+        model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor", L"Missing", appbox::RegistryValueIsolation::Full));
+}
+
+/**
+ * @brief A new entry ends on the isolation mode the dialog of the entry asks for.
+ *
+ * A key which is created below another key inherits the mode of its parent and a
+ * new value starts with DefaultValueIsolation() of its key, while the dialog of
+ * the new entry offers every mode of its kind. The mode picked in the dialog is
+ * stored after the entry was created, so the combination has to end on the
+ * chosen mode and not on the inherited one.
+ */
+TEST(Unit_RegistryModel, NewEntriesEndOnTheIsolationModeTheDialogAsksFor)
+{
+    appbox::RegistryModel model;
+    std::string           error;
+
+    ASSERT_TRUE(model.AddKey(L"HKEY_CURRENT_USER", L"Vendor", error)) << error;
+    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryKeyIsolation::Hide));
+
+    /* The sub key inherits Hide and is stored with the mode of its dialog. */
+    ASSERT_TRUE(model.AddKey(L"HKEY_CURRENT_USER\\Vendor", L"App", error)) << error;
+    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor\\App", appbox::RegistryKeyIsolation::Merge));
+
+    const auto* app = model.FindKey(L"HKEY_CURRENT_USER\\Vendor\\App");
+    ASSERT_NE(app, nullptr);
+    EXPECT_EQ(app->isolation, appbox::RegistryKeyIsolation::Merge);
+
+    /* The value inherits Hide as well and is stored with the mode of its dialog. */
+    ASSERT_TRUE(model.AddValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {}, error))
+        << error;
+    ASSERT_TRUE(model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueIsolation::Full));
+
+    const auto* vendor = model.FindKey(L"HKEY_CURRENT_USER\\Vendor");
+    ASSERT_NE(vendor, nullptr);
+    ASSERT_EQ(vendor->values.size(), 1u);
+    EXPECT_EQ(vendor->values[0].name, L"Name");
+    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryValueIsolation::Full);
 }
 
 TEST(Unit_RegistryModel, IsolationNamesCoverEveryMode)
 {
-    const auto& names = appbox::RegistryIsolationNames();
-    ASSERT_EQ(names.size(), 3u);
-    EXPECT_EQ(names[0], L"Full");
-    EXPECT_EQ(names[1], L"Write Copy");
-    EXPECT_EQ(names[2], L"Hide");
+    /* A key carries four modes and a value two, so both lists are offered. */
+    const auto& key_names = appbox::RegistryKeyIsolationNames();
+    ASSERT_EQ(key_names.size(), 4u);
+    EXPECT_EQ(key_names[0], L"Full");
+    EXPECT_EQ(key_names[1], L"Merge");
+    EXPECT_EQ(key_names[2], L"Write Copy");
+    EXPECT_EQ(key_names[3], L"Hide");
 
-    EXPECT_EQ(appbox::RegistryIsolationName(appbox::RegistryIsolation::WriteCopy), L"Write Copy");
+    const auto& value_names = appbox::RegistryValueIsolationNames();
+    ASSERT_EQ(value_names.size(), 2u);
+    EXPECT_EQ(value_names[0], L"Full");
+    EXPECT_EQ(value_names[1], L"Hide");
+
+    EXPECT_EQ(appbox::RegistryKeyIsolationName(appbox::RegistryKeyIsolation::WriteCopy), L"Write Copy");
+    EXPECT_EQ(appbox::RegistryValueIsolationName(appbox::RegistryValueIsolation::Hide), L"Hide");
+}
+
+TEST(Unit_RegistryModel, ANewValueStartsFullUnlessItsKeyIsHidden)
+{
+    appbox::RegistryModel model;
+    std::string           error;
+
+    ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor", error)) << error;
+    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {}, error))
+        << error;
+    EXPECT_EQ(model.FindKey(L"HKEY_CURRENT_USER\\Vendor")->values[0].isolation, appbox::RegistryValueIsolation::Full);
+
+    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryKeyIsolation::Hide));
+    ASSERT_TRUE(model.AddValue(L"HKEY_CURRENT_USER\\Vendor", L"Other", appbox::RegistryValueType::String, {}, error))
+        << error;
+    EXPECT_EQ(model.FindKey(L"HKEY_CURRENT_USER\\Vendor")->values[1].isolation, appbox::RegistryValueIsolation::Hide);
 }
 
 TEST(Unit_RegistryModel, ValueTypeNamesResolveBothWays)
@@ -703,6 +761,8 @@ TEST(Unit_RegistryModel, PathHelpersNormalizeAndSplit)
     EXPECT_EQ(appbox::NormalizeRegistryPath(L"hkey_users//Software/"), L"hkey_users\\Software");
     EXPECT_EQ(appbox::RegistryParentPath(L"HKEY_USERS\\Software\\Vendor"), L"HKEY_USERS\\Software");
     EXPECT_EQ(appbox::RegistryParentPath(L"HKEY_USERS"), L"");
+    /* The container is the root of the view, so it is the node without a parent. */
+    EXPECT_EQ(appbox::RegistryParentPath(L""), L"");
     EXPECT_EQ(appbox::RegistryLeafName(L"HKEY_USERS\\Software"), L"Software");
 
     EXPECT_TRUE(appbox::RegistryPathEquals(L"HKLM\\Software", L"hklm\\software"));
@@ -723,17 +783,27 @@ TEST(Unit_RegistryModel, PathHelpersNormalizeAndSplit)
  */
 TEST(Unit_RegistryModel, EveryIsolationModeIsDescribedForATooltip)
 {
-    for (const auto isolation :
-         { appbox::RegistryIsolation::Full, appbox::RegistryIsolation::WriteCopy, appbox::RegistryIsolation::Hide })
+    for (const auto isolation : { appbox::RegistryKeyIsolation::Full, appbox::RegistryKeyIsolation::Merge,
+                                  appbox::RegistryKeyIsolation::WriteCopy, appbox::RegistryKeyIsolation::Hide })
     {
-        const std::wstring description = appbox::RegistryIsolationDescription(isolation);
+        const std::wstring description = appbox::RegistryKeyIsolationDescription(isolation);
 
         EXPECT_NE(description.find(L"Isolation mode"), std::wstring::npos) << description;
-        EXPECT_NE(description.find(appbox::RegistryIsolationName(isolation)), std::wstring::npos) << description;
+        EXPECT_NE(description.find(appbox::RegistryKeyIsolationName(isolation)), std::wstring::npos) << description;
     }
 
-    EXPECT_NE(appbox::RegistryIsolationDescription(appbox::RegistryIsolation::Hide).find(L"invisible"),
+    for (const auto isolation : { appbox::RegistryValueIsolation::Full, appbox::RegistryValueIsolation::Hide })
+    {
+        const std::wstring description = appbox::RegistryValueIsolationDescription(isolation);
+
+        EXPECT_NE(description.find(L"Isolation mode"), std::wstring::npos) << description;
+        EXPECT_NE(description.find(appbox::RegistryValueIsolationName(isolation)), std::wstring::npos) << description;
+    }
+
+    EXPECT_NE(appbox::RegistryKeyIsolationDescription(appbox::RegistryKeyIsolation::Hide).find(L"invisible"),
               std::wstring::npos);
-    EXPECT_NE(appbox::RegistryIsolationDescription(appbox::RegistryIsolation::WriteCopy).find(L"default mode"),
+    EXPECT_NE(appbox::RegistryKeyIsolationDescription(appbox::RegistryKeyIsolation::Merge).find(L"real registry"),
+              std::wstring::npos);
+    EXPECT_NE(appbox::RegistryValueIsolationDescription(appbox::RegistryValueIsolation::Hide).find(L"invisible"),
               std::wstring::npos);
 }

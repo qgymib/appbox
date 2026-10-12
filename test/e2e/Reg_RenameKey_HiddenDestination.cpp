@@ -65,7 +65,7 @@ TEST_F(E2E_Reg, RenameKey_HiddenDestination)
 
     HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"SandboxValue", REG_SZ, StringData(L"sandbox"));
-    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + new_subkey, appbox::RegistryIsolation::Full);
+    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + new_subkey, appbox::RegistryKeyIsolation::Full);
 
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;

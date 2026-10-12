@@ -327,3 +327,460 @@ bool appbox::MergeHiveInto(const std::wstring& target_hive, const std::wstring& 
         return false;
     }
 }
+
+namespace
+{
+
+/**
+ * @brief Split a hive relative key path into its components.
+ * @param[in] path The path to split.
+ * @param[out] parts The components, empty for an empty path.
+ */
+void SplitPath(const std::wstring& path, std::vector<std::wstring>& parts)
+{
+    std::wstring current;
+    for (const wchar_t character : path)
+    {
+        if (character == L'\\' || character == L'/')
+        {
+            if (!current.empty())
+            {
+                parts.push_back(current);
+                current.clear();
+            }
+            continue;
+        }
+        current.push_back(character);
+    }
+
+    if (!current.empty())
+    {
+        parts.push_back(current);
+    }
+}
+
+/**
+ * @brief Open a key below a root handle, the intermediate keys included.
+ *
+ * @param[in] root The root handle of the hive.
+ * @param[in] parts The components of the path.
+ * @param[in] create true creates a key which is missing.
+ * @param[out] key The handle of the key. An empty path yields the root handle.
+ * @param[out] owned Whether the caller has to close the returned handle.
+ * @return true when the key was opened (or created).
+ */
+bool OpenPath(HKEY root, const std::vector<std::wstring>& parts, bool create, HKEY& key, bool& owned)
+{
+    key = root;
+    owned = false;
+
+    for (const auto& part : parts)
+    {
+        HKEY       child = nullptr;
+        DWORD      disposition = 0;
+        const LONG status = create ? RegCreateKeyExW(key, part.c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE,
+                                                     KEY_ALL_ACCESS, nullptr, &child, &disposition)
+                                   : RegOpenKeyExW(key, part.c_str(), 0, KEY_ALL_ACCESS, &child);
+        if (owned)
+        {
+            RegCloseKey(key);
+            owned = false;
+        }
+
+        if (status != ERROR_SUCCESS)
+        {
+            key = nullptr;
+            return false;
+        }
+
+        key = child;
+        owned = true;
+    }
+
+    return true;
+}
+
+/**
+ * @brief Whether a key holds a value.
+ *
+ * @param[in] key The key to test.
+ * @param[in] name Name of the value, empty for the default value.
+ * @return true when the key holds the value.
+ */
+bool HoldsValue(HKEY key, const std::wstring& name)
+{
+    DWORD      size = 0;
+    const LONG status = RegQueryValueExW(key, name.c_str(), nullptr, nullptr, nullptr, &size);
+    return status == ERROR_SUCCESS || status == ERROR_MORE_DATA;
+}
+
+/**
+ * @brief Copy the values and the sub keys of one key into another key.
+ *
+ * @param[in] source The key which holds the content.
+ * @param[in] destination The key which receives it.
+ * @param[in] overwrite true replaces an entry the destination already holds,
+ *                      false keeps it.
+ * @param[in] depth Depth of the copy.
+ * @param[out] error Error description on failure.
+ * @return true when the whole content was copied.
+ */
+bool CopyContent(HKEY source, HKEY destination, bool overwrite, std::size_t depth, std::string& error)
+{
+    if (depth > kMaxDepth)
+    {
+        error = "the registry of the layer is nested too deeply";
+        return false;
+    }
+
+    std::vector<std::wstring> values;
+    if (!CollectValueNames(source, values, error))
+    {
+        return false;
+    }
+
+    for (const auto& name : values)
+    {
+        if (!overwrite && HoldsValue(destination, name))
+        {
+            /* The destination holds the value: the state of the sandbox wins. */
+            continue;
+        }
+
+        DWORD             type = REG_NONE;
+        std::vector<BYTE> data;
+        if (!ReadValue(source, name, type, data, error) || !WriteValue(destination, name, type, data, error))
+        {
+            return false;
+        }
+    }
+
+    std::vector<std::wstring> keys;
+    if (!CollectSubKeyNames(source, keys, error))
+    {
+        return false;
+    }
+
+    for (const auto& name : keys)
+    {
+        HKEY source_child = nullptr;
+        LONG status = RegOpenKeyExW(source, name.c_str(), 0, KEY_READ, &source_child);
+        if (status != ERROR_SUCCESS)
+        {
+            error = fmt::format("failed to open the key '{}' of the hive: error {}", appbox::WideToUTF8(name), status);
+            return false;
+        }
+
+        HKEY  destination_child = nullptr;
+        DWORD disposition = 0;
+        status = RegCreateKeyExW(destination, name.c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS,
+                                 nullptr, &destination_child, &disposition);
+        if (status != ERROR_SUCCESS)
+        {
+            RegCloseKey(source_child);
+            error =
+                fmt::format("failed to create the key '{}' of the hive: error {}", appbox::WideToUTF8(name), status);
+            return false;
+        }
+
+        const bool copied = CopyContent(source_child, destination_child, overwrite, depth + 1, error);
+
+        RegCloseKey(destination_child);
+        RegCloseKey(source_child);
+
+        if (!copied)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * @brief Move a sub key of the view into the hidden store.
+ *
+ * The content of the key is copied into the store first and the key of the view
+ * is removed afterwards, so a failure never loses the content of a layer.
+ *
+ * @param[in] view_parent The key of the view which holds the sub key.
+ * @param[in] store_parent The key of the hidden store which mirrors the parent.
+ * @param[in] name Name of the sub key.
+ * @param[out] error Error description on failure.
+ * @return true when the key is hidden (or the view does not hold it).
+ */
+bool HideKey(HKEY view_parent, HKEY store_parent, const std::wstring& name, std::string& error)
+{
+    HKEY view = nullptr;
+    if (RegOpenKeyExW(view_parent, name.c_str(), 0, KEY_ALL_ACCESS, &view) != ERROR_SUCCESS)
+    {
+        /* The view does not hold the key: there is nothing to hide. */
+        return true;
+    }
+
+    HKEY  store = nullptr;
+    DWORD disposition = 0;
+    LONG  status = RegCreateKeyExW(store_parent, name.c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS,
+                                   nullptr, &store, &disposition);
+    if (status != ERROR_SUCCESS)
+    {
+        RegCloseKey(view);
+        error = fmt::format("failed to create the hidden key '{}': error {}", appbox::WideToUTF8(name), status);
+        return false;
+    }
+
+    const bool copied = CopyContent(view, store, true, 0, error);
+    RegCloseKey(store);
+    RegCloseKey(view);
+
+    if (!copied)
+    {
+        return false;
+    }
+
+    if (RegDeleteTreeW(view_parent, name.c_str()) != ERROR_SUCCESS)
+    {
+        error = fmt::format("failed to hide the key '{}' of the hive", appbox::WideToUTF8(name));
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * @brief Move a sub key of the hidden store into the view.
+ *
+ * @param[in] view_parent The key of the view which receives the sub key.
+ * @param[in] store_parent The key of the hidden store which mirrors the parent.
+ * @param[in] name Name of the sub key.
+ * @param[out] error Error description on failure.
+ * @return true when the key is visible (or the store does not hold it).
+ */
+bool RevealKey(HKEY view_parent, HKEY store_parent, const std::wstring& name, std::string& error)
+{
+    HKEY store = nullptr;
+    if (RegOpenKeyExW(store_parent, name.c_str(), 0, KEY_ALL_ACCESS, &store) != ERROR_SUCCESS)
+    {
+        /* The store does not hold the key: there is nothing to reveal. */
+        return true;
+    }
+
+    HKEY  view = nullptr;
+    DWORD disposition = 0;
+    LONG  status = RegCreateKeyExW(view_parent, name.c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS,
+                                   nullptr, &view, &disposition);
+    if (status != ERROR_SUCCESS)
+    {
+        RegCloseKey(store);
+        error = fmt::format("failed to create the key '{}' of the hive: error {}", appbox::WideToUTF8(name), status);
+        return false;
+    }
+
+    const bool copied = CopyContent(store, view, false, 0, error);
+    RegCloseKey(view);
+    RegCloseKey(store);
+    return copied;
+}
+
+/**
+ * @brief Move a value of the view into the hidden store.
+ *
+ * @param[in] view The key of the view which holds the value.
+ * @param[in] store The key of the hidden store which mirrors the key.
+ * @param[in] name Name of the value, empty for the default value.
+ * @param[out] error Error description on failure.
+ * @return true when the value is hidden (or the view does not hold it).
+ */
+bool HideValue(HKEY view, HKEY store, const std::wstring& name, std::string& error)
+{
+    if (!HoldsValue(view, name))
+    {
+        return true;
+    }
+
+    DWORD             type = REG_NONE;
+    std::vector<BYTE> data;
+    if (!ReadValue(view, name, type, data, error) || !WriteValue(store, name, type, data, error))
+    {
+        return false;
+    }
+
+    RegDeleteValueW(view, name.c_str());
+    return true;
+}
+
+/**
+ * @brief Move a value of the hidden store into the view.
+ *
+ * @param[in] view The key of the view which receives the value.
+ * @param[in] store The key of the hidden store which mirrors the key.
+ * @param[in] name Name of the value, empty for the default value.
+ * @param[out] error Error description on failure.
+ * @return true when the value is visible (or the store does not hold it).
+ */
+bool RevealValue(HKEY view, HKEY store, const std::wstring& name, std::string& error)
+{
+    if (HoldsValue(view, name))
+    {
+        /* The view holds the value: the state of the sandbox wins. */
+        return true;
+    }
+
+    if (!HoldsValue(store, name))
+    {
+        return true;
+    }
+
+    DWORD             type = REG_NONE;
+    std::vector<BYTE> data;
+    return ReadValue(store, name, type, data, error) && WriteValue(view, name, type, data, error);
+}
+
+} // namespace
+
+bool appbox::ApplyHiveIsolationModes(const std::wstring& hive, const std::vector<registry_isolation::KeyEntry>& keys,
+                                     const std::vector<registry_isolation::ValueEntry>& values, std::string& error)
+{
+    error.clear();
+
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(hive, ec))
+    {
+        error = "the hive the sandbox mounts does not exist";
+        return false;
+    }
+
+    try
+    {
+        HKEY       root = nullptr;
+        const LONG status = RegLoadAppKeyW(hive.c_str(), &root, KEY_ALL_ACCESS, 0, 0);
+        if (status != ERROR_SUCCESS)
+        {
+            error = fmt::format("failed to mount '{}': error {}", appbox::WideToUTF8(hive), status);
+            return false;
+        }
+
+        bool        applied = true;
+        std::string detail;
+
+        for (const auto& entry : keys)
+        {
+            std::vector<std::wstring> parts;
+            SplitPath(appbox::UTF8ToWide(entry.path), parts);
+            if (parts.empty())
+            {
+                continue;
+            }
+
+            /* The entry itself is the last component; the mirror of the store
+             * repeats the path of the view below the store key. */
+            const std::wstring        name = parts.back();
+            std::vector<std::wstring> parent(parts.begin(), parts.end() - 1);
+            std::vector<std::wstring> mirror = parent;
+            mirror.insert(mirror.begin(), appbox::registry_hidden::kStoreKey);
+
+            HKEY view_parent = nullptr;
+            HKEY store_parent = nullptr;
+            bool view_owned = false;
+            bool store_owned = false;
+            if (!OpenPath(root, parent, true, view_parent, view_owned) ||
+                !OpenPath(root, mirror, true, store_parent, store_owned))
+            {
+                if (view_owned)
+                {
+                    RegCloseKey(view_parent);
+                }
+                if (store_owned)
+                {
+                    RegCloseKey(store_parent);
+                }
+                detail = fmt::format("failed to open the key '{}' of the hive", entry.path);
+                applied = false;
+                break;
+            }
+
+            applied = entry.isolation == RegistryKeyIsolation::Hide
+                          ? HideKey(view_parent, store_parent, name, detail)
+                          : RevealKey(view_parent, store_parent, name, detail);
+
+            if (view_owned)
+            {
+                RegCloseKey(view_parent);
+            }
+            if (store_owned)
+            {
+                RegCloseKey(store_parent);
+            }
+
+            if (!applied)
+            {
+                break;
+            }
+        }
+
+        for (const auto& entry : values)
+        {
+            if (!applied)
+            {
+                break;
+            }
+
+            std::vector<std::wstring> parts;
+            SplitPath(appbox::UTF8ToWide(entry.path), parts);
+            if (parts.empty())
+            {
+                continue;
+            }
+
+            std::vector<std::wstring> mirror = parts;
+            mirror.insert(mirror.begin(), appbox::registry_hidden::kStoreKey);
+
+            HKEY view_key = nullptr;
+            HKEY store_key = nullptr;
+            bool view_owned = false;
+            bool store_owned = false;
+            if (!OpenPath(root, parts, true, view_key, view_owned) ||
+                !OpenPath(root, mirror, true, store_key, store_owned))
+            {
+                if (view_owned)
+                {
+                    RegCloseKey(view_key);
+                }
+                if (store_owned)
+                {
+                    RegCloseKey(store_key);
+                }
+                detail = fmt::format("failed to open the key '{}' of the hive", entry.path);
+                applied = false;
+                break;
+            }
+
+            const std::wstring name = appbox::UTF8ToWide(entry.name);
+            applied = entry.isolation == RegistryValueIsolation::Hide ? HideValue(view_key, store_key, name, detail)
+                                                                      : RevealValue(view_key, store_key, name, detail);
+
+            if (view_owned)
+            {
+                RegCloseKey(view_key);
+            }
+            if (store_owned)
+            {
+                RegCloseKey(store_key);
+            }
+        }
+
+        /* Closing the root handle unmounts the hive and flushes its content. */
+        RegCloseKey(root);
+
+        if (!applied)
+        {
+            error = detail;
+        }
+        return applied;
+    }
+    catch (const std::exception& e)
+    {
+        error = e.what();
+        return false;
+    }
+}

@@ -17,16 +17,16 @@ static appbox::LoggerF logger("NtDeleteKey", NtDeleteKeyLogParam);
 /**
  * @brief Detour of NtDeleteKey().
  *
- * The delete runs against the merged view and never against the real registry.
- * A handle of the hive is delegated to
- * appbox::registry::Hive::DeleteIsolatedKey: the key of the hive is removed
- * and a key which only the host holds is recorded as deleted (a whiteout), so
+ * The delete is delegated to appbox::registry::Hive::DeleteIsolatedKey, which
+ * resolves the layer of the key: `Merge` deletes the key of the real registry
+ * when the sandbox does not hold it, every other mode removes the key of the
+ * hive and records a key which only the host holds as deleted (a whiteout), so
  * the read through does not resurrect it.
  *
- * A handle of the host layer is refused: it is a read through handle which the
- * caller opened without the right to delete (an open which asks for `DELETE`
- * is copied up into the hive), so the real call would report an access denial
- * as well — and the isolation must never let a delete reach the real registry.
+ * A handle of the host layer is delegated as well, because it is the layer which
+ * holds a key a merged mode does not shadow. The isolation refuses the handle
+ * for every other mode: a caller which opened the key without the right to
+ * delete must not gain it, and the host layer must only be modified by `Merge`.
  *
  * Paths outside the root keys of the view are forwarded unchanged.
  */
@@ -41,18 +41,13 @@ static NTSTATUS Hook_NtDeleteKey(HANDLE KeyHandle)
         return sys_NtDeleteKey(KeyHandle);
     }
 
-    if (view == appbox::registry::HandleView::RealHandle)
-    {
-        return STATUS_ACCESS_DENIED;
-    }
-
     std::wstring relative;
     if (!appbox::registry::Hive::HiveRelativePath(view_path, relative))
     {
         return sys_NtDeleteKey(KeyHandle);
     }
 
-    return appbox::registry::Hive::DeleteIsolatedKey(KeyHandle, view_path, relative);
+    return appbox::registry::Hive::DeleteIsolatedKey(view, KeyHandle, view_path, relative);
 }
 
 static void LoadNtDeleteKey()

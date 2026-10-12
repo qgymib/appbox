@@ -57,7 +57,7 @@ TEST_F(E2E_Reg, Full_HiveWinsOverReal)
     /* The hive holds the same key with its own value. */
     HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"TestValue", REG_SZ, StringData(L"sandbox"));
-    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey, appbox::RegistryIsolation::Full);
+    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey, appbox::RegistryKeyIsolation::Full);
 
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;

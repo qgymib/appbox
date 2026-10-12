@@ -36,16 +36,20 @@ std::vector<BYTE> StringData(const std::wstring& text)
  * 1. The hive of the archive holds the value `Value` of a key and the
  *    isolation file of the archive hides the value `HostHidden` of the host.
  * 2. `01-bar.zip` carries a file which is not a hive as `registry/user.hiv`
- *    and a document which is not an isolation file as
- *    `registry/isolation.json`.
+ *    and no isolation file at all.
  * 3. The sandboxed process reads the two values of the key.
  *
  * Expected:
  * 1. The run succeeds: a broken package never fails the run.
  * 2. `Value` is the value of the archive, because a hive which cannot be
  *    mounted is skipped and the hive of the layers below it stays in place.
- * 3. `HostHidden` does not exist, because a document which cannot be parsed is
- *    skipped and the modes of the layers below it stay in place.
+ * 3. `HostHidden` does not exist: the package names no mode, so the modes of
+ *    the layers below it stay in place.
+ *
+ * A package which carries a document the sandbox cannot use is a different
+ * case: the modes of the run cannot be resolved without it, so such a package
+ * fails the start of the sandbox (see
+ * `test/e2e/Reg_MalformedIsolationFile_FailsTheStart.cpp`).
  */
 TEST_F(E2E_Patch, BrokenRegistryResourcesAreSkipped)
 {
@@ -66,15 +70,14 @@ TEST_F(E2E_Patch, BrokenRegistryResourcesAreSkipped)
 
     HiveBuilder app(GetCWD());
     app.SetValue(hive_key, L"Value", REG_SZ, StringData(L"archive"));
-    app.SetValueIsolation(hive_key, L"HostHidden", appbox::RegistryIsolation::Full);
+    app.SetValueIsolation(hive_key, L"HostHidden", appbox::RegistryValueIsolation::Full);
 
     std::string error;
     ASSERT_TRUE(app.Write(error)) << error;
 
-    /* The package carries the two files of a registry domain, both unusable. */
+    /* The package carries a registry hive which cannot be mounted. */
     PatchRegistry broken;
     broken.raw_hive = "this is not a hive";
-    broken.raw_isolation = "{ not a document";
 
     std::error_code ec;
     const auto      patch_dir = GetCWD() / appbox::layout::kPatchDirNameW;

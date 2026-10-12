@@ -146,11 +146,24 @@ directory, so the packages are the top of the registry of a run:
   next run exactly like they do without a patch directory.
 
 The isolation modes of the registry are merged the same way as the modes of the
-filesystem: every layer contributes the isolation file of its registry domain
-and the sandbox applies the files in layer order, so the mode of the last file
-which names a key or a value is the mode the sandboxed process observes and an
-entry no file names follows the closest entry above it and the default mode
-`Write Copy`.
+filesystem: every layer contributes the isolation file of its registry domain and
+the sandbox applies the files in layer order, so the mode of the last file which
+names a key or a value is the mode the sandboxed process observes and an entry no
+file names follows the closest listed entry above it. The registry has no default
+mode: the file of `app` has to name the five root keys of the view, so the mode of
+every path resolves, and a file which cannot be used fails the start of the
+sandbox instead of showing the host registry. A package which carries no
+`registry/isolation.json` therefore changes no mode, while a file it does carry
+has to be usable — see [Registry isolation](RegistryIsolation.md).
+
+A package may name a mode which differs from the mode the layer below it packed
+the content with, and the content of a hidden entry lives in the hidden store of
+the hive. The launcher therefore **materializes** the modes of a package right
+after it merged the hive of that package: an entry the package marks `Hide` is
+copied into the hidden store and removed from the view, and an entry the package
+gives another mode is copied out of the store into the view. A write of the
+sandbox wins over the packed content in the second direction, because it is the
+highest layer of the view.
 
 ### Environment
 
@@ -216,10 +229,12 @@ run
 5. logs and skips a package which cannot be read, which keeps a broken package
    from failing the run. A package which carries no `filesystem` directory
    contributes no layer at all, a layer whose directory is named after a key the
-   launcher does not know is skipped with the layers of that package, a hive which
-   cannot be mounted is skipped with the registry of that package, and a
-   malformed isolation file is skipped by the sandbox for that domain and that
-   layer alone.
+   launcher does not know is skipped with the layers of that package, and a hive
+   which cannot be mounted is skipped with the registry of that package. A
+   malformed isolation file is skipped by the sandbox for the domain and the layer
+   which carries it — except in the registry domain, where a document the sandbox
+   cannot use fails the start, because the modes of the view cannot be resolved
+   without it.
 
 The four domains travel through the same injected configuration as one ordered
 list of paths per domain, so the launcher itself carries no merge logic: the list
@@ -265,9 +280,13 @@ after it, and the sandbox applies the list in that order.
   hive as it is, which is the state of the runs before it — a package then
   takes effect at the next start.
 - **A broken package is not fatal.** A package which cannot be read, a package
-  which is not an archive and a malformed isolation file of a package are
-  logged and skipped, exactly like a malformed isolation file of the archive
-  is: the resources of the layers below them stay in place.
+  which is not an archive, a hive which cannot be mounted and a malformed
+  isolation file of a package are logged and skipped, exactly like a malformed
+  isolation file of the archive is: the resources of the layers below them stay in
+  place. The registry domain is the one exception, and it is a rule of the domain
+  and not of the patch layer: an isolation file of the registry which cannot be
+  used fails the start of the sandbox, for the archive and for a package alike,
+  because the sandbox has no default mode to fall back to.
 - **The launcher reads the packages of the archive.** A patch package is written
   by the `ZipWriter` of the packer, so the launcher extracts it with the
   `ExtractArchive` of `src/core/ZipReader.cpp`, which is the read half of the
@@ -288,13 +307,14 @@ after it, and the sandbox applies the list in that order.
   itself. An entry a package names is therefore the entry of the package at
   every start, while an entry no package names keeps the state of the sandbox.
 - **The registry value-level isolation modes need the key inside the hive.** The
-  mode of a value is applied while the sandbox reads the value from the hive: a
-  key the hive does not hold is opened in the real registry, and the read of a
-  value below a handle which points there is forwarded unchanged. A value-level
-  mode which names a key only the host holds is therefore not applied. This is a
-  gap of the registry domain and not of the patch layer — it holds for the
-  isolation file of `app` as well, and the patch layer only adds further files
-  which name modes — so it is documented as a known gap of
+  write of a value is routed by the mode of the value, while the read of a value
+  is filtered by the merged view of the key which holds it: a key the hive does
+  not hold is opened in the real registry, and the read of a value below a handle
+  which points there is forwarded unchanged. A value-level mode which names a key
+  only the host holds is therefore applied to the writes of that value and not to
+  its reads. This is a gap of the registry domain and not of the patch layer — it
+  holds for the isolation file of `app` as well, and the patch layer only adds
+  further files which name modes — so it is documented as a known gap of
   [RegistryIsolation.md](RegistryIsolation.md) instead of being closed here:
   closing it would need the handle of a real key to be traced back to the view
   path it was opened from, which the registry layer does not track today.

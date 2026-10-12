@@ -4,6 +4,7 @@
 #include "utils/WinAPI.h"
 #include "RegistryIsolation.hpp"
 #include "registry/IsolationTable.hpp"
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -100,24 +101,31 @@ enum class MergedResolve
  * * Open (`OpenIsolatedKey` / `OpenIsolatedKeyEx`): every mode opens the key
  *   inside the hive first. When the hive does not hold the key the isolation
  *   mode decides (see `OpenFallback`): `Full` and `Hide` report the failure of
- *   the hive open, `WriteCopy` reads through the real registry and copies a
- *   write access open up into the hive.
- * * Create (`CreateIsolatedKey`, built on the raw `CreateKey`): every mode
- *   creates the key inside the hive, which also creates the intermediate
- *   keys. No mode ever modifies the real registry: every write of the
- *   sandboxed process lands in the hive. The disposition the caller observes
- *   follows the merged view of the mode (`ViewCreateDisposition`), so a key
- *   which only the host holds is reported as existing for `WriteCopy`, while
- *   `Full` and `Hide` report the creation of a key the host holds.
+ *   the hive open, `Merge` hands the key of the host layer out — for a write
+ *   access open as well, because a modification of an entry the sandbox does
+ *   not hold lands in the host — and `WriteCopy` reads through the real
+ *   registry and copies a write access open up into the hive.
+ * * Create (`CreateIsolatedKey`, built on the raw `CreateKey`): the key is
+ *   created inside the hive, which also creates the intermediate keys, unless
+ *   the mode is `Merge` and the sandbox does not hold the key: that create
+ *   lands in the real registry, which is the write rule of the mode. The
+ *   disposition the caller observes follows the merged view of the mode
+ *   (`ViewCreateDisposition`).
+ * * Value writes (`SetIsolatedValue`) and deletes (`DeleteIsolatedKey`,
+ *   `DeleteIsolatedValue`): the layer is the one `Merge` decides per entry —
+ *   the sandbox for an entry it holds, the host for an entry it does not hold
+ *   — and the sandbox for every other mode. `Merge` is the only mode which
+ *   modifies the real registry.
  * * Transacted open and create (`OpenIsolatedKeyTransacted`,
  *   `OpenIsolatedKeyTransactedEx` and `CreateIsolatedKeyTransacted`): the same
  *   policy with the transaction of the caller, which the hive layer is opened
  *   and created with. The host layer is never enlisted into that transaction,
- *   which is why a transacted open whose answer would be a handle of the host
+ *   which is why a transacted call whose answer would be a handle of the host
  *   layer is refused (`kTransactedHostFallbackStatus`).
  * * The isolation modes of the isolation file decide which host entries stay
- *   invisible; the table defaults to `WriteCopy`, which is the read through of
- *   a sandbox without an isolation file.
+ *   invisible. The table has no default mode: the file of the archive has to
+ *   name the five root keys of the view, and a table which misses one of them
+ *   fails the start of the sandbox instead of showing the host registry.
  */
 class Hive
 {
@@ -176,19 +184,21 @@ public:
      * @brief Get the effective isolation mode of a key.
      *
      * @param[in] relative The hive relative path of the key.
-     * @return The mode of the key, `WriteCopy` when neither the key nor one of
-     *         its ancestors is listed.
+     * @return The mode of the key. A path which resolves to no listed entry is
+     *         reported as `Hide`, which keeps the host registry invisible.
      */
-    static RegistryIsolation KeyIsolation(const std::wstring& relative);
+    static RegistryKeyIsolation KeyIsolation(const std::wstring& relative);
 
     /**
-     * @brief Get the effective isolation mode of a value of a key.
+     * @brief Get the listed isolation mode of a value of a key.
      *
      * @param[in] relative The hive relative path of the key holding the value.
      * @param[in] value_name Name of the value, empty for the default value.
-     * @return The mode of the value.
+     * @return The mode the isolation file lists for the value, empty when the
+     *         value is not listed and follows the mode of its key.
      */
-    static RegistryIsolation ValueIsolation(const std::wstring& relative, const std::wstring& value_name);
+    static std::optional<RegistryValueIsolation> ListedValueIsolation(const std::wstring& relative,
+                                                                      const std::wstring& value_name);
 
     /**
      * @brief Whether a value of a key may only be seen through the hive.
@@ -198,6 +208,44 @@ public:
      * @return true when the host entry of the value must stay invisible.
      */
     static bool HidesHostValue(const std::wstring& relative, const std::wstring& value_name);
+
+    /**
+     * @brief Whether a modification of a value lands in the host registry.
+     *
+     * The rule is the one of `appbox::registry::ValueWritesToHost()`: `Merge`
+     * modifies the value of the real registry when the sandbox does not hold it,
+     * every other mode redirects the modification into the sandbox.
+     *
+     * @param[in] relative The hive relative path of the key holding the value.
+     * @param[in] value_name Name of the value, empty for the default value.
+     * @return true when the value is written or deleted in the host registry.
+     */
+    static bool ValueWritesToHost(const std::wstring& relative, const std::wstring& value_name);
+
+    /**
+     * @brief Whether the sandbox holds a value of a key.
+     *
+     * The sandbox holds a value when the hive carries it, and it holds a value
+     * it deleted as well: the deletion is recorded in the whiteout store, so the
+     * value counts as held and a later write lands in the sandbox again.
+     *
+     * @param[in] relative The hive relative path of the key holding the value.
+     * @param[in] value_name Name of the value, empty for the default value.
+     * @return true when the hive or the whiteout store holds the value.
+     */
+    static bool SandboxHoldsValue(const std::wstring& relative, const std::wstring& value_name);
+
+    /**
+     * @brief Whether the sandbox holds a key.
+     *
+     * The sandbox holds a key when the hive carries it, and it holds a key it
+     * deleted as well: the deletion is recorded in the whiteout store, so the
+     * key counts as held and a later create lands in the sandbox again.
+     *
+     * @param[in] relative The hive relative path of the key.
+     * @return true when the hive or the whiteout store holds the key.
+     */
+    static bool SandboxHoldsKey(const std::wstring& relative);
 
     /**
      * @brief Whether a key was deleted inside the sandbox (a whiteout).
@@ -460,19 +508,22 @@ public:
     /**
      * @brief Create or open an isolated key with the route of its isolation mode (NtCreateKey semantics).
      *
-     * The raw create (`CreateKey`) builds the key inside the hive for every
-     * mode, which is what keeps the real registry untouched. This entry point
-     * runs the create policy of the isolation on top of it: the disposition
-     * reports the merged view of the caller instead of the hive layer alone
-     * (see `appbox::registry::ViewCreateDisposition`), so a key which only the
-     * host holds is reported as existing for a mode which keeps the host entry
-     * visible. `Full` and `Hide` keep the disposition of the hive, because the
-     * host entry is invisible for them.
+     * The create policy of the isolation decides the layer of the call:
+     *
+     * * A key whose mode is `Merge` and which the sandbox does not hold is
+     *   created in the **real registry**, which is the write rule of the mode;
+     *   the disposition and the handle are the ones of the kernel.
+     * * Every other call builds the key inside the hive (`CreateKey`), the
+     *   intermediate keys included. The disposition then reports the merged view
+     *   of the caller instead of the hive layer alone (see
+     *   `appbox::registry::ViewCreateDisposition`), so a key which only the host
+     *   holds is reported as existing for a mode which keeps the host entry
+     *   visible, while `Full` and `Hide` keep the disposition of the hive.
      *
      * The host layer is only probed when the hive created the key and the mode
-     * keeps the host entry visible, so a create of a key which the hive
-     * already holds costs no extra call. A failed probe is not a failed
-     * create: the handle and the status are the ones of the hive create.
+     * keeps the host entry visible, so a create of a key which the hive already
+     * holds costs no extra call. A failed probe is not a failed create: the
+     * handle and the status are the ones of the hive create.
      *
      * @param[in] view_path The logical path of the key in the view.
      * @param[in] relative The key path relative to the hive root.
@@ -532,60 +583,103 @@ public:
                                                 PULONG Disposition);
 
     /**
+     * @brief Write a value of the merged view (NtSetValueKey semantics).
+     *
+     * The layer of the write is the one the isolation mode of the value decides
+     * (`ValueWritesToHost`): a value the sandbox does not hold below a `Merge`
+     * key is written into the **real registry**, every other value is written
+     * into the sandbox. The value of a hidden entry lands in the view of the
+     * sandbox, which is what makes the entry visible from then on.
+     *
+     * The caller parameters are forwarded unchanged to the layer which performs
+     * the write, so the kernel reports its own failures — an access denial of
+     * the real key included.
+     *
+     * @param[in] handle_view The layer the handle of the caller points at.
+     * @param[in] KeyHandle The key handle of the caller, hive or host layer.
+     * @param[in] view_path The logical path of the key which holds the value.
+     * @param[in] relative The key path relative to the hive root.
+     * @param[in] value_name Name of the value, empty for the default value.
+     * @param[in] TitleIndex The title index of the original call.
+     * @param[in] Type The `REG_*` type code of the value.
+     * @param[in] Data The data of the value, may be null for an empty value.
+     * @param[in] DataSize Size of the data in bytes.
+     * @return Status code.
+     */
+    static NTSTATUS SetIsolatedValue(HandleView handle_view, HANDLE KeyHandle, const std::wstring& view_path,
+                                     const std::wstring& relative, const std::wstring& value_name, ULONG TitleIndex,
+                                     ULONG Type, PVOID Data, ULONG DataSize);
+
+    /**
      * @brief Delete a key of the merged view (NtDeleteKey semantics).
      *
-     * The isolation never modifies the real registry, so the delete runs
-     * against the view: the key of the hive is removed and the key of the host
-     * is recorded as deleted (a whiteout), which keeps it invisible for every
-     * later open, enumeration and query. A key which only the host holds is
-     * therefore deleted as well — without the whiteout the read through would
-     * resurrect it.
+     * The layer of the delete is the one the isolation mode decides
+     * (`KeyDeleteOutcomeOf`):
      *
-     * The route of the delete is the decision table
-     * `appbox::registry::DeleteOutcomeOf`. A key which holds a visible sub key
-     * is refused with `STATUS_CANNOT_DELETE`, which is what the real
-     * `NtDeleteKey` reports (Win32 maps it to `ERROR_ACCESS_DENIED`); values do
-     * not block a delete. A failed whiteout fails the whole call, because
-     * reporting a success would let the host entry reappear in the view.
+     * * `Merge` deletes the key of the **real registry** when the sandbox does
+     *   not hold it, which is the write rule of the mode.
+     * * Every other route runs against the view: the key of the hive is removed
+     *   and the key of the host is recorded as deleted (a whiteout), which keeps
+     *   it invisible for every later open, enumeration and query. A key which
+     *   only the host holds is therefore deleted as well — without the whiteout
+     *   the read through would resurrect it.
      *
-     * @param[in] KeyHandle The hive key handle of the caller. The kernel checks
-     *                      its rights, so a handle which does not permit a
-     *                      delete reports the failure of the real call.
+     * A key which holds a visible sub key is refused with
+     * `STATUS_CANNOT_DELETE`, which is what the real `NtDeleteKey` reports
+     * (Win32 maps it to `ERROR_ACCESS_DENIED`); values do not block a delete. A
+     * failed whiteout fails the whole call, because reporting a success would
+     * let the host entry reappear in the view.
+     *
+     * @param[in] handle_view The layer the handle of the caller points at.
+     * @param[in] KeyHandle The key handle of the caller, hive or host layer.
+     *                      The kernel checks its rights, so a handle which does
+     *                      not permit a delete reports the failure of the real
+     *                      call.
      * @param[in] view_path The logical path of the key in the view.
      * @param[in] relative The key path relative to the hive root.
      * @return Status code.
      */
-    static NTSTATUS DeleteIsolatedKey(HANDLE KeyHandle, const std::wstring& view_path, const std::wstring& relative);
+    static NTSTATUS DeleteIsolatedKey(HandleView handle_view, HANDLE KeyHandle, const std::wstring& view_path,
+                                      const std::wstring& relative);
 
     /**
      * @brief Delete a value of the merged view (NtDeleteValueKey semantics).
      *
-     * Same rule as the delete of a key: the value of the hive is removed and a
-     * value which only the host holds is recorded as deleted, so the read
-     * through of the value and the merged value enumeration no longer report
-     * it while the real registry keeps its value.
+     * The layer of the delete is the one the isolation mode of the value decides
+     * (`ValueDeleteOutcomeOf`): `Merge` deletes the value of the **real
+     * registry** when the sandbox does not hold it, every other route removes
+     * the value of the hive and records a value which only the host holds as
+     * deleted, so the read through of the value and the merged value enumeration
+     * no longer report it while the real registry keeps its value.
      *
-     * @param[in] KeyHandle The hive key handle of the caller. The kernel checks
-     *                      its rights, so a handle which does not permit the
-     *                      delete reports the failure of the real call.
+     * @param[in] handle_view The layer the handle of the caller points at.
+     * @param[in] KeyHandle The key handle of the caller, hive or host layer.
+     *                      The kernel checks its rights, so a handle which does
+     *                      not permit the delete reports the failure of the real
+     *                      call.
      * @param[in] view_path The logical path of the key which holds the value.
      * @param[in] relative The key path relative to the hive root.
      * @param[in] value_name Name of the value, empty for the default value.
      * @return Status code.
      */
-    static NTSTATUS DeleteIsolatedValue(HANDLE KeyHandle, const std::wstring& view_path, const std::wstring& relative,
-                                        const std::wstring& value_name);
+    static NTSTATUS DeleteIsolatedValue(HandleView handle_view, HANDLE KeyHandle, const std::wstring& view_path,
+                                        const std::wstring& relative, const std::wstring& value_name);
 
     /**
      * @brief Rename a key of the merged view (NtRenameKey semantics).
      *
-     * The rename runs inside the hive, so the real registry is never touched.
-     * The old name is the delete of the key in the merged view: the hive holds
-     * the key of the handle and the visible host key of the old name is
-     * recorded as deleted (a whiteout), because the read through would
-     * otherwise report the host key of the old name next to the renamed key of
-     * the hive. A failed whiteout fails the whole call, because reporting a
-     * success would let the host key reappear under the old name.
+     * The layer of the rename is the one the isolation mode decides, like the
+     * delete of a key: `Merge` renames the key of the **real registry** when the
+     * sandbox does not hold it, every other route runs inside the hive, so the
+     * real registry is only touched by `Merge`.
+     *
+     * A rename which runs inside the hive treats the old name as the delete of
+     * the key in the merged view: the hive holds the key of the handle and the
+     * visible host key of the old name is recorded as deleted (a whiteout),
+     * because the read through would otherwise report the host key of the old
+     * name next to the renamed key of the hive. A failed whiteout fails the whole
+     * call, because reporting a success would let the host key reappear under the
+     * old name.
      *
      * Two calls are refused although the hive could run them:
      *
@@ -603,16 +697,17 @@ public:
      * `STATUS_INVALID_PARAMETER`, which is the answer the kernel reports for
      * such a name.
      *
-     * @param[in] KeyHandle The hive key handle of the caller. The kernel
-     *                      checks its rights, so a handle which does not permit
-     *                      a rename reports the failure of the real call.
+     * @param[in] handle_view The layer the handle of the caller points at.
+     * @param[in] KeyHandle The key handle of the caller. The kernel checks its
+     *                      rights, so a handle which does not permit a rename
+     *                      reports the failure of the real call.
      * @param[in] view_path The logical path of the key in the view.
      * @param[in] relative The key path relative to the hive root.
      * @param[in] new_name The new name of the key, a single component.
      * @return Status code.
      */
-    static NTSTATUS RenameIsolatedKey(HANDLE KeyHandle, const std::wstring& view_path, const std::wstring& relative,
-                                      const std::wstring& new_name);
+    static NTSTATUS RenameIsolatedKey(HandleView handle_view, HANDLE KeyHandle, const std::wstring& view_path,
+                                      const std::wstring& relative, const std::wstring& new_name);
 
     /**
      * @brief Query several values of the merged view (NtQueryMultipleValueKey semantics).

@@ -353,9 +353,9 @@ TEST(Unit_RegistryHive, IsolationFile)
                                appbox::RegistryDwordData(1), error))
         << error;
 
-    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::Full));
-    ASSERT_TRUE(
-        model.SetValueIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server", appbox::RegistryIsolation::Hide));
+    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryKeyIsolation::Full));
+    ASSERT_TRUE(model.SetValueIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server",
+                                        appbox::RegistryValueIsolation::Hide));
 
     std::string text;
     ASSERT_TRUE(appbox::BuildRegistryIsolationFile(model, text, error)) << error;
@@ -367,7 +367,7 @@ TEST(Unit_RegistryHive, IsolationFile)
     const auto& keys = document["keys"];
     ASSERT_EQ(keys.size(), 9u);
     ASSERT_EQ(keys[0]["path"].get<std::string>(), "HKEY_CLASSES_ROOT");
-    ASSERT_EQ(keys[0]["isolation"].get<std::string>(), "write_copy");
+    ASSERT_EQ(keys[0]["isolation"].get<std::string>(), "merge");
     ASSERT_EQ(keys[3]["path"].get<std::string>(), "HKEY_CURRENT_USER\\Software\\Vendor");
     ASSERT_EQ(keys[3]["isolation"].get<std::string>(), "full");
 
@@ -376,7 +376,7 @@ TEST(Unit_RegistryHive, IsolationFile)
     ASSERT_EQ(values.size(), 2u);
     ASSERT_EQ(values[0]["path"].get<std::string>(), "HKEY_CURRENT_USER\\Software\\Vendor");
     ASSERT_EQ(values[0]["name"].get<std::string>(), "Other");
-    ASSERT_EQ(values[0]["isolation"].get<std::string>(), "write_copy");
+    ASSERT_EQ(values[0]["isolation"].get<std::string>(), "full");
     ASSERT_EQ(values[1]["path"].get<std::string>(), "HKEY_CURRENT_USER\\Software\\Vendor");
     ASSERT_EQ(values[1]["name"].get<std::string>(), "Server");
     ASSERT_EQ(values[1]["isolation"].get<std::string>(), "hide");
@@ -384,9 +384,61 @@ TEST(Unit_RegistryHive, IsolationFile)
     /* The document is accepted by the sandbox side of the schema. */
     appbox::registry::IsolationTable table;
     ASSERT_TRUE(table.Parse(text, error)) << error;
-    ASSERT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor"), appbox::RegistryIsolation::Full);
-    ASSERT_EQ(table.ValueMode(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server"), appbox::RegistryIsolation::Hide);
-    ASSERT_EQ(table.KeyMode(L"HKEY_LOCAL_MACHINE\\Software\\AppBox"), appbox::RegistryIsolation::WriteCopy);
+    ASSERT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor"), appbox::RegistryKeyIsolation::Full);
+    EXPECT_TRUE(table.NamesRootKeys());
+    ASSERT_EQ(table.ListedValueMode(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server"),
+              appbox::RegistryValueIsolation::Hide);
+    EXPECT_FALSE(table.ListedValueMode(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Missing").has_value());
+    ASSERT_EQ(table.KeyMode(L"HKEY_LOCAL_MACHINE\\Software\\AppBox"), appbox::RegistryKeyIsolation::Merge);
+}
+
+/**
+ * @brief The packed content of a hidden entry lands in the hidden store.
+ *
+ * The view of the hive must not carry the content of a hidden entry: the sandbox
+ * reports the entry as missing until the sandboxed process writes it. The store
+ * mirrors the structure of the view and holds the content a layer which gives the
+ * entry another mode makes visible again.
+ */
+TEST(Unit_RegistryHive, HiddenContentLivesInTheHiddenStore)
+{
+    TempDir               temp;
+    appbox::RegistryModel model;
+    std::string           error;
+
+    ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Software\\Vendor", error)) << error;
+    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Visible", appbox::RegistryValueType::String,
+                               appbox::RegistryStringData(L"visible"), error))
+        << error;
+    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Hidden", appbox::RegistryValueType::String,
+                               appbox::RegistryStringData(L"hidden"), error))
+        << error;
+    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryKeyIsolation::Merge));
+    ASSERT_TRUE(model.SetValueIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Hidden",
+                                        appbox::RegistryValueIsolation::Hide));
+
+    const auto hive = temp.Get() / L"user.hiv";
+    ASSERT_TRUE(appbox::WriteRegistryHive(model, hive.wstring(), error)) << error;
+
+    HiveMount mount;
+    ASSERT_TRUE(mount.Open(hive));
+
+    /* The view holds the visible value and not the hidden one. */
+    HKEY view = nullptr;
+    ASSERT_EQ(RegOpenKeyExW(mount.get(), L"HKEY_CURRENT_USER\\Software\\Vendor", 0, KEY_READ, &view), ERROR_SUCCESS);
+    ValueProbe probe;
+    EXPECT_TRUE(ReadValue(view, L"Visible", probe));
+    EXPECT_FALSE(ReadValue(view, L"Hidden", probe));
+    RegCloseKey(view);
+
+    /* The hidden store mirrors the key and carries the content of the value. */
+    HKEY store = nullptr;
+    ASSERT_EQ(RegOpenKeyExW(mount.get(), L"APPBOX_HIDDEN\\HKEY_CURRENT_USER\\Software\\Vendor", 0, KEY_READ, &store),
+              ERROR_SUCCESS);
+    EXPECT_FALSE(ReadValue(store, L"Visible", probe));
+    ASSERT_TRUE(ReadValue(store, L"Hidden", probe));
+    EXPECT_EQ(appbox::RegistryStringValue(probe.data), L"hidden");
+    RegCloseKey(store);
 }
 
 /**
@@ -405,7 +457,7 @@ TEST(Unit_RegistryHive, IsolationFileOfADefaultModel)
     const auto& keys = document["keys"];
     ASSERT_EQ(keys.size(), appbox::RegistryRootKeyNames().size());
     ASSERT_EQ(keys[0]["path"].get<std::string>(), "HKEY_CLASSES_ROOT");
-    ASSERT_EQ(keys[0]["isolation"].get<std::string>(), "write_copy");
+    ASSERT_EQ(keys[0]["isolation"].get<std::string>(), "merge");
     ASSERT_TRUE(document["values"].empty());
 }
 
@@ -415,7 +467,7 @@ TEST(Unit_RegistryHive, IsolationFileOfADefaultModel)
  * @param[in] isolation Mode of the key.
  * @return The UTF-8 text of the document.
  */
-static std::string IsolationFileOf(const std::string& path, appbox::RegistryIsolation isolation)
+static std::string IsolationFileOf(const std::string& path, appbox::RegistryKeyIsolation isolation)
 {
     appbox::registry_isolation::KeyEntry entry;
     entry.path = path;
@@ -441,33 +493,33 @@ TEST(Unit_RegistryHive, TheIsolationFileOfALaterLayerOverridesTheEntryItNames)
 
     /* The resources of the archive. */
     ASSERT_TRUE(table.Parse(
-        IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::WriteCopy), error))
+        IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryKeyIsolation::WriteCopy), error))
         << error;
     ASSERT_TRUE(table.Parse(
-        IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor\\Keep", appbox::RegistryIsolation::Hide), error))
+        IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor\\Keep", appbox::RegistryKeyIsolation::Hide), error))
         << error;
 
     /* The isolation file of a patch package. */
     ASSERT_TRUE(
-        table.Parse(IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::Full), error))
+        table.Parse(IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryKeyIsolation::Full), error))
         << error;
     ASSERT_TRUE(table.Parse(
-        IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor\\Add", appbox::RegistryIsolation::Hide), error))
+        IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor\\Add", appbox::RegistryKeyIsolation::Hide), error))
         << error;
 
     EXPECT_EQ(table.KeyCount(), 3u);
 
     /* The mode of the entry the package names is the mode of the package. */
-    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor"), appbox::RegistryIsolation::Full);
+    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor"), appbox::RegistryKeyIsolation::Full);
 
     /* The mode of an entry the package does not name stays the mode below it. */
-    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor\\Keep"), appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor\\Keep"), appbox::RegistryKeyIsolation::Hide);
 
     /* The mode of an entry only the package names is the mode of the package. */
-    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor\\Add"), appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor\\Add"), appbox::RegistryKeyIsolation::Hide);
 
     /* An entry which no file lists follows the closest entry above it. */
-    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor\\Other\\Leaf"), appbox::RegistryIsolation::Full);
+    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor\\Other\\Leaf"), appbox::RegistryKeyIsolation::Full);
 }
 
 /**
@@ -482,11 +534,11 @@ TEST(Unit_RegistryHive, ABrokenIsolationFileKeepsTheLayersBelowIt)
     appbox::registry::IsolationTable table;
     std::string                      error;
     ASSERT_TRUE(
-        table.Parse(IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::Full), error))
+        table.Parse(IsolationFileOf("HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryKeyIsolation::Full), error))
         << error;
 
     EXPECT_FALSE(table.Parse("{ not a document", error));
     EXPECT_FALSE(error.empty());
     EXPECT_EQ(table.KeyCount(), 1u);
-    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor"), appbox::RegistryIsolation::Full);
+    EXPECT_EQ(table.KeyMode(L"HKEY_CURRENT_USER\\Software\\Vendor"), appbox::RegistryKeyIsolation::Full);
 }

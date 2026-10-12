@@ -53,7 +53,7 @@ TEST_F(E2E_Reg, Full_EnumerateHidesReal)
 
     HiveBuilder builder(GetCWD());
     builder.EnsureKey(L"HKEY_CURRENT_USER\\" + subkey + L"\\SandboxKey");
-    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey + L"\\RealHidden", appbox::RegistryIsolation::Full);
+    builder.SetKeyIsolation(L"HKEY_CURRENT_USER\\" + subkey + L"\\RealHidden", appbox::RegistryKeyIsolation::Full);
 
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;

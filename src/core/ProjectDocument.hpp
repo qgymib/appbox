@@ -24,7 +24,7 @@ namespace appbox
  * match exactly when a file is read, so a file of a future format is rejected
  * instead of being interpreted with the rules of the current one.
  */
-inline constexpr int kProjectFileVersion = 1;
+inline constexpr int kProjectFileVersion = 2;
 
 /**
  * @brief Error reported by the conversion of a project file document.
@@ -206,7 +206,7 @@ struct ProjectRegistryValueRecord
     /**
      * @brief Isolation mode of the value.
      */
-    RegistryIsolation isolation = RegistryIsolation::WriteCopy;
+    RegistryValueIsolation isolation = RegistryValueIsolation::Full;
 };
 
 /**
@@ -226,7 +226,7 @@ struct ProjectRegistryKeyRecord
     /**
      * @brief Isolation mode of the key.
      */
-    RegistryIsolation isolation = RegistryIsolation::WriteCopy;
+    RegistryKeyIsolation isolation = RegistryKeyIsolation::Merge;
 
     /**
      * @brief Values of the key, in document order.
@@ -405,7 +405,7 @@ struct ProjectEnvironmentRecord
  *
  * ```
  * {
- *   "version": 1,
+ *   "version": 2,
  *   "output_path": "D:\\out\\MyApp.zip",
  *   "project_type": "standalone",
  *   "metadata": { "source": "C:\\Program Files\\MyApp\\app.exe",
@@ -418,10 +418,10 @@ struct ProjectEnvironmentRecord
  *   "startup_files": [ { "preset": "program_files", "folder": "MyApp",
  *                        "path": "bin\\app.exe", "trigger": "app",
  *                        "auto_start": true } ],
- *   "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "full",
+ *   "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "merge",
  *                   "values": [ { "name": "Server", "type": "REG_SZ",
  *                                 "data": "68 00 65 00 6C 00 6C 00 6F 00",
- *                                 "isolation": "write_copy" } ],
+ *                                 "isolation": "full" } ],
  *                   "children": [] } ],
  *   "filesystem": [ { "path": "#ProgramFiles#\\MyApp", "kind": "directory",
  *                     "isolation": "whiteout" } ],

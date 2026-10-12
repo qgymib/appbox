@@ -118,7 +118,7 @@ TEST_F(E2E_Reg, VariableExpansion)
                      MultiStringData(std::vector<std::wstring>{ L"%APPBOX:Documents%\\Foo", L"plain" }));
     builder.SetValue(key, L"Dword", REG_DWORD, std::vector<BYTE>{ 0x78, 0x56, 0x34, 0x12 });
     builder.SetValue(key, L"Binary", REG_BINARY, reference);
-    builder.SetKeyIsolation(key, appbox::RegistryIsolation::Full);
+    builder.SetKeyIsolation(key, appbox::RegistryKeyIsolation::Full);
 
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;

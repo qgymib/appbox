@@ -11,6 +11,8 @@
 #include <Shlobj.h>
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include "sandbox/utils/WinAPI.h"
 #include "Random.hpp"
@@ -148,6 +150,47 @@ static std::string SeedRegistryHive(const std::wstring& packed_hive, const std::
 }
 
 /**
+ * @brief Read the registry isolation file of a layer.
+ *
+ * @param[in] path DOS path of the isolation file.
+ * @param[out] document The document to fill.
+ * @param[out] error Error description on failure.
+ * @return true when the file was read.
+ */
+static bool ReadRegistryIsolationDocument(const std::wstring& path, appbox::registry_isolation::Document& document,
+                                          std::string& error)
+{
+    error.clear();
+
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream.is_open())
+    {
+        error = "the registry isolation file does not exist";
+        return false;
+    }
+
+    const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+
+    try
+    {
+        document = nlohmann::json::parse(text).get<appbox::registry_isolation::Document>();
+    }
+    catch (const std::exception& e)
+    {
+        error = e.what();
+        return false;
+    }
+
+    if (document.version != appbox::registry_isolation::kVersion)
+    {
+        error = "unsupported isolation file version";
+        return false;
+    }
+
+    return true;
+}
+
+/**
  * @brief Apply the registry of the patch packages to the hive of the sandbox.
  *
  * The hive the sandbox mounts is the base image of the virtual registry: it
@@ -157,9 +200,19 @@ static std::string SeedRegistryHive(const std::wstring& packed_hive, const std::
  * values of the last package which names an entry are the ones the sandboxed
  * process observes, while an entry no package names keeps the content below it.
  *
+ * The isolation modes of a package are applied to the hive right after its
+ * content, because a package may name a mode which differs from the mode the
+ * layer below it packed the content with: a package which hides an entry of a
+ * lower layer hides its content, and a package which gives a hidden entry
+ * another mode makes the content of the lower layer visible again (see
+ * `appbox::ApplyHiveIsolationModes`).
+ *
  * A package whose hive cannot be merged is logged and skipped, exactly like a
  * package which cannot be extracted is: a broken package must not fail the
- * run, and the entries of the layers below it stay in place.
+ * run, and the entries of the layers below it stay in place. A package whose
+ * isolation file cannot be read is logged and skipped as well; the sandbox
+ * refuses such a file when it starts, so the launcher only materializes the
+ * modes of the files it can read.
  *
  * @param[in] state_hive Hive the sandbox mounts.
  * @param[in] layers The accepted packages in ascending name order.
@@ -168,20 +221,41 @@ static void ApplyPatchHives(const std::wstring& state_hive, const std::vector<ap
 {
     for (const auto& layer : layers)
     {
-        if (layer.registry_hive.empty())
+        if (!layer.registry_hive.empty())
+        {
+            std::string error;
+            if (!appbox::MergeHiveInto(state_hive, layer.registry_hive, error))
+            {
+                SPDLOG_ERROR("the registry of the patch package '{}' is skipped: {}", appbox::WideToUTF8(layer.name),
+                             error);
+                continue;
+            }
+
+            SPDLOG_DEBUG("applied the registry of the patch package '{}'", appbox::WideToUTF8(layer.name));
+        }
+
+        if (layer.registry_isolation_file.empty())
         {
             continue;
         }
 
-        std::string error;
-        if (!appbox::MergeHiveInto(state_hive, layer.registry_hive, error))
+        appbox::registry_isolation::Document document;
+        std::string                          error;
+        if (!ReadRegistryIsolationDocument(layer.registry_isolation_file, document, error))
         {
-            SPDLOG_ERROR("the registry of the patch package '{}' is skipped: {}", appbox::WideToUTF8(layer.name),
-                         error);
+            SPDLOG_ERROR("the registry isolation of the patch package '{}' is skipped: {}",
+                         appbox::WideToUTF8(layer.name), error);
             continue;
         }
 
-        SPDLOG_DEBUG("applied the registry of the patch package '{}'", appbox::WideToUTF8(layer.name));
+        if (!appbox::ApplyHiveIsolationModes(state_hive, document.keys, document.values, error))
+        {
+            SPDLOG_ERROR("the registry isolation of the patch package '{}' is skipped: {}",
+                         appbox::WideToUTF8(layer.name), error);
+            continue;
+        }
+
+        SPDLOG_DEBUG("applied the registry isolation of the patch package '{}'", appbox::WideToUTF8(layer.name));
     }
 }
 

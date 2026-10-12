@@ -1,7 +1,9 @@
 #ifndef APPBOX_LAUNCHER_UTILS_HIVE_MERGE_HPP
 #define APPBOX_LAUNCHER_UTILS_HIVE_MERGE_HPP
 
+#include "RegistryIsolation.hpp"
 #include <string>
+#include <vector>
 
 namespace appbox
 {
@@ -36,6 +38,37 @@ namespace appbox
  * @return true when the whole content of the source was applied.
  */
 bool MergeHiveInto(const std::wstring& target_hive, const std::wstring& source_hive, std::string& error);
+
+/**
+ * @brief Apply the isolation modes of a layer to the hive the sandbox mounts.
+ *
+ * A layer may give an entry a mode which differs from the mode the layer below
+ * it packed the content with, and the content of a hidden entry lives in the
+ * hidden store of the hive (see `common/RegistryIsolation.hpp`): a package which
+ * marks an entry `Hide` hides the content of the layers below it, and a package
+ * which gives a hidden entry another mode makes that content visible again. The
+ * entries the layer names are moved between the view and the store according to
+ * the modes of the layer:
+ *
+ * * `Hide` copies the entry of the view into the hidden store and removes it
+ *   from the view, so the entry disappears from the view of the sandbox while
+ *   its content is kept.
+ * * Every other mode copies the entry of the hidden store into the view, where
+ *   the state of the sandbox wins: a value the view already holds and a sub key
+ *   the view already holds are kept, because the writes of the run are the
+ *   highest layer of the view.
+ *
+ * The content of a hidden entry stays in the store, so a mode which is applied
+ * and then withdrawn again finds it in place.
+ *
+ * @param[in] hive DOS path of the hive the sandbox mounts.
+ * @param[in] keys The key entries of the isolation file of the layer.
+ * @param[in] values The value entries of the isolation file of the layer.
+ * @param[out] error Error description on failure.
+ * @return true when every named entry was moved.
+ */
+bool ApplyHiveIsolationModes(const std::wstring& hive, const std::vector<registry_isolation::KeyEntry>& keys,
+                             const std::vector<registry_isolation::ValueEntry>& values, std::string& error);
 
 } // namespace appbox
 

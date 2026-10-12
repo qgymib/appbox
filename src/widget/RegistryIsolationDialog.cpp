@@ -13,11 +13,11 @@ constexpr int kBorder = 12;
 } // namespace
 
 RegistryIsolationDialog::RegistryIsolationDialog(wxWindow* parent, const wxString& key_path,
-                                                 appbox::RegistryIsolation initial)
+                                                 appbox::RegistryKeyIsolation initial)
     : wxDialog(parent, wxID_ANY, "Isolation Mode", wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE)
 {
     wxArrayString modes;
-    for (const auto& name : appbox::RegistryIsolationNames())
+    for (const auto& name : appbox::RegistryKeyIsolationNames())
     {
         modes.Add(wxString(name));
     }
@@ -35,14 +35,13 @@ RegistryIsolationDialog::RegistryIsolationDialog(wxWindow* parent, const wxStrin
     isolation_->SetSelection(static_cast<int>(initial));
     sizer->Add(isolation_, 0, wxLEFT | wxRIGHT, kBorder);
 
-    sub_keys_ = new wxCheckBox(this, wxID_ANY, "Apply to all sub keys");
-    sub_keys_->Bind(wxEVT_CHECKBOX, &RegistryIsolationDialog::OnSubKeysToggled, this);
-    sizer->Add(sub_keys_, 0, wxLEFT | wxRIGHT | wxTOP, kBorder);
-
-    values_ = new wxCheckBox(this, wxID_ANY, "Apply to all values in the subtree");
-    values_->SetValue(true);
-    values_->Enable(false);
-    sizer->Add(values_, 0, wxLEFT | wxRIGHT | wxTOP, kBorder);
+    /*
+     * The recursion is the only option of the dialog: without it the mode
+     * reaches the key alone, with it the sub keys and the values below the key
+     * follow the mode as well.
+     */
+    recursive_ = new wxCheckBox(this, wxID_ANY, "Apply to the whole subtree");
+    sizer->Add(recursive_, 0, wxLEFT | wxRIGHT | wxTOP, kBorder);
 
     if (auto* buttons = CreateButtonSizer(wxOK | wxCANCEL))
     {
@@ -53,35 +52,17 @@ RegistryIsolationDialog::RegistryIsolationDialog(wxWindow* parent, const wxStrin
     CentreOnParent();
 }
 
-appbox::RegistryIsolation RegistryIsolationDialog::Isolation() const
+appbox::RegistryKeyIsolation RegistryIsolationDialog::Isolation() const
 {
     const int selection = isolation_ != nullptr ? isolation_->GetSelection() : wxNOT_FOUND;
     if (selection < 0)
     {
-        return appbox::RegistryIsolation::WriteCopy;
+        return appbox::RegistryKeyIsolation::Merge;
     }
-    return static_cast<appbox::RegistryIsolation>(selection);
+    return static_cast<appbox::RegistryKeyIsolation>(selection);
 }
 
-bool RegistryIsolationDialog::ApplyToSubKeys() const
+bool RegistryIsolationDialog::Recursive() const
 {
-    return sub_keys_ != nullptr && sub_keys_->GetValue();
-}
-
-bool RegistryIsolationDialog::ApplyToValues() const
-{
-    return ApplyToSubKeys() && values_ != nullptr && values_->GetValue();
-}
-
-void RegistryIsolationDialog::OnSubKeysToggled(wxCommandEvent& event)
-{
-    /*
-     * The values below the key are only overwritten together with the sub
-     * keys: a mode which is applied to a key alone never reaches its values.
-     */
-    if (values_ != nullptr && sub_keys_ != nullptr)
-    {
-        values_->Enable(sub_keys_->GetValue());
-    }
-    event.Skip();
+    return recursive_ != nullptr && recursive_->GetValue();
 }

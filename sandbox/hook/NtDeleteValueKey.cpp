@@ -18,17 +18,17 @@ static appbox::LoggerF logger("NtDeleteValueKey", NtDeleteValueKeyLogParam);
 /**
  * @brief Detour of NtDeleteValueKey().
  *
- * The delete runs against the merged view and never against the real registry.
- * A handle of the hive is delegated to
- * appbox::registry::Hive::DeleteIsolatedValue: the value of the hive is
- * removed and a value which only the host holds is recorded as deleted (a
- * whiteout), so the read through of the value and the merged value enumeration
- * do not resurrect it.
+ * The delete is delegated to appbox::registry::Hive::DeleteIsolatedValue, which
+ * resolves the layer of the value like a value write does: `Merge` deletes the
+ * value of the real registry when the sandbox does not hold it, every other mode
+ * removes the value of the hive and records a value which only the host holds as
+ * deleted (a whiteout), so the read through of the value and the merged value
+ * enumeration do not resurrect it.
  *
- * A handle of the host layer is refused, because it is a read through handle
- * which the caller opened without the right to write (an open which asks for
- * `KEY_SET_VALUE` is copied up into the hive) and because the isolation must
- * never let a delete reach the real registry.
+ * A handle of the host layer is delegated as well: it is the layer which holds a
+ * value a merged key does not shadow. The isolation refuses the handle for every
+ * other route, because a caller which opened the key without the right to write
+ * must not gain it.
  *
  * A call whose value name cannot be read is forwarded unchanged, because a
  * hook must never read outside the memory of the caller.
@@ -46,11 +46,6 @@ static NTSTATUS Hook_NtDeleteValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueNam
         return sys_NtDeleteValueKey(KeyHandle, ValueName);
     }
 
-    if (view == appbox::registry::HandleView::RealHandle)
-    {
-        return STATUS_ACCESS_DENIED;
-    }
-
     std::wstring relative;
     std::wstring value_name;
     if (!appbox::registry::Hive::HiveRelativePath(view_path, relative) ||
@@ -59,7 +54,7 @@ static NTSTATUS Hook_NtDeleteValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueNam
         return sys_NtDeleteValueKey(KeyHandle, ValueName);
     }
 
-    return appbox::registry::Hive::DeleteIsolatedValue(KeyHandle, view_path, relative, value_name);
+    return appbox::registry::Hive::DeleteIsolatedValue(view, KeyHandle, view_path, relative, value_name);
 }
 
 static void LoadNtDeleteValueKey()

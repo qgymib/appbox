@@ -118,9 +118,9 @@ bool BuildSampleRegistry(appbox::RegistryModel& registry)
                              appbox::RegistryDwordData(42), detail) &&
            registry.SetValue(L"HKEY_LOCAL_MACHINE\\Software\\AppBox", L"", appbox::RegistryValueType::None,
                              { 0x01, 0x02, 0x03 }, detail) &&
-           registry.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryIsolation::Full) &&
+           registry.SetKeyIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", appbox::RegistryKeyIsolation::Full) &&
            registry.SetValueIsolation(L"HKEY_CURRENT_USER\\Software\\Vendor", L"Server",
-                                      appbox::RegistryIsolation::Hide);
+                                      appbox::RegistryValueIsolation::Hide);
 }
 
 /**
@@ -583,7 +583,7 @@ TEST(Unit_ProjectFile, LoadRejectsInvalidJson)
 {
     TempDir    temp;
     const auto file = temp.File(L"invalid.json");
-    WriteBytes(file, "{ \"version\": 1, \"folders\": [ }");
+    WriteBytes(file, "{ \"version\": 2, \"folders\": [ }");
 
     appbox::ProjectDocument document;
     std::string             error;
@@ -633,7 +633,7 @@ TEST(Unit_ProjectFile, LoadRejectsBytesWhichAreNotUtf8)
      * the range of a UTF-8 lead byte, so the text is not valid UTF-8 even
      * though it forms valid JSON.
      */
-    WriteBytes(file, "{ \"version\": 1, \"output_path\": \"\xB0\xA1\" }");
+    WriteBytes(file, "{ \"version\": 2, \"output_path\": \"\xB0\xA1\" }");
 
     appbox::ProjectDocument document;
     std::string             error;
@@ -645,7 +645,7 @@ TEST(Unit_ProjectFile, LoadAcceptsAUtf8ByteOrderMark)
 {
     TempDir    temp;
     const auto file = temp.File(L"bom.json");
-    WriteBytes(file, "\xEF\xBB\xBF{ \"version\": 1, \"output_path\": \"D:\\\\out\\\\a.zip\" }");
+    WriteBytes(file, "\xEF\xBB\xBF{ \"version\": 2, \"output_path\": \"D:\\\\out\\\\a.zip\" }");
 
     appbox::ProjectDocument document;
     std::string             error;
@@ -658,7 +658,7 @@ TEST(Unit_ProjectFile, LoadRejectsAnUnsupportedVersion)
     TempDir temp;
 
     const auto future = temp.File(L"future.json");
-    WriteBytes(future, "{ \"version\": 2 }");
+    WriteBytes(future, "{ \"version\": 3 }");
 
     const auto missing = temp.File(L"missing-version.json");
     WriteBytes(missing, "{ \"output_path\": \"D:\\\\out\\\\a.zip\" }");
@@ -670,7 +670,7 @@ TEST(Unit_ProjectFile, LoadRejectsAnUnsupportedVersion)
     std::string             error;
 
     EXPECT_FALSE(appbox::LoadProject(future.wstring(), document, error));
-    EXPECT_NE(error.find("unsupported project file version 2"), std::string::npos);
+    EXPECT_NE(error.find("unsupported project file version 3"), std::string::npos);
 
     EXPECT_FALSE(appbox::LoadProject(missing.wstring(), document, error));
     EXPECT_NE(error.find("version"), std::string::npos);
@@ -684,17 +684,17 @@ TEST(Unit_ProjectFile, LoadRejectsMalformedMembers)
     TempDir temp;
 
     const auto folders = temp.File(L"folders.json");
-    WriteBytes(folders, "{ \"version\": 1, \"folders\": {} }");
+    WriteBytes(folders, "{ \"version\": 2, \"folders\": {} }");
 
     const auto entry = temp.File(L"entry.json");
-    WriteBytes(entry, "{ \"version\": 1, \"folders\": [ { \"preset\": \"program_files\", "
+    WriteBytes(entry, "{ \"version\": 2, \"folders\": [ { \"preset\": \"program_files\", "
                       "\"name\": \"MyApp\" } ] }");
 
     const auto files = temp.File(L"files.json");
-    WriteBytes(files, "{ \"version\": 1, \"files\": [ \"MyApp\" ] }");
+    WriteBytes(files, "{ \"version\": 2, \"files\": [ \"MyApp\" ] }");
 
     const auto program = temp.File(L"program.json");
-    WriteBytes(program, "{ \"version\": 1, \"startup_files\": 7 }");
+    WriteBytes(program, "{ \"version\": 2, \"startup_files\": 7 }");
 
     appbox::ProjectDocument document;
     std::string             error;
@@ -717,7 +717,7 @@ TEST(Unit_ProjectFile, ApplyRejectsUnknownPresetDirectories)
 {
     TempDir    temp;
     const auto file = temp.File(L"preset.json");
-    WriteBytes(file, "{ \"version\": 1, \"folders\": [ { \"preset\": \"does_not_exist\", "
+    WriteBytes(file, "{ \"version\": 2, \"folders\": [ { \"preset\": \"does_not_exist\", "
                      "\"name\": \"MyApp\", \"source\": \"C:\\\\MyApp\" } ] }");
 
     appbox::ProjectDocument document;
@@ -738,7 +738,7 @@ TEST(Unit_ProjectFile, ApplyRejectsDuplicateImports)
 {
     TempDir    temp;
     const auto file = temp.File(L"duplicates.json");
-    WriteBytes(file, "{ \"version\": 1, \"folders\": [ "
+    WriteBytes(file, "{ \"version\": 2, \"folders\": [ "
                      "{ \"preset\": \"program_files\", \"name\": \"MyApp\", \"source\": \"C:\\\\MyApp\" }, "
                      "{ \"preset\": \"program_files\", \"name\": \"myapp\", \"source\": \"C:\\\\Other\" } ] }");
 
@@ -759,7 +759,7 @@ TEST(Unit_ProjectFile, ApplyRejectsAFileOutsideAnImportedFolder)
 {
     TempDir    temp;
     const auto file = temp.File(L"target.json");
-    WriteBytes(file, "{ \"version\": 1, \"folders\": [ { \"preset\": \"program_files\", "
+    WriteBytes(file, "{ \"version\": 2, \"folders\": [ { \"preset\": \"program_files\", "
                      "\"name\": \"MyApp\", \"source\": \"C:\\\\MyApp\" } ], "
                      "\"files\": [ { \"preset\": \"program_files\", \"target_dir\": \"Other\", "
                      "\"name\": \"tool.exe\", \"source\": \"C:\\\\tool.exe\" } ] }");
@@ -804,7 +804,7 @@ TEST(Unit_ProjectFile, RoundTripKeepsTheVirtualRegistry)
     /* The key tree and the modes come back unchanged. */
     const auto* vendor = loaded_registry.FindKey(L"HKEY_CURRENT_USER\\Software\\Vendor");
     ASSERT_NE(vendor, nullptr);
-    EXPECT_EQ(vendor->isolation, appbox::RegistryIsolation::Full);
+    EXPECT_EQ(vendor->isolation, appbox::RegistryKeyIsolation::Full);
     EXPECT_NE(loaded_registry.FindKey(L"HKEY_CURRENT_USER\\Software\\Vendor\\Deep"), nullptr);
     EXPECT_NE(loaded_registry.FindKey(L"HKEY_LOCAL_MACHINE\\Software\\AppBox"), nullptr);
 
@@ -816,18 +816,18 @@ TEST(Unit_ProjectFile, RoundTripKeepsTheVirtualRegistry)
     EXPECT_EQ(rows[0].name, L"Deep");
     /* The sub key keeps the mode it was created with: the change of the key
      * above it never reached it. */
-    EXPECT_EQ(rows[0].isolation, appbox::RegistryIsolation::WriteCopy);
+    EXPECT_EQ(rows[0].key_isolation, appbox::RegistryKeyIsolation::Merge);
 
     EXPECT_EQ(rows[1].name, L"Count");
     EXPECT_EQ(rows[1].type, appbox::RegistryValueType::Dword);
-    EXPECT_EQ(rows[1].isolation, appbox::RegistryIsolation::WriteCopy);
+    EXPECT_EQ(rows[1].value_isolation, appbox::RegistryValueIsolation::Full);
     uint32_t count = 0;
     ASSERT_TRUE(appbox::RegistryDwordValue(rows[1].data, count));
     EXPECT_EQ(count, 42u);
 
     EXPECT_EQ(rows[2].name, L"Server");
     EXPECT_EQ(rows[2].type, appbox::RegistryValueType::String);
-    EXPECT_EQ(rows[2].isolation, appbox::RegistryIsolation::Hide);
+    EXPECT_EQ(rows[2].value_isolation, appbox::RegistryValueIsolation::Hide);
     EXPECT_EQ(appbox::RegistryStringValue(rows[2].data), L"host");
 
     /* The default value of another root keeps its type and its bytes. */
@@ -863,15 +863,15 @@ TEST(Unit_ProjectFile, LoadRejectsABrokenRegistry)
     TempDir temp;
 
     const auto broken = temp.File(L"broken-registry.json");
-    WriteBytes(broken, "{ \"version\": 1, \"registry\": [ { \"name\": \"HKEY_CURRENT_USER\", "
+    WriteBytes(broken, "{ \"version\": 2, \"registry\": [ { \"name\": \"HKEY_CURRENT_USER\", "
                        "\"isolation\": \"sandbox\" } ] }");
 
     const auto unknown_root = temp.File(L"unknown-root.json");
-    WriteBytes(unknown_root, "{ \"version\": 1, \"registry\": [ { \"name\": \"HKEY_OTHER\", "
+    WriteBytes(unknown_root, "{ \"version\": 2, \"registry\": [ { \"name\": \"HKEY_OTHER\", "
                              "\"isolation\": \"full\" } ] }");
 
     const auto bad_value = temp.File(L"bad-value.json");
-    WriteBytes(bad_value, "{ \"version\": 1, \"registry\": [ { \"name\": \"HKEY_CURRENT_USER\", "
+    WriteBytes(bad_value, "{ \"version\": 2, \"registry\": [ { \"name\": \"HKEY_CURRENT_USER\", "
                           "\"isolation\": \"full\", \"values\": [ { \"name\": \"Server\", "
                           "\"type\": \"REG_SOMETHING\", \"data\": \"\", \"isolation\": \"full\" } ] } ] }");
 
@@ -887,7 +887,7 @@ TEST(Unit_ProjectFile, LoadRejectsABrokenRegistry)
     appbox::ProjectDocument          document;
 
     EXPECT_FALSE(appbox::LoadProject(broken.wstring(), document, error));
-    EXPECT_NE(error.find("unknown isolation mode"), std::string::npos);
+    EXPECT_NE(error.find("unknown key isolation mode"), std::string::npos);
 
     EXPECT_FALSE(appbox::LoadProject(bad_value.wstring(), document, error));
     EXPECT_NE(error.find("unknown value type"), std::string::npos);
@@ -986,31 +986,31 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenFilesystemMember)
     TempDir temp;
 
     const auto bad_mode = temp.File(L"fs-bad-mode.json");
-    WriteBytes(bad_mode, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\", "
+    WriteBytes(bad_mode, "{ \"version\": 2, \"filesystem\": [ { \"path\": \"#Windows#\", "
                          "\"kind\": \"directory\", \"isolation\": \"hide\" } ] }");
 
     const auto bad_kind = temp.File(L"fs-bad-kind.json");
-    WriteBytes(bad_kind, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\", "
+    WriteBytes(bad_kind, "{ \"version\": 2, \"filesystem\": [ { \"path\": \"#Windows#\", "
                          "\"kind\": \"link\", \"isolation\": \"full\" } ] }");
 
     const auto file_mode = temp.File(L"fs-file-mode.json");
-    WriteBytes(file_mode, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\\\\a.dll\", "
+    WriteBytes(file_mode, "{ \"version\": 2, \"filesystem\": [ { \"path\": \"#Windows#\\\\a.dll\", "
                           "\"kind\": \"file\", \"isolation\": \"write_copy\" } ] }");
 
     const auto file_merge = temp.File(L"fs-file-merge.json");
-    WriteBytes(file_merge, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\\\\a.dll\", "
+    WriteBytes(file_merge, "{ \"version\": 2, \"filesystem\": [ { \"path\": \"#Windows#\\\\a.dll\", "
                            "\"kind\": \"file\", \"isolation\": \"merge\" } ] }");
 
     const auto duplicate = temp.File(L"fs-duplicate.json");
-    WriteBytes(duplicate, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\", \"kind\": "
+    WriteBytes(duplicate, "{ \"version\": 2, \"filesystem\": [ { \"path\": \"#Windows#\", \"kind\": "
                           "\"directory\", \"isolation\": \"full\" }, { \"path\": \"#windows#\", \"kind\": "
                           "\"directory\", \"isolation\": \"whiteout\" } ] }");
 
     const auto missing = temp.File(L"fs-missing.json");
-    WriteBytes(missing, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\" } ] }");
+    WriteBytes(missing, "{ \"version\": 2, \"filesystem\": [ { \"path\": \"#Windows#\" } ] }");
 
     const auto not_array = temp.File(L"fs-not-array.json");
-    WriteBytes(not_array, "{ \"version\": 1, \"filesystem\": {} }");
+    WriteBytes(not_array, "{ \"version\": 2, \"filesystem\": {} }");
 
     appbox::FilesystemIsolationModel isolation;
     std::string                      error;
@@ -1158,15 +1158,15 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenNetworkMember)
     TempDir temp;
 
     const auto missing = temp.File(L"network-missing.json");
-    WriteBytes(missing, "{ \"version\": 1, \"network\": [ { \"hostname\": \"example.com\" } ] }");
+    WriteBytes(missing, "{ \"version\": 2, \"network\": [ { \"hostname\": \"example.com\" } ] }");
 
     const auto bad_address = temp.File(L"network-bad-address.json");
     WriteBytes(bad_address,
-               "{ \"version\": 1, \"network\": [ { \"hostname\": \"example.com\", \"redirect\": \"nope\" } ] }");
+               "{ \"version\": 2, \"network\": [ { \"hostname\": \"example.com\", \"redirect\": \"nope\" } ] }");
 
     const auto duplicate = temp.File(L"network-duplicate.json");
     WriteBytes(duplicate,
-               "{ \"version\": 1, \"network\": [ { \"hostname\": \"example.com\", \"redirect\": \"127.0.0.1\" }, "
+               "{ \"version\": 2, \"network\": [ { \"hostname\": \"example.com\", \"redirect\": \"127.0.0.1\" }, "
                "{ \"hostname\": \"EXAMPLE.COM\", \"redirect\": \"127.0.0.2\" } ] }");
 
     appbox::NetworkModel network;
@@ -1323,7 +1323,7 @@ TEST(Unit_ProjectFile, ApplyRejectsAProxyTheModelRefuses)
     /* The document is complete, but an enabled protocol without a server is a
      * configuration the model refuses. */
     const auto path = temp.File(L"proxy-broken.json");
-    WriteBytes(path, "{ \"version\": 1, \"proxy\": { \"type\": \"socks5\", \"tcp\": true, \"udp\": false, "
+    WriteBytes(path, "{ \"version\": 2, \"proxy\": { \"type\": \"socks5\", \"tcp\": true, \"udp\": false, "
                      "\"server\": \"\", \"port\": \"1080\", \"username\": \"\", \"password\": \"\" } }");
 
     appbox::ProxyConfig stored;
@@ -1434,15 +1434,15 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenEnvironmentMember)
     TempDir temp;
 
     const auto empty_name = temp.File(L"environment-empty.json");
-    WriteBytes(empty_name, "{ \"version\": 1, \"environment\": [ { \"name\": \"\", \"value\": \"x\", "
+    WriteBytes(empty_name, "{ \"version\": 2, \"environment\": [ { \"name\": \"\", \"value\": \"x\", "
                            "\"isolation\": \"write_copy\", \"merge\": \"replace\", \"merge_string\": \"\" } ] }");
 
     const auto equals_sign = temp.File(L"environment-equals.json");
-    WriteBytes(equals_sign, "{ \"version\": 1, \"environment\": [ { \"name\": \"TEMP=X\", \"value\": \"x\", "
+    WriteBytes(equals_sign, "{ \"version\": 2, \"environment\": [ { \"name\": \"TEMP=X\", \"value\": \"x\", "
                             "\"isolation\": \"write_copy\", \"merge\": \"replace\", \"merge_string\": \"\" } ] }");
 
     const auto duplicate = temp.File(L"environment-duplicate.json");
-    WriteBytes(duplicate, "{ \"version\": 1, \"environment\": [ "
+    WriteBytes(duplicate, "{ \"version\": 2, \"environment\": [ "
                           "{ \"name\": \"TEMP\", \"value\": \"1\", \"isolation\": \"write_copy\", "
                           "\"merge\": \"replace\", \"merge_string\": \"\" }, "
                           "{ \"name\": \"temp\", \"value\": \"2\", \"isolation\": \"write_copy\", "
@@ -1538,7 +1538,7 @@ TEST(Unit_ProjectFile, AFileWithoutAProjectTypeIsAStandaloneProject)
 
     /* A file which was written before the member existed. */
     const auto path = temp.File(L"standalone-project.json");
-    WriteBytes(path, "{ \"version\": 1, \"output_path\": \"D:\\\\out\\\\MyApp.zip\" }");
+    WriteBytes(path, "{ \"version\": 2, \"output_path\": \"D:\\\\out\\\\MyApp.zip\" }");
 
     appbox::ProjectDocument document;
     std::string             error;
@@ -1565,7 +1565,7 @@ TEST(Unit_ProjectFile, ApplyRejectsAnUnknownProjectType)
     TempDir temp;
 
     const auto path = temp.File(L"unknown-project.json");
-    WriteBytes(path, "{ \"version\": 1, \"project_type\": \"installer\" }");
+    WriteBytes(path, "{ \"version\": 2, \"project_type\": \"installer\" }");
 
     appbox::ProjectDocument document;
     std::string             error;

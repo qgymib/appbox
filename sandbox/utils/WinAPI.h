@@ -535,6 +535,27 @@ typedef struct _OBJECT_NAME_INFORMATION
     UNICODE_STRING Name;
 } OBJECT_NAME_INFORMATION, *POBJECT_NAME_INFORMATION;
 
+/**
+ * @brief The leading part of the basic information of an object.
+ *
+ * `ObjectBasicInformation` reports the attributes of the object and the access
+ * mask the kernel granted to the handle, which is what a hook needs to tell
+ * whether a caller opened an object with the right to write. The record
+ * continues with counters of the object manager and the lengths of the other
+ * information classes, so a caller which reads the two fields below fills a
+ * buffer of this size.
+ *
+ * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/ns-winternl-public_object_basic_information
+ */
+typedef struct _PUBLIC_OBJECT_BASIC_INFORMATION
+{
+    ULONG       Attributes;
+    ACCESS_MASK GrantedAccess;
+    ULONG       HandleCount;
+    ULONG       PointerCount;
+    ULONG       Reserved[10];
+} PUBLIC_OBJECT_BASIC_INFORMATION, *PPUBLIC_OBJECT_BASIC_INFORMATION;
+
 typedef struct _OBJECT_ATTRIBUTES
 {
     ULONG           Length;

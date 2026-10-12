@@ -100,6 +100,7 @@ add_library(${sandbox_name} MODULE
     "hook/NtSaveKeyEx.cpp"
     "hook/NtSetInformationFile.cpp"
     "hook/NtSetInformationKey.cpp"
+    "hook/NtSetValueKey.cpp"
     "hook/NtWriteFile.cpp"
     "hook/recvfrom.cpp"
     "hook/RtlCompareUnicodeString.cpp"

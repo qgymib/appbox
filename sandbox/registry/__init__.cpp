@@ -20,6 +20,7 @@
 #include "hook/NtRenameKey.hpp"
 #include "hook/NtSaveKey.hpp"
 #include "hook/NtSaveKeyEx.hpp"
+#include "hook/NtSetValueKey.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
 #include "registry/EnumMerge.hpp"
 #include "registry/IsolationPolicy.hpp"
@@ -377,41 +378,72 @@ static NTSTATUS CreateRootKeys(HANDLE hive_root)
  * the same key or value, so the sandboxed process observes the mode of the
  * last layer which names an entry.
  *
- * A missing file is the normal case of a layer which carries no modes and a
- * malformed file is reported and ignored. Neither of them may fail the start
- * of the sandbox, because a sandbox without modes is exactly the read through
- * behaviour of a sandbox without an isolation file.
+ * The isolation file is the description of the run: the sandbox cannot tell
+ * which host entries stay visible without it, and there is no default mode to
+ * fall back to, so the file of the archive is required and a file which cannot
+ * be read, which is malformed or which carries another version fails the start
+ * of the sandbox. A patch package which carries no file changes nothing, while
+ * a file a package carries has to be usable as well: the modes of the layers
+ * below it would otherwise stay in place silently.
  *
  * @param[in,out] data The runtime state which receives the modes.
+ * @param[out] error Description of the failure.
+ * @return true when the modes of every layer were applied.
  */
-static void LoadIsolationTable(appbox::registry::Hive::Data& data)
+static bool LoadIsolationTable(appbox::registry::Hive::Data& data, std::string& error)
 {
-    if (appbox::sandbox->wRegistryIsolationDOSPaths.empty())
+    error.clear();
+
+    const auto& paths = appbox::sandbox->wRegistryIsolationDOSPaths;
+    if (paths.empty())
     {
-        LOG_D("no registry isolation file is configured");
-        return;
+        error = "no registry isolation file is configured";
+        return false;
     }
 
-    for (const auto& path : appbox::sandbox->wRegistryIsolationDOSPaths)
+    for (std::size_t index = 0; index < paths.size(); ++index)
     {
+        /* The launcher lists the file of the archive first, the files of the
+         * patch packages after it. */
+        const bool  archive_layer = index == 0;
+        const auto& path = paths[index];
+
         std::ifstream stream(path, std::ios::binary);
         if (!stream.is_open())
         {
-            LOG_D("the registry isolation file does not exist: {}", appbox::WideToUTF8(path));
+            if (archive_layer)
+            {
+                error = "the registry isolation file of the archive does not exist: " + appbox::WideToUTF8(path);
+                return false;
+            }
+
+            LOG_D("a patch package carries no registry isolation file: {}", appbox::WideToUTF8(path));
             continue;
         }
 
         const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
-        std::string       error;
-        if (!data.isolation.Parse(text, error))
+        std::string       detail;
+        if (!data.isolation.Parse(text, detail))
         {
-            LOG_W("the registry isolation file '{}' is ignored: {}", appbox::WideToUTF8(path), error);
-            continue;
+            error = "the registry isolation file '" + appbox::WideToUTF8(path) + "' cannot be used: " + detail;
+            return false;
         }
+    }
+
+    /*
+     * Without a mode for every root key of the view the mode of a path cannot
+     * resolve, which would leave the host registry visible for the entries the
+     * table does not cover.
+     */
+    if (!data.isolation.NamesRootKeys())
+    {
+        error = "the registry isolation file names no mode for every root key of the view";
+        return false;
     }
 
     LOG_I("registry isolation modes loaded: {} keys, {} values", data.isolation.KeyCount(),
           data.isolation.ValueCount());
+    return true;
 }
 
 /**
@@ -472,6 +504,93 @@ static bool HiveHoldsValue(HANDLE key, const std::wstring& value_name)
     ULONG          result = 0;
     const NTSTATUS status = sys_NtQueryValueKey(key, &us, KeyValueBasicInformation, buffer, sizeof(buffer), &result);
     return NT_SUCCESS(status) || status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL;
+}
+
+/**
+ * @brief Whether the granted access of a key handle permits a value write.
+ *
+ * A call the isolation re-routes to the other layer runs against a key the
+ * isolation opened, so the kernel cannot check the rights of the handle of the
+ * caller any more. The access mask the kernel granted to that handle is queried
+ * and tested instead, so a caller which opened the key without the right to
+ * write does not gain it through the isolation.
+ *
+ * @param[in] KeyHandle The key handle of the caller.
+ * @return true when the handle permits a write of a value.
+ */
+static bool HandlePermitsValueWrite(HANDLE KeyHandle)
+{
+    BYTE  buffer[sizeof(PUBLIC_OBJECT_BASIC_INFORMATION)] = {};
+    ULONG result = 0;
+    if (sys_NtQueryObject == nullptr ||
+        !NT_SUCCESS(sys_NtQueryObject(KeyHandle, ObjectBasicInformation, buffer, sizeof(buffer), &result)))
+    {
+        return false;
+    }
+
+    const auto* info = reinterpret_cast<const PUBLIC_OBJECT_BASIC_INFORMATION*>(buffer);
+    return (info->GrantedAccess & (KEY_SET_VALUE | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED)) != 0;
+}
+
+/**
+ * @brief Create or open a key of the real registry through its view path.
+ *
+ * The helper is the host counterpart of `CreateHiveKey` for the write rule of
+ * `Merge`: a modification of an entry the sandbox does not hold lands in the real
+ * registry, and the key which has to carry it is created when the host does not
+ * hold it yet.
+ *
+ * `NtCreateKey` creates a key only when the key above it exists, so a path whose
+ * parents are missing is walked from its first component: the helper creates the
+ * parent of the key first and creates the key below the handle of that parent.
+ * The walk ends at a root key of the view, which the real registry always holds,
+ * so the recursion is bounded by the length of the path.
+ *
+ * @param[in] view_path The logical path of the key in the view.
+ * @param[in] DesiredAccess The access mask the caller needs on the key.
+ * @param[out] key The handle of the key, null on failure.
+ * @return Status code.
+ */
+static NTSTATUS CreateRealKey(const std::wstring& view_path, ACCESS_MASK DesiredAccess, HANDLE& key)
+{
+    key = nullptr;
+
+    /* A key the real registry holds is opened with the access of the caller. */
+    const NTSTATUS opened =
+        appbox::registry::Hive::OpenRealKey(view_path, DesiredAccess, OBJ_CASE_INSENSITIVE, nullptr, nullptr, &key);
+    if (NT_SUCCESS(opened) || !appbox::registry::IsKeyNotFound(opened))
+    {
+        return opened;
+    }
+
+    const std::size_t separator = view_path.rfind(L'\\');
+    if (separator == std::wstring::npos || separator == 0)
+    {
+        /* The root key of the view is not part of the hive, so a path which ends
+         * here names a key the real registry does not hold. */
+        return opened;
+    }
+
+    /* The key does not exist, so the key above it is created first. */
+    HANDLE         parent = nullptr;
+    const NTSTATUS created =
+        CreateRealKey(view_path.substr(0, separator), KEY_CREATE_SUB_KEY | KEY_QUERY_VALUE, parent);
+    if (!NT_SUCCESS(created))
+    {
+        return created;
+    }
+
+    appbox::registry::KeyGuard guard(parent);
+
+    const std::wstring name = view_path.substr(separator + 1);
+
+    UNICODE_STRING    us;
+    OBJECT_ATTRIBUTES oa;
+    sys_RtlInitUnicodeString(&us, name.c_str());
+    InitializeObjectAttributes(&oa, &us, OBJ_CASE_INSENSITIVE, parent, nullptr);
+
+    ULONG disposition = 0;
+    return sys_NtCreateKey(&key, DesiredAccess, &oa, 0, nullptr, REG_OPTION_NON_VOLATILE, &disposition);
 }
 
 /**
@@ -622,12 +741,12 @@ static bool IsHiddenRealEntry(const std::wstring& relative, bool values, const s
 
     if (values)
     {
-        return appbox::registry::IsolationTable::HidesHost(appbox::registry::Hive::ValueIsolation(relative, name)) ||
+        return appbox::registry::Hive::HidesHostValue(relative, name) ||
                appbox::registry::Hive::IsValueWhitedOut(relative, name);
     }
 
     const std::wstring child = appbox::registry::JoinKeyPath(relative, name);
-    return appbox::registry::IsolationTable::HidesHost(appbox::registry::Hive::KeyIsolation(child)) ||
+    return appbox::registry::KeyHidesHost(appbox::registry::Hive::KeyIsolation(child)) ||
            appbox::registry::Hive::IsKeyWhitedOut(child);
 }
 
@@ -1301,9 +1420,19 @@ NTSTATUS appbox::registry::Hive::Init()
      */
     const std::size_t expanded = ExpandHiveVariableReferences(advapi32, data->hive_root);
 
-    /* The modes of the virtual registry, which decide which host entries stay
-     * invisible. A missing file keeps the default mode of every entry. */
-    LoadIsolationTable(*data);
+    /*
+     * The modes of the virtual registry, which decide which host entries stay
+     * invisible. Without them the isolation cannot answer a single call, so a
+     * failure of the load fails the mount of the hive.
+     */
+    std::string isolation_error;
+    if (!LoadIsolationTable(*data, isolation_error))
+    {
+        LOG_E("the registry isolation modes cannot be loaded: {}", isolation_error);
+        CloseLocal(data->hive_root);
+        delete data;
+        return STATUS_INVALID_PARAMETER;
+    }
 
     s_hive_data = data;
 
@@ -1407,30 +1536,87 @@ bool appbox::registry::Hive::HiveRelativePath(const std::wstring& view_path, std
     return appbox::registry::MapViewPathToHive(view_path, s_hive_data->hkcu_prefix, relative);
 }
 
-appbox::RegistryIsolation appbox::registry::Hive::KeyIsolation(const std::wstring& relative)
+appbox::RegistryKeyIsolation appbox::registry::Hive::KeyIsolation(const std::wstring& relative)
 {
     if (s_hive_data == nullptr)
     {
-        return RegistryIsolation::WriteCopy;
+        /* Without a table the host registry must stay invisible. */
+        return RegistryKeyIsolation::Hide;
     }
 
     return s_hive_data->isolation.KeyMode(relative);
 }
 
-appbox::RegistryIsolation appbox::registry::Hive::ValueIsolation(const std::wstring& relative,
-                                                                 const std::wstring& value_name)
+std::optional<appbox::RegistryValueIsolation> appbox::registry::Hive::ListedValueIsolation(
+    const std::wstring& relative, const std::wstring& value_name)
 {
     if (s_hive_data == nullptr)
     {
-        return RegistryIsolation::WriteCopy;
+        return std::nullopt;
     }
 
-    return s_hive_data->isolation.ValueMode(relative, value_name);
+    return s_hive_data->isolation.ListedValueMode(relative, value_name);
 }
 
 bool appbox::registry::Hive::HidesHostValue(const std::wstring& relative, const std::wstring& value_name)
 {
-    return IsolationTable::HidesHost(ValueIsolation(relative, value_name));
+    return appbox::registry::ValueHidesHost(ListedValueIsolation(relative, value_name), KeyIsolation(relative));
+}
+
+bool appbox::registry::Hive::ValueWritesToHost(const std::wstring& relative, const std::wstring& value_name)
+{
+    return appbox::registry::ValueWritesToHost(ListedValueIsolation(relative, value_name), KeyIsolation(relative),
+                                               SandboxHoldsValue(relative, value_name));
+}
+
+bool appbox::registry::Hive::SandboxHoldsValue(const std::wstring& relative, const std::wstring& value_name)
+{
+    if (s_hive_data == nullptr)
+    {
+        return false;
+    }
+
+    /*
+     * A value the sandbox deleted counts as held: the deletion is recorded in
+     * the whiteout store, so a later write of the value has to land in the
+     * sandbox again.
+     */
+    if (IsValueWhitedOut(relative, value_name))
+    {
+        return true;
+    }
+
+    HANDLE key = nullptr;
+    if (!TryOpenHiveKey(relative, KEY_QUERY_VALUE, key))
+    {
+        return false;
+    }
+
+    appbox::registry::KeyGuard guard(key);
+    return HiveHoldsValue(key, value_name);
+}
+
+bool appbox::registry::Hive::SandboxHoldsKey(const std::wstring& relative)
+{
+    if (s_hive_data == nullptr)
+    {
+        return false;
+    }
+
+    /* A key the sandbox deleted counts as held, like a value it deleted. */
+    if (IsKeyWhitedOut(relative))
+    {
+        return true;
+    }
+
+    HANDLE key = nullptr;
+    if (!TryOpenHiveKey(relative, KEY_QUERY_VALUE, key))
+    {
+        return false;
+    }
+
+    CloseHiveHandle(key);
+    return true;
 }
 
 bool appbox::registry::Hive::IsKeyWhitedOut(const std::wstring& relative)
@@ -1753,7 +1939,7 @@ static NTSTATUS OpenIsolatedKeyEntry(const std::wstring& view_path, const std::w
         return STATUS_INVALID_HANDLE;
     }
 
-    const appbox::RegistryIsolation mode = appbox::registry::Hive::KeyIsolation(relative);
+    const appbox::RegistryKeyIsolation mode = appbox::registry::Hive::KeyIsolation(relative);
 
     HANDLE   key = nullptr;
     NTSTATUS st_hive = OpenHiveKeyEntry(relative, DesiredAccess, Attributes, SecurityDescriptor,
@@ -2058,6 +2244,50 @@ static NTSTATUS CreateIsolatedKeyEntry(const std::wstring& view_path, const std:
                                        ULONG CreateOptions, HANDLE TransactionHandle, PHANDLE KeyHandle,
                                        PULONG Disposition)
 {
+    /*
+     * `Merge` is the only mode whose create lands in the real registry: a key a
+     * sandboxed process creates below a merged key is created in the host when
+     * the sandbox does not hold it, which is the write rule of the mode. A
+     * transacted call keeps the route of the hive, because the host layer must
+     * never be enlisted into the transaction of the caller.
+     */
+    if (TransactionHandle == nullptr &&
+        appbox::registry::Hive::KeyIsolation(relative) == appbox::RegistryKeyIsolation::Merge &&
+        !appbox::registry::Hive::SandboxHoldsKey(relative))
+    {
+        const std::size_t separator = view_path.rfind(L'\\');
+        if (separator == std::wstring::npos || separator == 0)
+        {
+            return STATUS_OBJECT_PATH_INVALID;
+        }
+
+        /*
+         * The key above the new key is created first: `NtCreateKey` creates a key
+         * only when the key above it exists in the registry it names, and the
+         * path of the view may be missing in the real registry.
+         */
+        HANDLE         parent = nullptr;
+        const NTSTATUS opened =
+            CreateRealKey(view_path.substr(0, separator), KEY_CREATE_SUB_KEY | KEY_QUERY_VALUE, parent);
+        if (!NT_SUCCESS(opened))
+        {
+            return opened;
+        }
+
+        appbox::registry::KeyGuard guard(parent);
+
+        const std::wstring name = view_path.substr(separator + 1);
+
+        UNICODE_STRING    us;
+        OBJECT_ATTRIBUTES oa;
+        sys_RtlInitUnicodeString(&us, name.c_str());
+        InitializeObjectAttributes(&oa, &us, Attributes, parent, SecurityDescriptor);
+        oa.SecurityQualityOfService = SecurityQualityOfService;
+
+        LOG_D("the key {} is created in the real registry (merge)", appbox::WideToUTF8(relative));
+        return sys_NtCreateKey(KeyHandle, DesiredAccess, &oa, TitleIndex, Class, CreateOptions, Disposition);
+    }
+
     const NTSTATUS status =
         CreateHiveKey(relative, DesiredAccess, Attributes, SecurityDescriptor, SecurityQualityOfService, TitleIndex,
                       Class, CreateOptions, TransactionHandle, KeyHandle, Disposition);
@@ -2083,10 +2313,10 @@ static NTSTATUS CreateIsolatedKeyEntry(const std::wstring& view_path, const std:
      * The probe of the host layer is a plain read only open: the host layer is
      * never enlisted into the transaction of the caller.
      */
-    const appbox::RegistryIsolation mode = appbox::registry::Hive::KeyIsolation(relative);
-    const bool                      host_holds_key =
-        *Disposition == REG_CREATED_NEW_KEY && !appbox::registry::IsolationTable::HidesHost(mode) &&
-        !appbox::registry::Hive::IsKeyWhitedOut(relative) && appbox::registry::Hive::HostHoldsKey(view_path);
+    const appbox::RegistryKeyIsolation mode = appbox::registry::Hive::KeyIsolation(relative);
+    const bool host_holds_key = *Disposition == REG_CREATED_NEW_KEY && !appbox::registry::KeyHidesHost(mode) &&
+                                !appbox::registry::Hive::IsKeyWhitedOut(relative) &&
+                                appbox::registry::Hive::HostHoldsKey(view_path);
 
     *Disposition = appbox::registry::ViewCreateDisposition(mode, *Disposition, host_holds_key);
     return status;
@@ -2455,12 +2685,101 @@ static NTSTATUS DeleteHiveValue(HANDLE key, const std::wstring& value_name)
     return sys_NtDeleteValueKey(key, &us);
 }
 
-NTSTATUS appbox::registry::Hive::DeleteIsolatedKey(HANDLE KeyHandle, const std::wstring& view_path,
-                                                   const std::wstring& relative)
+NTSTATUS appbox::registry::Hive::SetIsolatedValue(appbox::registry::HandleView handle_view, HANDLE KeyHandle,
+                                                  const std::wstring& view_path, const std::wstring& relative,
+                                                  const std::wstring& value_name, ULONG TitleIndex, ULONG Type,
+                                                  PVOID Data, ULONG DataSize)
 {
     if (s_hive_data == nullptr)
     {
         return STATUS_INVALID_HANDLE;
+    }
+
+    UNICODE_STRING us;
+    sys_RtlInitUnicodeString(&us, value_name.c_str());
+
+    /*
+     * The layer of the write is the one the isolation mode of the value decides
+     * (`ValueWritesToHost`): a value the sandbox does not hold below a merged
+     * key is written into the real registry, every other value into the sandbox.
+     * The handle of the caller already points at that layer when the layers
+     * agree, which is the common case and costs no extra call.
+     */
+    const bool host_handle = handle_view == appbox::registry::HandleView::RealHandle;
+    const bool to_host = ValueWritesToHost(relative, value_name);
+    if (to_host == host_handle)
+    {
+        return sys_NtSetValueKey(KeyHandle, &us, TitleIndex, Type, Data, DataSize);
+    }
+
+    /*
+     * The write has to land in the other layer, so the key of that layer is
+     * created (or opened) and the call runs against that handle. The granted
+     * access of the handle of the caller is tested first: a caller which opened
+     * the key without the right to write must not gain it through the isolation.
+     */
+    if (!HandlePermitsValueWrite(KeyHandle))
+    {
+        return STATUS_ACCESS_DENIED;
+    }
+
+    HANDLE   key = nullptr;
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    if (to_host)
+    {
+        status = CreateRealKey(view_path, KEY_SET_VALUE | KEY_QUERY_VALUE, key);
+        LOG_D("the value {} of {} is written in the real registry (merge): {:#x}", appbox::WideToUTF8(value_name),
+              appbox::WideToUTF8(relative), status);
+    }
+    else
+    {
+        status = CreateHiveKey(relative, KEY_SET_VALUE | KEY_QUERY_VALUE, OBJ_CASE_INSENSITIVE, nullptr, nullptr, 0,
+                               nullptr, REG_OPTION_NON_VOLATILE, nullptr, &key, nullptr);
+    }
+
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+
+    appbox::registry::KeyGuard guard(key);
+    return sys_NtSetValueKey(key, &us, TitleIndex, Type, Data, DataSize);
+}
+
+NTSTATUS appbox::registry::Hive::DeleteIsolatedKey(appbox::registry::HandleView handle_view, HANDLE KeyHandle,
+                                                   const std::wstring& view_path, const std::wstring& relative)
+{
+    if (s_hive_data == nullptr)
+    {
+        return STATUS_INVALID_HANDLE;
+    }
+
+    const bool host_handle = handle_view == appbox::registry::HandleView::RealHandle;
+
+    /*
+     * `Merge` is the only mode whose delete reaches the real registry, and it
+     * does so when the sandbox does not hold the key: the handle of the caller is
+     * a handle of the host layer in that case, because the open of such a key is
+     * answered by the host layer, so the kernel runs the real delete with the
+     * rights of that handle.
+     */
+    if (KeyIsolation(relative) == RegistryKeyIsolation::Merge && !SandboxHoldsKey(relative))
+    {
+        if (!host_handle)
+        {
+            /* The key lives in the host, so a handle of the hive cannot name it. */
+            return STATUS_ACCESS_DENIED;
+        }
+
+        LOG_D("the key {} is deleted in the real registry (merge)", appbox::WideToUTF8(relative));
+        return sys_NtDeleteKey(KeyHandle);
+    }
+
+    if (host_handle)
+    {
+        /* Every other route runs against the sandbox, and a handle of the host
+         * layer does not point at the sandbox. */
+        return STATUS_ACCESS_DENIED;
     }
 
     /*
@@ -2486,14 +2805,13 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedKey(HANDLE KeyHandle, const std::
     }
 
     /*
-     * The hive holds the key (the handle proves it), so the table reports
+     * The sandbox holds the key (the handle proves it), so the table reports
      * `HiveOnly` or `HiveAndWhiteout`. The host layer is only probed when the
      * mode keeps it visible, which is the only case the table consults it in.
      */
-    const bool host_holds =
-        !appbox::registry::IsolationTable::HidesHost(KeyIsolation(relative)) && HostHoldsKey(view_path);
+    const bool host_holds = !appbox::registry::KeyHidesHost(KeyIsolation(relative)) && HostHoldsKey(view_path);
     const appbox::registry::DeleteTarget target =
-        appbox::registry::DeleteOutcomeOf(KeyIsolation(relative), true, host_holds);
+        appbox::registry::KeyDeleteOutcomeOf(KeyIsolation(relative), true, host_holds);
 
     if (target == appbox::registry::DeleteTarget::HiveAndWhiteout && !RecordKeyWhiteout(relative))
     {
@@ -2505,20 +2823,70 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedKey(HANDLE KeyHandle, const std::
     return STATUS_SUCCESS;
 }
 
-NTSTATUS appbox::registry::Hive::DeleteIsolatedValue(HANDLE KeyHandle, const std::wstring& view_path,
-                                                     const std::wstring& relative, const std::wstring& value_name)
+NTSTATUS appbox::registry::Hive::DeleteIsolatedValue(appbox::registry::HandleView handle_view, HANDLE KeyHandle,
+                                                     const std::wstring& view_path, const std::wstring& relative,
+                                                     const std::wstring& value_name)
 {
     if (s_hive_data == nullptr)
     {
         return STATUS_INVALID_HANDLE;
     }
 
+    UNICODE_STRING us;
+    sys_RtlInitUnicodeString(&us, value_name.c_str());
+
+    /*
+     * The delete of a value the sandbox does not hold below a merged key lands in
+     * the real registry, which is the write rule of the mode. A handle of the
+     * host layer is forwarded — the kernel checks its rights — while a handle of
+     * the hive is re-routed to the key of the host layer, which is opened
+     * without creating it: a delete never creates the key it acts on.
+     */
+    if (ValueWritesToHost(relative, value_name))
+    {
+        if (handle_view == appbox::registry::HandleView::RealHandle)
+        {
+            return sys_NtDeleteValueKey(KeyHandle, &us);
+        }
+
+        if (!HandlePermitsValueWrite(KeyHandle))
+        {
+            return STATUS_ACCESS_DENIED;
+        }
+
+        HANDLE real = nullptr;
+        if (!NT_SUCCESS(appbox::registry::Hive::OpenRealKey(view_path, KEY_SET_VALUE | KEY_QUERY_VALUE,
+                                                            OBJ_CASE_INSENSITIVE, nullptr, nullptr, &real)))
+        {
+            /* The host does not hold the key of the value, so the value does not
+             * exist for the caller either. */
+            return STATUS_OBJECT_NAME_NOT_FOUND;
+        }
+
+        appbox::registry::KeyGuard guard(real);
+        LOG_D("the value {} of {} is deleted in the real registry (merge)", appbox::WideToUTF8(value_name),
+              appbox::WideToUTF8(relative));
+        return sys_NtDeleteValueKey(real, &us);
+    }
+
+    if (handle_view == appbox::registry::HandleView::RealHandle)
+    {
+        /* A handle of the host layer does not point at the sandbox, and the
+         * route above is the only one which may act on the host layer. */
+        return STATUS_ACCESS_DENIED;
+    }
+
+    /*
+     * The state of the view before the delete: a value the sandbox deleted
+     * counts as held, because the deletion is recorded in the whiteout store.
+     */
+    const bool sandbox_holds = SandboxHoldsValue(relative, value_name);
+    const bool host_holds = !HidesHostValue(relative, value_name) && HostHoldsValue(view_path, value_name);
+
     /*
      * The kernel removes the value of the hive and checks the rights of the
-     * handle of the caller; its status also tells whether the hive held the
-     * value, which is what the delete route needs. Only a missing value is a
-     * result of the isolation: every other failure is the answer of the real
-     * call.
+     * handle of the caller. Only a missing value is a result of the isolation:
+     * every other failure is the answer of the real call.
      */
     const NTSTATUS status = DeleteHiveValue(KeyHandle, value_name);
     if (!NT_SUCCESS(status) && status != STATUS_OBJECT_NAME_NOT_FOUND)
@@ -2526,10 +2894,8 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedValue(HANDLE KeyHandle, const std
         return status;
     }
 
-    const bool host_visible = !appbox::registry::IsolationTable::HidesHost(ValueIsolation(relative, value_name));
-    const appbox::registry::DeleteTarget target =
-        appbox::registry::DeleteOutcomeOf(ValueIsolation(relative, value_name), NT_SUCCESS(status),
-                                          host_visible && HostHoldsValue(view_path, value_name));
+    const appbox::registry::DeleteTarget target = appbox::registry::ValueDeleteOutcomeOf(
+        ListedValueIsolation(relative, value_name), KeyIsolation(relative), sandbox_holds, host_holds);
 
     switch (target)
     {
@@ -2549,18 +2915,27 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedValue(HANDLE KeyHandle, const std
             return STATUS_UNSUCCESSFUL;
         }
         return STATUS_SUCCESS;
+
+    case appbox::registry::DeleteTarget::HostDelete:
+        /* The route of the host layer was answered above. */
+        LOG_E("the delete of the value {} of {} was routed to the wrong layer", appbox::WideToUTF8(value_name),
+              appbox::WideToUTF8(relative));
+        return STATUS_UNSUCCESSFUL;
     }
 
     return status;
 }
 
-NTSTATUS appbox::registry::Hive::RenameIsolatedKey(HANDLE KeyHandle, const std::wstring& view_path,
-                                                   const std::wstring& relative, const std::wstring& new_name)
+NTSTATUS appbox::registry::Hive::RenameIsolatedKey(appbox::registry::HandleView handle_view, HANDLE KeyHandle,
+                                                   const std::wstring& view_path, const std::wstring& relative,
+                                                   const std::wstring& new_name)
 {
     if (s_hive_data == nullptr)
     {
         return STATUS_INVALID_HANDLE;
     }
+
+    const bool host_handle = handle_view == appbox::registry::HandleView::RealHandle;
 
     /*
      * The name of a root key of the view is the first component of every path
@@ -2598,8 +2973,48 @@ NTSTATUS appbox::registry::Hive::RenameIsolatedKey(HANDLE KeyHandle, const std::
      * destination of either layer — a renamed key must never be merged with a
      * visible key of the host layer.
      */
-    if (!appbox::registry::IsolationTable::HidesHost(KeyIsolation(new_relative)) && !IsKeyWhitedOut(new_relative) &&
-        HostHoldsKey(new_view_path))
+    const bool destination_in_hive = SandboxHoldsKey(new_relative) && !IsKeyWhitedOut(new_relative);
+    const bool destination_in_host = !appbox::registry::KeyHidesHost(KeyIsolation(new_relative)) &&
+                                     !IsKeyWhitedOut(new_relative) && HostHoldsKey(new_view_path);
+
+    /*
+     * The name is passed through a local structure, so the call never reads the
+     * memory of the caller again.
+     */
+    UNICODE_STRING new_name_unicode;
+    sys_RtlInitUnicodeString(&new_name_unicode, new_name.c_str());
+
+    /*
+     * `Merge` renames the key of the real registry when the sandbox does not
+     * hold it, which is the write rule of the mode: the handle of the caller is a
+     * handle of the host layer in that case, because the open of such a key is
+     * answered by the host layer.
+     */
+    if (KeyIsolation(relative) == RegistryKeyIsolation::Merge && !SandboxHoldsKey(relative))
+    {
+        if (!host_handle)
+        {
+            /* The key lives in the host, so a handle of the hive cannot name it. */
+            return STATUS_ACCESS_DENIED;
+        }
+
+        if (destination_in_hive || destination_in_host)
+        {
+            return STATUS_CANNOT_DELETE;
+        }
+
+        LOG_D("the key {} is renamed in the real registry (merge)", appbox::WideToUTF8(relative));
+        return sys_NtRenameKey(KeyHandle, &new_name_unicode);
+    }
+
+    if (host_handle)
+    {
+        /* Every other route runs inside the hive, and a handle of the host layer
+         * does not point at the hive. */
+        return STATUS_ACCESS_DENIED;
+    }
+
+    if (destination_in_host)
     {
         return STATUS_CANNOT_DELETE;
     }
@@ -2608,12 +3023,8 @@ NTSTATUS appbox::registry::Hive::RenameIsolatedKey(HANDLE KeyHandle, const std::
      * The kernel removes the key from its old name and creates it under the
      * new name, and it checks the rights of the handle of the caller, so a
      * handle which does not permit a rename reports the failure of the real
-     * call. The name is passed through a local structure, so the call never
-     * reads the memory of the caller again.
+     * call. A destination the hive holds is refused by the kernel as well.
      */
-    UNICODE_STRING new_name_unicode;
-    sys_RtlInitUnicodeString(&new_name_unicode, new_name.c_str());
-
     const NTSTATUS status = sys_NtRenameKey(KeyHandle, &new_name_unicode);
     if (!NT_SUCCESS(status))
     {
@@ -2625,12 +3036,11 @@ NTSTATUS appbox::registry::Hive::RenameIsolatedKey(HANDLE KeyHandle, const std::
      * hive is gone from it, so a visible host key of that name has to be
      * recorded as deleted as well — without the marker the read through would
      * report the host key of the old name next to the renamed key of the hive.
-     * The route is the one of the delete of a key, which is why the hive side
+     * The route is the one of the delete of a key, which is why the sandbox side
      * is passed as held: the handle of the caller proves it.
      */
-    const bool host_holds =
-        !appbox::registry::IsolationTable::HidesHost(KeyIsolation(relative)) && HostHoldsKey(view_path);
-    if (appbox::registry::DeleteOutcomeOf(KeyIsolation(relative), true, host_holds) ==
+    const bool host_holds = !appbox::registry::KeyHidesHost(KeyIsolation(relative)) && HostHoldsKey(view_path);
+    if (appbox::registry::KeyDeleteOutcomeOf(KeyIsolation(relative), true, host_holds) ==
             appbox::registry::DeleteTarget::HiveAndWhiteout &&
         !RecordKeyWhiteout(relative))
     {

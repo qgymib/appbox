@@ -76,7 +76,7 @@ TEST_F(E2E_Reg, Full_NonHkcuRoot)
     builder.SetValue(L"HKEY_LOCAL_MACHINE\\" + machine_key, L"TestValue", REG_SZ, StringData(L"machine"));
     builder.SetValue(L"HKEY_CLASSES_ROOT\\" + classes_key, L"TestValue", REG_SZ, StringData(L"classes"));
     builder.SetValue(L"HKEY_CURRENT_CONFIG\\" + config_key, L"TestValue", REG_SZ, StringData(L"config"));
-    builder.SetKeyIsolation(L"HKEY_LOCAL_MACHINE\\" + machine_key + L"\\Hidden", appbox::RegistryIsolation::Full);
+    builder.SetKeyIsolation(L"HKEY_LOCAL_MACHINE\\" + machine_key + L"\\Hidden", appbox::RegistryKeyIsolation::Full);
 
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;

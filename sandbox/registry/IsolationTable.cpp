@@ -1,4 +1,5 @@
 #include "IsolationTable.hpp"
+#include "utils/Log.hpp"
 #include "WString.hpp"
 #include <nlohmann/json.hpp>
 #include <cwctype>
@@ -71,8 +72,8 @@ bool appbox::registry::IsolationValueKeyLess::operator()(const IsolationValueKey
 
 bool appbox::registry::IsolationTable::Parse(const std::string& text, std::string& error)
 {
-    std::map<std::wstring, RegistryIsolation, IsolationKeyLess>           keys;
-    std::map<IsolationValueKey, RegistryIsolation, IsolationValueKeyLess> values;
+    std::map<std::wstring, RegistryKeyIsolation, IsolationKeyLess>             keys;
+    std::map<IsolationValueKey, RegistryValueIsolation, IsolationValueKeyLess> values;
 
     try
     {
@@ -154,45 +155,80 @@ std::size_t appbox::registry::IsolationTable::ValueCount() const
     return values_.size();
 }
 
-appbox::RegistryIsolation appbox::registry::IsolationTable::KeyMode(const std::wstring& key_path) const
+bool appbox::registry::IsolationTable::NamesRootKeys() const
+{
+    for (const wchar_t* root : registry_isolation::kRootKeyNames)
+    {
+        const auto it = keys_.find(root);
+        if (it == keys_.end())
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+appbox::RegistryKeyIsolation appbox::registry::IsolationTable::KeyMode(const std::wstring& key_path) const
 {
     /*
      * Walk the path upwards: the closest listed ancestor covers its whole
-     * subtree, which is what makes `Full` of a key hide the host entries
-     * below it as well.
+     * subtree, which is what makes `Full` of a key hide the host entries below
+     * it as well. `Hide` is the exception of the rule and covers the subtree
+     * from any level: the content of a hidden subtree lives in the hidden store
+     * of the hive, so a key below a hidden key has to be hidden as well,
+     * whatever mode it names itself.
      */
-    std::wstring probe = key_path;
+    std::optional<RegistryKeyIsolation> closest;
+    std::wstring                        probe = key_path;
     for (;;)
     {
         const auto it = keys_.find(probe);
         if (it != keys_.end())
         {
-            return it->second;
+            if (it->second == RegistryKeyIsolation::Hide)
+            {
+                return RegistryKeyIsolation::Hide;
+            }
+
+            if (!closest.has_value())
+            {
+                closest = it->second;
+            }
         }
 
         const auto separator = probe.rfind(L'\\');
         if (separator == std::wstring::npos)
         {
-            return RegistryIsolation::WriteCopy;
+            break;
         }
         probe.erase(separator);
     }
-}
 
-appbox::RegistryIsolation appbox::registry::IsolationTable::ValueMode(const std::wstring& key_path,
-                                                                      const std::wstring& value_name) const
-{
-    const auto it = values_.find(IsolationValueKey{ key_path, value_name });
-    if (it != values_.end())
+    if (closest.has_value())
     {
-        return it->second;
+        return *closest;
     }
 
-    /* A value which is not listed follows the key which holds it. */
-    return KeyMode(key_path);
+    /*
+     * The isolation file of the archive has to name the five root keys of the
+     * view, so a path of the view which resolves to no listed entry describes a
+     * table which was never validated. Reporting `Hide` keeps the host registry
+     * out of the view, which is the answer a sandbox may never widen by
+     * accident.
+     */
+    LOG_W("the isolation table names no mode for {}: the entry is treated as hidden", appbox::WideToUTF8(key_path));
+    return RegistryKeyIsolation::Hide;
 }
 
-bool appbox::registry::IsolationTable::HidesHost(RegistryIsolation mode)
+std::optional<appbox::RegistryValueIsolation> appbox::registry::IsolationTable::ListedValueMode(
+    const std::wstring& key_path, const std::wstring& value_name) const
 {
-    return mode == RegistryIsolation::Full || mode == RegistryIsolation::Hide;
+    const auto it = values_.find(IsolationValueKey{ key_path, value_name });
+    if (it == values_.end())
+    {
+        return std::nullopt;
+    }
+
+    return it->second;
 }

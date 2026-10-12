@@ -49,22 +49,21 @@ bool WritePackage(const std::filesystem::path& cwd, const wchar_t* name, const P
 
 /**
  * Condition:
- * 1. The hive of the archive holds the key with a value of its own, the real
- *    HKCU holds the same key with the three values `ByThePackage`,
- *    `OfTheArchive` and `ByTheArchive`.
- * 2. The isolation file of the archive keeps `ByThePackage` visible, hides
- *    `OfTheArchive` and hides `ByTheArchive`.
- * 3. `01-bar.zip` hides `ByThePackage` and keeps `ByTheArchive` visible, while
- *    it does not name `OfTheArchive`.
- * 4. The sandboxed process reads the three values of the key.
+ * 1. The real HKCU holds the key with the values `HostA` and `HostB`.
+ * 2. The archive holds the key with the values `Own` and `Packed`; its isolation
+ *    file marks the key `Merge`, so the values of the host stay visible, and the
+ *    value `Packed` `Hide`, so the content of the value lives in the hidden
+ *    store of the hive.
+ * 3. `01-bar.zip` marks the key `Full` and the value `Packed` `Full`, while it
+ *    does not name `HostA` and `HostB`.
+ * 4. The sandboxed process reads the four values of the key.
  *
  * Expected:
- * 1. `ByThePackage` does not exist, because the mode of the package overrides
- *    the mode the archive set for the value.
- * 2. `OfTheArchive` does not exist either, because a value no file of a layer
- *    above the archive names keeps the mode of the archive.
- * 3. `ByTheArchive` is the value of the host, because the mode of the package
- *    makes it visible again.
+ * 1. `HostA` and `HostB` do not exist: the mode of the package hides the key of
+ *    the host with everything below it, which is the mode of the last layer.
+ * 2. `Own` is the value of the archive, because the hive holds the key.
+ * 3. `Packed` is the value of the archive as well: the mode of the package makes
+ *    the content visible which the archive hid.
  * 4. The real key of the host is untouched.
  */
 TEST_F(E2E_Patch, RegistryIsolationModeOfTheLastLayerWins)
@@ -80,55 +79,63 @@ TEST_F(E2E_Patch, RegistryIsolationModeOfTheLastLayerWins)
     const auto subkey = L"Software\\AppBoxTest\\PatchRegistryIsolation_" + appbox::UTF8ToWide(appbox::RandomString(8));
     const auto hive_key = L"HKEY_CURRENT_USER\\" + subkey;
 
-    /* The key and its three values belong to the host. */
+    /* The key and its two values belong to the host. */
     RealHkcuKey host(subkey);
     ASSERT_NE(host.get(), nullptr);
-    ASSERT_TRUE(host.SetString(L"ByThePackage", L"host"));
-    ASSERT_TRUE(host.SetString(L"OfTheArchive", L"host"));
-    ASSERT_TRUE(host.SetString(L"ByTheArchive", L"host"));
+    ASSERT_TRUE(host.SetString(L"HostA", L"host"));
+    ASSERT_TRUE(host.SetString(L"HostB", L"host"));
 
     /*
      * The archive holds the key as well, so the sandbox opens it inside the
-     * hive and the value modes of the merged view decide about the values of
-     * the host.
+     * hive and the modes of the layers decide about the values of the host.
      */
     HiveBuilder app(GetCWD());
     app.SetValue(hive_key, L"Own", REG_SZ, StringData(L"archive"));
-    app.SetValueIsolation(hive_key, L"ByThePackage", appbox::RegistryIsolation::WriteCopy);
-    app.SetValueIsolation(hive_key, L"OfTheArchive", appbox::RegistryIsolation::Full);
-    app.SetValueIsolation(hive_key, L"ByTheArchive", appbox::RegistryIsolation::Full);
+    app.SetValue(hive_key, L"Packed", REG_SZ, StringData(L"packed"));
+    app.SetKeyIsolation(hive_key, appbox::RegistryKeyIsolation::Merge);
+    app.SetValueIsolation(hive_key, L"Packed", appbox::RegistryValueIsolation::Hide);
 
     std::string error;
     ASSERT_TRUE(app.Write(error)) << error;
 
+    RegistryKeyIsolationEntry key_entry;
+    key_entry.key_path = hive_key;
+    key_entry.isolation = appbox::RegistryKeyIsolation::Full;
+
+    RegistryValueIsolationEntry value_entry;
+    value_entry.key_path = hive_key;
+    value_entry.value_name = L"Packed";
+    value_entry.isolation = appbox::RegistryValueIsolation::Full;
+
     PatchRegistry bar;
-    bar.isolation.push_back(RegistryIsolationEntry{ hive_key, L"ByThePackage", true, appbox::RegistryIsolation::Full });
-    bar.isolation.push_back(
-        RegistryIsolationEntry{ hive_key, L"ByTheArchive", true, appbox::RegistryIsolation::WriteCopy });
+    bar.key_isolation.push_back(key_entry);
+    bar.value_isolation.push_back(value_entry);
     ASSERT_TRUE(WritePackage(GetCWD(), L"01-bar.zip", bar));
 
     ProtocolRegReadValues::Req req;
     req.Key = appbox::WideToUTF8(subkey);
-    req.Values = { "ByThePackage", "OfTheArchive", "ByTheArchive" };
+    req.Values = { "HostA", "HostB", "Own", "Packed" };
 
     const auto rsp = ProbeRegReadValues.Call(req, GetCWD(), config).get<ProtocolRegReadValues::Rsp>();
-    ASSERT_EQ(rsp.values.size(), 3u);
+    ASSERT_EQ(rsp.values.size(), 4u);
 
-    /* The mode of the package hides a value the archive kept visible. */
+    /* The mode of the package hides the values of the host key. */
     EXPECT_EQ(rsp.values[0].query_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
-
-    /* A value no package names keeps the mode of the archive. */
     EXPECT_EQ(rsp.values[1].query_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
 
-    /* The mode of the package makes a value of the host visible again. */
+    /* The values of the archive stay visible. */
     EXPECT_EQ(rsp.values[2].query_code, 0u);
-    EXPECT_EQ(rsp.values[2].text, "host");
+    EXPECT_EQ(rsp.values[2].text, "archive");
+
+    /* The mode of the package makes the hidden content of the archive visible. */
+    EXPECT_EQ(rsp.values[3].query_code, 0u);
+    EXPECT_EQ(rsp.values[3].text, "packed");
 
     /* The real key of the host keeps its values. */
     DWORD   type = 0;
     wchar_t buffer[64] = {};
     DWORD   size = sizeof(buffer);
-    ASSERT_EQ(RegQueryValueExW(host.get(), L"ByTheArchive", nullptr, &type, reinterpret_cast<LPBYTE>(buffer), &size),
+    ASSERT_EQ(RegQueryValueExW(host.get(), L"HostA", nullptr, &type, reinterpret_cast<LPBYTE>(buffer), &size),
               ERROR_SUCCESS);
     EXPECT_EQ(appbox::WideToUTF8(buffer), "host");
 }
