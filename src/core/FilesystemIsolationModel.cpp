@@ -104,17 +104,17 @@ std::wstring FilesystemIsolationDescription(FilesystemIsolation isolation, Files
     switch (isolation)
     {
     case FilesystemIsolation::WriteCopy:
-        return L"Isolation mode 'Write Copy': the host entry and the sandbox entry are both visible with the sandbox "
-               L"taking precedence, and every modification lands in the sandbox.";
+        return L"The host entry and the sandbox entry are both visible with the sandbox taking precedence, and every "
+               L"modification lands in the sandbox.";
     case FilesystemIsolation::Merge:
-        return L"Isolation mode 'Merge': the host entry and the sandbox entry are both visible with the sandbox taking "
-               L"precedence, and a modification is written to the host filesystem whenever the host holds the entry or "
-               L"no layer holds it at all, while an entry only the sandbox holds is modified inside the sandbox. The "
-               L"host folders above a written entry are created when they are missing, and deleting an entry the host "
-               L"holds really removes it from the host filesystem. This is the default mode of a folder.";
+        return L"The host entry and the sandbox entry are both visible with the sandbox taking precedence, and a "
+               L"modification is written to the host filesystem whenever the host holds the entry or no layer holds "
+               L"it at all, while an entry only the sandbox holds is modified inside the sandbox. The host folders "
+               L"above a written entry are created when they are missing, and deleting an entry the host holds "
+               L"really removes it from the host filesystem. This is the default mode of a folder.";
     case FilesystemIsolation::Whiteout:
-        return L"Isolation mode 'Whiteout': the entry is invisible for the application, even while the host holds it; "
-               L"creating the entry succeeds inside the sandbox and it is readable and writable afterwards.";
+        return L"The entry is invisible for the application, even while the host holds it; creating the entry succeeds "
+               L"inside the sandbox and it is readable and writable afterwards.";
     case FilesystemIsolation::Full:
         break;
     }
@@ -125,11 +125,11 @@ std::wstring FilesystemIsolationDescription(FilesystemIsolation isolation, Files
      */
     if (kind == FilesystemEntryKind::Directory)
     {
-        return L"Isolation mode 'Full': only the sandbox is visible, so the host folder and everything below it are "
-               L"hidden, and every modification lands in the sandbox.";
+        return L"Only the sandbox is visible, so the host folder and everything below it are hidden, and every "
+               L"modification lands in the sandbox.";
     }
-    return L"Isolation mode 'Full': every write of the file lands in the sandbox, while the host file stays readable; "
-           L"this is the default mode of a file.";
+    return L"Every write of the file lands in the sandbox, while the host file stays readable; this is the default "
+           L"mode of a file.";
 }
 
 const std::vector<std::wstring>& FilesystemIsolationNamesFor(FilesystemEntryKind kind)

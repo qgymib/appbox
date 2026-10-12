@@ -9,17 +9,18 @@
 #include <wx/wx.h>
 #include "core/RegistryModel.hpp"
 
+class IsolationModeGroup;
 class wxCheckBox;
-class wxRadioBox;
 
 /**
  * @brief Dialog to pick the isolation mode of a registry key.
  *
  * The dialog is opened from the context menu of the registry tree. It offers
- * the isolation modes of a key and one option which decides how far the chosen
- * mode reaches: without the recursion the mode reaches the key alone, with it
- * the whole subtree of the key follows the mode, the values of the subtree
- * included (see `RegistryModel::ApplyIsolationToSubtree`).
+ * the isolation modes of a key, every mode with the explanation of what it does
+ * below its name (see `IsolationModeGroup`), and one option which decides how
+ * far the chosen mode reaches: without the recursion the mode reaches the key
+ * alone, with it the whole subtree of the key follows the mode, the values of
+ * the subtree included (see `RegistryModel::ApplyIsolationToSubtree`).
  *
  * A value carries the two value modes alone, so the modes of a value are picked
  * in the `Isolation` column of the table instead of this dialog.
@@ -54,7 +55,7 @@ private:
     /**
      * @brief Field holding the isolation modes.
      */
-    wxRadioBox* isolation_ = nullptr;
+    IsolationModeGroup* isolation_ = nullptr;
 
     /**
      * @brief Option which overwrites the subtree of the key.

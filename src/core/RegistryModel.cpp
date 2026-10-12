@@ -242,21 +242,18 @@ std::wstring RegistryKeyIsolationDescription(RegistryKeyIsolation isolation)
     switch (isolation)
     {
     case RegistryKeyIsolation::Full:
-        return L"Isolation mode 'Full': only the sandbox registry is visible; the host key and everything below it are "
-               L"hidden, and every modification lands in the sandbox.";
+        return L"Only the sandbox registry is visible; the host key and everything below it are hidden, and every "
+               L"modification lands in the sandbox.";
     case RegistryKeyIsolation::Merge:
-        return L"Isolation mode 'Merge': the host key and the sandbox key are both visible with the sandbox taking "
-               L"precedence; a key or a value the sandbox does not hold is modified in the real registry, everything "
-               L"else in the sandbox. This is the default mode of the preset nodes.";
+        return L"The host key and the sandbox key are both visible with the sandbox taking precedence; a key or a "
+               L"value the sandbox does not hold is modified in the real registry, everything else in the sandbox. "
+               L"This is the default mode of the preset nodes.";
     case RegistryKeyIsolation::WriteCopy:
-        return L"Isolation mode 'Write Copy': the host key and the sandbox key are both visible with the sandbox "
-               L"taking "
-               L"precedence, and every modification lands in the sandbox; a host key is copied up before it is "
-               L"written.";
+        return L"The host key and the sandbox key are both visible with the sandbox taking precedence, and every "
+               L"modification lands in the sandbox; a host key is copied up before it is written.";
     case RegistryKeyIsolation::Hide:
-        return L"Isolation mode 'Hide': the key, its sub keys and its values are invisible for the application, even "
-               L"while the host or the virtual registry holds them; a write lands in the sandbox and the entry is "
-               L"visible from then on.";
+        return L"The key, its sub keys and its values are invisible for the application, even while the host or the "
+               L"virtual registry holds them; a write lands in the sandbox and the entry is visible from then on.";
     }
     return L"";
 }
@@ -266,11 +263,11 @@ std::wstring RegistryValueIsolationDescription(RegistryValueIsolation isolation)
     switch (isolation)
     {
     case RegistryValueIsolation::Full:
-        return L"Isolation mode 'Full': the host value is invisible and the virtual registry defines the value; a "
-               L"write of the value lands in the sandbox.";
+        return L"The host value is invisible and the virtual registry defines the value; a write of the value lands "
+               L"in the sandbox.";
     case RegistryValueIsolation::Hide:
-        return L"Isolation mode 'Hide': the value is invisible, even while the virtual registry holds it; a write "
-               L"lands in the sandbox and the written value is visible from then on.";
+        return L"The value is invisible, even while the virtual registry holds it; a write lands in the sandbox and "
+               L"the written value is visible from then on.";
     }
     return L"";
 }

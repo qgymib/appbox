@@ -869,13 +869,14 @@ TEST(Unit_FilesystemIsolation, TheRootEntryTravelsThroughTheIsolationFile)
 }
 
 /**
- * @brief Every mode of the table is explained by a description.
+ * @brief Every isolation mode is explained by a description.
  *
- * The description is the text the workspace shows for the mode of a row and for
- * the modes the `Isolation` column offers, so every mode has to name itself and
- * its own rule.
+ * The description is the text the isolation dialog of the tree shows below the
+ * name of a mode, so it has to spell out the rule of the mode alone: the name of
+ * the mode is the label of the option above the text and is never repeated by
+ * the text.
  */
-TEST(Unit_FilesystemIsolation, EveryModeIsDescribedForATooltip)
+TEST(Unit_FilesystemIsolation, EveryModeIsDescribed)
 {
     for (const auto isolation : { appbox::FilesystemIsolation::Full, appbox::FilesystemIsolation::WriteCopy,
                                   appbox::FilesystemIsolation::Merge, appbox::FilesystemIsolation::Whiteout })
@@ -883,8 +884,9 @@ TEST(Unit_FilesystemIsolation, EveryModeIsDescribedForATooltip)
         const std::wstring description =
             appbox::FilesystemIsolationDescription(isolation, appbox::FilesystemEntryKind::Directory);
 
-        EXPECT_NE(description.find(L"Isolation mode"), std::wstring::npos) << description;
-        EXPECT_NE(description.find(appbox::FilesystemIsolationName(isolation)), std::wstring::npos) << description;
+        EXPECT_FALSE(description.empty());
+        EXPECT_EQ(description.find(L"Isolation mode"), std::wstring::npos) << description;
+        EXPECT_EQ(description.find(appbox::FilesystemIsolationName(isolation)), std::wstring::npos) << description;
     }
 
     EXPECT_NE(appbox::FilesystemIsolationDescription(appbox::FilesystemIsolation::Whiteout,

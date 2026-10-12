@@ -4,10 +4,8 @@
 #include <wx/wx.h>
 #include <wx/dataview.h>
 #include <wx/treectrl.h>
-#include "DataViewTooltip.hpp"
 #include "core/RegistryModel.hpp"
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -37,8 +35,9 @@ class wxButton;
  * so the command is offered for every node but the container: a root key moves to
  * the container like a sub key moves to the key it hangs below.
  *
- * The header of the `Isolation` column explains the modes the column offers,
- * see `DataViewTooltip`; the cells of the table carry no tooltip of their own.
+ * The meaning of the modes is not explained by the table: the column and its
+ * popup name the mode of a row alone, and every dialog which picks a mode spells
+ * the modes out below their names (see `IsolationModeGroup`).
  */
 class RegistryPanel : public wxPanel
 {
@@ -180,17 +179,6 @@ private:
     std::wstring SelectedTreePath() const;
 
     /**
-     * @brief Describe a column of the header for the tooltip of the table.
-     *
-     * The `Isolation` column lists the modes it offers, so the header explains
-     * what a mode means without a row of its own.
-     *
-     * @param[in] column Model column of the header, -1 when no column is hit.
-     * @return The description of the column, empty when it has none.
-     */
-    wxString TooltipForHeader(int column) const;
-
-    /**
      * @brief Refresh the table for the selected tree item.
      */
     void RefreshList();
@@ -311,11 +299,6 @@ private:
     void OnUpDir(wxCommandEvent& event);
 
     appbox::RegistryModel& model_;
-
-    /**
-     * @brief Tooltip of the rows and of the header of the table.
-     */
-    std::unique_ptr<DataViewTooltip> tooltip_;
 
     wxTreeCtrl*         tree_ = nullptr;
     wxDataViewListCtrl* list_ = nullptr;

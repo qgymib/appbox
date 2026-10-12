@@ -1,6 +1,6 @@
 #include "FilesystemIsolationDialog.hpp"
+#include "IsolationModeGroup.hpp"
 #include <wx/checkbox.h>
-#include <wx/radiobox.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 
@@ -16,22 +16,16 @@ FilesystemIsolationDialog::FilesystemIsolationDialog(wxWindow* parent, const wxS
                                                      appbox::FilesystemIsolation initial)
     : wxDialog(parent, wxID_ANY, "Isolation Mode", wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE)
 {
-    wxArrayString modes;
-    for (const auto& name : appbox::FilesystemIsolationNamesFor(appbox::FilesystemEntryKind::Directory))
-    {
-        modes.Add(wxString(name));
-    }
-
     auto* sizer = new wxBoxSizer(wxVERTICAL);
 
     sizer->Add(new wxStaticText(this, wxID_ANY, target), 0, wxALL, kBorder);
 
     /*
-     * The names of the modes are ordered like the enumeration of the modes, so
-     * the selection of the field is the mode itself.
+     * The options are ordered like the enumeration of the modes, so the
+     * selection of the field is the mode itself, and every option carries the
+     * explanation of its mode below its name, see IsolationModeGroup.
      */
-    isolation_ =
-        new wxRadioBox(this, wxID_ANY, "Isolation", wxDefaultPosition, wxDefaultSize, modes, 1, wxRA_SPECIFY_COLS);
+    isolation_ = new IsolationModeGroup(this, FilesystemIsolationChoices());
     isolation_->SetSelection(static_cast<int>(initial));
     sizer->Add(isolation_, 0, wxLEFT | wxRIGHT, kBorder);
 
@@ -49,10 +43,10 @@ FilesystemIsolationDialog::FilesystemIsolationDialog(wxWindow* parent, const wxS
 
 appbox::FilesystemIsolation FilesystemIsolationDialog::Isolation() const
 {
-    const int selection = isolation_ != nullptr ? isolation_->GetSelection() : wxNOT_FOUND;
+    const int selection = isolation_ != nullptr ? isolation_->Selection() : wxNOT_FOUND;
     if (selection < 0)
     {
-        return appbox::FilesystemIsolation::WriteCopy;
+        return appbox::DefaultFilesystemIsolation(appbox::FilesystemEntryKind::Directory);
     }
     return static_cast<appbox::FilesystemIsolation>(selection);
 }

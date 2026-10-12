@@ -9,8 +9,8 @@
 #include <wx/wx.h>
 #include "core/FilesystemIsolationModel.hpp"
 
+class IsolationModeGroup;
 class wxCheckBox;
-class wxRadioBox;
 
 /**
  * @brief Dialog to pick the isolation mode of a folder of the filesystem view.
@@ -18,10 +18,11 @@ class wxRadioBox;
  * The dialog is opened from the context menu of the filesystem tree, which
  * reaches every node of the view: a preset directory, an imported folder, a
  * folder below an import and the `Sandbox Filesystem` container, which is the
- * root of the view. It offers the modes a folder accepts and one option which
- * decides how far the chosen mode reaches: `Apply to all subfolders`
- * overwrites the folders below the node as well and is off by default, so a
- * mode which the user picks reaches the node itself only.
+ * root of the view. It offers the modes a folder accepts, every mode with the
+ * explanation of what it does below its name (see `IsolationModeGroup`), and
+ * one option which decides how far the chosen mode reaches: `Apply to all
+ * subfolders` overwrites the folders below the node as well and is off by
+ * default, so a mode which the user picks reaches the node itself only.
  */
 class FilesystemIsolationDialog : public wxDialog
 {
@@ -54,7 +55,7 @@ private:
     /**
      * @brief Field holding the isolation modes.
      */
-    wxRadioBox* isolation_ = nullptr;
+    IsolationModeGroup* isolation_ = nullptr;
 
     /**
      * @brief Option which overwrites the folders below the node.

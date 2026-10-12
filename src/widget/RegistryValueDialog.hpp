@@ -13,8 +13,8 @@
 #include <string>
 #include <vector>
 
+class IsolationModeGroup;
 class wxChoice;
-class wxRadioBox;
 class wxStaticText;
 class wxTextCtrl;
 
@@ -32,9 +32,11 @@ class wxTextCtrl;
  * rules of the registry model are applied without duplicating them here. A
  * rejected input keeps the dialog open and shows the reason.
  *
- * The isolation mode is picked in the dialog as well. The dialog only reports
- * the chosen mode, the caller stores it through the model, so the modes of a
- * value are offered by one source: the names of the field are the ones the
+ * The isolation mode is picked in the dialog as well. Every mode carries the
+ * explanation of what it does below its name, see `IsolationModeGroup`, so the
+ * meaning of a mode is readable while it is chosen. The dialog only reports the
+ * chosen mode, the caller stores it through the model, so the modes of a value
+ * are offered by one source: the names of the field are the ones the
  * `Isolation` column of the table shows.
  */
 class RegistryValueDialog : public wxDialog
@@ -144,7 +146,7 @@ private:
     /**
      * @brief Field holding the isolation modes of a value.
      */
-    wxRadioBox* isolation_ = nullptr;
+    IsolationModeGroup* isolation_ = nullptr;
 
     /**
      * @brief Editor of the single line types.

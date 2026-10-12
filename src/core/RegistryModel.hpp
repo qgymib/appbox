@@ -74,12 +74,14 @@ std::wstring RegistryKeyIsolationName(RegistryKeyIsolation isolation);
 std::wstring RegistryValueIsolationName(RegistryValueIsolation isolation);
 
 /**
- * @brief Describe a key isolation mode of an entry for a tooltip.
+ * @brief Describe a key isolation mode for the option which picks it.
  *
- * The description names the mode and says what it does with the key, with the
- * entries below it and with the host registry. It is the text the workspace
- * shows for the mode of a row and for the modes the `Isolation` column offers,
- * so the explanation of a mode lives in one place.
+ * The description says what the mode does with the key, with the entries below
+ * it and with the host registry. It is the text the dialogs show below the name
+ * of the mode, see the isolation mode group of the workspace, so the
+ * explanation of a mode lives in one place and no dialog writes its own. The
+ * name of the mode is the label of the option above the text, so the text does
+ * not repeat it.
  *
  * @param[in] isolation The isolation mode.
  * @return The description of the mode.
@@ -87,7 +89,11 @@ std::wstring RegistryValueIsolationName(RegistryValueIsolation isolation);
 std::wstring RegistryKeyIsolationDescription(RegistryKeyIsolation isolation);
 
 /**
- * @brief Describe a value isolation mode for a tooltip.
+ * @brief Describe a value isolation mode for the option which picks it.
+ *
+ * The description says what the mode does with the value; the name of the mode
+ * is the label of the option above the text and is not repeated.
+ *
  * @param[in] isolation The isolation mode.
  * @return The description of the mode.
  */

@@ -6,7 +6,7 @@
 #include <functional>
 #include <string>
 
-class wxRadioBox;
+class IsolationModeGroup;
 class wxTextCtrl;
 
 /**
@@ -19,9 +19,11 @@ class wxTextCtrl;
  * duplicating them here; a rejected name keeps the dialog open and shows the
  * reason.
  *
- * The isolation mode is picked in the dialog as well. The dialog only reports
- * the chosen mode, the caller stores it through the model, so the modes of a
- * key are offered by one source: the names of the field are the ones the
+ * The isolation mode is picked in the dialog as well. Every mode carries the
+ * explanation of what it does below its name, see `IsolationModeGroup`, so the
+ * meaning of a mode is readable while it is chosen. The dialog only reports the
+ * chosen mode, the caller stores it through the model, so the modes of a key
+ * are offered by one source: the names of the field are the ones the
  * `Isolation` column of the table and the isolation dialog of the tree show.
  */
 class RegistryKeyDialog : public wxDialog
@@ -86,7 +88,7 @@ private:
     /**
      * @brief Field holding the isolation modes of a key.
      */
-    wxRadioBox* isolation_ = nullptr;
+    IsolationModeGroup* isolation_ = nullptr;
 };
 
 #endif // APPBOX_PACKER_WIDGET_REGISTRY_KEY_DIALOG_HPP

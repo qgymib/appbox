@@ -329,9 +329,11 @@ The build information the About dialog shows:
 The unit tests of the packer:
 
 * `test/unit/FilesystemIsolation.cpp` — the vocabulary of the filesystem
-  isolation (the tokens and the display names of the modes, the modes an entry
-  kind accepts, the default of the view, which is `Merge` and which a file
-  cannot hold, the fold of `Write Copy` to `Full` for a file) and the model of
+  isolation (the tokens and the display names of the modes, the explanation the
+  isolation dialog shows below the name of a mode, which never repeats the name,
+  the modes an entry kind accepts, the default of the view, which is `Merge` and
+  which a file cannot hold, the fold of `Write Copy` to `Full` for a file) and
+  the model of
   the packer: the path helpers of the virtual filesystem, the explicit mode of
   an entry, the inheritance of the closest folder above an entry, the mode of
   the root of the view for the paths no entry covers, the call which sets that

@@ -37,12 +37,14 @@ const std::vector<std::wstring>& FilesystemIsolationNames();
 std::wstring FilesystemIsolationName(FilesystemIsolation isolation);
 
 /**
- * @brief Describe an isolation mode of an entry for a tooltip.
+ * @brief Describe an isolation mode of an entry for the option which picks it.
  *
- * The description names the mode and says what it does with the entry and with
- * the host filesystem. It is the text the workspace shows for the mode of a row
- * and for the modes the `Isolation` column offers, so the explanation of a mode
- * lives in one place.
+ * The description says what the mode does with the entry and with the host
+ * filesystem. It is the text the isolation dialog of the tree shows below the
+ * name of the mode, so the explanation of a mode lives in one place and no
+ * dialog writes its own. The name of the mode is the label of the option above
+ * the text, so the text does not repeat it, exactly like the description of a
+ * registry mode (see `RegistryKeyIsolationDescription()`).
  *
  * @param[in] isolation The isolation mode.
  * @param[in] kind The kind of the entry: `Full` hides a folder from the

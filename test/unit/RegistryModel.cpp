@@ -777,27 +777,29 @@ TEST(Unit_RegistryModel, PathHelpersNormalizeAndSplit)
 /**
  * @brief Every isolation mode is explained by a description.
  *
- * The description is the text the workspace shows for the mode of a row and for
- * the modes the `Isolation` column offers, so every mode has to name itself and
- * its own rule.
+ * The description is the text a dialog shows below the name of a mode, so it
+ * has to spell out the rule of the mode alone: the name of the mode is the
+ * label of the option above the text and is never repeated by the text.
  */
-TEST(Unit_RegistryModel, EveryIsolationModeIsDescribedForATooltip)
+TEST(Unit_RegistryModel, EveryIsolationModeIsDescribed)
 {
     for (const auto isolation : { appbox::RegistryKeyIsolation::Full, appbox::RegistryKeyIsolation::Merge,
                                   appbox::RegistryKeyIsolation::WriteCopy, appbox::RegistryKeyIsolation::Hide })
     {
         const std::wstring description = appbox::RegistryKeyIsolationDescription(isolation);
 
-        EXPECT_NE(description.find(L"Isolation mode"), std::wstring::npos) << description;
-        EXPECT_NE(description.find(appbox::RegistryKeyIsolationName(isolation)), std::wstring::npos) << description;
+        EXPECT_FALSE(description.empty());
+        EXPECT_EQ(description.find(L"Isolation mode"), std::wstring::npos) << description;
+        EXPECT_EQ(description.find(appbox::RegistryKeyIsolationName(isolation)), std::wstring::npos) << description;
     }
 
     for (const auto isolation : { appbox::RegistryValueIsolation::Full, appbox::RegistryValueIsolation::Hide })
     {
         const std::wstring description = appbox::RegistryValueIsolationDescription(isolation);
 
-        EXPECT_NE(description.find(L"Isolation mode"), std::wstring::npos) << description;
-        EXPECT_NE(description.find(appbox::RegistryValueIsolationName(isolation)), std::wstring::npos) << description;
+        EXPECT_FALSE(description.empty());
+        EXPECT_EQ(description.find(L"Isolation mode"), std::wstring::npos) << description;
+        EXPECT_EQ(description.find(appbox::RegistryValueIsolationName(isolation)), std::wstring::npos) << description;
     }
 
     EXPECT_NE(appbox::RegistryKeyIsolationDescription(appbox::RegistryKeyIsolation::Hide).find(L"invisible"),

@@ -1,8 +1,8 @@
 #include "RegistryValueDialog.hpp"
+#include "IsolationModeGroup.hpp"
 #include <wx/button.h>
 #include <wx/choice.h>
 #include <wx/msgdlg.h>
-#include <wx/radiobox.h>
 #include <wx/settings.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
@@ -90,20 +90,12 @@ RegistryValueDialog::RegistryValueDialog(wxWindow* parent, const wxString& title
     }
 
     /*
-     * The names of the modes are ordered like the enumeration of the modes, so
-     * the selection of the field is the mode itself.
+     * The options are ordered like the enumeration of the modes, so the
+     * selection of the field is the mode itself, and every option carries the
+     * explanation of its mode below its name, see IsolationModeGroup.
      */
-    wxArrayString modes;
-    for (const auto& mode : appbox::RegistryValueIsolationNames())
-    {
-        modes.Add(wxString(mode));
-    }
-
-    isolation_ =
-        new wxRadioBox(this, wxID_ANY, "Isolation", wxDefaultPosition, wxDefaultSize, modes, 1, wxRA_SPECIFY_COLS);
+    isolation_ = new IsolationModeGroup(this, RegistryValueIsolationChoices());
     isolation_->SetSelection(static_cast<int>(initial_isolation));
-    isolation_->SetToolTip("Isolation mode of the value, which decides what the application sees and where its "
-                           "modifications land");
 
     auto* value_label = new wxStaticText(this, wxID_ANY, "Value:");
     single_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(320, -1));
@@ -172,7 +164,7 @@ const std::vector<std::uint8_t>& RegistryValueDialog::Data() const
 
 appbox::RegistryValueIsolation RegistryValueDialog::Isolation() const
 {
-    const int selection = isolation_ != nullptr ? isolation_->GetSelection() : wxNOT_FOUND;
+    const int selection = isolation_ != nullptr ? isolation_->Selection() : wxNOT_FOUND;
     if (selection < 0)
     {
         return appbox::RegistryValueIsolation::Full;

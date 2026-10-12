@@ -58,8 +58,9 @@ carries one, see [Key behavior rules](#key-behavior-rules).
 The packer offers an isolation mode for every file and folder of the virtual
 filesystem. The mode of a folder is picked in the `Isolation` column of the
 filesystem workspace or through the isolation dialog of the tree, which reaches
-every node of the view (see [README.md](../README.md)). The modes are stored in
-the project file and written into the isolation file of the archive, which the
+every node of the view and lists every mode with the explanation of what it does
+below its name (see [README.md](../README.md)). The modes are stored in the
+project file and written into the isolation file of the archive, which the
 sandbox reads back and enforces.
 
 | Kind | Modes | Default |

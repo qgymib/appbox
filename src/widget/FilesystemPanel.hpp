@@ -4,10 +4,8 @@
 #include <wx/wx.h>
 #include <wx/dataview.h>
 #include <wx/treectrl.h>
-#include "DataViewTooltip.hpp"
 #include "core/FilesystemIsolationModel.hpp"
 #include "core/PackModel.hpp"
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -51,8 +49,6 @@ class wxSearchCtrl;
  * level preset directory moves to the container like a nested one moves to the
  * preset it hangs below.
  *
- * The header of the `Isolation` column explains the modes the column offers,
- * see `DataViewTooltip`; the cells of the list carry no tooltip of their own.
  */
 class FilesystemPanel : public wxPanel
 {
@@ -230,17 +226,6 @@ private:
      * @param[in] item Tree item holding TreeNode data.
      */
     void PopulateNode(const wxTreeItemId& item);
-
-    /**
-     * @brief Describe a column of the header for the tooltip of the list.
-     *
-     * The `Isolation` column lists the modes it offers, so the header explains
-     * what a mode means without a row of its own.
-     *
-     * @param[in] column Model column of the header, -1 when no column is hit.
-     * @return The description of the column, empty when it has none.
-     */
-    wxString TooltipForHeader(int column) const;
 
     /**
      * @brief Refresh the file list for the selected tree node.
@@ -592,11 +577,6 @@ private:
      * and drops the text as soon as the mouse leaves the items.
      */
     bool item_tooltip_shown_ = false;
-
-    /**
-     * @brief Tooltip of the rows and of the header of the file list.
-     */
-    std::unique_ptr<DataViewTooltip> tooltip_;
 
     wxTreeCtrl*         tree_ = nullptr;
     wxDataViewListCtrl* list_ = nullptr;

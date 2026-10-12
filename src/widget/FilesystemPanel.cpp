@@ -45,41 +45,6 @@ constexpr unsigned int kIsolationColumn = 1;
 /** Background of the toolbar row above the file list. */
 const wxColour kToolBarBackground(0xF2, 0xF3, 0xF5);
 
-/** Lead of the tooltip of the header of the `Isolation` column. */
-const char* const kIsolationColumnLead =
-    "Isolation mode of the entry, which decides what the application sees and where its modifications land.";
-
-/** Note about the modes a file cannot hold, appended to the tooltip of the column. */
-const char* const kIsolationFileNote =
-    "A file offers 'Full' and 'Whiteout' only: 'Write Copy' and 'Merge' describe the merge of a folder with the host "
-    "filesystem, which a single file cannot express. A file below a 'Merge' folder follows the rule of the folder.";
-
-/**
- * @brief Describe the modes the `Isolation` column offers.
- *
- * The names of the modes are ordered like the enumeration of the modes, so the
- * description of every mode the column offers is appended in one loop instead
- * of a list of its own, which keeps the text in step with the model.
- *
- * @return The description of the column.
- */
-wxString IsolationColumnTooltip()
-{
-    wxString text = kIsolationColumnLead;
-
-    const auto& names = appbox::FilesystemIsolationNames();
-    for (std::size_t index = 0; index < names.size(); ++index)
-    {
-        text += "\n\n";
-        text += wxString(appbox::FilesystemIsolationDescription(static_cast<appbox::FilesystemIsolation>(index),
-                                                                appbox::FilesystemEntryKind::Directory));
-    }
-
-    text += "\n\n";
-    text += kIsolationFileNote;
-    return text;
-}
-
 /**
  * @brief Case insensitive wide string comparison.
  * @param[in] a Left operand.
@@ -285,23 +250,6 @@ void FilesystemPanel::CreateList(wxWindow* parent)
     list_->Bind(wxEVT_DATAVIEW_ITEM_ACTIVATED, &FilesystemPanel::OnRowActivated, this);
     list_->Bind(wxEVT_DATAVIEW_ITEM_VALUE_CHANGED, &FilesystemPanel::OnIsolationChanged, this);
     list_->Bind(wxEVT_DATAVIEW_ITEM_CONTEXT_MENU, &FilesystemPanel::OnRowContextMenu, this);
-
-    /*
-     * The header of the list describes the modes of the `Isolation` column, see
-     * DataViewTooltip; the cells of the list carry no tooltip of their own.
-     */
-    tooltip_ = std::make_unique<DataViewTooltip>(
-        *list_, [](int, int) { return wxString(); }, [this](int column) { return TooltipForHeader(column); });
-}
-
-wxString FilesystemPanel::TooltipForHeader(int column) const
-{
-    if (column == static_cast<int>(kIsolationColumn))
-    {
-        return IsolationColumnTooltip();
-    }
-
-    return {};
 }
 
 wxWindow* FilesystemPanel::CreateToolBarRow(wxWindow* parent)

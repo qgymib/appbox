@@ -214,6 +214,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/widget/FilesystemIsolationDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/FilesystemIsolationRenderer.cpp"
     "${APPBOX_SOURCE_DIR}/widget/FilesystemPanel.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/IsolationModeGroup.cpp"
     "${APPBOX_SOURCE_DIR}/widget/MainFrame.cpp"
     "${APPBOX_SOURCE_DIR}/widget/MetadataDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/NetworkPanel.cpp"
