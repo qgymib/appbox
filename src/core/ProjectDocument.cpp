@@ -24,6 +24,9 @@ constexpr const char* kProjectTypeKey = "project_type";
 constexpr const char* kMetadataKey = "metadata";
 constexpr const char* kOverridesKey = "overrides";
 constexpr const char* kKeyKey = "key";
+constexpr const char* kStartupKey = "startup";
+constexpr const char* kScreenKey = "screen";
+constexpr const char* kImageKey = "image";
 constexpr const char* kFoldersKey = "folders";
 constexpr const char* kFilesKey = "files";
 constexpr const char* kStartupFilesKey = "startup_files";
@@ -528,6 +531,39 @@ void from_json(const nlohmann::ordered_json& json, ProjectMetadataRecord& record
     record = std::move(candidate);
 }
 
+void to_json(nlohmann::ordered_json& json, const ProjectStartupScreenRecord& record)
+{
+    json = nlohmann::ordered_json::object();
+    json[kScreenKey] = record.enabled;
+    json[kImageKey] = WideToUTF8(record.image);
+}
+
+void from_json(const nlohmann::ordered_json& json, ProjectStartupScreenRecord& record)
+{
+    RequireObject(json);
+
+    ProjectStartupScreenRecord candidate;
+
+    /*
+     * Both members are optional: a hand written document which only turns the
+     * screen off, or one which only names an image, describes the rest of the
+     * screen with the defaults of a fresh session.
+     */
+    const auto screen = json.find(kScreenKey);
+    if (screen != json.end())
+    {
+        if (!screen->is_boolean())
+        {
+            throw ProjectDocumentError(std::string("the '") + kScreenKey + "' member is not a boolean");
+        }
+        candidate.enabled = screen->get<bool>();
+    }
+
+    candidate.image = ReadOptionalText(json, kImageKey);
+
+    record = std::move(candidate);
+}
+
 void to_json(nlohmann::ordered_json& json, const ProjectFolderRecord& record)
 {
     json = nlohmann::ordered_json::object();
@@ -735,6 +771,7 @@ void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
     json[kOutputPathKey] = WideToUTF8(document.output_path);
     json[kProjectTypeKey] = ProjectTypeToken(document.project_type);
     json[kMetadataKey] = document.metadata;
+    json[kStartupKey] = document.startup;
     json[kFoldersKey] = document.folders;
     json[kFilesKey] = document.files;
     json[kStartupFilesKey] = document.startup_files;
@@ -780,6 +817,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectDocument& document)
     candidate.output_path = ReadOptionalText(json, kOutputPathKey);
     candidate.project_type = ReadProjectType(json);
     ReadRecord(json, kMetadataKey, candidate.metadata);
+    ReadRecord(json, kStartupKey, candidate.startup);
     ReadRecordArray(json, kFoldersKey, candidate.folders);
     ReadRecordArray(json, kFilesKey, candidate.files);
     ReadRecordArray(json, kStartupFilesKey, candidate.startup_files);

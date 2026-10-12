@@ -429,11 +429,14 @@ namespace appbox
 ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel& registry,
                                     const FilesystemIsolationModel& isolation, const NetworkModel& network,
                                     const EnvironmentModel& environment, const ApplicationMetadata& metadata,
-                                    ProjectType project_type, const std::wstring& output_path)
+                                    const StartupScreen& startup, ProjectType project_type,
+                                    const std::wstring& output_path)
 {
     ProjectDocument document;
     document.output_path = output_path;
     document.project_type = project_type;
+    document.startup.enabled = startup.enabled;
+    document.startup.image = startup.image;
 
     document.metadata.source = metadata.source;
     for (const auto& field : metadata.overrides)
@@ -530,14 +533,18 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
 
 bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, RegistryModel& registry,
                           FilesystemIsolationModel& isolation, NetworkModel& network, EnvironmentModel& environment,
-                          ApplicationMetadata& metadata, ProjectType& project_type, std::wstring& output_path,
-                          std::string& error)
+                          ApplicationMetadata& metadata, StartupScreen& startup, ProjectType& project_type,
+                          std::wstring& output_path, std::string& error)
 {
     PackModel                candidate;
     RegistryModel            candidate_registry;
     FilesystemIsolationModel candidate_isolation;
     NetworkModel             candidate_network;
     EnvironmentModel         candidate_environment;
+
+    StartupScreen candidate_startup;
+    candidate_startup.enabled = document.startup.enabled;
+    candidate_startup.image = document.startup.image;
 
     ApplicationMetadata candidate_metadata;
     candidate_metadata.source = document.metadata.source;
@@ -621,6 +628,7 @@ bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, Reg
     network = std::move(candidate_network);
     environment = std::move(candidate_environment);
     metadata = std::move(candidate_metadata);
+    startup = std::move(candidate_startup);
     project_type = document.project_type;
     output_path = document.output_path;
     return true;

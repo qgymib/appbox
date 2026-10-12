@@ -107,11 +107,12 @@ bool ReadRecordedDigest(const std::wstring& path, std::string& digest)
  * @param[in] package_path Path of the package.
  * @param[in] name Name of the cache entry.
  * @param[in] digest Digest of the package.
+ * @param[in] on_file Called once per extracted file, may be empty.
  * @param[out] error Error description on failure.
  * @return true when the cache entry holds the extracted package.
  */
 bool ExtractPackage(const appbox::SandboxPaths& paths, const std::wstring& package_path, const std::wstring& name,
-                    const std::string& digest, std::string& error)
+                    const std::string& digest, const appbox::BuildProgressCallback& on_file, std::string& error)
 {
     const std::filesystem::path target(paths.PatchCacheDir(name));
     const std::filesystem::path staging(target.wstring() + L".tmp");
@@ -120,7 +121,7 @@ bool ExtractPackage(const appbox::SandboxPaths& paths, const std::wstring& packa
     std::filesystem::remove_all(staging, ec);
     ec.clear();
 
-    error = appbox::ExtractArchive(package_path, staging.wstring());
+    error = appbox::ExtractArchive(package_path, staging.wstring(), on_file);
     if (!error.empty())
     {
         std::filesystem::remove_all(staging, ec);
@@ -222,7 +223,8 @@ appbox::PatchLayer DescribeLayer(const appbox::SandboxPaths& paths, const std::w
 
 } // namespace
 
-std::vector<appbox::PatchLayer> appbox::LoadPatchLayers(const SandboxPaths& paths)
+std::vector<appbox::PatchLayer> appbox::LoadPatchLayers(const SandboxPaths&          paths,
+                                                        const PatchProgressCallback& progress)
 {
     std::vector<PatchLayer> layers;
 
@@ -286,8 +288,15 @@ std::vector<appbox::PatchLayer> appbox::LoadPatchLayers(const SandboxPaths& path
     }
 
     std::set<std::wstring> cache_names;
+    std::size_t            handled = 0;
+
     for (const auto& file_name : packages)
     {
+        if (progress)
+        {
+            progress(handled, packages.size(), 0.0);
+        }
+
         const auto name = SandboxPaths::PatchCacheName(file_name);
         if (!cache_names.insert(name).second)
         {
@@ -298,6 +307,7 @@ std::vector<appbox::PatchLayer> appbox::LoadPatchLayers(const SandboxPaths& path
              */
             SPDLOG_WARN("the patch package '{}' shares its cache entry with an earlier package, it is skipped",
                         WideToUTF8(file_name));
+            ++handled;
             continue;
         }
 
@@ -307,8 +317,21 @@ std::vector<appbox::PatchLayer> appbox::LoadPatchLayers(const SandboxPaths& path
         if (!Md5OfFile(package_path, digest, error))
         {
             SPDLOG_ERROR("the patch package '{}' is skipped: {}", WideToUTF8(file_name), error);
+            ++handled;
             continue;
         }
+
+        /*
+         * The extraction reports every file it writes, which is what keeps the
+         * startup screen of the run alive while a large package is unpacked.
+         */
+        const auto on_file = [&progress, handled, &packages](const appbox::BuildProgress& report) {
+            if (progress && report.total > 0)
+            {
+                progress(handled, packages.size(), static_cast<double>(report.done) / report.total);
+            }
+            return true;
+        };
 
         std::string recorded;
         const bool  reused = ReadRecordedDigest(paths.PatchDigestFile(name), recorded) && recorded == digest;
@@ -316,13 +339,15 @@ std::vector<appbox::PatchLayer> appbox::LoadPatchLayers(const SandboxPaths& path
         {
             SPDLOG_DEBUG("the cache entry of the patch package '{}' is reused", WideToUTF8(file_name));
         }
-        else if (!ExtractPackage(paths, package_path, name, digest, error))
+        else if (!ExtractPackage(paths, package_path, name, digest, on_file, error))
         {
             SPDLOG_ERROR("the patch package '{}' is skipped: {}", WideToUTF8(file_name), error);
+            ++handled;
             continue;
         }
 
         layers.push_back(DescribeLayer(paths, name));
+        ++handled;
     }
 
     if (!layers.empty())

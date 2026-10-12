@@ -57,7 +57,12 @@ add_executable(AppBoxTests
     "unit/RpcCodec.cpp"
     "unit/Shell.cpp"
     "unit/Socks5.cpp"
+    "unit/Splash.cpp"
+    "unit/StartupImage.cpp"
+    "unit/StartupLayout.cpp"
+    "unit/StartupScreen.cpp"
     "unit/StartupTree.cpp"
+    "unit/VersionInfo.cpp"
     "unit/StaticRuntime.cpp"
     "unit/TestTimeout.cpp"
     "unit/TracerArmPlan.cpp"
@@ -160,6 +165,7 @@ add_executable(AppBoxTests
     "e2e/Launcher_SandboxDllFromTheApp.cpp"
     "e2e/Launcher_Shell.cpp"
     "e2e/Launcher_Startup.cpp"
+    "e2e/Launcher_StartupScreen.cpp"
     "e2e/Net_Dns_EveryResolutionApiIsRedirected.cpp"
     "e2e/Net_Dns_FamilyOfTheRedirectIsHonoured.cpp"
     "e2e/Net_Dns_HostnameIsNormalized.cpp"
@@ -311,6 +317,7 @@ add_executable(AppBoxTests
     "utils/RegistryRootKey.cpp"
     "utils/Semaphore.cpp"
     "utils/Socks5Server.cpp"
+    "utils/TestBitmap.cpp"
     "utils/TestFont.cpp"
     "utils/TestKnownFolder.cpp"
     "utils/TestLog.cpp"
@@ -332,7 +339,11 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/ProcessJob.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/ProcessLauncher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/Shell.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/StartupImage.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/StartupLayout.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/VersionInfo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/WinCall.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/Splash.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/AboutInfo.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationIcon.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationMetadata.cpp
@@ -354,6 +365,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryHive.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/StartupScreen.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/StartupTree.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipWriter.cpp
@@ -451,6 +463,15 @@ target_link_libraries(AppBoxTests PRIVATE shell32 ole32)
 
 # Registry access of the sandbox hive reader (RegLoadAppKeyW and friends).
 target_link_libraries(AppBoxTests PRIVATE advapi32)
+
+# Version resource of a program, which the launcher reads the name of the
+# packaged application from (GetFileVersionInfoW and VerQueryValueW).
+target_link_libraries(AppBoxTests PRIVATE version)
+
+# Imaging component of Windows, which decodes a startup image of the launcher
+# (IWICImagingFactory and friends), and the blend function the startup screen
+# draws the image with.
+target_link_libraries(AppBoxTests PRIVATE windowscodecs msimg32)
 
 # Version resource of the packer core, which reads the program information the
 # launcher payload inherits from the main program of the packaged application

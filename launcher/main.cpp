@@ -23,8 +23,10 @@
 #include "utils/ProcessJob.hpp"
 #include "utils/Shell.hpp"
 #include "utils/KnownFolder.hpp"
+#include "utils/VersionInfo.hpp"
 #include "utils/WinCall.hpp"
 #include "Launcher.hpp"
+#include "Splash.hpp"
 #include "WString.hpp"
 
 /**
@@ -227,15 +229,35 @@ static std::vector<LaunchTarget> BuildLaunchTargets()
 }
 
 /**
+ * @brief Destroy the startup screen of the run.
+ *
+ * The screen is the only owner of its window, so releasing it closes the
+ * screen. The state of the run stops referring to it first, because a report
+ * which arrives afterwards would otherwise reach a destroyed screen.
+ *
+ * @param[in,out] splash Screen of the run, which is released.
+ */
+static void CloseStartupScreen(std::unique_ptr<appbox::SplashScreen>& splash)
+{
+    LauncherApp().splash = nullptr;
+    splash.reset();
+}
+
+/**
  * @brief Run the processes the configuration describes.
  *
  * Every target is started before the first one is waited for, so the targets of
  * the run side by side instead of one after the other.
  *
+ * The startup screen of the run covers the creation of the processes and is
+ * destroyed as soon as every process was started, which is the moment the
+ * packaged application is on its own.
+ *
+ * @param[in,out] splash Startup screen of the run, which is closed by the call.
  * @return The exit code of the run: the first non zero exit code of a target,
  *         zero when every target exited with zero.
  */
-static DWORD MainLauncher()
+static DWORD MainLauncher(std::unique_ptr<appbox::SplashScreen>& splash)
 {
     const auto targets = BuildLaunchTargets();
 
@@ -245,6 +267,8 @@ static DWORD MainLauncher()
      */
     std::vector<std::unique_ptr<appbox::ProcessJob>> jobs;
     DWORD                                            exit_code = 0;
+
+    ReportStartupStage(appbox::StartupStage::StartingApplication, 0.0);
 
     for (const auto& target : targets)
     {
@@ -262,7 +286,19 @@ static DWORD MainLauncher()
         }
 
         jobs.push_back(std::move(job));
+
+        /* The screen follows the processes the run creates. */
+        const auto created = static_cast<double>(jobs.size());
+        const auto total = targets.empty() ? 1.0 : static_cast<double>(targets.size());
+        ReportStartupStage(appbox::StartupStage::StartingApplication, created / total);
     }
+
+    /*
+     * Every process the run starts was created, so the screen has done its
+     * job: a failure of one target is reported by the exit code of the run and
+     * not by a window which stays open.
+     */
+    CloseStartupScreen(splash);
 
     for (auto& job : jobs)
     {
@@ -430,6 +466,13 @@ static DWORD RunLauncher()
         return 0;
     }
 
+    /*
+     * The startup screen of the run. It covers the preparation of the sandbox
+     * and disappears as soon as the processes of the run were started, so it
+     * belongs to the run and is released by every path which leaves it.
+     */
+    std::unique_ptr<appbox::SplashScreen> splash;
+
     try
     {
         if (!opt.override_config.is_null())
@@ -451,11 +494,27 @@ static DWORD RunLauncher()
          */
         CheckSandboxModules(LauncherApp().startup_error);
 
+        /*
+         * The screen is shown before the runtime of the run is created, which
+         * is the heavy part: it loads and extracts the patch packages, mounts
+         * the layers of the sandbox and mounts its registry. The name it
+         * presents is the one the packer wrote into this program, which is the
+         * name of the packaged application.
+         */
+        splash = std::make_unique<appbox::SplashScreen>(LauncherApp().launcher_config.startup.screen,
+                                                        appbox::ReadOwnDisplayName(),
+                                                        LauncherApp().sandbox_paths.StartupImageFile(appbox::UTF8ToWide(
+                                                            LauncherApp().launcher_config.startup.image)));
+        LauncherApp().splash = splash.get();
+
+        ReportStartupStage(appbox::StartupStage::Preparing, 1.0);
+
         LauncherApp().runtime = std::make_shared<AppBoxLauncherRuntime>(opt.log_level);
     }
     catch (const std::exception& e)
     {
         SPDLOG_ERROR(e.what());
+        CloseStartupScreen(splash);
         return 1;
     }
 
@@ -469,10 +528,13 @@ static DWORD RunLauncher()
     {
         SPDLOG_ERROR("{}", LauncherApp().startup_error);
         LauncherApp().runtime.reset();
+        CloseStartupScreen(splash);
         return 1;
     }
 
-    const auto exit_code = MainLauncher();
+    const auto exit_code = MainLauncher(splash);
+
+    CloseStartupScreen(splash);
     LauncherApp().runtime.reset();
     return exit_code;
 }

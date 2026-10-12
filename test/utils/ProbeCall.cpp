@@ -247,6 +247,14 @@ static appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& confi
 
     copy_config.hide_console = true;
 
+    /*
+     * The startup screen of a run is turned off as well: the cases run on the
+     * desktop of the machine, and a window which pops up for every case would
+     * cover the work of the user. A case which checks the screen turns it on
+     * again, see ProbeStartupRun().
+     */
+    copy_config.startup.screen = false;
+
     return copy_config;
 }
 
@@ -409,12 +417,13 @@ nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::
 }
 
 appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launcher_config,
-                                                       const std::string& trigger)
+                                                       const std::string& trigger, bool startup_screen)
 {
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
 
     auto copy_config = OverrideConfig(launcher_config);
+    copy_config.startup.screen = startup_screen;
 
     ProbeKey key("StartupStarted", nlohmann::json::object());
 

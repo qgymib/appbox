@@ -193,6 +193,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/RegistryHive.cpp"
     "${APPBOX_SOURCE_DIR}/core/RegistryIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/RegistryModel.cpp"
+    "${APPBOX_SOURCE_DIR}/core/StartupScreen.cpp"
     "${APPBOX_SOURCE_DIR}/core/StartupTree.cpp"
     "${APPBOX_SOURCE_DIR}/core/TracerModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/ZipReader.cpp"

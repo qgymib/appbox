@@ -7,7 +7,13 @@
 #include "sandbox/Config.hpp"
 #include "RemoteServer.hpp"
 #include "utils/SandboxPaths.hpp"
+#include "utils/StartupLayout.hpp"
 #include "Config.hpp"
+
+namespace appbox
+{
+class SplashScreen;
+}
 
 struct AppBoxLauncherRuntime
 {
@@ -44,6 +50,16 @@ struct AppBoxLauncher
     bool                                        shell = false;   /* True to run the shell of the host in the sandbox */
     std::wstring                                shell_path; /* Shell of the host to run, empty outside the shell mode */
     std::vector<std::wstring>                   shell_args; /* Command the shell runs, empty for an interactive shell */
+
+    /**
+     * @brief Startup screen of the run, null while the session shows none.
+     *
+     * The screen belongs to the run and not to the state: the launcher creates
+     * it before the sandbox is prepared and destroys it as soon as the
+     * processes of the run were started, so the pointer is valid while the run
+     * works and null afterwards.
+     */
+    appbox::SplashScreen* splash = nullptr;
 };
 
 /**
@@ -51,5 +67,17 @@ struct AppBoxLauncher
  * @return The state.
  */
 AppBoxLauncher& LauncherApp();
+
+/**
+ * @brief Report the stage of the run to the startup screen.
+ *
+ * The call is harmless while the run shows no screen, so every part of the
+ * launcher reports its progress without asking whether a screen exists.
+ *
+ * @param[in] stage Stage the run is in.
+ * @param[in] fraction Progress inside the stage, `0` at its beginning and `1`
+ *                     at its end.
+ */
+void ReportStartupStage(appbox::StartupStage stage, double fraction);
 
 #endif // APPBOX_LAUNCHER_HPP

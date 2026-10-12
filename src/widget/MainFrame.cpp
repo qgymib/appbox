@@ -104,6 +104,29 @@ appbox::MessageExtent MeasureProgressText(const wxString& text)
     return appbox::MeasureMessageExtent(text.ToStdString(wxConvUTF8));
 }
 
+/**
+ * @brief Build the filter of the startup image dialog.
+ *
+ * The filter is derived from the formats the launcher decodes, so the dialog
+ * offers exactly the files a session can use and the two cannot drift apart.
+ *
+ * @return The filter of the file dialog.
+ */
+wxString StartupImageFilter()
+{
+    wxString patterns;
+    for (const auto& extension : appbox::StartupImageExtensions())
+    {
+        if (!patterns.empty())
+        {
+            patterns += ";";
+        }
+        patterns += "*" + wxString(extension);
+    }
+
+    return "Images (" + patterns + ")|" + patterns + "|All files (*.*)|*.*";
+}
+
 } // namespace
 
 MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox", wxDefaultPosition, wxSize(1180, 720))
@@ -138,6 +161,8 @@ MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox", wxDefaultPosition,
     Bind(wxEVT_COMBOBOX, &MainFrame::OnProjectTypeChanged, this, kSettingsProjectType);
     Bind(wxEVT_BUTTON, &MainFrame::OnBrowseMetadata, this, kSettingsMetadataBrowse);
     Bind(APPBOX_METADATA_CHANGED, &MainFrame::OnMetadataChanged, this);
+    Bind(wxEVT_BUTTON, &MainFrame::OnBrowseStartupImage, this, kSettingsStartupBrowse);
+    Bind(APPBOX_STARTUP_CHANGED, &MainFrame::OnStartupScreenChanged, this);
     Bind(APPBOX_PACK_PROGRESS, &MainFrame::OnPackProgress, this);
     Bind(APPBOX_PACK_FINISHED, &MainFrame::OnPackFinished, this);
 }
@@ -352,11 +377,14 @@ void MainFrame::ApplyProjectType(appbox::ProjectType type)
     toolbar_->SetBuildAndRunEnabled(type == appbox::ProjectType::Standalone);
 
     /*
-     * A patch package carries no launcher either, so its file properties are
-     * not part of the product: the Metadata tab follows the type.
+     * A patch package carries no launcher either, so its file properties and
+     * its startup screen are not part of the product: the two tabs follow the
+     * type.
      */
     settings_panel_->EnableMetadata(type == appbox::ProjectType::Standalone);
+    settings_panel_->EnableStartup(type == appbox::ProjectType::Standalone);
     RefreshMetadata();
+    RefreshStartupScreen();
 
     /* Keep following the startup files until the user edits the path. */
     if (!output_path_edited_)
@@ -443,6 +471,45 @@ void MainFrame::RefreshMetadata()
     settings_panel_->SetMetadataValues(appbox::MergeMetadataFields(metadata_inherited_, metadata_.overrides), note);
 }
 
+void MainFrame::RefreshStartupScreen()
+{
+    if (settings_panel_ == nullptr)
+    {
+        return;
+    }
+
+    /*
+     * A patch package carries no launcher, so it has no startup screen: the tab
+     * explains that instead of offering a setting which would never be packed.
+     */
+    if (project_type_ == appbox::ProjectType::Patch)
+    {
+        settings_panel_->SetStartupScreen(appbox::StartupScreen{},
+                                          "A patch package carries no launcher, so it has no startup screen.");
+        return;
+    }
+
+    /*
+     * The note describes what the archive will show, so a path which cannot be
+     * decoded is reported while the session is edited and not by the pack run.
+     */
+    wxString note;
+    if (startup_screen_.image.empty())
+    {
+        note = "The launcher shows the name of the application and the progress of the run.";
+    }
+    else if (!appbox::IsSupportedStartupImage(startup_screen_.image))
+    {
+        note = "The image cannot be shown: the launcher decodes PNG, JPEG and BMP files.";
+    }
+    else
+    {
+        note = "Shown while the launcher starts the application.";
+    }
+
+    settings_panel_->SetStartupScreen(startup_screen_, note);
+}
+
 void MainFrame::OnMetadataChanged(wxCommandEvent& event)
 {
     /* The tab reports every edit; the state of the session follows it. */
@@ -472,6 +539,30 @@ void MainFrame::OnBrowseMetadata(wxCommandEvent&)
 
     metadata_.source = dialog.GetPath().ToStdWstring();
     RefreshMetadata();
+}
+
+void MainFrame::OnStartupScreenChanged(wxCommandEvent& event)
+{
+    /* The tab reports every edit; the state of the session follows it. */
+    startup_screen_ = settings_panel_->GetStartupScreen();
+    RefreshStartupScreen();
+
+    event.Skip();
+}
+
+void MainFrame::OnBrowseStartupImage(wxCommandEvent&)
+{
+    wxFileName current(wxString(startup_screen_.image));
+
+    wxFileDialog dialog(this, "Startup Image", current.GetPath(), current.GetFullName(), StartupImageFilter(),
+                        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dialog.ShowModal() != wxID_OK)
+    {
+        return;
+    }
+
+    startup_screen_.image = dialog.GetPath().ToStdWstring();
+    RefreshStartupScreen();
 }
 
 void MainFrame::OnExit(wxCommandEvent&)
@@ -528,13 +619,15 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     appbox::NetworkModel             loaded_network;
     appbox::EnvironmentModel         loaded_environment;
     appbox::ApplicationMetadata      loaded_metadata;
+    appbox::StartupScreen            loaded_startup;
     appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
     std::wstring                     output_path;
     std::string                      error;
 
     if (!appbox::LoadProject(dialog.GetPath().ToStdWstring(), document, error) ||
         !appbox::ApplyProjectDocument(document, loaded, loaded_registry, loaded_isolation, loaded_network,
-                                      loaded_environment, loaded_metadata, loaded_project_type, output_path, error))
+                                      loaded_environment, loaded_metadata, loaded_startup, loaded_project_type,
+                                      output_path, error))
     {
         spdlog::error("importing the configuration failed: {}", error);
         wxMessageBox("The configuration could not be imported:\n\n" + wxString::FromUTF8(error), "Import Configuration",
@@ -548,6 +641,8 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     network_ = std::move(loaded_network);
     environment_ = std::move(loaded_environment);
     metadata_ = std::move(loaded_metadata);
+    startup_screen_ = std::move(loaded_startup);
+    RefreshStartupScreen();
     filesystem_panel_->RefreshModel();
     registry_panel_->RefreshModel();
     network_panel_->RefreshModel();
@@ -593,7 +688,7 @@ void MainFrame::OnExportConfiguration(wxCommandEvent&)
     std::string error;
     const auto  document =
         appbox::MakeProjectDocument(model_, registry_model_, filesystem_isolation_, network_, environment_, metadata_,
-                                    project_type_, OutputPath().ToStdWstring());
+                                    startup_screen_, project_type_, OutputPath().ToStdWstring());
     if (!appbox::SaveProject(document, dialog.GetPath().ToStdWstring(), error))
     {
         spdlog::error("exporting the configuration failed: {}", error);
@@ -765,7 +860,12 @@ void MainFrame::StartPack(bool run_after)
      * import, so the packing stage reports this count and the extracting stage
      * of a `Build and Run` run reports the very same number of file entries.
      */
-    const auto non_content = standalone ? appbox::kNonContentArchiveEntries : appbox::kNonContentPatchEntries;
+    /*
+     * A patch package carries no launcher, so the startup image of the session
+     * is an entry of a standalone archive only.
+     */
+    const auto non_content =
+        standalone ? appbox::NonContentArchiveEntryCount(startup_screen_) : appbox::kNonContentPatchEntries;
     const auto total = non_content + appbox::ContentFileCount(model_);
     const auto planned = run_after ? total * 2 : total;
     const auto range = static_cast<int>(std::min<std::size_t>(planned, std::numeric_limits<int>::max()));
@@ -824,59 +924,61 @@ void MainFrame::StartPack(bool run_after)
     const auto network_snapshot = network_;
     const auto environment_snapshot = environment_;
     const auto metadata_snapshot = metadata_;
+    const auto startup_snapshot = startup_screen_;
     const auto zip_wide = zip_path.ToStdWstring();
     const auto project_type = project_type_;
 
-    pack_thread_ = std::thread([this, snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
-                                environment_snapshot, metadata_snapshot, payloads, zip_wide, run_after,
-                                project_type]() {
-        const auto report_progress = [this](const appbox::BuildProgress& report) {
-            auto* event = new wxThreadEvent(APPBOX_PACK_PROGRESS);
-            event->SetPayload(report);
-            this->GetEventHandler()->QueueEvent(event);
-            return !this->pack_cancelled_.load();
-        };
+    pack_thread_ =
+        std::thread([this, snapshot, registry_snapshot, isolation_snapshot, network_snapshot, environment_snapshot,
+                     metadata_snapshot, startup_snapshot, payloads, zip_wide, run_after, project_type]() {
+            const auto report_progress = [this](const appbox::BuildProgress& report) {
+                auto* event = new wxThreadEvent(APPBOX_PACK_PROGRESS);
+                event->SetPayload(report);
+                this->GetEventHandler()->QueueEvent(event);
+                return !this->pack_cancelled_.load();
+            };
 
-        PackOutcome outcome;
-        if (project_type == appbox::ProjectType::Patch)
-        {
-            /* A patch package holds the resources without a launcher. */
-            outcome.error = appbox::PackPatch(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
-                                              environment_snapshot, zip_wide, report_progress);
-        }
-        else
-        {
-            outcome.error = appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
-                                         environment_snapshot, metadata_snapshot, payloads, zip_wide, report_progress);
-        }
-
-        if (outcome.error.empty())
-        {
-            /*
-             * The launcher is named after the main program of the snapshot; a
-             * patch package has none, because it is not started on its own.
-             */
-            if (project_type == appbox::ProjectType::Standalone)
+            PackOutcome outcome;
+            if (project_type == appbox::ProjectType::Patch)
             {
-                outcome.launcher_entry = appbox::LauncherEntryName(snapshot);
+                /* A patch package holds the resources without a launcher. */
+                outcome.error = appbox::PackPatch(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
+                                                  environment_snapshot, zip_wide, report_progress);
             }
-            outcome.archive_path = zip_wide;
-        }
+            else
+            {
+                outcome.error = appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
+                                             environment_snapshot, metadata_snapshot, startup_snapshot, payloads,
+                                             zip_wide, report_progress);
+            }
 
-        if (outcome.error.empty() && run_after)
-        {
-            const auto folder = std::filesystem::temp_directory_path() / UniqueExtractFolder();
-            outcome.error = appbox::ExtractArchive(zip_wide, folder.wstring(), report_progress);
             if (outcome.error.empty())
             {
-                outcome.extract_dir = folder.wstring();
+                /*
+                 * The launcher is named after the main program of the snapshot; a
+                 * patch package has none, because it is not started on its own.
+                 */
+                if (project_type == appbox::ProjectType::Standalone)
+                {
+                    outcome.launcher_entry = appbox::LauncherEntryName(snapshot);
+                }
+                outcome.archive_path = zip_wide;
             }
-        }
 
-        auto* event = new wxThreadEvent(APPBOX_PACK_FINISHED);
-        event->SetPayload(outcome);
-        this->GetEventHandler()->QueueEvent(event);
-    });
+            if (outcome.error.empty() && run_after)
+            {
+                const auto folder = std::filesystem::temp_directory_path() / UniqueExtractFolder();
+                outcome.error = appbox::ExtractArchive(zip_wide, folder.wstring(), report_progress);
+                if (outcome.error.empty())
+                {
+                    outcome.extract_dir = folder.wstring();
+                }
+            }
+
+            auto* event = new wxThreadEvent(APPBOX_PACK_FINISHED);
+            event->SetPayload(outcome);
+            this->GetEventHandler()->QueueEvent(event);
+        });
 }
 
 void MainFrame::UpdateProgressDialog(int value, const wxString& text)

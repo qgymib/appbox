@@ -24,7 +24,7 @@ namespace appbox
  * match exactly when a file is read, so a file of a future format is rejected
  * instead of being interpreted with the rules of the current one.
  */
-inline constexpr int kProjectFileVersion = 2;
+inline constexpr int kProjectFileVersion = 1;
 
 /**
  * @brief Error reported by the conversion of a project file document.
@@ -94,6 +94,33 @@ struct ProjectMetadataRecord
      * @brief The fields the user edited, in document order.
      */
     std::vector<ProjectMetadataFieldRecord> overrides;
+};
+
+/**
+ * @brief The startup screen the launcher of a project shows.
+ *
+ * The record is the counterpart of `StartupScreen` of
+ * `src/core/StartupScreen.hpp`: it carries the flag which decides whether the
+ * launcher shows a startup screen at all and the host path of the image it
+ * presents. The image itself is not part of the project file - the pack run
+ * reads the file the record names - so a project which is imported on a
+ * machine without that file is still readable.
+ *
+ * A document which does not name the record describes the default session: a
+ * startup screen without an image, which presents the name of the packaged
+ * application and the progress of the run.
+ */
+struct ProjectStartupScreenRecord
+{
+    /**
+     * @brief Whether the launcher shows the startup screen.
+     */
+    bool enabled = true;
+
+    /**
+     * @brief Host path of the startup image, empty while none is set.
+     */
+    std::wstring image;
 };
 
 /**
@@ -405,12 +432,13 @@ struct ProjectEnvironmentRecord
  *
  * ```
  * {
- *   "version": 2,
+ *   "version": 1,
  *   "output_path": "D:\\out\\MyApp.zip",
  *   "project_type": "standalone",
  *   "metadata": { "source": "C:\\Program Files\\MyApp\\app.exe",
  *                 "overrides": [ { "key": "FileDescription",
  *                                  "value": "My Application" } ] },
+ *   "startup": { "screen": true, "image": "C:\\logo.png" },
  *   "folders": [ { "preset": "program_files", "name": "MyApp",
  *                  "source": "C:\\Program Files\\MyApp" } ],
  *   "files": [ { "preset": "user_profile", "target_dir": "MyApp\\data",
@@ -452,6 +480,11 @@ struct ProjectEnvironmentRecord
  * describes a session which inherits the file properties of its launcher from
  * the default source without editing a field. Every key of an override has to
  * name a field of a version resource, and a key may be listed once only.
+ *
+ * The `startup` member is optional as well: a file which does not name it
+ * describes a session whose launcher shows a startup screen without an image.
+ * The record describes the screen of a standalone archive only, because a
+ * patch package carries no launcher which could show it.
  */
 struct ProjectDocument
 {
@@ -476,6 +509,14 @@ struct ProjectDocument
      * field.
      */
     ProjectMetadataRecord metadata;
+
+    /**
+     * @brief The startup screen the launcher of a standalone archive shows.
+     *
+     * A document which does not name the member describes a session whose
+     * launcher shows a startup screen without an image.
+     */
+    ProjectStartupScreenRecord startup;
 
     /**
      * @brief Imported folders, in the order the document stores them.
@@ -552,6 +593,21 @@ void to_json(nlohmann::ordered_json& json, const ProjectMetadataRecord& record);
  * @throw ProjectDocumentError The object does not fit the schema.
  */
 void from_json(const nlohmann::ordered_json& json, ProjectMetadataRecord& record);
+
+/**
+ * @brief Store the startup screen of a document.
+ * @param[out] json Object which receives the record.
+ * @param[in] record The record to store.
+ */
+void to_json(nlohmann::ordered_json& json, const ProjectStartupScreenRecord& record);
+
+/**
+ * @brief Read the startup screen of a document.
+ * @param[in] json Object holding the record.
+ * @param[out] record The record to fill.
+ * @throw ProjectDocumentError The object does not fit the schema.
+ */
+void from_json(const nlohmann::ordered_json& json, ProjectStartupScreenRecord& record);
 
 /**
  * @brief Store one imported folder of a document.

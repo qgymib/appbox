@@ -14,6 +14,7 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 - **Environment Isolation**: Collects the environment variables the packaged application sees inside the sandbox with the isolation mode and the merge mode of every variable; the composed environment lives in a private table of the sandbox, so the environment of the host is never modified and the modifications of the application survive in the state directory of the sandbox (see [Environment Isolation](docs/EnvironmentIsolation.md)).
 - **Fonts Isolation**: Loads the fonts a layer of the filesystem carries into the font table of every process of a run, so the packaged application creates, enumerates and renders them as if they were installed, while the font directory, the font table and the registry of the host stay untouched (see [Fonts Isolation](docs/FontsIsolation.md)).
 - **Patch Packages**: The `Project Type` box of the packer writes either a self-contained archive or a patch package which holds the resources of the packaged application without the launcher and without the sandbox injection modules; the packages of the `patch` directory next to a standalone archive are merged into its resources in ascending name order — the filesystem layers, the virtual registry, the network configuration and the environment variables of a package included (see [Patch Layers](docs/PatchLayer.md)).
+- **Startup Screen**: The launcher of a standalone archive presents the name of the packaged application, the startup image of the session and the progress of the run while it prepares the sandbox, and the screen disappears as soon as the processes of the run were started; the image, the flag which turns the screen off and the settings themselves are edited in the `Startup` tab of the Settings workspace and travel with the project file (see [Startup Screen](docs/StartupScreen.md)).
 
 ## Build
 
@@ -57,12 +58,14 @@ type of the `Build` command, and may reference a known folder of the machine
 
 ### Launcher
 
-Windowless application which runs a packaged application inside the sandbox: it
-injects the sandbox DLLs the archive carries below `app`, starts the startup
-files of its configuration, and keeps the read-only resources below `app` and
-the writable state of the sandbox below `data`, both beside the launcher
-program, so deleting `data` resets the sandbox to the state the archive was
-packed with.
+Application without a window of its own which runs a packaged application inside
+the sandbox: it injects the sandbox DLLs the archive carries below `app`, starts
+the startup files of its configuration, and keeps the read-only resources below
+`app` and the writable state of the sandbox below `data`, both beside the
+launcher program, so deleting `data` resets the sandbox to the state the archive
+was packed with. While it prepares the sandbox it may show a startup screen,
+which presents the name of the packaged application, its startup image and the
+progress of the run (see [Startup Screen](docs/StartupScreen.md)).
 
 ### Sandbox
 
@@ -150,6 +153,7 @@ pure function `appbox::ExpandVariables()` of
 - [Environment Isolation](docs/EnvironmentIsolation.md) - Environment isolation architecture
 - [Fonts Isolation](docs/FontsIsolation.md) - Fonts isolation architecture
 - [Patch Layers](docs/PatchLayer.md) - Patch packages: layout, merge rules and the launcher side
+- [Startup Screen](docs/StartupScreen.md) - Startup screen of the launcher: settings, archive layout and behavior
 - [Debug](docs/Debug.md) - Debug workspace: usage, mechanism and measured cost
 - [Tests](test/README.md) - Unit tests and end-to-end tests of the sandbox
 

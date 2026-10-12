@@ -8,6 +8,7 @@
 #include "NetworkModel.hpp"
 #include "PackModel.hpp"
 #include "RegistryModel.hpp"
+#include "StartupScreen.hpp"
 #include <cstddef>
 #include <string>
 
@@ -23,8 +24,27 @@ namespace appbox
  * the network workspace and the isolation file of the environment workspace.
  * The pack run and the extraction of a `Build and Run` run report the same
  * total, so both count this constant instead of a literal.
+ *
+ * The startup image of a session is not part of the constant, because it is
+ * written only while the session sets one: the count both sides use is
+ * NonContentArchiveEntryCount(), which adds it to this constant.
  */
 inline constexpr std::size_t kNonContentArchiveEntries = 9;
+
+/**
+ * @brief Count the archive entries which do not come from an import.
+ *
+ * The count covers the fixed entries of a standalone archive (see
+ * kNonContentArchiveEntries) plus the startup image of the session, which
+ * travels below `app` as well but is written only while the session sets one.
+ * The pack run and the caller which prepares the progress dialog derive the
+ * total from the same number, so the progress bar describes the archive which
+ * is really written.
+ *
+ * @param[in] startup Startup screen of the session.
+ * @return The number of entries which do not come from an import.
+ */
+std::size_t NonContentArchiveEntryCount(const StartupScreen& startup);
 
 /**
  * @brief Number of patch archive entries which do not come from an import.
@@ -117,6 +137,7 @@ struct PackPayloads
  *                                        executable = <layer key>\<import>\<exe> }
  * app/sandbox32.dll                      injected sandbox DLL (32 bit)
  * app/sandbox64.dll                      injected sandbox DLL (64 bit)
+ * app/startup/splash.png                 startup image of the session (optional)
  * app/filesystem/isolation.json          isolation modes of the filesystem
  * app/filesystem/<layer key>/<import>/... imported folder content
  * app/filesystem/<layer key>/<target>/<file> imported file content
@@ -165,11 +186,19 @@ struct PackPayloads
  * The payloads are supplied by the caller so unit tests can inject fake bytes
  * without a real launcher binary and without real sandbox modules.
  *
+ * The startup image of the session travels below `app` as
+ * `app/startup/splash.<extension>` and the launcher configuration names it
+ * (see `src/core/StartupScreen.hpp`): the launcher decodes the file while it
+ * prepares the sandbox and presents it on the startup screen. A session which
+ * sets no image packs no file of that name and a configuration which names no
+ * image, so the launcher shows the name of the application and the progress of
+ * the run only.
+ *
  * The progress total covers the files of the imported folders plus the
- * individually imported files and kNonContentArchiveEntries, so the callback
- * receives a stable upper bound for the whole run. The launcher payload and its
- * configuration are reported as the preparing stage before the first imported
- * file is packed.
+ * individually imported files and NonContentArchiveEntryCount(), so the
+ * callback receives a stable upper bound for the whole run. The launcher
+ * payload and its configuration are reported as the preparing stage before the
+ * first imported file is packed.
  *
  * Every report names the file which is being packed through
  * BuildProgress::current, using the path below the import root prefixed by the
@@ -210,6 +239,12 @@ struct PackPayloads
  * @param[in] metadata File properties of the launcher, which are read from the
  *                     program the session inherits them from and written into
  *                     the launcher payload.
+ * @param[in] startup Startup screen of the session: whether the launcher shows
+ *                    one and the image it presents. The image is written below
+ *                    `app` as `app/startup/splash.<extension>`, and the
+ *                    launcher configuration names it; a session which sets no
+ *                    image packs a launcher which shows the name of the
+ *                    application and the progress of the run only.
  * @param[in] payloads Embedded launcher program and sandbox injection modules,
  *                     written beside the resources of the archive.
  * @param[in] zip_path Destination zip path (truncated when it exists).
@@ -220,7 +255,8 @@ struct PackPayloads
  */
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
                  const NetworkModel& network, const EnvironmentModel& environment, const ApplicationMetadata& metadata,
-                 const PackPayloads& payloads, const std::wstring& zip_path, const BuildProgressCallback& progress);
+                 const StartupScreen& startup, const PackPayloads& payloads, const std::wstring& zip_path,
+                 const BuildProgressCallback& progress);
 
 /**
  * @brief Pack the resources of the model into a patch package.

@@ -514,6 +514,11 @@ std::size_t ContentFileCount(const PackModel& model)
     return count;
 }
 
+std::size_t NonContentArchiveEntryCount(const StartupScreen& startup)
+{
+    return kNonContentArchiveEntries + (HasStartupImage(startup) ? 1 : 0);
+}
+
 std::wstring LauncherEntryName(const PackModel& model)
 {
     if (!model.HasStartupFiles())
@@ -530,7 +535,8 @@ std::wstring LauncherEntryName(const PackModel& model)
 
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
                  const NetworkModel& network, const EnvironmentModel& environment, const ApplicationMetadata& metadata,
-                 const PackPayloads& payloads, const std::wstring& zip_path, const BuildProgressCallback& progress)
+                 const StartupScreen& startup, const PackPayloads& payloads, const std::wstring& zip_path,
+                 const BuildProgressCallback& progress)
 {
     if (!model.HasStartupFiles())
     {
@@ -553,8 +559,22 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         return "the embedded 64 bit sandbox module is empty";
     }
 
+    /*
+     * The startup image is read while the archive is written, so a session
+     * which names a file that is not there is refused before the first entry
+     * is added: the run then reports the file instead of writing an archive
+     * whose launcher cannot show the screen of the session.
+     */
+    {
+        std::string startup_error;
+        if (!ValidateStartupScreen(startup, startup_error))
+        {
+            return startup_error;
+        }
+    }
+
     /* Count the files once so the progress callback has a stable total. */
-    const std::size_t total = kNonContentArchiveEntries + ContentFileCount(model);
+    const std::size_t total = NonContentArchiveEntryCount(startup) + ContentFileCount(model);
 
     /*
      * The launcher payload and its configuration are added before the first
@@ -646,6 +666,16 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
          */
         LauncherConfig config;
 
+        /*
+         * The startup screen of the session: the flag decides whether the
+         * launcher opens a window of its own while it prepares the sandbox,
+         * and the image names the entry below `app` it presents. A session
+         * which sets no image names none, so the launcher shows the name of
+         * the application and the progress of the run only.
+         */
+        config.startup.screen = startup.enabled;
+        config.startup.image = StartupImageEntryName(startup.image);
+
         for (const auto& file : model.StartupFiles())
         {
             PresetDirectory owner;
@@ -658,11 +688,11 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
             launch /= file.import_name;
             launch /= file.relative_path;
 
-            LauncherStartup startup;
-            startup.trigger = WideToUTF8(file.trigger);
-            startup.auto_start = file.auto_start;
-            startup.executable = WideToUTF8(launch.wstring());
-            config.startups.push_back(std::move(startup));
+            LauncherStartup launcher_startup;
+            launcher_startup.trigger = WideToUTF8(file.trigger);
+            launcher_startup.auto_start = file.auto_start;
+            launcher_startup.executable = WideToUTF8(launch.wstring());
+            config.startups.push_back(std::move(launcher_startup));
         }
 
         const auto json = nlohmann::json(config).dump(2);
@@ -703,6 +733,22 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
                                   payloads.sandbox64_bytes, payloads.sandbox64_size, error))
         {
             return error;
+        }
+
+        /*
+         * The startup image of the session travels below `app` as well: the
+         * launcher reads it from the resources of the archive and decodes it
+         * while it prepares the sandbox, so the file is never copied into the
+         * state directory. A session which sets no image writes no file.
+         */
+        const auto startup_entry = StartupImageEntryName(startup.image);
+        if (!startup_entry.empty())
+        {
+            const auto entry = std::string(layout::kAppDirName) + "/" + startup_entry;
+            if (!writer.AddFileDisk(startup.image, entry, error))
+            {
+                return error;
+            }
         }
 
         if (!writer.Close(error))

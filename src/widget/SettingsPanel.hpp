@@ -7,9 +7,11 @@
  * which the project builds as an error.
  */
 #include <wx/wx.h>
+#include <wx/checkbox.h>
 #include <wx/combobox.h>
 #include "core/ApplicationMetadata.hpp"
 #include "core/ProjectType.hpp"
+#include "core/StartupScreen.hpp"
 #include <vector>
 
 /** Command id of the archive path box of the Output tab. */
@@ -33,6 +35,18 @@ extern const int kSettingsMetadataField;
 /** Command id of the "Customize..." button of the Metadata tab. */
 extern const int kSettingsMetadataCustomize;
 
+/** Command id of the startup screen checkbox of the Startup tab. */
+extern const int kSettingsStartupScreen;
+
+/** Command id of the startup image box of the Startup tab. */
+extern const int kSettingsStartupImage;
+
+/** Command id of the "Browse..." button of the Startup tab. */
+extern const int kSettingsStartupBrowse;
+
+/** Command id of the "Clear" button of the Startup tab. */
+extern const int kSettingsStartupClear;
+
 /**
  * @brief Event raised when the Metadata tab changes the file properties.
  *
@@ -41,6 +55,16 @@ extern const int kSettingsMetadataCustomize;
  * dialog - through this event instead of storing a state of its own.
  */
 wxDECLARE_EVENT(APPBOX_METADATA_CHANGED, wxCommandEvent);
+
+/**
+ * @brief Event raised when the Startup tab changes the startup screen.
+ *
+ * The frame owns the startup screen of the session, so the tab reports the
+ * checkbox and the `Clear` button through this event instead of storing a
+ * state of its own. The `Browse...` button raises its command event, which the
+ * frame handles like every other dialog it opens.
+ */
+wxDECLARE_EVENT(APPBOX_STARTUP_CHANGED, wxCommandEvent);
 
 /**
  * @brief One program the file properties of the launcher can be inherited from.
@@ -64,19 +88,23 @@ class wxSimplebook;
  * properties the launcher of the archive is packed with: the program they are
  * inherited from with the `Browse...` button which picks it, the fields a user
  * fills in most of the time and the `Customize...` button which opens the
- * dialog of the remaining fields. The strip is shared with the other
- * workspaces, so a further tab is added by appending to the strip and to the
- * book.
+ * dialog of the remaining fields. The `Startup` tab carries the startup screen
+ * of the launcher: the checkbox which decides whether it is shown at all, the
+ * image it presents with the `Browse...` button which picks it and the `Clear`
+ * button which drops it. The strip is shared with the other workspaces, so a
+ * further tab is added by appending to the strip and to the book.
  *
  * The workspace holds no model of its own: the session of the frame owns the
- * output path, the project type and the metadata, pushes them into the
- * controls through SetOutputPath(), SetProjectType(), SetMetadataSources() and
- * SetMetadataValues(), and reads them back through GetOutputPath(),
- * GetProjectType(), GetMetadataSource() and GetMetadataValues(). The controls
- * raise their command events without a handler of their own, so the frame
- * handles them the same way it handles every other workspace; an edit of the
- * metadata is reported through APPBOX_METADATA_CHANGED, because the tab cannot
- * tell an override from a value which follows the source program.
+ * output path, the project type, the metadata and the startup screen, pushes
+ * them into the controls through SetOutputPath(), SetProjectType(),
+ * SetMetadataSources(), SetMetadataValues() and SetStartupScreen(), and reads
+ * them back through GetOutputPath(), GetProjectType(), GetMetadataSource(),
+ * GetMetadataValues() and GetStartupScreen(). The controls raise their command
+ * events without a handler of their own, so the frame handles them the same
+ * way it handles every other workspace; an edit of the metadata is reported
+ * through APPBOX_METADATA_CHANGED, because the tab cannot tell an override
+ * from a value which follows the source program, and an edit of the startup
+ * screen is reported through APPBOX_STARTUP_CHANGED.
  *
  * The options of a tab are laid out in one grid, so the labels line up in one
  * column and the controls in the next one. The archive path box offers the
@@ -174,6 +202,33 @@ public:
      */
     void EnableMetadata(bool enabled);
 
+    /**
+     * @brief Get the startup screen the Startup tab shows.
+     * @return The startup screen of the tab.
+     */
+    appbox::StartupScreen GetStartupScreen() const;
+
+    /**
+     * @brief Fill the Startup tab.
+     *
+     * The controls are changed without raising a command event, so a caller
+     * which restores a configuration does not re-enter its own handler.
+     *
+     * @param[in] screen Startup screen to show.
+     * @param[in] note Text which explains the state of the tab.
+     */
+    void SetStartupScreen(const appbox::StartupScreen& screen, const wxString& note);
+
+    /**
+     * @brief Enable or disable the controls of the Startup tab.
+     *
+     * A patch project writes no launcher, so it has no startup screen and the
+     * tab cannot be edited.
+     *
+     * @param[in] enabled Whether the tab can be edited.
+     */
+    void EnableStartup(bool enabled);
+
 private:
     /**
      * @brief Create the page of the `Output` tab.
@@ -188,6 +243,13 @@ private:
      * @return The created page.
      */
     wxWindow* CreateMetadataPage(wxWindow* parent);
+
+    /**
+     * @brief Create the page of the `Startup` tab.
+     * @param[in] parent Parent window of the page.
+     * @return The created page.
+     */
+    wxWindow* CreateStartupPage(wxWindow* parent);
 
     /**
      * @brief Read the field boxes into the values the tab shows.
@@ -216,6 +278,23 @@ private:
      * @brief Tell the frame that the Metadata tab was edited.
      */
     void ReportMetadataChanged();
+
+    /**
+     * @brief Report an edit of the startup screen checkbox.
+     * @param[in] event Command event of the checkbox.
+     */
+    void OnStartupScreenToggled(wxCommandEvent& event);
+
+    /**
+     * @brief Drop the startup image of the session.
+     * @param[in] event Command event of the `Clear` button.
+     */
+    void OnStartupClear(wxCommandEvent& event);
+
+    /**
+     * @brief Tell the frame that the Startup tab was edited.
+     */
+    void ReportStartupChanged();
 
     /**
      * @brief Show the page of the activated tab.
@@ -319,6 +398,29 @@ private:
      * one of its boxes.
      */
     std::vector<appbox::MetadataField> metadata_values_;
+
+    /**
+     * @brief The page of the `Startup` tab.
+     */
+    wxWindow* startup_page_ = nullptr;
+
+    /**
+     * @brief The checkbox which decides whether the launcher shows the screen.
+     */
+    wxCheckBox* startup_screen_ = nullptr;
+
+    /**
+     * @brief The box which shows the host path of the startup image.
+     *
+     * The box is read only: the path is chosen with the `Browse...` button of
+     * the tab, which the frame handles, and dropped with its `Clear` button.
+     */
+    wxTextCtrl* startup_image_ = nullptr;
+
+    /**
+     * @brief The note of the Startup tab, which explains the state of the tab.
+     */
+    wxStaticText* startup_note_ = nullptr;
 };
 
 #endif // APPBOX_PACKER_WIDGET_SETTINGS_PANEL_HPP

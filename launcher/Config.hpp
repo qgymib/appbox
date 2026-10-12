@@ -41,6 +41,44 @@ struct LauncherStartup
 };
 
 /**
+ * @brief Startup screen the launcher shows while it prepares the sandbox.
+ *
+ * The screen presents the name of the packaged application, the startup image
+ * of the session and the progress of the run; it is destroyed as soon as the
+ * processes of the run were started. A session which sets no image shows the
+ * name and the progress only, and a session which turns the screen off shows
+ * nothing at all.
+ *
+ * The name is not part of the configuration: the launcher reads it from the
+ * version resource the packer wrote into itself, so it always matches the file
+ * properties the shell shows for the extracted program.
+ */
+struct LauncherStartupScreen
+{
+    /**
+     * @brief Whether the launcher shows the startup screen.
+     *
+     * The screen is shown unless the session turns it off, which keeps the
+     * default behavior of a packed application: a user of the archive sees
+     * that the program is being prepared instead of a launcher which seems to
+     * do nothing.
+     */
+    bool screen = true;
+
+    /**
+     * @brief Startup image of the session, relative to the resource root.
+     *
+     * The image is written below `app` by the packer, so the path names an
+     * entry of the resource root, e.g. `startup/splash.png`. It is empty while
+     * the session sets no image, which makes the launcher show the name and
+     * the progress only.
+     */
+    std::string image;
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LauncherStartupScreen, screen, image)
+};
+
+/**
  * @brief Configuration of the launcher of one packed application.
  *
  * The layout of the archive is a fixed convention (`common/SandboxLayout.hpp`):
@@ -63,11 +101,16 @@ struct LauncherConfig
     bool hide_console = false;
 
     /**
+     * @brief Startup screen the launcher shows, see LauncherStartupScreen.
+     */
+    LauncherStartupScreen startup;
+
+    /**
      * @brief Startup files, in the order the launcher starts them.
      */
     std::vector<LauncherStartup> startups;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LauncherConfig, hide_console, startups)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LauncherConfig, hide_console, startup, startups)
 };
 
 } // namespace appbox

@@ -1,12 +1,29 @@
 #ifndef APPBOX_LAUNCHER_UTILS_PATCH_LAYER_HPP
 #define APPBOX_LAUNCHER_UTILS_PATCH_LAYER_HPP
 
+#include <cstddef>
+#include <functional>
 #include <string>
 #include <vector>
 #include "utils/SandboxPaths.hpp"
 
 namespace appbox
 {
+
+/**
+ * @brief Progress of the patch packages of a run.
+ *
+ * Loading the packages is the longest part of the preparation of a run, so the
+ * caller which shows a startup screen reports it: the callback is invoked
+ * before a package is handled and once per file the package is extracted with,
+ * which lets the screen advance its progress bar while the run works.
+ *
+ * @param[in] done Number of packages which were handled completely.
+ * @param[in] total Number of packages the run applies.
+ * @param[in] fraction Progress inside the package which is being handled, `0`
+ *                     at its beginning and `1` at its end.
+ */
+using PatchProgressCallback = std::function<void(std::size_t done, std::size_t total, double fraction)>;
 
 /**
  * @brief One patch package which takes part in a run.
@@ -99,10 +116,12 @@ struct PatchLayer
  * without layers above the resources of the archive.
  *
  * @param[in] paths The resolved layout of the run.
+ * @param[in] progress Progress of the packages, see PatchProgressCallback. May
+ *                     be empty to disable progress reporting.
  * @return The accepted packages in ascending name order, which is the order
  *         the layers of the run are applied in.
  */
-std::vector<PatchLayer> LoadPatchLayers(const SandboxPaths& paths);
+std::vector<PatchLayer> LoadPatchLayers(const SandboxPaths& paths, const PatchProgressCallback& progress = {});
 
 } // namespace appbox
 

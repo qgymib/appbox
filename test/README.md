@@ -346,12 +346,16 @@ The unit tests of the packer:
   the program the file properties of the launcher are inherited from and the
   fields the user edited, refuses a key which is not a field of a version
   resource and a field which is listed twice, and is read as empty while it is
-  absent, and the atomic read.
+  absent, the optional `startup` member, which names the flag of the startup
+  screen and the image it presents, is written for every session and read as
+  the screen of a fresh session while it is absent, and refuses a member which
+  does not fit the schema, and the atomic read.
 * `test/unit/ProjectFile.cpp` — the file layer of a project file: the
   round trip of the configuration, of the virtual registry, of the
   filesystem isolation modes, of the proxy of the network workspace, of the
-  environment variables of the environment workspace, of the project type and of
-  the file properties the launcher carries,
+  environment variables of the environment workspace, of the project type, of
+  the file properties the launcher carries and of the startup screen the
+  launcher shows,
   the strict UTF-8 encoding, the failures of a malformed document and the
   atomicity of applying a document to the models, including a mode which a file
   cannot hold, a path which is listed twice, a proxy the model refuses, a
@@ -372,7 +376,12 @@ The unit tests of the packer:
 * `test/unit/PackService.cpp` — the archive carries the hive, the isolation
   file of the registry, the isolation file of the filesystem workspace, the
   isolation file of the network workspace, the isolation file of the
-  environment workspace and the two sandbox injection modules below `app`, and
+  environment workspace, the two sandbox injection modules below `app` and, for
+  a session which sets one, the startup image of the launcher, which the
+  configuration names and which the progress total counts like every other
+  entry which does not come from an import; the run refuses a session whose
+  image is missing or of a format the launcher cannot decode before the first
+  entry is written, and
   the launcher carries the file properties of the program the metadata of the
   session inherits from with the fields the user edited applied on top of them;
   the patch package carries the very same resources
@@ -521,6 +530,42 @@ executable carries itself:
 * `test/unit/StartupTree.cpp` — the startup file tree of the packer: the rows
   of the imports, the default trigger of a file, the uniqueness of a trigger
   and the auto start flag.
+* `test/unit/StartupScreen.cpp` — the startup screen of a packer session: the
+  session which shows the screen without an image, the formats the launcher can
+  decode (`.png`, `.jpg`, `.jpeg` and `.bmp`, compared ignoring the case), the
+  extension of a file name which is not confused with a dot of a directory, the
+  archive entry of an image (`startup/splash.<extension>`, which is the name the
+  launcher configuration carries), and the validation of a pack run: a session
+  without an image, an image which exists, an image which is missing, a file
+  which the launcher cannot decode and a folder which carries the name of an
+  image.
+* `test/unit/StartupLayout.cpp` — the layout of the startup screen, which is a
+  pure function of the sizes it is given: the slices of the progress bar and
+  their order, the clamping of a fraction, the screen without an image, a small
+  image which keeps its size and is centered, a wide image which widens the
+  content, a large image which is scaled down while it keeps its aspect ratio
+  and stays inside the work area, an incomplete image size, the scaling of the
+  margins and of the bar with the resolution of the monitor, and an empty work
+  area which still yields a usable screen.
+* `test/unit/StartupImage.cpp` — the decoder of a startup image, which is the
+  imaging component of Windows: a bitmap written by the case, a PNG with
+  transparency written by the encoder of the same component, the premultiplied
+  pixels the screen blends with, a second image which replaces the first, and
+  the failures of a file which is not an image, of a file which is not there and
+  of an empty path.
+* `test/unit/VersionInfo.cpp` — the name the startup screen presents: the
+  `ProductName` of a program, the `FileDescription` of a program which carries
+  no product name, the file name of a program without a version resource at
+  all, and the name of the running program. The cases patch a copy of the real
+  launcher with `ApplyApplicationMetadata()`, which is the very call the packer
+  writes the file properties with.
+* `test/unit/Splash.cpp` — the window of the startup screen: the class of the
+  window, the client area which follows the layout, the image which is drawn
+  with the size the decoder reported, the order of the name, the image and the
+  bar, the bar which advances towards the progress the run reported (the case
+  reads the pixels of the window while it pumps its message queue), a screen
+  without an image, an image which cannot be decoded, a screen which is turned
+  off, where every method is a no-op, and a screen which is closed twice.
 
 The independence of the products from the runtime library of the toolchain has
 a suite of its own:
@@ -1043,6 +1088,32 @@ documented in its own header comment.
 | `AutoStartAll` | – | `one` and `two` start, `manual` does not, the launcher exits with zero |
 | `SelectedByTrigger` | `manual` | only `manual` starts, the auto start files do not, the launcher exits with zero |
 | `UnknownTrigger` | `missing` | nothing starts, not even the auto start files, and the launcher reports a non zero exit code |
+
+### Launcher startup screen cases
+
+The startup screen cases (`test/e2e/Launcher_StartupScreen.cpp`) pin the screen
+the launcher shows while it prepares the sandbox: it presents the name of the
+packaged application, the startup image of the session and the progress of the
+run, and it disappears as soon as the processes of the run were started. The
+image is a resource of the archive below `app` (`app/startup/splash.<extension>`,
+see `src/core/StartupScreen.*`), and the configuration of the run names it
+(`startup.image`); a session which turns the screen off (`startup.screen`) runs
+without a window at all.
+
+The cases read the log the launcher writes into the directory of the run, which
+reports that the screen was shown, whether it carried its image and that it was
+closed again: the window lives for a few milliseconds only, so its lifetime is
+pinned through those reports instead of through the window itself. The cases are
+the only ones which turn the screen on, because the harness turns it off for
+every other case: a window which pops up for every case would cover the work of
+the user, like the console window the harness hides.
+
+| Case | Steps | Expected |
+| --- | --- | --- |
+| `TheScreenIsShownWhileTheApplicationStarts` | the resources carry `app/startup/splash.bmp` of 8x4 pixels and the configuration names it | the startup file is started, the launcher exits with zero, and the log reports a shown screen which decoded the image of 8x4 pixels and which was closed again |
+| `AScreenWithoutItsImageKeepsTheRunAlive` | the configuration names an image which does not exist | the run is not refused, and the log reports a screen which is shown without its image |
+| `AnImageWhichCannotBeDecodedKeepsTheRunAlive` | the file of the image holds text instead of an image | the run is not refused, and the log reports a screen which is shown without its image |
+| `ASessionWithoutAScreenCreatesNoWindow` | the configuration turns the screen off | the startup file is started, and the log reports neither a shown nor a closed screen |
 
 ### Launcher shell cases
 

@@ -67,6 +67,9 @@ appbox::ProjectDocument BuildSampleDocument()
     document.metadata.source = L"C:\\Program Files\\MyApp\\app.exe";
     document.metadata.overrides.push_back(description);
 
+    document.startup.enabled = false;
+    document.startup.image = L"C:\\Users\\me\\logo.png";
+
     appbox::ProjectFolderRecord folder;
     folder.preset_id = "program_files";
     folder.name = L"MyApp";
@@ -160,6 +163,9 @@ TEST(Unit_ProjectDocument, RoundTripKeepsEveryMember)
     EXPECT_EQ(back.metadata.overrides[0].key, appbox::metadata_field::kFileDescription);
     EXPECT_EQ(back.metadata.overrides[0].value, L"My Application");
 
+    EXPECT_FALSE(back.startup.enabled);
+    EXPECT_EQ(back.startup.image, L"C:\\Users\\me\\logo.png");
+
     ASSERT_EQ(back.folders.size(), 1u);
     EXPECT_EQ(back.folders[0].preset_id, "program_files");
     EXPECT_EQ(back.folders[0].name, L"MyApp");
@@ -228,60 +234,96 @@ TEST(Unit_ProjectDocument, RoundTripKeepsEveryMember)
 
 TEST(Unit_ProjectDocument, RejectsAnIncompleteDnsRecord)
 {
-    const auto missing = ParseError(R"({"version":2,"network":[{"hostname":"example.com"}]})");
+    const auto missing = ParseError(R"({"version":1,"network":[{"hostname":"example.com"}]})");
     EXPECT_NE(missing.find("network[0]"), std::string::npos) << missing;
     EXPECT_NE(missing.find("redirect"), std::string::npos) << missing;
 
-    const auto mistyped = ParseError(R"({"version":2,"network":[{"hostname":7,"redirect":"127.0.0.1"}]})");
+    const auto mistyped = ParseError(R"({"version":1,"network":[{"hostname":7,"redirect":"127.0.0.1"}]})");
     EXPECT_NE(mistyped.find("network[0]"), std::string::npos) << mistyped;
 
-    const auto not_an_array = ParseError(R"({"version":2,"network":{}})");
+    const auto not_an_array = ParseError(R"({"version":1,"network":{}})");
     EXPECT_NE(not_an_array.find("network"), std::string::npos) << not_an_array;
 }
 
 TEST(Unit_ProjectDocument, ReadsADocumentWithoutFileProperties)
 {
     /* The member is optional: a document which does not name it edits nothing. */
-    const auto document = ParseDocument(R"({"version":2})");
+    const auto document = ParseDocument(R"({"version":1})");
     EXPECT_TRUE(document.metadata.source.empty());
     EXPECT_TRUE(document.metadata.overrides.empty());
 
     /* A member which only lists the fields describes the default source. */
     const auto without_source =
-        ParseDocument(R"({"version":2,"metadata":{"overrides":[{"key":"FileDescription","value":"My Application"}]}})");
+        ParseDocument(R"({"version":1,"metadata":{"overrides":[{"key":"FileDescription","value":"My Application"}]}})");
     EXPECT_TRUE(without_source.metadata.source.empty());
     ASSERT_EQ(without_source.metadata.overrides.size(), 1u);
     EXPECT_EQ(without_source.metadata.overrides[0].key, appbox::metadata_field::kFileDescription);
     EXPECT_EQ(without_source.metadata.overrides[0].value, L"My Application");
 
     /* A null member describes a session without file properties as well. */
-    const auto null_member = ParseDocument(R"({"version":2,"metadata":null})");
+    const auto null_member = ParseDocument(R"({"version":1,"metadata":null})");
     EXPECT_TRUE(null_member.metadata.source.empty());
     EXPECT_TRUE(null_member.metadata.overrides.empty());
+}
+
+TEST(Unit_ProjectDocument, ReadsADocumentWithoutAStartupScreen)
+{
+    /* The member is optional: a document which does not name it shows the
+     * startup screen of a fresh session. */
+    const auto document = ParseDocument(R"({"version":1})");
+    EXPECT_TRUE(document.startup.enabled);
+    EXPECT_TRUE(document.startup.image.empty());
+
+    /* A member which only turns the screen off keeps the default image. */
+    const auto off = ParseDocument(R"({"version":1,"startup":{"screen":false}})");
+    EXPECT_FALSE(off.startup.enabled);
+    EXPECT_TRUE(off.startup.image.empty());
+
+    /* A member which only names an image keeps the screen shown. */
+    const auto image = ParseDocument(R"({"version":1,"startup":{"image":"C:\\logo.png"}})");
+    EXPECT_TRUE(image.startup.enabled);
+    EXPECT_EQ(image.startup.image, L"C:\\logo.png");
+
+    /* A null member describes the default session as well. */
+    const auto null_member = ParseDocument(R"({"version":1,"startup":null})");
+    EXPECT_TRUE(null_member.startup.enabled);
+    EXPECT_TRUE(null_member.startup.image.empty());
+}
+
+TEST(Unit_ProjectDocument, RejectsAMalformedStartupScreen)
+{
+    const auto mistyped_flag = ParseError(R"({"version":1,"startup":{"screen":"yes"}})");
+    EXPECT_NE(mistyped_flag.find("screen"), std::string::npos) << mistyped_flag;
+
+    const auto mistyped_image = ParseError(R"({"version":1,"startup":{"image":7}})");
+    EXPECT_NE(mistyped_image.find("image"), std::string::npos) << mistyped_image;
+
+    const auto not_an_object = ParseError(R"({"version":1,"startup":[]})");
+    EXPECT_NE(not_an_object.find("startup"), std::string::npos) << not_an_object;
 }
 
 TEST(Unit_ProjectDocument, RejectsAFilePropertyWhichIsNotAField)
 {
     const auto unknown =
-        ParseError(R"({"version":2,"metadata":{"overrides":[{"key":"FileDescriptions","value":"My Application"}]}})");
+        ParseError(R"({"version":1,"metadata":{"overrides":[{"key":"FileDescriptions","value":"My Application"}]}})");
     EXPECT_NE(unknown.find("overrides[0]"), std::string::npos) << unknown;
     EXPECT_NE(unknown.find("FileDescriptions"), std::string::npos) << unknown;
 
     /* A field without its value is incomplete. */
-    const auto incomplete = ParseError(R"({"version":2,"metadata":{"overrides":[{"key":"FileDescription"}]}})");
+    const auto incomplete = ParseError(R"({"version":1,"metadata":{"overrides":[{"key":"FileDescription"}]}})");
     EXPECT_NE(incomplete.find("overrides[0]"), std::string::npos) << incomplete;
     EXPECT_NE(incomplete.find("value"), std::string::npos) << incomplete;
 
-    const auto not_an_array = ParseError(R"({"version":2,"metadata":{"overrides":{}}})");
+    const auto not_an_array = ParseError(R"({"version":1,"metadata":{"overrides":{}}})");
     EXPECT_NE(not_an_array.find("overrides"), std::string::npos) << not_an_array;
 
-    const auto not_an_object = ParseError(R"({"version":2,"metadata":[]})");
+    const auto not_an_object = ParseError(R"({"version":1,"metadata":[]})");
     EXPECT_NE(not_an_object.find("metadata"), std::string::npos) << not_an_object;
 }
 
 TEST(Unit_ProjectDocument, RejectsAFilePropertyWhichIsListedTwice)
 {
-    const auto duplicate = ParseError(R"({"version":2,"metadata":{"overrides":[{"key":"ProductName","value":"One"},)"
+    const auto duplicate = ParseError(R"({"version":1,"metadata":{"overrides":[{"key":"ProductName","value":"One"},)"
                                       R"({"key":"ProductName","value":"Two"}]}})");
     EXPECT_NE(duplicate.find("overrides[1]"), std::string::npos) << duplicate;
     EXPECT_NE(duplicate.find("listed twice"), std::string::npos) << duplicate;
@@ -301,9 +343,9 @@ TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
      * The version comes first and the members follow the order of the schema,
      * so the text of a given document is stable and easy to diff.
      */
-    const std::vector<std::string> expected{ "version",    "output_path", "project_type",  "metadata",
-                                             "folders",    "files",       "startup_files", "registry",
-                                             "filesystem", "network",     "proxy",         "environment" };
+    const std::vector<std::string> expected{ "version", "output_path", "project_type",  "metadata", "startup",
+                                             "folders", "files",       "startup_files", "registry", "filesystem",
+                                             "network", "proxy",       "environment" };
     EXPECT_EQ(members, expected);
     EXPECT_EQ(json.at("version").get<int>(), appbox::kProjectFileVersion);
 
@@ -316,6 +358,11 @@ TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
     ASSERT_EQ(metadata.at("overrides").size(), 1u);
     EXPECT_EQ(metadata.at("overrides")[0].at("key").get<std::string>(), "FileDescription");
     EXPECT_EQ(metadata.at("overrides")[0].at("value").get<std::string>(), "My Application");
+
+    /* The startup screen names its flag and the image the launcher decodes. */
+    const auto& startup = json.at("startup");
+    EXPECT_FALSE(startup.at("screen").get<bool>());
+    EXPECT_EQ(startup.at("image").get<std::string>(), "C:\\Users\\me\\logo.png");
 
     /* The proxy names its protocol, the traffic it carries and the server. */
     const auto& proxy = json.at("proxy");
@@ -424,7 +471,7 @@ TEST(Unit_ProjectDocument, WritesAnEmptyStartupFileArray)
     EXPECT_TRUE(json.at("startup_files").empty());
 
     /* A document without startup files is read back as an empty list. */
-    const auto back = ParseDocument(R"({ "version": 2, "startup_files": [] })");
+    const auto back = ParseDocument(R"({ "version": 1, "startup_files": [] })");
     EXPECT_TRUE(back.startup_files.empty());
 }
 
@@ -434,13 +481,13 @@ TEST(Unit_ProjectDocument, OmitsTheProxyWhileNoneIsConfigured)
     EXPECT_FALSE(json.contains("proxy"));
 
     /* A hand written document may spell the absent member as a null value. */
-    const auto back = ParseDocument(R"({ "version": 2, "proxy": null })");
+    const auto back = ParseDocument(R"({ "version": 1, "proxy": null })");
     EXPECT_FALSE(back.proxy.has_value());
 }
 
 TEST(Unit_ProjectDocument, RoundTripsTheProxyOfTheWorkspace)
 {
-    const auto document = ParseDocument(R"({ "version": 2, "proxy": { "type": "SOCKS5", "tcp": false, "udp": true,)"
+    const auto document = ParseDocument(R"({ "version": 1, "proxy": { "type": "SOCKS5", "tcp": false, "udp": true,)"
                                         R"( "server": "proxy.example.com", "port": "1080",)"
                                         R"( "username": "", "password": "" } })");
 
@@ -462,24 +509,24 @@ TEST(Unit_ProjectDocument, RoundTripsTheProxyOfTheWorkspace)
 
 TEST(Unit_ProjectDocument, RejectsAnIncompleteProxyRecord)
 {
-    const auto missing = ParseError(R"({ "version": 2, "proxy": { "type": "socks5", "tcp": true, "udp": false,)"
+    const auto missing = ParseError(R"({ "version": 1, "proxy": { "type": "socks5", "tcp": true, "udp": false,)"
                                     R"( "server": "127.0.0.1", "port": "1080", "username": "user" } })");
     EXPECT_NE(missing.find("proxy"), std::string::npos) << missing;
     EXPECT_NE(missing.find("'password'"), std::string::npos) << missing;
 
-    const auto mistyped = ParseError(R"({ "version": 2, "proxy": { "type": "socks5", "tcp": "yes", "udp": false,)"
+    const auto mistyped = ParseError(R"({ "version": 1, "proxy": { "type": "socks5", "tcp": "yes", "udp": false,)"
                                      R"( "server": "127.0.0.1", "port": "1080", "username": "", "password": "" } })");
     EXPECT_NE(mistyped.find("proxy"), std::string::npos) << mistyped;
     EXPECT_NE(mistyped.find("'tcp'"), std::string::npos) << mistyped;
 
-    const auto not_an_object = ParseError(R"({ "version": 2, "proxy": 7 })");
+    const auto not_an_object = ParseError(R"({ "version": 1, "proxy": 7 })");
     EXPECT_NE(not_an_object.find("proxy"), std::string::npos) << not_an_object;
     EXPECT_NE(not_an_object.find("not a JSON object"), std::string::npos) << not_an_object;
 }
 
 TEST(Unit_ProjectDocument, RejectsAnUnknownProxyType)
 {
-    const auto error = ParseError(R"({ "version": 2, "proxy": { "type": "socks4", "tcp": true, "udp": false,)"
+    const auto error = ParseError(R"({ "version": 1, "proxy": { "type": "socks4", "tcp": true, "udp": false,)"
                                   R"( "server": "127.0.0.1", "port": "1080", "username": "", "password": "" } })");
     EXPECT_NE(error.find("proxy"), std::string::npos) << error;
     EXPECT_NE(error.find("unknown proxy type 'socks4'"), std::string::npos) << error;
@@ -487,7 +534,7 @@ TEST(Unit_ProjectDocument, RejectsAnUnknownProxyType)
 
 TEST(Unit_ProjectDocument, ReadsMissingMembersAsEmpty)
 {
-    const auto document = ParseDocument(R"({ "version": 2 })");
+    const auto document = ParseDocument(R"({ "version": 1 })");
 
     EXPECT_TRUE(document.output_path.empty());
 
@@ -511,7 +558,7 @@ TEST(Unit_ProjectDocument, WritesAnEmptyEnvironmentArray)
     EXPECT_TRUE(json.at("environment").empty());
 
     /* A document without variables is read back as an empty list. */
-    const auto back = ParseDocument(R"({ "version": 2, "environment": [] })");
+    const auto back = ParseDocument(R"({ "version": 1, "environment": [] })");
     EXPECT_TRUE(back.environment.empty());
 }
 
@@ -519,7 +566,7 @@ TEST(Unit_ProjectDocument, ReadingReplacesTheWholeDocument)
 {
     appbox::ProjectDocument document = BuildSampleDocument();
 
-    nlohmann::ordered_json::parse(R"({ "version": 2, "output_path": "D:\\out\\a.zip" })").get_to(document);
+    nlohmann::ordered_json::parse(R"({ "version": 1, "output_path": "D:\\out\\a.zip" })").get_to(document);
 
     /* Reading must not append to the document which was already there. */
     EXPECT_EQ(document.output_path, L"D:\\out\\a.zip");
@@ -537,7 +584,7 @@ TEST(Unit_ProjectDocument, ReadingLeavesTheDocumentUntouchedOnFailure)
 {
     appbox::ProjectDocument document = BuildSampleDocument();
 
-    const auto broken = nlohmann::ordered_json::parse(R"({ "version": 2, "folders": {} })");
+    const auto broken = nlohmann::ordered_json::parse(R"({ "version": 1, "folders": {} })");
     EXPECT_THROW(broken.get_to(document), appbox::ProjectDocumentError);
 
     EXPECT_EQ(document.project_type, appbox::ProjectType::Patch);
@@ -555,7 +602,7 @@ TEST(Unit_ProjectDocument, RejectsADocumentWhichIsNotAnObject)
 
 TEST(Unit_ProjectDocument, RejectsAVersionItDoesNotSupport)
 {
-    EXPECT_NE(ParseError(R"({ "version": 3 })").find("unsupported project file version 3 (expected 2)"),
+    EXPECT_NE(ParseError(R"({ "version": 3 })").find("unsupported project file version 3 (expected 1)"),
               std::string::npos);
 
     /* The version is required and has to be a whole number. */
@@ -566,44 +613,44 @@ TEST(Unit_ProjectDocument, RejectsAVersionItDoesNotSupport)
 
 TEST(Unit_ProjectDocument, RejectsMalformedMembers)
 {
-    EXPECT_NE(ParseError(R"({ "version": 2, "output_path": 7 })").find("the 'output_path' member is not a string"),
+    EXPECT_NE(ParseError(R"({ "version": 1, "output_path": 7 })").find("the 'output_path' member is not a string"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "project_type": 7 })").find("the 'project_type' member is not a string"),
+    EXPECT_NE(ParseError(R"({ "version": 1, "project_type": 7 })").find("the 'project_type' member is not a string"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "folders": {} })").find("the 'folders' member is not an array"),
+    EXPECT_NE(ParseError(R"({ "version": 1, "folders": {} })").find("the 'folders' member is not an array"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "files": {} })").find("the 'files' member is not an array"),
+    EXPECT_NE(ParseError(R"({ "version": 1, "files": {} })").find("the 'files' member is not an array"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "registry": {} })").find("the 'registry' member is not an array"),
+    EXPECT_NE(ParseError(R"({ "version": 1, "registry": {} })").find("the 'registry' member is not an array"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "filesystem": {} })").find("the 'filesystem' member is not an array"),
+    EXPECT_NE(ParseError(R"({ "version": 1, "filesystem": {} })").find("the 'filesystem' member is not an array"),
               std::string::npos);
 
     /* An element of an array has to be an object with every member of a record. */
-    EXPECT_NE(ParseError(R"({ "version": 2, "files": [ "MyApp" ] })").find("the entry is not a JSON object"),
+    EXPECT_NE(ParseError(R"({ "version": 1, "files": [ "MyApp" ] })").find("the entry is not a JSON object"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "folders": [ { "preset": "program_files", "name": "MyApp" } ] })")
+    EXPECT_NE(ParseError(R"({ "version": 1, "folders": [ { "preset": "program_files", "name": "MyApp" } ] })")
                   .find("the 'source' member is missing or not a string"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "files": [ { "preset": "user_profile", "name": "a.ini" } ] })")
+    EXPECT_NE(ParseError(R"({ "version": 1, "files": [ { "preset": "user_profile", "name": "a.ini" } ] })")
                   .find("the 'target_dir' member is missing or not a string"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "startup_files": 7 })").find("startup_files"), std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "environment": {} })").find("the 'environment' member is not an array"),
+    EXPECT_NE(ParseError(R"({ "version": 1, "startup_files": 7 })").find("startup_files"), std::string::npos);
+    EXPECT_NE(ParseError(R"({ "version": 1, "environment": {} })").find("the 'environment' member is not an array"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "environment": [ { "name": "PATH", "value": "C:\\MyApp",)"
+    EXPECT_NE(ParseError(R"({ "version": 1, "environment": [ { "name": "PATH", "value": "C:\\MyApp",)"
                          R"( "isolation": "write_copy", "merge": "prepend" } ] })")
                   .find("the 'merge_string' member is missing or not a string"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "environment": [ { "name": "PATH", "value": 7,)"
+    EXPECT_NE(ParseError(R"({ "version": 1, "environment": [ { "name": "PATH", "value": 7,)"
                          R"( "isolation": "write_copy", "merge": "prepend", "merge_string": ";" } ] })")
                   .find("the 'value' member is missing or not a string"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "startup_files": [ { "preset": "program_files", "folder": "MyApp", )"
+    EXPECT_NE(ParseError(R"({ "version": 1, "startup_files": [ { "preset": "program_files", "folder": "MyApp", )"
                          R"("path": "app.exe", "trigger": "app" } ] })")
                   .find("the 'auto_start' member is missing or not a boolean"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "startup_files": [ { "preset": "program_files", "folder": "MyApp", )"
+    EXPECT_NE(ParseError(R"({ "version": 1, "startup_files": [ { "preset": "program_files", "folder": "MyApp", )"
                          R"("path": "app.exe", "trigger": "app", "auto_start": "yes" } ] })")
                   .find("the 'auto_start' member is missing or not a boolean"),
               std::string::npos);
@@ -611,19 +658,19 @@ TEST(Unit_ProjectDocument, RejectsMalformedMembers)
 
 TEST(Unit_ProjectDocument, ReportsThePathOfTheRejectedEntry)
 {
-    const auto folders = ParseError(R"({ "version": 2, "folders": [)"
+    const auto folders = ParseError(R"({ "version": 1, "folders": [)"
                                     R"( { "preset": "program_files", "name": "MyApp", "source": "C:\\MyApp" },)"
                                     R"( { "preset": "program_files", "name": "Other", "source": "C:\\Other" },)"
                                     R"( { "preset": "program_files" } ] })");
     EXPECT_NE(folders.find("folders[2]"), std::string::npos);
 
-    const auto filesystem = ParseError(R"({ "version": 2, "filesystem": [)"
+    const auto filesystem = ParseError(R"({ "version": 1, "filesystem": [)"
                                        R"( { "path": "#Windows#", "kind": "directory", "isolation": "full" },)"
                                        R"( { "path": "#Windows#" } ] })");
     EXPECT_NE(filesystem.find("filesystem[1]"), std::string::npos);
     EXPECT_NE(filesystem.find("'kind'"), std::string::npos);
 
-    const auto startup = ParseError(R"({ "version": 2, "startup_files": [)"
+    const auto startup = ParseError(R"({ "version": 1, "startup_files": [)"
                                     R"( { "preset": "program_files", "folder": "MyApp", "path": "one.exe",)"
                                     R"( "trigger": "one", "auto_start": true },)"
                                     R"( { "preset": "program_files", "folder": "MyApp", "path": "two.exe",)"
@@ -635,12 +682,12 @@ TEST(Unit_ProjectDocument, ReportsThePathOfTheRejectedEntry)
      * The path of a nested entry names the key it belongs to, so a value which
      * does not fit the schema can be found in the file.
      */
-    const auto value = ParseError(R"({ "version": 2, "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "full",)"
+    const auto value = ParseError(R"({ "version": 1, "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "full",)"
                                   R"( "values": [ { "name": "Server" } ] } ] })");
     EXPECT_NE(value.find("registry[0]"), std::string::npos);
     EXPECT_NE(value.find("values[0]"), std::string::npos);
 
-    const auto environment = ParseError(R"({ "version": 2, "environment": [)"
+    const auto environment = ParseError(R"({ "version": 1, "environment": [)"
                                         R"( { "name": "TEMP", "value": "C:\\temp", "isolation": "write_copy",)"
                                         R"( "merge": "replace", "merge_string": "" },)"
                                         R"( { "name": "COUNT" } ] })");
@@ -650,48 +697,48 @@ TEST(Unit_ProjectDocument, ReportsThePathOfTheRejectedEntry)
 
 TEST(Unit_ProjectDocument, RejectsUnknownTokens)
 {
-    EXPECT_NE(ParseError(R"({ "version": 2, "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "sandbox" } ] })")
+    EXPECT_NE(ParseError(R"({ "version": 1, "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "sandbox" } ] })")
                   .find("unknown key isolation mode 'sandbox'"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "registry": [ { "name": "HKEY_CURRENT_USER",)"
+    EXPECT_NE(ParseError(R"({ "version": 1, "registry": [ { "name": "HKEY_CURRENT_USER",)"
                          R"( "isolation": "full", "values": [ { "name": "Server", "type": "REG_SOMETHING",)"
                          R"( "data": "", "isolation": "full" } ] } ] })")
                   .find("unknown value type 'REG_SOMETHING'"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "registry": [ { "name": "HKEY_CURRENT_USER",)"
+    EXPECT_NE(ParseError(R"({ "version": 1, "registry": [ { "name": "HKEY_CURRENT_USER",)"
                          R"( "isolation": "full", "values": [ { "name": "Server", "type": "REG_SZ",)"
                          R"( "data": "", "isolation": "sandbox" } ] } ] })")
                   .find("unknown value isolation mode 'sandbox'"),
               std::string::npos);
     EXPECT_NE(ParseError(
-                  R"({ "version": 2, "filesystem": [ { "path": "#Windows#", "kind": "link", "isolation": "full" } ] })")
+                  R"({ "version": 1, "filesystem": [ { "path": "#Windows#", "kind": "link", "isolation": "full" } ] })")
                   .find("unknown entry kind 'link'"),
               std::string::npos);
     EXPECT_NE(
         ParseError(
-            R"({ "version": 2, "filesystem": [ { "path": "#Windows#", "kind": "directory", "isolation": "hide" } ] })")
+            R"({ "version": 1, "filesystem": [ { "path": "#Windows#", "kind": "directory", "isolation": "hide" } ] })")
             .find("unknown isolation mode 'hide'"),
         std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "environment": [ { "name": "PATH", "value": "C:\\MyApp",)"
+    EXPECT_NE(ParseError(R"({ "version": 1, "environment": [ { "name": "PATH", "value": "C:\\MyApp",)"
                          R"( "isolation": "hide", "merge": "prepend", "merge_string": ";" } ] })")
                   .find("unknown isolation mode 'hide'"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "environment": [ { "name": "PATH", "value": "C:\\MyApp",)"
+    EXPECT_NE(ParseError(R"({ "version": 1, "environment": [ { "name": "PATH", "value": "C:\\MyApp",)"
                          R"( "isolation": "write_copy", "merge": "merge", "merge_string": ";" } ] })")
                   .find("unknown merge mode 'merge'"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "project_type": "installer" })").find("unknown project type 'installer'"),
+    EXPECT_NE(ParseError(R"({ "version": 1, "project_type": "installer" })").find("unknown project type 'installer'"),
               std::string::npos);
 }
 
 TEST(Unit_ProjectDocument, RejectsMalformedValueData)
 {
-    EXPECT_NE(ParseError(R"({ "version": 2, "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "full",)"
+    EXPECT_NE(ParseError(R"({ "version": 1, "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "full",)"
                          R"( "values": [ { "name": "Server", "type": "REG_BINARY", "data": "0",)"
                          R"( "isolation": "full" } ] } ] })")
                   .find("odd number of digits"),
               std::string::npos);
-    EXPECT_NE(ParseError(R"({ "version": 2, "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "full",)"
+    EXPECT_NE(ParseError(R"({ "version": 1, "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "full",)"
                          R"( "values": [ { "name": "Server", "type": "REG_BINARY", "data": "zz",)"
                          R"( "isolation": "full" } ] } ] })")
                   .find("invalid character"),
@@ -705,7 +752,7 @@ TEST(Unit_ProjectDocument, AcceptsTheTokensOfTheModels)
      * which is written from a model is read back unchanged.
      */
     const auto document =
-        ParseDocument(R"({ "version": 2, "project_type": "PATCH",)"
+        ParseDocument(R"({ "version": 1, "project_type": "PATCH",)"
                       R"( "registry": [ { "name": "HKEY_CURRENT_USER", "isolation": "write copy",)"
                       R"( "values": [ { "name": "Server", "type": "reg_dword", "data": "2A 00 00 00",)"
                       R"( "isolation": "FULL" } ] } ],)"

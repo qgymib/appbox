@@ -86,6 +86,11 @@ project only.
   and `app/sandbox64.dll`) beside the four domains, so the modules belong to the
   archive which is started. A patch package carries none of them: a package
   never replaces the modules of the archive it is applied to.
+- `app` carries the startup image of the session as well
+  (`app/startup/splash.<extension>`, see
+  [Startup Screen](StartupScreen.md)). A patch package cannot name one, because
+  the launcher configuration which names the image lives in the archive which is
+  started.
 
 ## Merge rules
 
@@ -325,6 +330,8 @@ after it, and the sandbox applies the list in that order.
   isolation](RegistryIsolation.md), [Network isolation](NetworkIsolation.md) and
   [Environment isolation](EnvironmentIsolation.md) describe the isolation the
   merged resources of `app` and the patches configure.
+- [Startup Screen](StartupScreen.md) describes the screen the launcher shows
+  while it prepares the sandbox, which a patch package cannot configure.
 - [`README.md`](../README.md) describes the packer and the `Project Type` box.
 - [`test/README.md`](../test/README.md) lists the test suites, including the
   unit tests of the patch packer and the end-to-end cases of the patch layers.

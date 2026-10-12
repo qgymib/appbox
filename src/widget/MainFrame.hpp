@@ -16,6 +16,7 @@
 #include "core/PackModel.hpp"
 #include "core/ProjectType.hpp"
 #include "core/RegistryModel.hpp"
+#include "core/StartupScreen.hpp"
 
 class DebugPanel;
 class EnvironmentPanel;
@@ -185,6 +186,28 @@ private:
      * @param[in] event Command event of the `Browse...` button.
      */
     void OnBrowseMetadata(wxCommandEvent& event);
+
+    /**
+     * @brief Refresh the Startup tab of the Settings workspace.
+     *
+     * The tab shows the startup screen of the session and a note which
+     * describes what the archive will present. A patch project writes no
+     * launcher, so the tab is disabled and explains why instead of offering a
+     * setting which would never be packed.
+     */
+    void RefreshStartupScreen();
+
+    /**
+     * @brief Adopt the startup screen the Startup tab shows.
+     * @param[in] event Command event of the tab.
+     */
+    void OnStartupScreenChanged(wxCommandEvent& event);
+
+    /**
+     * @brief Choose the image the startup screen presents.
+     * @param[in] event Command event of the `Browse...` button.
+     */
+    void OnBrowseStartupImage(wxCommandEvent& event);
 
     /**
      * @brief Handle the application exit command.
@@ -375,6 +398,15 @@ private:
      * which still follows the source program.
      */
     std::vector<appbox::MetadataField> metadata_inherited_;
+
+    /**
+     * @brief Startup screen the launcher of a standalone archive shows.
+     *
+     * The session stores whether the screen is shown at all and the host path
+     * of the image it presents; the pack run reads that file and writes it into
+     * the archive. The setting travels with the project file.
+     */
+    appbox::StartupScreen startup_screen_;
 
     /**
      * @brief Kind of product the `Build` command writes.

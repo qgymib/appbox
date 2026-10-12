@@ -25,11 +25,20 @@
 #include "utils/PatchLayer.hpp"
 #include "WString.hpp"
 #include "Launcher.hpp"
+#include "Splash.hpp"
 
 AppBoxLauncher& LauncherApp()
 {
     static AppBoxLauncher instance;
     return instance;
+}
+
+void ReportStartupStage(appbox::StartupStage stage, double fraction)
+{
+    if (LauncherApp().splash != nullptr)
+    {
+        LauncherApp().splash->SetStage(stage, fraction);
+    }
 }
 
 /**
@@ -291,7 +300,16 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level)
      * names an entry wins while an entry no package names keeps the content of
      * the archive and of the earlier runs.
      */
-    const auto patch_layers = appbox::LoadPatchLayers(paths);
+    ReportStartupStage(appbox::StartupStage::LoadingPatches, 0.0);
+
+    const auto patch_layers = appbox::LoadPatchLayers(paths, [](std::size_t done, std::size_t total, double fraction) {
+        /* The packages of the directory are the whole of this stage. */
+        const double packages = total > 0 ? static_cast<double>(total) : 1.0;
+        ReportStartupStage(appbox::StartupStage::LoadingPatches, (static_cast<double>(done) + fraction) / packages);
+    });
+
+    ReportStartupStage(appbox::StartupStage::MountingSandbox, 0.0);
+
     for (auto layer = patch_layers.rbegin(); layer != patch_layers.rend(); ++layer)
     {
         if (!layer->layer_root.empty())
@@ -302,6 +320,8 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level)
 
     MountLowerFS(paths.LayerRoot(), inject_data.fs_lower);
     MapOverlayFS(paths.state, inject_data.fs_upper);
+
+    ReportStartupStage(appbox::StartupStage::MountingSandbox, 0.3);
 
     /*
      * The variables the sandbox expands in the values of the workspace. The
@@ -331,6 +351,8 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level)
     ApplyPatchHives(paths.StateRegistryHiveFile(), patch_layers);
 
     inject_data.registry_hive_dos_path = appbox::WideToUTF8(paths.StateRegistryHiveFile());
+
+    ReportStartupStage(appbox::StartupStage::MountingSandbox, 0.6);
 
     /*
      * The isolation modes of the run are the modes of its layers: the file of
@@ -402,12 +424,16 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level)
     this->inject_data.sandbox32_dos_path = appbox::WideToUTF8(paths.Sandbox32Dll());
     this->inject_data.sandbox64_dos_path = appbox::WideToUTF8(paths.Sandbox64Dll());
 
+    ReportStartupStage(appbox::StartupStage::MountingSandbox, 0.8);
+
     this->pipe_server = appbox::RemoteServer::Create(this->inject_data.pipe_path);
     SPDLOG_DEBUG("pipe listen on {}", this->inject_data.pipe_path);
 
     /* Methods must register before rpc server start. */
     appbox::RpcInit(this->pipe_server);
     this->pipe_server->Start();
+
+    ReportStartupStage(appbox::StartupStage::MountingSandbox, 1.0);
 }
 
 AppBoxLauncherRuntime::~AppBoxLauncherRuntime()

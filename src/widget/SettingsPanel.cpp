@@ -18,8 +18,13 @@ extern const int kSettingsMetadataSource = wxNewId();
 extern const int kSettingsMetadataBrowse = wxNewId();
 extern const int kSettingsMetadataField = wxNewId();
 extern const int kSettingsMetadataCustomize = wxNewId();
+extern const int kSettingsStartupScreen = wxNewId();
+extern const int kSettingsStartupImage = wxNewId();
+extern const int kSettingsStartupBrowse = wxNewId();
+extern const int kSettingsStartupClear = wxNewId();
 
 wxDEFINE_EVENT(APPBOX_METADATA_CHANGED, wxCommandEvent);
+wxDEFINE_EVENT(APPBOX_STARTUP_CHANGED, wxCommandEvent);
 
 namespace
 {
@@ -31,8 +36,9 @@ namespace
  */
 enum class SettingsPage
 {
-    Output = 0,  ///< Destination archive and project type of the session.
-    Metadata = 1 ///< File properties the launcher of the archive carries.
+    Output = 0,   ///< Destination archive and project type of the session.
+    Metadata = 1, ///< File properties the launcher of the archive carries.
+    Startup = 2   ///< Startup screen the launcher of the archive shows.
 };
 
 /** Page the workspace opens on. */
@@ -95,6 +101,22 @@ const char* const kMetadataBrowseTooltip = "Choose any program the file properti
 const char* const kMetadataCustomizeTooltip =
     "Edit every field of the file properties, the ones the tab does not show included";
 
+/** Label of the startup image row of the Startup tab. */
+const char* const kStartupImageLabel = "Startup Image:";
+
+/** Label of the checkbox which decides whether the launcher shows the screen. */
+const char* const kStartupScreenLabel = "Show the startup screen while the launcher starts the application";
+
+/** Tooltip of the `Browse...` button of the Startup tab. */
+const char* const kStartupBrowseTooltip = "Choose the image the startup screen presents";
+
+/** Tooltip of the `Clear` button of the Startup tab. */
+const char* const kStartupClearTooltip =
+    "Drop the image, which leaves the name of the application and the progress of the run";
+
+/** Rows of the form of the Startup tab, one per option. */
+constexpr int kStartupFormRows = 2;
+
 } // namespace
 
 SettingsPanel::SettingsPanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
@@ -102,6 +124,7 @@ SettingsPanel::SettingsPanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
     tab_bar_ = new TabBar(this, wxID_ANY);
     tab_bar_->AddTab("Output");
     tab_bar_->AddTab("Metadata");
+    tab_bar_->AddTab("Startup");
     tab_bar_->SetSelection(static_cast<int>(kStartPage));
 
     /*
@@ -111,6 +134,7 @@ SettingsPanel::SettingsPanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
     pages_ = new wxSimplebook(this, wxID_ANY);
     pages_->AddPage(CreateOutputPage(pages_), "Output");
     pages_->AddPage(CreateMetadataPage(pages_), "Metadata");
+    pages_->AddPage(CreateStartupPage(pages_), "Startup");
     pages_->SetSelection(static_cast<std::size_t>(kStartPage));
 
     auto* sizer = new wxBoxSizer(wxVERTICAL);
@@ -122,6 +146,8 @@ SettingsPanel::SettingsPanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
     Bind(wxEVT_COMBOBOX, &SettingsPanel::OnMetadataSourceChanged, this, kSettingsMetadataSource);
     Bind(wxEVT_TEXT, &SettingsPanel::OnMetadataFieldEdited, this, kSettingsMetadataField);
     Bind(wxEVT_BUTTON, &SettingsPanel::OnMetadataCustomize, this, kSettingsMetadataCustomize);
+    Bind(wxEVT_CHECKBOX, &SettingsPanel::OnStartupScreenToggled, this, kSettingsStartupScreen);
+    Bind(wxEVT_BUTTON, &SettingsPanel::OnStartupClear, this, kSettingsStartupClear);
 }
 
 wxString SettingsPanel::GetOutputPath() const
@@ -301,6 +327,112 @@ wxWindow* SettingsPanel::CreateMetadataPage(wxWindow* parent)
     return page;
 }
 
+wxWindow* SettingsPanel::CreateStartupPage(wxWindow* parent)
+{
+    auto* page = new wxPanel(parent, wxID_ANY);
+
+    /*
+     * The checkbox carries its own label, so the label column of its row stays
+     * empty and the two rows of the form still line up.
+     */
+    startup_screen_ = new wxCheckBox(page, kSettingsStartupScreen, kStartupScreenLabel);
+    startup_screen_->SetValue(true);
+
+    /*
+     * The box shows the host path of the image and is read only: the path is
+     * chosen with the `Browse...` button and dropped with the `Clear` button,
+     * so a hand typed path can never name a file the pack run cannot read.
+     */
+    startup_image_ =
+        new wxTextCtrl(page, kSettingsStartupImage, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_READONLY);
+    startup_image_->SetMinSize(wxSize(kFieldWidth, -1));
+
+    auto* browse = new wxButton(page, kSettingsStartupBrowse, "Browse...");
+    browse->SetToolTip(kStartupBrowseTooltip);
+
+    auto* image_cell = new wxBoxSizer(wxHORIZONTAL);
+    image_cell->Add(startup_image_, 1, wxALIGN_CENTER_VERTICAL);
+
+    auto* grid = new wxFlexGridSizer(kStartupFormRows, kFormColumns, kRowGap, kFieldGap);
+    grid->AddGrowableCol(kControlColumn, 1);
+    grid->Add(0, 0);
+    grid->Add(startup_screen_, 1, wxEXPAND);
+    grid->Add(0, 0);
+    grid->Add(new wxStaticText(page, wxID_ANY, kStartupImageLabel), 0, wxALIGN_CENTER_VERTICAL);
+    grid->Add(image_cell, 1, wxEXPAND);
+    grid->Add(browse, 0, wxALIGN_CENTER_VERTICAL);
+
+    /*
+     * The note explains the state of the tab, for example why a patch project
+     * cannot set a startup screen; it is grey like the hints of the other tabs.
+     */
+    startup_note_ = new wxStaticText(page, wxID_ANY, wxEmptyString);
+    startup_note_->SetForegroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT));
+
+    auto* clear = new wxButton(page, kSettingsStartupClear, "Clear");
+    clear->SetToolTip(kStartupClearTooltip);
+
+    auto* buttons = new wxBoxSizer(wxHORIZONTAL);
+    buttons->Add(clear, 0);
+
+    auto* sizer = new wxBoxSizer(wxVERTICAL);
+    sizer->Add(grid, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, kFormBorder);
+    sizer->Add(startup_note_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, kFormBorder);
+    sizer->Add(buttons, 0, wxLEFT | wxRIGHT | wxTOP, kFormBorder);
+    page->SetSizer(sizer);
+
+    startup_page_ = page;
+    return page;
+}
+
+appbox::StartupScreen SettingsPanel::GetStartupScreen() const
+{
+    appbox::StartupScreen screen;
+
+    if (startup_screen_ != nullptr)
+    {
+        screen.enabled = startup_screen_->GetValue();
+    }
+    if (startup_image_ != nullptr)
+    {
+        screen.image = startup_image_->GetValue().ToStdWstring();
+    }
+
+    return screen;
+}
+
+void SettingsPanel::SetStartupScreen(const appbox::StartupScreen& screen, const wxString& note)
+{
+    if (startup_screen_ != nullptr)
+    {
+        /* SetValue() raises no command event, so this is not a re-entry. */
+        startup_screen_->SetValue(screen.enabled);
+    }
+
+    if (startup_image_ != nullptr)
+    {
+        const wxString path(screen.image);
+        startup_image_->ChangeValue(path);
+
+        /* The box cuts a long path off, so the whole path is offered as well. */
+        startup_image_->SetToolTip(path);
+    }
+
+    if (startup_note_ != nullptr)
+    {
+        startup_note_->SetLabel(note);
+        startup_note_->GetParent()->Layout();
+    }
+}
+
+void SettingsPanel::EnableStartup(bool enabled)
+{
+    if (startup_page_ != nullptr)
+    {
+        startup_page_->Enable(enabled);
+    }
+}
+
 void SettingsPanel::SetMetadataSources(const std::vector<MetadataSource>& sources, const wxString& selected)
 {
     if (metadata_source_ == nullptr)
@@ -435,6 +567,32 @@ void SettingsPanel::OnMetadataCustomize(wxCommandEvent&)
 void SettingsPanel::ReportMetadataChanged()
 {
     wxCommandEvent changed(APPBOX_METADATA_CHANGED, GetId());
+    changed.SetEventObject(this);
+    GetParent()->GetEventHandler()->ProcessEvent(changed);
+}
+
+void SettingsPanel::OnStartupScreenToggled(wxCommandEvent& event)
+{
+    ReportStartupChanged();
+    event.Skip();
+}
+
+void SettingsPanel::OnStartupClear(wxCommandEvent& event)
+{
+    if (startup_image_ != nullptr)
+    {
+        /* ChangeValue() raises no command event, so the edit is reported once. */
+        startup_image_->ChangeValue(wxString());
+        startup_image_->SetToolTip(wxString());
+    }
+
+    ReportStartupChanged();
+    event.Skip();
+}
+
+void SettingsPanel::ReportStartupChanged()
+{
+    wxCommandEvent changed(APPBOX_STARTUP_CHANGED, GetId());
     changed.SetEventObject(this);
     GetParent()->GetEventHandler()->ProcessEvent(changed);
 }

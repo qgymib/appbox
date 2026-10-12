@@ -15,8 +15,12 @@ add_executable(${PROJECT_NAME} WIN32
     "utils/ProcessJob.cpp"
     "utils/ProcessLauncher.cpp"
     "utils/Shell.cpp"
+    "utils/StartupImage.cpp"
+    "utils/StartupLayout.cpp"
+    "utils/VersionInfo.cpp"
     "utils/WinCall.cpp"
     "Launcher.cpp"
+    "Splash.cpp"
     "main.cpp"
     "resource.rc"
 
@@ -70,6 +74,16 @@ target_compile_options(${PROJECT_NAME} PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVE
 
 # Registry access of the hive merge of a patch layer (RegLoadAppKeyW and friends).
 target_link_libraries(${PROJECT_NAME} PRIVATE advapi32)
+
+# Version resource of the running program, which carries the file properties of
+# the packaged application (GetFileVersionInfoW and VerQueryValueW).
+target_link_libraries(${PROJECT_NAME} PRIVATE version)
+
+# Imaging component of Windows, which decodes the startup image of a session
+# (IWICImagingFactory and friends); it is a component of the operating system
+# and not a library of the project. The blend function which draws the image
+# with its transparency lives in msimg32.
+target_link_libraries(${PROJECT_NAME} PRIVATE windowscodecs ole32 msimg32)
 
 # Digest of a patch package (BCryptOpenAlgorithmProvider and friends).
 target_link_libraries(${PROJECT_NAME} PRIVATE bcrypt)

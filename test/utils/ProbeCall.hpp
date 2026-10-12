@@ -90,10 +90,16 @@ struct StartupRun
  * @param[in] launcher_config The launcher configuration.
  * @param[in] trigger Trigger passed with `--X-AppBox-Startup`, empty to let
  *                    the launcher start the auto start files.
+ * @param[in] startup_screen Whether the run shows the startup screen. The
+ *                           cases turn it off by default, because a window
+ *                           which pops up on the desktop of the machine would
+ *                           cover the work of the user; the cases which check
+ *                           the screen turn it on again.
  * @return The markers of the started startup files and the exit code of the
  *         launcher.
  */
-StartupRun ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launcher_config, const std::string& trigger);
+StartupRun ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launcher_config, const std::string& trigger,
+                           bool startup_screen = false);
 
 /**
  * @brief Startup files the launcher started during one run of the shell.

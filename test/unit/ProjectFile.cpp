@@ -155,6 +155,21 @@ appbox::ApplicationMetadata& ScratchMetadata()
 }
 
 /**
+ * @brief Sink of the startup screen for the cases which do not check it.
+ *
+ * The startup screen of the launcher is not the subject of the cases which use
+ * this helper, so it is restored into one sink which every case shares; a case
+ * which describes it keeps a state of its own.
+ *
+ * @return The sink of the startup screen.
+ */
+appbox::StartupScreen& ScratchStartup()
+{
+    static appbox::StartupScreen startup;
+    return startup;
+}
+
+/**
  * @brief Build the document of a session with the network and the environment
  *        model left out.
  *
@@ -169,15 +184,17 @@ appbox::ApplicationMetadata& ScratchMetadata()
  * @param[in] output_path Output path to store.
  * @param[in] project_type Kind of product to store, standalone by default.
  * @param[in] metadata File properties to store, none by default.
+ * @param[in] startup Startup screen to store, the default one by default.
  * @return The document of the session.
  */
 appbox::ProjectDocument MakeDocument(const appbox::PackModel& model, const appbox::RegistryModel& registry,
                                      const appbox::FilesystemIsolationModel& isolation, const std::wstring& output_path,
                                      appbox::ProjectType                project_type = appbox::ProjectType::Standalone,
-                                     const appbox::ApplicationMetadata& metadata = {})
+                                     const appbox::ApplicationMetadata& metadata = {},
+                                     const appbox::StartupScreen&       startup = {})
 {
     return appbox::MakeProjectDocument(model, registry, isolation, appbox::NetworkModel{}, appbox::EnvironmentModel{},
-                                       metadata, project_type, output_path);
+                                       metadata, startup, project_type, output_path);
 }
 
 /**
@@ -199,7 +216,7 @@ bool ApplyDocument(const appbox::ProjectDocument& document, appbox::PackModel& m
     appbox::EnvironmentModel environment;
     appbox::ProjectType      project_type = appbox::ProjectType::Standalone;
     return appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, ScratchMetadata(),
-                                        project_type, output_path, error);
+                                        ScratchStartup(), project_type, output_path, error);
 }
 
 /**
@@ -213,7 +230,7 @@ appbox::ProjectDocument MakeEnvironmentDocument(const appbox::EnvironmentModel& 
 {
     return appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
                                        appbox::NetworkModel{}, environment, appbox::ApplicationMetadata{},
-                                       appbox::ProjectType::Standalone, output_path);
+                                       appbox::StartupScreen{}, appbox::ProjectType::Standalone, output_path);
 }
 
 /**
@@ -237,7 +254,7 @@ bool ApplyEnvironmentDocument(const appbox::ProjectDocument& document, appbox::E
     appbox::ProjectType              project_type = appbox::ProjectType::Standalone;
     std::wstring                     output_path;
     return appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, ScratchMetadata(),
-                                        project_type, output_path, error);
+                                        ScratchStartup(), project_type, output_path, error);
 }
 
 /**
@@ -583,7 +600,7 @@ TEST(Unit_ProjectFile, LoadRejectsInvalidJson)
 {
     TempDir    temp;
     const auto file = temp.File(L"invalid.json");
-    WriteBytes(file, "{ \"version\": 2, \"folders\": [ }");
+    WriteBytes(file, "{ \"version\": 1, \"folders\": [ }");
 
     appbox::ProjectDocument document;
     std::string             error;
@@ -633,7 +650,7 @@ TEST(Unit_ProjectFile, LoadRejectsBytesWhichAreNotUtf8)
      * the range of a UTF-8 lead byte, so the text is not valid UTF-8 even
      * though it forms valid JSON.
      */
-    WriteBytes(file, "{ \"version\": 2, \"output_path\": \"\xB0\xA1\" }");
+    WriteBytes(file, "{ \"version\": 1, \"output_path\": \"\xB0\xA1\" }");
 
     appbox::ProjectDocument document;
     std::string             error;
@@ -645,7 +662,7 @@ TEST(Unit_ProjectFile, LoadAcceptsAUtf8ByteOrderMark)
 {
     TempDir    temp;
     const auto file = temp.File(L"bom.json");
-    WriteBytes(file, "\xEF\xBB\xBF{ \"version\": 2, \"output_path\": \"D:\\\\out\\\\a.zip\" }");
+    WriteBytes(file, "\xEF\xBB\xBF{ \"version\": 1, \"output_path\": \"D:\\\\out\\\\a.zip\" }");
 
     appbox::ProjectDocument document;
     std::string             error;
@@ -684,17 +701,17 @@ TEST(Unit_ProjectFile, LoadRejectsMalformedMembers)
     TempDir temp;
 
     const auto folders = temp.File(L"folders.json");
-    WriteBytes(folders, "{ \"version\": 2, \"folders\": {} }");
+    WriteBytes(folders, "{ \"version\": 1, \"folders\": {} }");
 
     const auto entry = temp.File(L"entry.json");
-    WriteBytes(entry, "{ \"version\": 2, \"folders\": [ { \"preset\": \"program_files\", "
+    WriteBytes(entry, "{ \"version\": 1, \"folders\": [ { \"preset\": \"program_files\", "
                       "\"name\": \"MyApp\" } ] }");
 
     const auto files = temp.File(L"files.json");
-    WriteBytes(files, "{ \"version\": 2, \"files\": [ \"MyApp\" ] }");
+    WriteBytes(files, "{ \"version\": 1, \"files\": [ \"MyApp\" ] }");
 
     const auto program = temp.File(L"program.json");
-    WriteBytes(program, "{ \"version\": 2, \"startup_files\": 7 }");
+    WriteBytes(program, "{ \"version\": 1, \"startup_files\": 7 }");
 
     appbox::ProjectDocument document;
     std::string             error;
@@ -717,7 +734,7 @@ TEST(Unit_ProjectFile, ApplyRejectsUnknownPresetDirectories)
 {
     TempDir    temp;
     const auto file = temp.File(L"preset.json");
-    WriteBytes(file, "{ \"version\": 2, \"folders\": [ { \"preset\": \"does_not_exist\", "
+    WriteBytes(file, "{ \"version\": 1, \"folders\": [ { \"preset\": \"does_not_exist\", "
                      "\"name\": \"MyApp\", \"source\": \"C:\\\\MyApp\" } ] }");
 
     appbox::ProjectDocument document;
@@ -738,7 +755,7 @@ TEST(Unit_ProjectFile, ApplyRejectsDuplicateImports)
 {
     TempDir    temp;
     const auto file = temp.File(L"duplicates.json");
-    WriteBytes(file, "{ \"version\": 2, \"folders\": [ "
+    WriteBytes(file, "{ \"version\": 1, \"folders\": [ "
                      "{ \"preset\": \"program_files\", \"name\": \"MyApp\", \"source\": \"C:\\\\MyApp\" }, "
                      "{ \"preset\": \"program_files\", \"name\": \"myapp\", \"source\": \"C:\\\\Other\" } ] }");
 
@@ -759,7 +776,7 @@ TEST(Unit_ProjectFile, ApplyRejectsAFileOutsideAnImportedFolder)
 {
     TempDir    temp;
     const auto file = temp.File(L"target.json");
-    WriteBytes(file, "{ \"version\": 2, \"folders\": [ { \"preset\": \"program_files\", "
+    WriteBytes(file, "{ \"version\": 1, \"folders\": [ { \"preset\": \"program_files\", "
                      "\"name\": \"MyApp\", \"source\": \"C:\\\\MyApp\" } ], "
                      "\"files\": [ { \"preset\": \"program_files\", \"target_dir\": \"Other\", "
                      "\"name\": \"tool.exe\", \"source\": \"C:\\\\tool.exe\" } ] }");
@@ -863,15 +880,15 @@ TEST(Unit_ProjectFile, LoadRejectsABrokenRegistry)
     TempDir temp;
 
     const auto broken = temp.File(L"broken-registry.json");
-    WriteBytes(broken, "{ \"version\": 2, \"registry\": [ { \"name\": \"HKEY_CURRENT_USER\", "
+    WriteBytes(broken, "{ \"version\": 1, \"registry\": [ { \"name\": \"HKEY_CURRENT_USER\", "
                        "\"isolation\": \"sandbox\" } ] }");
 
     const auto unknown_root = temp.File(L"unknown-root.json");
-    WriteBytes(unknown_root, "{ \"version\": 2, \"registry\": [ { \"name\": \"HKEY_OTHER\", "
+    WriteBytes(unknown_root, "{ \"version\": 1, \"registry\": [ { \"name\": \"HKEY_OTHER\", "
                              "\"isolation\": \"full\" } ] }");
 
     const auto bad_value = temp.File(L"bad-value.json");
-    WriteBytes(bad_value, "{ \"version\": 2, \"registry\": [ { \"name\": \"HKEY_CURRENT_USER\", "
+    WriteBytes(bad_value, "{ \"version\": 1, \"registry\": [ { \"name\": \"HKEY_CURRENT_USER\", "
                           "\"isolation\": \"full\", \"values\": [ { \"name\": \"Server\", "
                           "\"type\": \"REG_SOMETHING\", \"data\": \"\", \"isolation\": \"full\" } ] } ] }");
 
@@ -986,31 +1003,31 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenFilesystemMember)
     TempDir temp;
 
     const auto bad_mode = temp.File(L"fs-bad-mode.json");
-    WriteBytes(bad_mode, "{ \"version\": 2, \"filesystem\": [ { \"path\": \"#Windows#\", "
+    WriteBytes(bad_mode, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\", "
                          "\"kind\": \"directory\", \"isolation\": \"hide\" } ] }");
 
     const auto bad_kind = temp.File(L"fs-bad-kind.json");
-    WriteBytes(bad_kind, "{ \"version\": 2, \"filesystem\": [ { \"path\": \"#Windows#\", "
+    WriteBytes(bad_kind, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\", "
                          "\"kind\": \"link\", \"isolation\": \"full\" } ] }");
 
     const auto file_mode = temp.File(L"fs-file-mode.json");
-    WriteBytes(file_mode, "{ \"version\": 2, \"filesystem\": [ { \"path\": \"#Windows#\\\\a.dll\", "
+    WriteBytes(file_mode, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\\\\a.dll\", "
                           "\"kind\": \"file\", \"isolation\": \"write_copy\" } ] }");
 
     const auto file_merge = temp.File(L"fs-file-merge.json");
-    WriteBytes(file_merge, "{ \"version\": 2, \"filesystem\": [ { \"path\": \"#Windows#\\\\a.dll\", "
+    WriteBytes(file_merge, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\\\\a.dll\", "
                            "\"kind\": \"file\", \"isolation\": \"merge\" } ] }");
 
     const auto duplicate = temp.File(L"fs-duplicate.json");
-    WriteBytes(duplicate, "{ \"version\": 2, \"filesystem\": [ { \"path\": \"#Windows#\", \"kind\": "
+    WriteBytes(duplicate, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\", \"kind\": "
                           "\"directory\", \"isolation\": \"full\" }, { \"path\": \"#windows#\", \"kind\": "
                           "\"directory\", \"isolation\": \"whiteout\" } ] }");
 
     const auto missing = temp.File(L"fs-missing.json");
-    WriteBytes(missing, "{ \"version\": 2, \"filesystem\": [ { \"path\": \"#Windows#\" } ] }");
+    WriteBytes(missing, "{ \"version\": 1, \"filesystem\": [ { \"path\": \"#Windows#\" } ] }");
 
     const auto not_array = temp.File(L"fs-not-array.json");
-    WriteBytes(not_array, "{ \"version\": 2, \"filesystem\": {} }");
+    WriteBytes(not_array, "{ \"version\": 1, \"filesystem\": {} }");
 
     appbox::FilesystemIsolationModel isolation;
     std::string                      error;
@@ -1070,7 +1087,7 @@ TEST(Unit_ProjectFile, NetworkRedirectionsTravelWithTheProjectFile)
     const auto document =
         appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
                                     network, appbox::EnvironmentModel{}, appbox::ApplicationMetadata(),
-                                    appbox::ProjectType::Standalone, L"D:\\out\\MyApp.zip");
+                                    appbox::StartupScreen{}, appbox::ProjectType::Standalone, L"D:\\out\\MyApp.zip");
 
     const auto path = temp.File(L"network.json");
     ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
@@ -1086,8 +1103,8 @@ TEST(Unit_ProjectFile, NetworkRedirectionsTravelWithTheProjectFile)
     appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
-                                             loaded_environment, ScratchMetadata(), loaded_project_type, loaded_output,
-                                             error))
+                                             loaded_environment, ScratchMetadata(), ScratchStartup(),
+                                             loaded_project_type, loaded_output, error))
         << error;
 
     ASSERT_EQ(loaded_network.DnsEntries().size(), 2u);
@@ -1128,8 +1145,8 @@ TEST(Unit_ProjectFile, FilePropertiesTravelWithTheProjectFile)
     appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
-                                             loaded_environment, loaded_metadata, loaded_project_type, loaded_output,
-                                             error))
+                                             loaded_environment, loaded_metadata, ScratchStartup(), loaded_project_type,
+                                             loaded_output, error))
         << error;
 
     EXPECT_EQ(loaded_metadata.source, metadata.source);
@@ -1147,10 +1164,60 @@ TEST(Unit_ProjectFile, FilePropertiesTravelWithTheProjectFile)
 
     appbox::ApplicationMetadata cleared = loaded_metadata;
     ASSERT_TRUE(appbox::ApplyProjectDocument(plain, loaded, loaded_registry, loaded_isolation, loaded_network,
-                                             loaded_environment, cleared, loaded_project_type, loaded_output, error))
+                                             loaded_environment, cleared, ScratchStartup(), loaded_project_type,
+                                             loaded_output, error))
         << error;
     EXPECT_TRUE(cleared.source.empty());
     EXPECT_TRUE(cleared.overrides.empty());
+}
+
+TEST(Unit_ProjectFile, StartupScreenTravelsWithTheProjectFile)
+{
+    TempDir temp;
+
+    appbox::StartupScreen startup;
+    startup.enabled = false;
+    startup.image = L"C:\\Users\\me\\logo.png";
+
+    const auto document = MakeDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
+                                       L"D:\\out\\MyApp.zip", appbox::ProjectType::Standalone, {}, startup);
+
+    const auto  path = temp.File(L"startup.json");
+    std::string error;
+    ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
+
+    appbox::ProjectDocument loaded_document;
+    ASSERT_TRUE(appbox::LoadProject(path.wstring(), loaded_document, error)) << error;
+
+    appbox::PackModel                loaded;
+    appbox::RegistryModel            loaded_registry;
+    appbox::FilesystemIsolationModel loaded_isolation;
+    appbox::NetworkModel             loaded_network;
+    appbox::EnvironmentModel         loaded_environment;
+    appbox::StartupScreen            loaded_startup;
+    appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
+    std::wstring                     loaded_output;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
+                                             loaded_environment, ScratchMetadata(), loaded_startup, loaded_project_type,
+                                             loaded_output, error))
+        << error;
+
+    EXPECT_FALSE(loaded_startup.enabled);
+    EXPECT_EQ(loaded_startup.image, startup.image);
+
+    /* A document without a startup screen restores the default one, so a
+     * session which imports a configuration does not keep the screen of the
+     * session before it. */
+    const auto plain =
+        MakeDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, L"");
+
+    appbox::StartupScreen cleared = loaded_startup;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(plain, loaded, loaded_registry, loaded_isolation, loaded_network,
+                                             loaded_environment, ScratchMetadata(), cleared, loaded_project_type,
+                                             loaded_output, error))
+        << error;
+    EXPECT_TRUE(cleared.enabled);
+    EXPECT_TRUE(cleared.image.empty());
 }
 
 TEST(Unit_ProjectFile, ApplyRejectsABrokenNetworkMember)
@@ -1158,15 +1225,15 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenNetworkMember)
     TempDir temp;
 
     const auto missing = temp.File(L"network-missing.json");
-    WriteBytes(missing, "{ \"version\": 2, \"network\": [ { \"hostname\": \"example.com\" } ] }");
+    WriteBytes(missing, "{ \"version\": 1, \"network\": [ { \"hostname\": \"example.com\" } ] }");
 
     const auto bad_address = temp.File(L"network-bad-address.json");
     WriteBytes(bad_address,
-               "{ \"version\": 2, \"network\": [ { \"hostname\": \"example.com\", \"redirect\": \"nope\" } ] }");
+               "{ \"version\": 1, \"network\": [ { \"hostname\": \"example.com\", \"redirect\": \"nope\" } ] }");
 
     const auto duplicate = temp.File(L"network-duplicate.json");
     WriteBytes(duplicate,
-               "{ \"version\": 2, \"network\": [ { \"hostname\": \"example.com\", \"redirect\": \"127.0.0.1\" }, "
+               "{ \"version\": 1, \"network\": [ { \"hostname\": \"example.com\", \"redirect\": \"127.0.0.1\" }, "
                "{ \"hostname\": \"EXAMPLE.COM\", \"redirect\": \"127.0.0.2\" } ] }");
 
     appbox::NetworkModel network;
@@ -1188,13 +1255,13 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenNetworkMember)
      * the failure is reported while the document is applied. */
     ASSERT_TRUE(appbox::LoadProject(bad_address.wstring(), document, error)) << error;
     EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
-                                              ScratchMetadata(), project_type, output, error));
+                                              ScratchMetadata(), ScratchStartup(), project_type, output, error));
     EXPECT_NE(error.find("network[0]"), std::string::npos);
     EXPECT_NE(error.find("is not an IPv4 or an IPv6 address"), std::string::npos);
 
     ASSERT_TRUE(appbox::LoadProject(duplicate.wstring(), document, error)) << error;
     EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
-                                              ScratchMetadata(), project_type, output, error));
+                                              ScratchMetadata(), ScratchStartup(), project_type, output, error));
     EXPECT_NE(error.find("network[1]"), std::string::npos);
     EXPECT_NE(error.find("listed twice"), std::string::npos);
 
@@ -1222,9 +1289,10 @@ TEST(Unit_ProjectFile, ProxyTravelsWithTheProjectFile)
     ASSERT_TRUE(network.SetProxy(proxy, error)) << error;
     ASSERT_TRUE(network.AddDnsEntry(L"update.example.com", L"127.0.0.1", error)) << error;
 
-    const auto document = appbox::MakeProjectDocument(
-        appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, network,
-        appbox::EnvironmentModel{}, appbox::ApplicationMetadata(), appbox::ProjectType::Standalone, L"");
+    const auto document =
+        appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
+                                    network, appbox::EnvironmentModel{}, appbox::ApplicationMetadata(),
+                                    appbox::StartupScreen{}, appbox::ProjectType::Standalone, L"");
 
     const auto path = temp.File(L"proxy.json");
     ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
@@ -1240,8 +1308,8 @@ TEST(Unit_ProjectFile, ProxyTravelsWithTheProjectFile)
     appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
-                                             loaded_environment, ScratchMetadata(), loaded_project_type, loaded_output,
-                                             error))
+                                             loaded_environment, ScratchMetadata(), ScratchStartup(),
+                                             loaded_project_type, loaded_output, error))
         << error;
 
     ASSERT_TRUE(loaded_network.HasProxy());
@@ -1272,9 +1340,10 @@ TEST(Unit_ProjectFile, KeepsAProxyWhichIsTurnedOff)
     std::string          error;
     ASSERT_TRUE(network.SetProxy(proxy, error)) << error;
 
-    const auto document = appbox::MakeProjectDocument(
-        appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, network,
-        appbox::EnvironmentModel{}, appbox::ApplicationMetadata(), appbox::ProjectType::Standalone, L"");
+    const auto document =
+        appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
+                                    network, appbox::EnvironmentModel{}, appbox::ApplicationMetadata(),
+                                    appbox::StartupScreen{}, appbox::ProjectType::Standalone, L"");
 
     /*
      * A proxy which was typed and then disabled is part of the document, so
@@ -1308,7 +1377,7 @@ TEST(Unit_ProjectFile, ApplyOfADocumentWithoutAProxyClearsTheProxy)
     appbox::ProjectType              project_type = appbox::ProjectType::Standalone;
     std::wstring                     output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
-                                             ScratchMetadata(), project_type, output, error))
+                                             ScratchMetadata(), ScratchStartup(), project_type, output, error))
         << error;
 
     /* A session which imports a configuration without a proxy holds none. */
@@ -1323,7 +1392,7 @@ TEST(Unit_ProjectFile, ApplyRejectsAProxyTheModelRefuses)
     /* The document is complete, but an enabled protocol without a server is a
      * configuration the model refuses. */
     const auto path = temp.File(L"proxy-broken.json");
-    WriteBytes(path, "{ \"version\": 2, \"proxy\": { \"type\": \"socks5\", \"tcp\": true, \"udp\": false, "
+    WriteBytes(path, "{ \"version\": 1, \"proxy\": { \"type\": \"socks5\", \"tcp\": true, \"udp\": false, "
                      "\"server\": \"\", \"port\": \"1080\", \"username\": \"\", \"password\": \"\" } }");
 
     appbox::ProxyConfig stored;
@@ -1346,7 +1415,7 @@ TEST(Unit_ProjectFile, ApplyRejectsAProxyTheModelRefuses)
     appbox::ProjectType              project_type = appbox::ProjectType::Standalone;
     std::wstring                     output;
     EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
-                                              ScratchMetadata(), project_type, output, error));
+                                              ScratchMetadata(), ScratchStartup(), project_type, output, error));
     EXPECT_NE(error.find("proxy"), std::string::npos) << error;
     EXPECT_NE(error.find("must not be empty"), std::string::npos) << error;
 
@@ -1434,15 +1503,15 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenEnvironmentMember)
     TempDir temp;
 
     const auto empty_name = temp.File(L"environment-empty.json");
-    WriteBytes(empty_name, "{ \"version\": 2, \"environment\": [ { \"name\": \"\", \"value\": \"x\", "
+    WriteBytes(empty_name, "{ \"version\": 1, \"environment\": [ { \"name\": \"\", \"value\": \"x\", "
                            "\"isolation\": \"write_copy\", \"merge\": \"replace\", \"merge_string\": \"\" } ] }");
 
     const auto equals_sign = temp.File(L"environment-equals.json");
-    WriteBytes(equals_sign, "{ \"version\": 2, \"environment\": [ { \"name\": \"TEMP=X\", \"value\": \"x\", "
+    WriteBytes(equals_sign, "{ \"version\": 1, \"environment\": [ { \"name\": \"TEMP=X\", \"value\": \"x\", "
                             "\"isolation\": \"write_copy\", \"merge\": \"replace\", \"merge_string\": \"\" } ] }");
 
     const auto duplicate = temp.File(L"environment-duplicate.json");
-    WriteBytes(duplicate, "{ \"version\": 2, \"environment\": [ "
+    WriteBytes(duplicate, "{ \"version\": 1, \"environment\": [ "
                           "{ \"name\": \"TEMP\", \"value\": \"1\", \"isolation\": \"write_copy\", "
                           "\"merge\": \"replace\", \"merge_string\": \"\" }, "
                           "{ \"name\": \"temp\", \"value\": \"2\", \"isolation\": \"write_copy\", "
@@ -1523,8 +1592,8 @@ TEST(Unit_ProjectFile, ProjectTypeTravelsWithTheProjectFile)
     appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
-                                             loaded_environment, ScratchMetadata(), loaded_project_type, loaded_output,
-                                             error))
+                                             loaded_environment, ScratchMetadata(), ScratchStartup(),
+                                             loaded_project_type, loaded_output, error))
         << error;
 
     /* The session adopts the type of the file together with the models. */
@@ -1538,7 +1607,7 @@ TEST(Unit_ProjectFile, AFileWithoutAProjectTypeIsAStandaloneProject)
 
     /* A file which was written before the member existed. */
     const auto path = temp.File(L"standalone-project.json");
-    WriteBytes(path, "{ \"version\": 2, \"output_path\": \"D:\\\\out\\\\MyApp.zip\" }");
+    WriteBytes(path, "{ \"version\": 1, \"output_path\": \"D:\\\\out\\\\MyApp.zip\" }");
 
     appbox::ProjectDocument document;
     std::string             error;
@@ -1553,7 +1622,7 @@ TEST(Unit_ProjectFile, AFileWithoutAProjectTypeIsAStandaloneProject)
     appbox::ProjectType              project_type = appbox::ProjectType::Patch;
     std::wstring                     output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
-                                             ScratchMetadata(), project_type, output, error))
+                                             ScratchMetadata(), ScratchStartup(), project_type, output, error))
         << error;
 
     EXPECT_EQ(project_type, appbox::ProjectType::Standalone);
@@ -1565,7 +1634,7 @@ TEST(Unit_ProjectFile, ApplyRejectsAnUnknownProjectType)
     TempDir temp;
 
     const auto path = temp.File(L"unknown-project.json");
-    WriteBytes(path, "{ \"version\": 2, \"project_type\": \"installer\" }");
+    WriteBytes(path, "{ \"version\": 1, \"project_type\": \"installer\" }");
 
     appbox::ProjectDocument document;
     std::string             error;
