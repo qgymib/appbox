@@ -47,15 +47,67 @@ struct ProbeResponse
 };
 
 /**
+ * @brief Name of the directory a case collects the log files of a run in.
+ *
+ * The directory lives inside the working directory of the case, so the log
+ * files of a case never travel into the directory of the launcher program and
+ * `ReportSandboxLogs()` finds them.
+ */
+inline constexpr const wchar_t* kCaseLogDirName = L"log";
+
+/**
+ * @brief Log files a case asks the launcher of a run for.
+ *
+ * A run of a case enables the log of the launcher and of every process of its
+ * sandbox by default, which is what a reader of the artifact of a failed case
+ * needs. A case which checks the log options of the launcher itself leaves an
+ * option out or changes its value.
+ */
+struct LogRun
+{
+    /**
+     * @brief Whether the run passes `--X-AppBox-LogLevel`.
+     *
+     * A run without the option names no level at all, which is the run which
+     * writes no log file.
+     */
+    bool pass_level = true;
+
+    /**
+     * @brief Value of `--X-AppBox-LogLevel`, empty to use the level of the run.
+     *
+     * The level of the run is the one the test executable was started with
+     * (`--log-level`), which is the level of the log files of a case.
+     */
+    std::wstring level;
+
+    /**
+     * @brief Whether the run passes the option which names the log directory.
+     */
+    bool pass_dir = true;
+
+    /**
+     * @brief Value of the log directory option, empty to use the directory of the case.
+     *
+     * An empty value names the `log` directory of the working directory of the
+     * case, which is the directory `ReportSandboxLogs()` reports. A case which
+     * checks the default directory of the option or the resolution of a
+     * relative path passes the value it tests.
+     */
+    std::wstring dir;
+};
+
+/**
  * @brief Call a probe function.
  * @param[in] name The name of the probe function, encoding in UTF-8.
  * @param[in] data The data to pass to the probe function.
  * @param[in] cwd The current working directory.
  * @param[in] launcher_config The launcher configuration.
+ * @param[in] log The log options of the run, see LogRun.
  * @return The result of the probe function.
  */
 nlohmann::json ProbeCall(const std::string& name, const nlohmann::json& data, const std::wstring& cwd,
-                         const LauncherConfig& launcher_config);
+                         const LauncherConfig& launcher_config, const LogRun& log = {});
 
 /**
  * @brief Startup files the launcher started during one run.
@@ -95,11 +147,12 @@ struct StartupRun
  *                           which pops up on the desktop of the machine would
  *                           cover the work of the user; the cases which check
  *                           the screen turn it on again.
+ * @param[in] log The log options of the run, see LogRun.
  * @return The markers of the started startup files and the exit code of the
  *         launcher.
  */
 StartupRun ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launcher_config, const std::string& trigger,
-                           bool startup_screen = false);
+                           bool startup_screen = false, const LogRun& log = {});
 
 /**
  * @brief Startup files the launcher started during one run of the shell.
@@ -142,10 +195,12 @@ struct ShellRun
  *                          an interactive shell waits for input.
  * @param[in] trigger Trigger passed with `--X-AppBox-Startup`, empty to omit
  *                    the option.
+ * @param[in] log The log options of the run, see LogRun.
  * @return The markers the probes reported and the exit code of the launcher.
  */
 ShellRun ProbeShellRun(const std::wstring& cwd, const LauncherConfig& launcher_config,
-                       const std::vector<std::string>& shell_command, const std::string& trigger = "");
+                       const std::vector<std::string>& shell_command, const std::string& trigger = "",
+                       const LogRun& log = {});
 
 } // namespace appbox::test
 

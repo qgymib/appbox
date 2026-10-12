@@ -26,8 +26,12 @@ struct AppBoxLauncherRuntime
      *                      `warn`, `err`, `critical` or `off`. It is handed to
      *                      the sandbox of every process the run starts, so the
      *                      processes of a run report the same levels.
+     * @param[in] log_dir Directory the sandbox writes the log file of every
+     *                    process of the run into, in UTF-8. It is empty when
+     *                    the run asks for no log file, which leaves every
+     *                    process of the run without one.
      */
-    explicit AppBoxLauncherRuntime(const std::string& log_level);
+    AppBoxLauncherRuntime(const std::string& log_level, const std::wstring& log_dir);
     ~AppBoxLauncherRuntime();
 
     appbox::SandboxConfig     inject_data; /* Inject data information */

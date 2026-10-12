@@ -65,7 +65,9 @@ the startup files of its configuration, and keeps the read-only resources below
 launcher program, so deleting `data` resets the sandbox to the state the archive
 was packed with. While it prepares the sandbox it may show a startup screen,
 which presents the name of the packaged application, its startup image and the
-progress of the run (see [Startup Screen](docs/StartupScreen.md)).
+progress of the run (see [Startup Screen](docs/StartupScreen.md)). Its command
+line options and the log files a run writes only when it asks for them are
+described in [Launcher](docs/Launcher.md).
 
 ### Sandbox
 
@@ -153,6 +155,7 @@ pure function `appbox::ExpandVariables()` of
 - [Environment Isolation](docs/EnvironmentIsolation.md) - Environment isolation architecture
 - [Fonts Isolation](docs/FontsIsolation.md) - Fonts isolation architecture
 - [Patch Layers](docs/PatchLayer.md) - Patch packages: layout, merge rules and the launcher side
+- [Launcher](docs/Launcher.md) - Launcher command line options and the log files of a run
 - [Startup Screen](docs/StartupScreen.md) - Startup screen of the launcher: settings, archive layout and behavior
 - [Debug](docs/Debug.md) - Debug workspace: usage, mechanism and measured cost
 - [Tests](test/README.md) - Unit tests and end-to-end tests of the sandbox

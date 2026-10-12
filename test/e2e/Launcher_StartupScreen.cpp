@@ -18,8 +18,8 @@ using namespace appbox::test;
 namespace
 {
 
-/** Name of the log file the launcher of a case writes. */
-constexpr const wchar_t* kLogFileName = L"log.txt";
+/** Name of the directory the run of a case writes its log files into. */
+constexpr const wchar_t* kLogDirName = appbox::test::kCaseLogDirName;
 
 /**
  * @brief Build the launcher configuration of a case.
@@ -105,19 +105,38 @@ bool WriteStartupImage(const std::filesystem::path& root, int width, int height,
 }
 
 /**
- * @brief Read the log the launcher of a case wrote.
+ * @brief Read the log files the run of a case wrote.
+ *
+ * The launcher writes a log file of its own into the log directory of the case
+ * and every process of its sandbox writes one as well, so the directory is read
+ * as a whole: a case looks for a message of the run and not for the file which
+ * carries it.
+ *
  * @param[in] root Root directory of the filesystem of the case.
- * @return The content of the log, empty when it cannot be read.
+ * @return The content of the log files, empty when the run wrote none.
  */
 std::string ReadLog(const std::filesystem::path& root)
 {
-    std::ifstream stream(root / kLogFileName, std::ios::binary);
-    if (!stream.is_open())
+    std::string     text;
+    std::error_code ec;
+
+    for (const auto& entry : std::filesystem::directory_iterator(root / kLogDirName, ec))
     {
-        return {};
+        if (!entry.is_regular_file(ec) || entry.path().extension() != L".log")
+        {
+            continue;
+        }
+
+        std::ifstream stream(entry.path(), std::ios::binary);
+        if (!stream.is_open())
+        {
+            continue;
+        }
+
+        text.append(std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()));
     }
 
-    return std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+    return text;
 }
 
 } // namespace

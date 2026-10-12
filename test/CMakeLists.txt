@@ -157,6 +157,7 @@ add_executable(AppBoxTests
     "e2e/Fs_Whiteout_FolderHidesSubtree.cpp"
     "e2e/Fs_WriteLowerLayerFile_CopyUp.cpp"
     "e2e/Launcher_HideConsole.cpp"
+    "e2e/Launcher_Log.cpp"
     "e2e/Launcher_MissingSandboxDll.cpp"
     "e2e/Launcher_NoVcRuntime.cpp"
     "e2e/Launcher_RegistryStateIsKept.cpp"

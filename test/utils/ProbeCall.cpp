@@ -268,10 +268,11 @@ static appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& confi
  * @param[in] config The launcher configuration.
  * @param[in] args Arguments of the launcher, without the options which select
  *                 and log the configuration.
+ * @param[in] log The log options of the run, see LogRun.
  * @return The exit code of the launcher.
  */
 static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& config,
-                         const std::vector<std::wstring>& args)
+                         const std::vector<std::wstring>& args, const appbox::test::LogRun& log)
 {
     std::filesystem::path cfg_path;
     {
@@ -283,12 +284,27 @@ static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& 
         ofs.write(data.data(), data.size());
     }
 
-    auto log_path = std::filesystem::path(cwd) / "log.txt";
+    /*
+     * A case asks for the log files of its run by default, which keeps them
+     * inside the working directory of the case instead of the directory of the
+     * launcher program. A case which checks the log options of the launcher
+     * itself leaves an option out or changes its value.
+     */
+    std::vector<std::wstring> full_args = { L"--X-AppBox-ConfigFile", cfg_path.wstring() };
 
-    std::vector<std::wstring> full_args = {
-        L"--X-AppBox-ConfigFile",       cfg_path.wstring(),    L"--X-AppBox-LogLevel",
-        appbox::test::config.log_level, L"--X-AppBox-LogFile", log_path.wstring(),
-    };
+    if (log.pass_level)
+    {
+        full_args.push_back(L"--X-AppBox-LogLevel");
+        full_args.push_back(log.level.empty() ? appbox::test::config.log_level : log.level);
+    }
+
+    if (log.pass_dir)
+    {
+        full_args.push_back(L"--X-AppBox-LogDir");
+        full_args.push_back(log.dir.empty() ? (std::filesystem::path(cwd) / appbox::test::kCaseLogDirName).wstring()
+                                            : log.dir);
+    }
+
     full_args.insert(full_args.end(), args.begin(), args.end());
 
     auto cmd = appbox::BuildCommandLine(appbox::test::config.launcher_path, full_args);
@@ -336,10 +352,11 @@ static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& 
  * @param[in] config The launcher configuration.
  * @param[in] trigger Trigger for `--X-AppBox-Startup`, empty to omit the
  *                    option so the launcher starts the auto start files.
+ * @param[in] log The log options of the run, see LogRun.
  * @return The exit code of the launcher.
  */
 static DWORD RunLauncherForProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config,
-                                 const std::string& trigger)
+                                 const std::string& trigger, const appbox::test::LogRun& log)
 {
     std::vector<std::wstring> args;
     if (!trigger.empty())
@@ -354,17 +371,17 @@ static DWORD RunLauncherForProbe(const std::string& key, const std::wstring& cwd
     args.push_back(L"--probe_key");
     args.push_back(CLI::widen(key));
 
-    return RunLauncher(cwd, config, args);
+    return RunLauncher(cwd, config, args, log);
 }
 
 /**
  * @brief Report the log files the processes of a case wrote.
  *
- * Every process the sandbox is injected into writes a log file of its own into
- * the directory of the case, named after the program, the UTC time it started
- * at and its process id. A run which fails names those files, so a reader of
- * the artifact of a failed run knows which file belongs to which process
- * without guessing.
+ * The launcher writes a log file of its own into the log directory of the case
+ * and every process the sandbox is injected into writes one as well, named
+ * after the program, the UTC time it started at and its process id. A run which
+ * fails names those files, so a reader of the artifact of a failed run knows
+ * which file belongs to which process without guessing.
  *
  * @param[in] cwd Directory of the case.
  */
@@ -373,7 +390,8 @@ static void ReportSandboxLogs(const std::wstring& cwd)
     std::error_code                    ec;
     std::vector<std::filesystem::path> logs;
 
-    for (const auto& entry : std::filesystem::directory_iterator(cwd, ec))
+    const auto dir = std::filesystem::path(cwd) / appbox::test::kCaseLogDirName;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
     {
         if (entry.is_regular_file(ec) && entry.path().extension() == L".log")
         {
@@ -388,9 +406,10 @@ static void ReportSandboxLogs(const std::wstring& cwd)
     }
 }
 
-static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config)
+static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config,
+                           const appbox::test::LogRun& log)
 {
-    const auto exit_code = RunLauncherForProbe(key, cwd, config, std::string());
+    const auto exit_code = RunLauncherForProbe(key, cwd, config, std::string(), log);
     if (exit_code != 0)
     {
         ReportSandboxLogs(cwd);
@@ -402,7 +421,7 @@ static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, cons
 }
 
 nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::json& data, const std::wstring& cwd,
-                                       const LauncherConfig& launcher_config)
+                                       const LauncherConfig& launcher_config, const LogRun& log)
 {
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
@@ -410,14 +429,15 @@ nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::
     auto copy_config = OverrideConfig(launcher_config);
 
     ProbeKey key(name, data);
-    RunSelfAsProbe(key.key, cwd, copy_config);
+    RunSelfAsProbe(key.key, cwd, copy_config, log);
 
     key.ctx->sem.Acquire();
     return key.ctx->result;
 }
 
 appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launcher_config,
-                                                       const std::string& trigger, bool startup_screen)
+                                                       const std::string& trigger, bool startup_screen,
+                                                       const LogRun& log)
 {
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
@@ -428,7 +448,7 @@ appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, 
     ProbeKey key("StartupStarted", nlohmann::json::object());
 
     StartupRun run;
-    run.exit_code = static_cast<std::uint32_t>(RunLauncherForProbe(key.key, cwd, copy_config, trigger));
+    run.exit_code = static_cast<std::uint32_t>(RunLauncherForProbe(key.key, cwd, copy_config, trigger, log));
 
     {
         std::lock_guard<std::mutex> lock(key.ctx->result_mutex);
@@ -448,7 +468,7 @@ appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, 
 
 appbox::test::ShellRun appbox::test::ProbeShellRun(const std::wstring& cwd, const LauncherConfig& launcher_config,
                                                    const std::vector<std::string>& shell_command,
-                                                   const std::string&              trigger)
+                                                   const std::string& trigger, const LogRun& log)
 {
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
@@ -475,7 +495,7 @@ appbox::test::ShellRun appbox::test::ProbeShellRun(const std::wstring& cwd, cons
     }
 
     ShellRun run;
-    run.exit_code = static_cast<std::uint32_t>(RunLauncher(cwd, copy_config, args));
+    run.exit_code = static_cast<std::uint32_t>(RunLauncher(cwd, copy_config, args, log));
 
     /*
      * The command of the case is run by the shell instead of the probe, so no

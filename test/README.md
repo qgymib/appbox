@@ -66,7 +66,7 @@ variable counterpart:
 | `--sandbox32` | `APPBOX_TEST_SANDBOX32` | Path of the 32 bit sandbox injection module the cases put into the resource root of their directory. |
 | `--sandbox64` | `APPBOX_TEST_SANDBOX64` | Path of the 64 bit sandbox injection module. |
 | `--packer` | `APPBOX_TEST_PACKER` | Path of the packer executable, which carries the payloads as resources. |
-| `--log-level` | `APPBOX_TEST_LOG_LEVEL` | Level of the launcher and of the sandboxed processes of a case: `trace`, `debug`, `info`, `warn`, `err`, `critical` or `off`; default `info`. The test executable itself stays silent and prints its messages only when a case fails. |
+| `--log-level` | `APPBOX_TEST_LOG_LEVEL` | Level of the launcher and of the sandboxed processes of a case: `trace`, `debug`, `info`, `warn`, `err`, `critical` or `off`; default `info`. The level is handed to the launcher of a case, so `off` leaves the case without a log file (see [Logs of a case](#logs-of-a-case)). The test executable itself stays silent and prints its messages only when a case fails. |
 | `--mode` | `APPBOX_TEST_MODE` | `all`, `unit` or `e2e`; default `all`. |
 | `--no-cleanup` | `APPBOX_TEST_NO_CLEANUP` | Keep the working directory of a case instead of removing it. |
 | `--test-timeout` | `APPBOX_TEST_TIMEOUT` | Timeout of one test case, in seconds; `0` turns the watchdog off. Default `300`. |
@@ -180,23 +180,34 @@ The limits which are worth knowing:
 Every case runs in a working directory of its own, and a case which fails keeps
 it: the fixture of the cases asks for the cleanup only when the case passed
 (`appbox::test::CommonWD::NoCleanup`). The directory holds the configuration of
-the run and the logs of every process the run started.
+the run and, in its `log` directory, the log files of every process the run
+started.
+
+A case asks for the log files of its run by default, which is what a reader of
+the artifact of a failed case needs: the harness passes `--X-AppBox-LogLevel`
+with the level of the run and `--X-AppBox-LogDir` with the `log` directory of
+the case (see `appbox::test::LogRun`). A case which checks the log options of the
+launcher itself leaves an option out or changes its value
+(`test/e2e/Launcher_Log.cpp`, see [Launcher log cases](#launcher-log-cases)).
 
 | File | Writer | Content |
 | --- | --- | --- |
-| `log.txt` | the launcher | The messages of the launcher itself: the configuration it loaded, the layers it mapped, the processes it started and their exit codes. |
+| `<program>.<time utc>.<pid>.log` | the launcher itself | The messages of the launcher: the configuration it loaded, the layers it mapped, the processes it started and their exit codes. |
 | `<program>.<time utc>.<pid>.log` | one sandboxed process | The messages of one process the sandbox is injected into, in the order that process produced them. |
 
 The launcher does not carry the messages of the sandbox: every process the sandbox
 is injected into writes a log file of its own, named after the program, the UTC
-time it started at and its process id. A run of one end-to-end case therefore
-leaves one file per process — the launcher and the probe of a case, plus the
-processes a case starts itself — and no two processes ever write the same file.
-The file is written by the process which produces it, so its content survives a
-crash of that process, and the name tells which process it belongs to:
+time it started at and its process id — the launcher names its own file with the
+very same rule (`common/LogFileName.hpp`). A run of one end-to-end case therefore
+leaves one file per process — the launcher, the process launcher it starts for the
+target, the probe of a case, plus the processes a case starts itself — and no two
+processes ever write the same file. The file is written by the process which
+produces it, so its content survives a crash of that process, and the name tells
+which process it belongs to:
 
 ```
 AppBoxLauncher.20260930T021157Z.76696.log
+AppBoxLauncher.20260930T021157Z.76712.log
 AppBoxTests.20260930T021157Z.77784.log
 ```
 
@@ -204,7 +215,9 @@ The level of the messages is the level of the run (`--log-level`), and it is the
 level of the launcher and of every sandboxed process at once. `trace` reports
 every kernel call the sandbox intercepts, so a run which is started with
 `APPBOX_TEST_LOG_LEVEL=trace`, like the presets of `CMakePresets.json` do,
-writes the whole path of the case into the logs of its processes.
+writes the whole path of the case into the logs of its processes. A case which
+checks the log files of a run asks for `info` instead of the level of the run, so
+it sees the messages it looks for whatever level the run was started with.
 
 ### The output of the run itself
 
@@ -266,7 +279,7 @@ which died is the first one to open:
 | `test/e2e/` | The end-to-end cases, one file per case (`<Domain>_<Case>.cpp`); the suite of a file is named `E2E_<Domain>`. |
 | `test/probe/` | The operations which are executed **inside** the sandbox. A probe registers itself by name (`test/probe/__init__.hpp`) and is called from a case through `ProbeCall`. |
 | `test/utils/` | The builders and helpers which the cases share, see [Test helpers](#test-helpers). |
-| `test/utils/ProbeCall.*` | The call of a probe: it starts the launcher for the case, serves the probe over the pipe and reports the logs of the processes of the run when the case fails. |
+| `test/utils/ProbeCall.*` | The call of a probe: it starts the launcher for the case, serves the probe over the pipe and reports the logs of the processes of the run when the case fails. The log options of the run (`appbox::test::LogRun`) decide whether a case asks for log files at all and which directory it names. |
 | `test/utils/TestTimeout.*` | The timeout of a test case: the GoogleTest hook, the watchdog thread and the options of a run. |
 | `test/utils/TestLog.*` | The backtrace of the program log of a run: it silences the messages of the test executable, keeps them in a `spdlog` backtrace and dumps them when a case fails or times out. |
 | `test/utils/Coredump.*` | The coredump writer: the full memory dump of a process, the walk of a process tree and the termination of its processes. |
@@ -1115,6 +1128,26 @@ the user, like the console window the harness hides.
 | `AnImageWhichCannotBeDecodedKeepsTheRunAlive` | the file of the image holds text instead of an image | the run is not refused, and the log reports a screen which is shown without its image |
 | `ASessionWithoutAScreenCreatesNoWindow` | the configuration turns the screen off | the startup file is started, and the log reports neither a shown nor a closed screen |
 
+### Launcher log cases
+
+The log cases (`test/e2e/Launcher_Log.cpp`) pin the log options of the launcher:
+a run writes no log file unless it asks for one, and a run which asks for one
+writes the log of the launcher itself and the log of every process of its sandbox
+into the directory the run names (see
+[Launcher](../docs/Launcher.md#logging)). The cases change the log options of the
+harness (`appbox::test::LogRun`), so they are the only ones which decide where
+their log files land, and every case which looks for a message of a run asks for
+`info`, the level the messages are reported at. Each case is documented in its
+own header comment.
+
+| Case | Log options | Expected |
+| --- | --- | --- |
+| `NoLogOptionsWritesNoLogFile` | neither option | the startup file is started, and the case directory holds no log file and no `log` directory |
+| `LogLevelOffWritesNoLogFile` | `--X-AppBox-LogLevel off` with the log directory of the case | the startup file is started, and the run writes no log file and creates no directory |
+| `LogDirHoldsTheLogsOfTheRun` | the level and the log directory of the case | the `log` directory holds the log of the launcher itself and the log of a process of its sandbox, and no log file lands outside it |
+| `TheDefaultLogDirectoryIsBesideTheLauncher` | the level without the directory | the run writes into the `log` directory beside the launcher program; the case removes the files it added |
+| `ARelativeLogDirectoryIsResolvedAgainstTheCurrentDirectory` | the level and a relative directory | the run writes into that directory below the current directory of the test executable; the case removes it |
+
 ### Launcher shell cases
 
 The shell cases (`test/e2e/Launcher_Shell.cpp`) run the launcher with
@@ -1281,7 +1314,11 @@ header comment.
   process with the sandbox DLL injected; the probe asks the test process for its task
   over a named pipe and reports the result back. Every configuration it hands to the
   launcher enables `hide_console`, so the probe process of a case does not open a console
-  window (see [Launcher console case](#launcher-console-case)). `ProbeStartupRun()` runs the
+  window (see [Launcher console case](#launcher-console-case)). The log options of the run
+  (`appbox::test::LogRun`) are passed as `--X-AppBox-LogLevel` and `--X-AppBox-LogDir` and
+  collect the log files of a case in the `log` directory of that case; a case which checks
+  the options leaves one of them out (see [Launcher log cases](#launcher-log-cases)).
+  `ProbeStartupRun()` runs the
   launcher for a startup file selection instead: it passes `--X-AppBox-Startup` when a
   trigger is given and reports the markers of the startup files the launcher started
   together with its exit code. `ProbeShellRun()` passes `--X-AppBox-Shell` with the

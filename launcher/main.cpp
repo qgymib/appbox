@@ -509,7 +509,7 @@ static DWORD RunLauncher()
 
         ReportStartupStage(appbox::StartupStage::Preparing, 1.0);
 
-        LauncherApp().runtime = std::make_shared<AppBoxLauncherRuntime>(opt.log_level);
+        LauncherApp().runtime = std::make_shared<AppBoxLauncherRuntime>(opt.log_level, opt.log_dir);
     }
     catch (const std::exception& e)
     {

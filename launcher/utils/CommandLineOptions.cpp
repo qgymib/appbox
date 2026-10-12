@@ -1,20 +1,138 @@
 #include "utils/ProcessLauncher.hpp"
+#include "utils/GetExecutableDir.hpp"
 #include "CommandLineOptions.hpp"
+#include "LogFileName.hpp"
 #include "SetLogLevel.hpp"
 #include "WString.hpp"
 #include <CLI/CLI.hpp>
+#include <filesystem>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 
-/**
- * @brief Setup global file logger
- * @param[in] log_path Log file path
- */
-static void SetupFileLog(const std::wstring& log_path)
+namespace
 {
-    auto logger = spdlog::basic_logger_mt("Launcher", log_path.c_str());
-    spdlog::set_default_logger(logger);
+
+/** Name of the directory the log files of a run land in by default. */
+constexpr const wchar_t* kLogDirName = L"log";
+
+/**
+ * @brief Resolve the directory the log files of a run are written into.
+ *
+ * An empty value names the default directory, which is `log` beside the
+ * launcher program itself: the log files of a run belong to the program which
+ * wrote them and not to the directory the program happened to be started from.
+ * A relative value is resolved against the current directory, like every other
+ * relative path of a command line.
+ *
+ * @param[in] value Value of the option which names the directory, empty when
+ *                  the option was not given.
+ * @return The absolute path of the directory.
+ */
+std::wstring ResolveLogDir(const std::wstring& value)
+{
+    if (value.empty())
+    {
+        return (std::filesystem::path(appbox::GetExecutableDir()) / kLogDirName).wstring();
+    }
+
+    std::error_code ec;
+    const auto      path = std::filesystem::absolute(value, ec);
+    return ec ? value : path.wstring();
 }
+
+/**
+ * @brief Build the name of the log file of the launcher itself.
+ *
+ * The name follows the rule of `common/LogFileName.hpp`, which the sandbox uses
+ * for the log file of every process it is injected into, so the log files of
+ * one run are recognized by a single name pattern.
+ *
+ * @return The file name, without a directory.
+ */
+std::wstring OwnLogFileName()
+{
+    SYSTEMTIME utc;
+    ZeroMemory(&utc, sizeof(utc));
+    ::GetSystemTime(&utc);
+
+    const appbox::LogFileTimestamp timestamp{ utc.wYear, utc.wMonth, utc.wDay, utc.wHour, utc.wMinute, utc.wSecond };
+    return appbox::LogFileNameOf(appbox::GetExecutablePath(), timestamp, ::GetCurrentProcessId());
+}
+
+/**
+ * @brief Set up the log files of a run.
+ *
+ * A run writes its log files only when it asks for a level: a run without the
+ * level, with `off` or with a name the launcher does not know creates neither a
+ * directory nor a file, and the sandbox of every process it starts writes no
+ * log either, because the run hands it no log directory.
+ *
+ * A run which asks for a level writes the log of the launcher itself into the
+ * log directory of the run, next to the log file of every process of its
+ * sandbox.
+ *
+ * A log which cannot be created never fails the run: the failure is reported
+ * and the run continues without that log file.
+ *
+ * @param[in,out] opt The options of the run. The log directory is replaced by
+ *                    its resolved absolute path, and it is cleared when the run
+ *                    writes no log file at all.
+ */
+void SetupLogging(appbox::CommandLineOptions& opt)
+{
+    const auto level = appbox::UTF8ToWide(opt.log_level);
+
+    /*
+     * An unknown name is reported by SetLogLevel(), which keeps the report of a
+     * name which is not a level visible instead of muting the run silently.
+     */
+    appbox::SetLogLevel(level);
+
+    if (!appbox::IsLogLevelEnabled(level))
+    {
+        /*
+         * The run asks for no log file: no directory is created and the
+         * messages of the launcher are dropped as well, so a run without a log
+         * costs nothing.
+         */
+        appbox::SetLogLevel(L"off");
+        opt.log_dir.clear();
+        return;
+    }
+
+    opt.log_dir = ResolveLogDir(opt.log_dir);
+
+    const std::filesystem::path dir(opt.log_dir);
+    std::error_code             ec;
+    std::filesystem::create_directories(dir, ec);
+    if (ec)
+    {
+        SPDLOG_ERROR("the log directory '{}' cannot be created: {}", appbox::WideToUTF8(opt.log_dir), ec.message());
+        return;
+    }
+
+    try
+    {
+        const auto path = (dir / OwnLogFileName()).wstring();
+        auto       logger = spdlog::basic_logger_mt("Launcher", path.c_str());
+        /*
+         * The log of a run which crashes is worth as much as its tail, so every
+         * message is flushed instead of waiting for the buffer to fill.
+         */
+        logger->flush_on(spdlog::level::trace);
+        spdlog::set_default_logger(logger);
+    }
+    catch (const std::exception& e)
+    {
+        SPDLOG_ERROR("the log file of the run cannot be opened: {}", e.what());
+        return;
+    }
+
+    /* The level applies to the file logger the run just installed as well. */
+    appbox::SetLogLevel(level);
+}
+
+} // namespace
 
 static void SetupConfigFile(appbox::CommandLineOptions& opt, const std::wstring& arg)
 {
@@ -62,7 +180,7 @@ appbox::CommandLineOptions::CommandLineOptions()
     hide_console = false;
     has_startup_trigger = false;
     shell = false;
-    log_level = "info";
+    log_level = "off";
 }
 
 appbox::CommandLineOptions::~CommandLineOptions()
@@ -81,13 +199,25 @@ bool appbox::CommandLineOptions::ParseOptions()
              * The level describes the whole run: the launcher reports it and the
              * sandbox of every process it starts reports it as well, so a run
              * which asks for `info` never writes the trace of every kernel
-             * call of the sandboxed application.
+             * call of the sandboxed application. A run which names no level
+             * writes no log file at all, which is what a run does by default.
              */
             this->log_level = appbox::WideToUTF8(level);
-            appbox::SetLogLevel(level);
         },
-        "Set application log level");
-    app.add_option_function<std::wstring>("--X-AppBox-LogFile", SetupFileLog, "Set application log file");
+        "Level of the log files of the run: trace, debug, info, warn, err, critical or off. A run which names no "
+        "level writes no log file. Default: no log file");
+    app.add_option_function<std::wstring>(
+        "--X-AppBox-LogDir",
+        [this](const std::wstring& dir) {
+            /*
+             * The directory is resolved once the whole command line was read:
+             * the level decides whether the run writes a log file at all, and
+             * the two options may appear in either order.
+             */
+            this->log_dir = dir;
+        },
+        "Directory of the log files of the run. A relative path is resolved against the current directory. "
+        "Default: the log directory beside the launcher");
     app.add_option_function<std::wstring>(
         "--X-AppBox-ConfigFile", [this](const std::wstring& arg) { SetupConfigFile(*this, arg); },
         "Use config file instead of loading builtin config file");
@@ -108,6 +238,8 @@ bool appbox::CommandLineOptions::ParseOptions()
         "Run the startup file with the given trigger instead of the auto start files");
 
     CLI11_PARSE(app, wargc, wargv);
+
+    SetupLogging(*this);
 
     if (is_process_launcher)
     {

@@ -145,9 +145,10 @@ struct SandboxConfig
      * Every process the sandbox is injected into writes a log file of its own
      * into this directory, named after the program, the UTC time it started at
      * and its process id (see `sandbox/utils/LogFile.hpp`). The launcher names
-     * the directory of the run, so the logs of a run land next to the
-     * configuration of that run and a crash of a process leaves its log
-     * behind. An empty directory leaves the sandbox without a log file.
+     * the log directory of the run, which is `log` beside the launcher unless
+     * `--X-AppBox-LogDir` names another one, and it leaves the value empty
+     * while the run asks for no log file: an empty directory leaves every
+     * process of the run without a log file.
      *
      * @note encoding in UTF-8
      */

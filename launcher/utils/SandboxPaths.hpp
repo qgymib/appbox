@@ -340,9 +340,10 @@ struct SandboxPaths
      *
      * It is the directory of the configuration of the run, which is the
      * directory of the launcher program unless the configuration was given with
-     * `--X-AppBox-ConfigFile`. The directory carries the configuration itself,
-     * the state of the sandbox and the logs of the run: every process the
-     * sandbox is injected into writes its own log file there.
+     * `--X-AppBox-ConfigFile`. The directory carries the configuration itself
+     * and the state of the sandbox; the log files of the run are written into
+     * the log directory of the run, which is a directory of its own (see
+     * `--X-AppBox-LogDir` of the launcher).
      */
     std::wstring root;
 

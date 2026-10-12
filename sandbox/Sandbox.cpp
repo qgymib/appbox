@@ -82,13 +82,19 @@ static void ParseInjectData(const std::string& data)
      * its own: the launcher is not part of the log path any more, so the
      * messages of two processes of one run cannot interleave and the tail of
      * the log survives a crash of the process which wrote it.
+     *
+     * A run which asks for no log file hands the sandbox no directory at all,
+     * which is the state of a run without a level: the process then runs
+     * without a log file, and a missing log file is not reported, because the
+     * run did not ask for one.
      */
     if (!inject_data.log_level.empty() && !appbox::SetLogLevelFromName(inject_data.log_level))
     {
         SPDLOG_WARN("the log level of the run is unknown: {}", inject_data.log_level);
     }
 
-    if (!appbox::OpenLogFile(appbox::UTF8ToWide(inject_data.log_dir), appbox::GetImagePathFromPeb()))
+    if (!inject_data.log_dir.empty() &&
+        !appbox::OpenLogFile(appbox::UTF8ToWide(inject_data.log_dir), appbox::GetImagePathFromPeb()))
     {
         SPDLOG_WARN("the log file of the process cannot be created in '{}'", inject_data.log_dir);
     }

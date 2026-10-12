@@ -268,7 +268,7 @@ static void ApplyPatchHives(const std::wstring& state_hive, const std::vector<ap
     }
 }
 
-AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level)
+AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const std::wstring& log_dir)
 {
     std::time_t timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     auto        random_str = appbox::RandomString(16);
@@ -392,12 +392,13 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level)
 
     /*
      * Every process the sandbox is injected into writes a log file of its own
-     * into the directory of the configuration of the run, which is the
-     * directory the launcher itself writes its log into: the logs of a run stay
-     * together and a process which crashes leaves its own log behind, because
-     * no other process writes that file.
+     * into the log directory of the run, which is the directory the launcher
+     * itself writes its log into: the logs of a run stay together and a process
+     * which crashes leaves its own log behind, because no other process writes
+     * that file. A run which asks for no log file hands the sandbox no
+     * directory at all, so no process of that run creates a log file.
      */
-    inject_data.log_dir = appbox::WideToUTF8(paths.root);
+    inject_data.log_dir = appbox::WideToUTF8(log_dir);
     inject_data.log_level = log_level;
 
     /*
