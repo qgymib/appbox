@@ -168,7 +168,7 @@ struct ApplicationMetadata
      * @brief Host path of the program the information is inherited from.
      *
      * Empty while the session inherits from the default source, which is the
-     * first program marked for auto start, see DefaultMetadataSource().
+     * first auto start program of the model, see DefaultMetadataSource().
      */
     std::wstring source;
 
@@ -187,15 +187,20 @@ struct ApplicationMetadata
 /**
  * @brief Get the program the version information of a session inherits from by default.
  *
- * The default source is the first program which is marked for auto start, in
- * ascending order of its executable file name: the launcher of the archive is
- * named after the main program, so the version information of the packed
- * program is what the extracted launcher shows. Programs which are not marked
- * for auto start are not candidates, and a model without one has no default.
+ * The default source is the first startup file which is marked for auto start,
+ * in ascending order of its file name: the launcher of the archive carries the
+ * name of the main program, so the version information of the packed program is
+ * what the extracted launcher shows. Files which are not marked for auto start
+ * are not candidates, and a model without one has no default.
+ *
+ * A program (`.exe`) is preferred over a script (`.bat`, `.cmd` or `.ps1`),
+ * because only a program image carries version information: a session which
+ * starts a batch file beside its program describes the program. A session which
+ * starts scripts only falls back to its first script.
  *
  * @param[in] model The pack model.
  * @return The host path of the default source, empty when the model has no
- *         auto start program.
+ *         auto start file.
  */
 std::wstring DefaultMetadataSource(const PackModel& model);
 

@@ -32,6 +32,39 @@ sandbox would start nothing. The exit code of the launcher is the exit code of
 the run: the first non zero exit code of the programs it started, and zero when
 every program exited with zero.
 
+## Startup files
+
+A startup file is a file of the packaged application which the launcher runs: a
+program (`.exe`), a batch file (`.bat`), a command script (`.cmd`) or a
+PowerShell script (`.ps1`). The packer offers these files in its startup files
+dialog and stores them in the configuration of the run, and the launcher starts
+every file which is marked for auto start, or the single file which
+`--X-AppBox-Startup` selects.
+
+The extension of a file decides how the launcher starts it, because the process
+creation of Windows is not promised to run a script itself:
+
+* **A program** (`.exe`) is created as the process of the run.
+* **A batch file** and **a command script** (`.bat`, `.cmd`) are run by the
+  command interpreter of the host: the interpreter is created with `/c` followed
+  by the script and by the arguments of the startup file.
+* **A PowerShell script** (`.ps1`) is run by Windows PowerShell of the host with
+  `-NoProfile -ExecutionPolicy Bypass -File` followed by the script and by the
+  arguments of the startup file. The profile is left out to keep a run the same
+  on every machine, and the execution policy of a machine refuses a script of
+  the machine by default.
+
+The interpreter is resolved when the run starts, so a run uses the command
+interpreter and the Windows PowerShell of the machine which runs the sandbox and
+not the ones of the machine which packed the archive. A run whose startup file
+needs an interpreter the machine does not offer is refused instead of starting
+only a part of the application.
+
+The file name of the first startup file names the launcher of the archive. The
+entry always carries the `.exe` extension, because the launcher is a program
+image: a session whose first startup file is `run.bat` produces the launcher
+entry `run.exe` and the configuration `run.exe.json`.
+
 ## Logging
 
 **A run writes no log file unless it asks for one.** Without
@@ -84,6 +117,15 @@ and the same directory to the sandbox of every process it starts:
 5. **The launcher has no console of its own.** A failure of a run is reported
    through the exit code and through the log file of the run, so a run which
    asks for no log leaves no message behind at all.
+6. **Windows PowerShell cannot start inside the sandbox.** The launcher builds
+   the invocation of a `.ps1` file like the invocation of any other script, but
+   the sandbox refuses to run the interpreter: Windows PowerShell is a .NET
+   Framework application and aborts while it starts inside the sandbox (the
+   process leaves with `0xFFFF0000` after the runtime reported
+   `E_ACCESSDENIED`), while other .NET Framework programs run inside the same
+   sandbox. A startup file which is a PowerShell script is therefore stored and
+   packed like every other one, and it cannot be started by a run. The reason is
+   the sandbox and not the configuration of the run.
 
 ## Tests
 

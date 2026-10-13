@@ -1,9 +1,31 @@
 #include "StartupTreeModel.hpp"
 
-StartupTreeModel::StartupTreeModel(const appbox::PackModel& model)
-    : tree_(model), folder_icon_(wxArtProvider::GetBitmapBundle(wxART_FOLDER, wxART_OTHER, wxSize(16, 16))),
+StartupTreeModel::StartupTreeModel()
+    : folder_icon_(wxArtProvider::GetBitmapBundle(wxART_FOLDER, wxART_OTHER, wxSize(16, 16))),
       executable_icon_(wxArtProvider::GetBitmapBundle(wxART_EXECUTABLE_FILE, wxART_OTHER, wxSize(16, 16)))
 {
+}
+
+void StartupTreeModel::Adopt(const std::shared_ptr<appbox::StartupTree>& tree)
+{
+    tree_ = tree;
+
+    /*
+     * The whole model was replaced: the control drops the rows it holds and
+     * reads the new tree, which is what the scan of the dialog finishes with.
+     */
+    Cleared();
+}
+
+bool StartupTreeModel::IsReady() const
+{
+    return tree_ != nullptr;
+}
+
+std::vector<const appbox::StartupNode*> StartupTreeModel::ExpandableRows() const
+{
+    /* The scan did not finish yet, so the control holds no row to expand. */
+    return tree_ == nullptr ? std::vector<const appbox::StartupNode*>() : tree_->ExpandableRows();
 }
 
 appbox::StartupNode* StartupTreeModel::Node(const wxDataViewItem& item) const
@@ -16,51 +38,38 @@ wxDataViewItem StartupTreeModel::Item(const appbox::StartupNode* node) const
     return node != nullptr ? wxDataViewItem(const_cast<appbox::StartupNode*>(node)) : wxDataViewItem();
 }
 
-appbox::StartupNode* StartupTreeModel::FindChoice(const appbox::StartupFile& file)
+appbox::StartupNode* StartupTreeModel::FindChoice(const appbox::StartupFile& file) const
 {
-    return tree_.FindChoice(file);
-}
-
-void StartupTreeModel::Preselect(const std::vector<appbox::StartupFile>& files)
-{
-    tree_.Preselect(files);
-
-    /*
-     * The lookup creates the folders on the way to a file, so the rows can be
-     * expanded by the dialog afterwards.
-     */
-    for (const auto& file : files)
-    {
-        (void)tree_.FindChoice(file);
-    }
+    return tree_ == nullptr ? nullptr : tree_->FindChoice(file);
 }
 
 bool StartupTreeModel::HasFiles() const
 {
-    return tree_.HasFiles();
+    return tree_ != nullptr && tree_->HasFiles();
 }
 
 const std::vector<appbox::StartupFile>& StartupTreeModel::Files() const
 {
-    return tree_.Files();
+    static const std::vector<appbox::StartupFile> empty;
+    return tree_ == nullptr ? empty : tree_->Files();
 }
 
 bool StartupTreeModel::IsStartupFile(const wxDataViewItem& item) const
 {
     const appbox::StartupNode* const node = Node(item);
-    return node != nullptr && tree_.Contains(*node);
+    return node != nullptr && tree_ != nullptr && tree_->Contains(*node);
 }
 
 bool StartupTreeModel::IsAutoStart(const wxDataViewItem& item) const
 {
     const appbox::StartupNode* const node = Node(item);
-    return node != nullptr && tree_.IsAutoStart(*node);
+    return node != nullptr && tree_ != nullptr && tree_->IsAutoStart(*node);
 }
 
 bool StartupTreeModel::Remove(const wxDataViewItem& item)
 {
     const appbox::StartupNode* const node = Node(item);
-    if (node == nullptr || !tree_.Remove(*node))
+    if (node == nullptr || tree_ == nullptr || !tree_->Remove(*node))
     {
         return false;
     }
@@ -80,7 +89,7 @@ wxString StartupTreeModel::TakeError()
 void StartupTreeModel::GetValue(wxVariant& variant, const wxDataViewItem& item, unsigned int col) const
 {
     const appbox::StartupNode* const node = Node(item);
-    if (node == nullptr)
+    if (node == nullptr || tree_ == nullptr)
     {
         variant = wxVariant();
         return;
@@ -103,10 +112,10 @@ void StartupTreeModel::GetValue(wxVariant& variant, const wxDataViewItem& item, 
         variant = TypeLabel(*node);
         break;
     case AutoStartColumn:
-        variant = checkable ? wxVariant(tree_.IsAutoStart(*node)) : wxVariant();
+        variant = checkable ? wxVariant(tree_->IsAutoStart(*node)) : wxVariant();
         break;
     case TriggerColumn:
-        variant = checkable && tree_.Contains(*node) ? wxVariant(wxString(tree_.TriggerOf(*node))) : wxVariant();
+        variant = checkable && tree_->Contains(*node) ? wxVariant(wxString(tree_->TriggerOf(*node))) : wxVariant();
         break;
     default:
         variant = wxVariant();
@@ -117,14 +126,14 @@ void StartupTreeModel::GetValue(wxVariant& variant, const wxDataViewItem& item, 
 bool StartupTreeModel::SetValue(const wxVariant& variant, const wxDataViewItem& item, unsigned int col)
 {
     const appbox::StartupNode* const node = Node(item);
-    if (node == nullptr || !appbox::StartupTree::IsCheckable(*node))
+    if (node == nullptr || tree_ == nullptr || !appbox::StartupTree::IsCheckable(*node))
     {
         return false;
     }
 
     if (col == AutoStartColumn)
     {
-        if (!tree_.SetAutoStart(*node, variant.GetBool()))
+        if (!tree_->SetAutoStart(*node, variant.GetBool()))
         {
             return false;
         }
@@ -137,7 +146,7 @@ bool StartupTreeModel::SetValue(const wxVariant& variant, const wxDataViewItem& 
     if (col == TriggerColumn)
     {
         std::string error;
-        if (!tree_.SetTrigger(*node, variant.GetString().ToStdWstring(), error))
+        if (!tree_->SetTrigger(*node, variant.GetString().ToStdWstring(), error))
         {
             error_ = wxString::FromUTF8(error);
             return false;
@@ -173,9 +182,15 @@ bool StartupTreeModel::HasContainerColumns(const wxDataViewItem&) const
 
 unsigned int StartupTreeModel::GetChildren(const wxDataViewItem& item, wxDataViewItemArray& children) const
 {
+    if (tree_ == nullptr)
+    {
+        /* The scan did not finish yet, so the tree has no row at all. */
+        return 0;
+    }
+
     if (!item.IsOk())
     {
-        for (const auto& root : tree_.Roots())
+        for (const auto& root : tree_->Roots())
         {
             children.Add(Item(root.get()));
         }
@@ -188,7 +203,6 @@ unsigned int StartupTreeModel::GetChildren(const wxDataViewItem& item, wxDataVie
         return 0;
     }
 
-    tree_.EnsureChildren(*node);
     for (const auto& child : node->children)
     {
         children.Add(Item(child.get()));

@@ -184,6 +184,7 @@ struct LaunchTarget
     std::wstring              exe_path;     /* Executable to run. */
     std::vector<std::wstring> args;         /* Arguments of the executable. */
     bool                      hide_console; /* Start the process without a console window. */
+    std::string               error;        /* Reason the target cannot be started at all. */
 };
 
 /**
@@ -196,7 +197,11 @@ struct LaunchTarget
  * the startup files only.
  *
  * Every other run starts the startup files which `SelectStartupsForRun()`
- * selected, in configuration order.
+ * selected, in configuration order. A startup file is started the way its kind
+ * asks for: a program on its own, a script through the interpreter of the host
+ * (see `appbox::BuildStartupInvocation()`). A file whose interpreter the
+ * machine does not offer is reported and refuses the run, because the sandbox
+ * would otherwise start only a part of the application.
  *
  * @return The processes to start, in the order they are started in.
  */
@@ -217,11 +222,12 @@ static std::vector<LaunchTarget> BuildLaunchTargets()
 
     for (const auto* startup : LauncherApp().startups)
     {
+        const auto path = appbox::ExpandKnownFolder(appbox::UTF8ToWide(startup->executable.c_str()));
+
         LaunchTarget target;
         target.name = startup->trigger;
-        target.exe_path = appbox::ExpandKnownFolder(appbox::UTF8ToWide(startup->executable.c_str()));
-        target.args = BuildCmdArg(*startup);
         target.hide_console = LauncherApp().launcher_config.hide_console;
+        appbox::BuildStartupInvocation(path, BuildCmdArg(*startup), target.exe_path, target.args, target.error);
         targets.push_back(std::move(target));
     }
 
@@ -272,6 +278,21 @@ static DWORD MainLauncher(std::unique_ptr<appbox::SplashScreen>& splash)
 
     for (const auto& target : targets)
     {
+        if (!target.error.empty())
+        {
+            /*
+             * The kind of the startup file could not be turned into a process,
+             * which is a reason the run cannot work around: the interpreter it
+             * needs is not on this machine, see BuildLaunchTargets().
+             */
+            SPDLOG_ERROR("Failed to start '{}': {}", target.name, target.error);
+            if (exit_code == 0)
+            {
+                exit_code = ERROR_FILE_NOT_FOUND;
+            }
+            continue;
+        }
+
         auto       job = std::make_unique<appbox::ProcessJob>(target.exe_path, target.args,
                                                               LauncherApp().runtime->inject_data, target.hide_console);
         const auto ret = job->Start();

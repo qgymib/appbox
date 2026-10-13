@@ -1,6 +1,7 @@
 #include "FilesystemPanel.hpp"
 #include "FilesystemIsolationDialog.hpp"
 #include "FilesystemIsolationRenderer.hpp"
+#include "StartupFileType.hpp"
 #include "core/PresetDirectory.hpp"
 #include "WString.hpp"
 #include <wx/artprov.h>
@@ -136,16 +137,6 @@ std::wstring VirtualPath(const appbox::PresetDirectory& preset, const std::wstri
         path += name;
     }
     return path;
-}
-
-/**
- * @brief Whether a file name carries the executable extension.
- * @param[in] name Name of a file.
- * @return true when the extension is `.exe`, ignoring case.
- */
-bool IsExecutableName(const std::wstring& name)
-{
-    return EqualsIgnoreCase(std::filesystem::path(name).extension().wstring(), L".exe");
 }
 
 /**
@@ -634,7 +625,7 @@ void FilesystemPanel::ListFolderContent(const TreeNode& node)
         row.file_name = entry.first;
         row.host_path = (folder / entry.first).wstring();
         row.is_directory = entry.second;
-        row.is_startup_file = !entry.second && IsExecutableName(row.file_name) &&
+        row.is_startup_file = !entry.second && appbox::IsStartableFile(row.file_name) &&
                               model_.IsStartupFile(row.preset_id, row.import_name, StartupRelativePath(row));
         rows_.push_back(std::move(row));
     }
@@ -649,7 +640,7 @@ void FilesystemPanel::ListFolderContent(const TreeNode& node)
         row.target_dir = target_dir;
         row.file_name = file.file_name;
         row.source_path = file.source_path;
-        row.is_startup_file = IsExecutableName(row.file_name) &&
+        row.is_startup_file = appbox::IsStartableFile(row.file_name) &&
                               model_.IsStartupFile(row.preset_id, row.import_name, StartupRelativePath(row));
         rows_.push_back(std::move(row));
     }
@@ -691,7 +682,7 @@ void FilesystemPanel::ListVirtualFolderContent(const TreeNode& node)
         row.target_dir = target_dir;
         row.file_name = file.file_name;
         row.source_path = file.source_path;
-        row.is_startup_file = IsExecutableName(row.file_name) &&
+        row.is_startup_file = appbox::IsStartableFile(row.file_name) &&
                               model_.IsStartupFile(row.preset_id, row.import_name, StartupRelativePath(row));
         rows_.push_back(std::move(row));
     }
@@ -1443,9 +1434,9 @@ void FilesystemPanel::OnRowContextMenu(wxDataViewEvent& event)
     }
 
     const auto& row = rows_[static_cast<std::size_t>(index)];
-    if (row.is_directory || !IsExecutableName(row.file_name))
+    if (row.is_directory || !appbox::IsStartableFile(row.file_name))
     {
-        /* Only an executable of an imported folder can be started. */
+        /* Only a startable file of an imported folder can be started. */
         return;
     }
 

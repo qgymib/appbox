@@ -976,6 +976,52 @@ TEST(Unit_PackService, LauncherEntryNameFollowsTheFirstStartupFile)
     EXPECT_EQ(config.startups[1].executable, "#ProgramFiles#\\MyApp\\first.exe");
 }
 
+TEST(Unit_PackService, LauncherEntryNameReplacesTheExtensionOfAScript)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"bin\\deploy.ps1", "PS1");
+    MakeFile(my_app, L"run.bat", "BAT");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"bin\\deploy.ps1", true, error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"run.bat", true, error)) << error;
+
+    /*
+     * The payload of the launcher is a program image, so the entry carries the
+     * `.exe` extension although the first startup file is a script.
+     */
+    EXPECT_EQ(appbox::LauncherEntryName(model), L"deploy.exe");
+
+    const auto zip_path = temp.Get().parent_path() / (temp.Get().filename().wstring() + L"-script.zip");
+    const auto result = appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                                     appbox::EnvironmentModel(), appbox::ApplicationMetadata(), appbox::StartupScreen{},
+                                     FakePayloads(), zip_path.wstring(), nullptr);
+    EXPECT_EQ(result, "") << result;
+
+    ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
+    zip_t*           archive = closer.archive;
+    ASSERT_NE(archive, nullptr);
+
+    /* The name of the script itself is gone from the root of the archive. */
+    EXPECT_EQ(ReadEntry(archive, "deploy.exe"), "FAKE-LAUNCHER");
+    EXPECT_EQ(zip_name_locate(archive, "deploy.ps1", 0), -1);
+
+    /* The scripts keep their place below the layer tree of the archive. */
+    EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/bin/deploy.ps1"), "PS1");
+    EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/run.bat"), "BAT");
+
+    const auto json_text = ReadEntry(archive, "deploy.exe.json");
+    ASSERT_FALSE(json_text.empty());
+    const auto config = nlohmann::json::parse(json_text).get<appbox::LauncherConfig>();
+    ASSERT_EQ(config.startups.size(), static_cast<std::size_t>(2));
+    EXPECT_EQ(config.startups[0].executable, "#ProgramFiles#\\MyApp\\bin\\deploy.ps1");
+    EXPECT_EQ(config.startups[1].executable, "#ProgramFiles#\\MyApp\\run.bat");
+}
+
 TEST(Unit_PackService, PackReportsProgress)
 {
     TempDir    temp;

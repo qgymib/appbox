@@ -14,19 +14,26 @@ namespace appbox
  */
 enum class StartupNodeKind
 {
-    Preset,    ///< A preset directory of the packer.
-    Import,    ///< An imported folder below a preset directory.
-    Directory, ///< A host subfolder of an imported folder.
-    Executable ///< A host executable below an imported folder.
+    Container,        ///< The container holding the preset directories.
+    Preset,           ///< A preset directory of the packer.
+    Import,           ///< An imported folder below a preset directory.
+    Directory,        ///< A host subfolder of an imported folder.
+    VirtualDirectory, ///< A folder the user created inside the sandbox view.
+    Executable        ///< A file which can become a startup file.
 };
 
 /**
  * @brief One row of the startup file tree.
  *
- * The preset and import rows are built from the pack model, the host
- * subfolders and the executables below an import are enumerated on demand and
- * cached in `children`. Every node owns its children, so the tree is destroyed
- * as a whole.
+ * The container, the preset, the import and the folder rows are built from the
+ * pack model and from the host folders of the imported folders, the executable
+ * rows are the startable files below them. Every node owns its children, so the
+ * tree is destroyed as a whole.
+ *
+ * A row which names a folder of the sandbox view carries the path of the folder
+ * relative to the import root in `relative_path`, the only exception being a
+ * folder the user created: it has no import root of its own and carries its path
+ * relative to the preset directory in `virtual_dir`.
  */
 struct StartupNode
 {
@@ -42,11 +49,14 @@ struct StartupNode
 
     /**
      * @brief Host path of the folder or file behind the row.
+     *
+     * The container and a folder the user created map to no host location, so
+     * their path stays empty.
      */
     std::wstring host_path;
 
     /**
-     * @brief Identifier of the owning preset directory (imports and below).
+     * @brief Identifier of the owning preset directory, empty for the container.
      */
     std::string preset_id;
 
@@ -56,37 +66,42 @@ struct StartupNode
     std::wstring import_name;
 
     /**
-     * @brief Path relative to the import root using backslashes, empty for
-     *        import roots.
+     * @brief Path relative to the import root using backslashes, empty for the
+     *        folder rows which name the import root itself.
      */
     std::wstring relative_path;
 
     /**
-     * @brief Owning node, null for the preset rows.
+     * @brief Path of a folder the user created, relative to its preset
+     *        directory, empty for every other row.
+     */
+    std::wstring virtual_dir;
+
+    /**
+     * @brief Owning node, null for the container.
      */
     StartupNode* parent = nullptr;
 
     /**
-     * @brief Children of the row, enumerated on demand.
+     * @brief Children of the row.
      */
     std::vector<std::unique_ptr<StartupNode>> children;
-
-    /**
-     * @brief Whether the children of the row are resolved already.
-     *
-     * The children of a preset row are the imported folders of the model, the
-     * host children of the other container rows are enumerated on demand.
-     */
-    bool populated = false;
 };
 
 /**
- * @brief Tree of the imported folders offering their executables as startup files.
+ * @brief Tree of the files a packaged application can start.
  *
- * The tree mirrors the sandbox view of the packer: the preset directories with
- * their imported folders, expanded into the host subfolders of an import on
- * demand. Only executable files can become startup files, and any number of
- * them can be chosen.
+ * The tree mirrors the filesystem workspace of the packer: the container with
+ * the preset directories, the nested presets below them, the imported folders
+ * and, below an import, the host subfolders, the folders the user created and
+ * the files which were imported on their own. Only the startable files of the
+ * tree are listed, see `common/StartupFileType.hpp`.
+ *
+ * A row is only offered while it holds a startable file below it, which is what
+ * makes the tree show the folders on the way to a file instead of the whole
+ * sandbox view. A startup file of the model is kept either way, so a project
+ * which is imported on a machine where the packaged application is not
+ * installed still lists its startup files and the user can drop them.
  *
  * The tree owns the startup file list the dialog edits: every executable row
  * reports whether it is a startup file, whether it starts automatically and
@@ -100,67 +115,61 @@ class StartupTree
 {
 public:
     /**
-     * @brief Build the tree of the preset and import rows.
-     * @param[in] model The pack model holding the imported folders.
+     * @brief Build the tree of the model.
+     *
+     * The constructor reads the host folders of the imported folders, so it is
+     * meant to run on a worker thread while the dialog shows that it is
+     * scanning. A folder which cannot be read stays empty and is not offered.
+     *
+     * @param[in] model The pack model holding the imports and the startup files.
      */
     explicit StartupTree(const PackModel& model);
 
     /**
-     * @brief Get the preset rows of the tree.
-     * @return The preset rows in preset order.
+     * @brief Get the rows of the tree.
+     * @return The container row, which is the only row of the tree.
      */
     const std::vector<std::unique_ptr<StartupNode>>& Roots() const;
 
     /**
-     * @brief Enumerate the host children of one container row.
+     * @brief Get the rows which hold children, in the order of the tree.
      *
-     * The children are enumerated only once: the `populated` flag of the row
-     * makes later calls return immediately. Enumerating a folder which cannot
-     * be read leaves the row without children.
+     * The startup files dialog expands every row it gets, so it opens with the
+     * whole tree in view instead of the rows on the way to a startup file only.
+     * A row which names a startable file never holds children, which is why it
+     * is never part of the list.
      *
-     * @param[in,out] node Container row to populate.
+     * @return The rows with at least one child, the container row first.
      */
-    void EnsureChildren(StartupNode& node);
+    std::vector<const StartupNode*> ExpandableRows() const;
 
     /**
      * @brief Find the row of a path below an import root.
      *
-     * The path is split at the backslashes and every level is expanded on
-     * demand, so the lookup works without expanding the tree before.
-     *
-     * @param[in,out] import_root The import row to search below.
+     * @param[in] import_root The import row to search below.
      * @param[in] relative_path Path relative to the import root.
      * @return The matching row, null when it does not exist.
      */
-    StartupNode* FindNode(StartupNode& import_root, const std::wstring& relative_path);
+    StartupNode* FindNode(StartupNode& import_root, const std::wstring& relative_path) const;
 
     /**
      * @brief Find the row of a startup file.
      *
-     * The preset and the import are matched by name ignoring the case, the
-     * folders on the way to the file are expanded on demand.
+     * The preset is looked up through the whole tree, so a nested preset is
+     * found as well; the import and the folders of the way to the file are
+     * matched by name ignoring the case.
      *
      * @param[in] file The startup file to look up.
      * @return The matching row, null when it does not exist.
      */
-    StartupNode* FindChoice(const StartupFile& file);
+    StartupNode* FindChoice(const StartupFile& file) const;
 
     /**
      * @brief Whether a row can be a startup file.
      * @param[in] node Row to test.
-     * @return true for executable rows.
+     * @return true for the rows which name a startable file.
      */
     static bool IsCheckable(const StartupNode& node);
-
-    /**
-     * @brief Replace the startup file list with the model content.
-     *
-     * The list is stored as an identifier, so a row which is not expanded yet
-     * reports its state as soon as it appears.
-     *
-     * @param[in] files The startup files of the model.
-     */
-    void Preselect(const std::vector<StartupFile>& files);
 
     /**
      * @brief Get the startup file list of the tree.
@@ -204,7 +213,7 @@ public:
      *
      * @param[in] node Row to change.
      * @param[in] auto_start New state of the flag.
-     * @return true when the row is an executable and the list was changed.
+     * @return true when the row is a startable file and the list was changed.
      */
     bool SetAutoStart(const StartupNode& node, bool auto_start);
 
@@ -218,7 +227,7 @@ public:
      * @param[in] node Row to change.
      * @param[in] trigger New trigger of the row.
      * @param[out] error Error description on failure.
-     * @return true when the row is an executable and the trigger was stored.
+     * @return true when the row is a startable file and the trigger was stored.
      */
     bool SetTrigger(const StartupNode& node, const std::wstring& trigger, std::string& error);
 
@@ -231,16 +240,126 @@ public:
 
 private:
     /**
-     * @brief Enumerate the host children of one row and sort them.
-     * @param[in,out] node Container row to populate.
+     * @brief Append the row of one preset directory and everything below it.
+     * @param[in,out] parent Row the preset hangs below.
+     * @param[in] preset Preset directory to append.
      */
-    void EnumerateChildren(StartupNode& node);
+    void AppendPreset(StartupNode& parent, const PresetDirectory& preset);
 
     /**
-     * @brief Whether one row and one startup file describe the same executable.
+     * @brief Append the row of one imported folder and everything below it.
+     * @param[in,out] preset_node Preset directory owning the import.
+     * @param[in] imported Imported folder to append.
+     */
+    void AppendImport(StartupNode& preset_node, const ImportedFolder& imported);
+
+    /**
+     * @brief Append the content of one folder of the sandbox view.
+     *
+     * The host subfolders and the startable files of the host folder are
+     * listed, followed by the files which were imported on their own and the
+     * folders the user created inside the folder. A folder the user created has
+     * no host counterpart, so its host content is skipped.
+     *
+     * @param[in,out] node Folder row to fill.
+     */
+    void AppendFolder(StartupNode& node);
+
+    /**
+     * @brief Append the row of one folder the user created and everything below it.
+     * @param[in,out] parent Row the folder hangs below.
+     * @param[in] target_dir Path of the folder relative to the preset directory.
+     */
+    void AppendVirtualFolder(StartupNode& parent, const std::wstring& target_dir);
+
+    /**
+     * @brief Append the startable files which were imported into one folder.
+     * @param[in,out] node Folder row to fill.
+     */
+    void AppendImportedFiles(StartupNode& node);
+
+    /**
+     * @brief Find or create the row of one preset directory.
+     *
+     * A nested preset is created below the preset which holds it, so the shape
+     * of the tree follows the table of the preset directories.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @return The row of the preset, null when the identifier is unknown.
+     */
+    StartupNode* EnsurePreset(const std::string& preset_id);
+
+    /**
+     * @brief Find or create the row of one preset directory below a row.
+     * @param[in,out] parent Row to search in.
+     * @param[in] preset_id Identifier of the preset directory.
+     * @return The row of the preset, null when the identifier is unknown.
+     */
+    StartupNode* EnsurePresetBelow(StartupNode& parent, const std::string& preset_id);
+
+    /**
+     * @brief Find the row of one preset directory below a row.
+     *
+     * The lookup walks the whole subtree, so a nested preset is found as well.
+     *
+     * @param[in] parent Row to search in.
+     * @param[in] preset_id Identifier of the preset directory.
+     * @return The row of the preset, null when the subtree holds none.
+     */
+    static StartupNode* FindPresetBelow(StartupNode& parent, const std::string& preset_id);
+
+    /**
+     * @brief Find or create the row of one startup file of the model.
+     *
+     * The folders of the way to the file are created as well, so a startup file
+     * whose host file is gone keeps its place in the tree and the user can see
+     * and drop it. A file which is not part of an imported folder has no place
+     * in the view and is skipped.
+     *
+     * @param[in] file The startup file to place.
+     * @return The row of the file, null when it has no place in the view.
+     */
+    StartupNode* EnsureChoice(const StartupFile& file);
+
+    /**
+     * @brief Drop every row which holds no startable file below it.
+     * @param[in,out] node Row whose children are pruned.
+     */
+    static void PruneEmpty(StartupNode& node);
+
+    /**
+     * @brief Append the rows of one subtree which hold children.
+     * @param[in] node Row to inspect.
+     * @param[out] rows Rows which hold children, in the order of the tree.
+     */
+    static void CollectExpandable(const StartupNode& node, std::vector<const StartupNode*>& rows);
+
+    /**
+     * @brief Order the children of one row and of everything below it.
+     * @param[in,out] node Row whose children are ordered.
+     */
+    static void SortChildren(StartupNode& node);
+
+    /**
+     * @brief Get the folder of the sandbox view one row names.
+     * @param[in] node Row to inspect.
+     * @return The path of the folder relative to the preset directory.
+     */
+    static std::wstring TargetDirOf(const StartupNode& node);
+
+    /**
+     * @brief Build the path of a file relative to the import root.
+     * @param[in] target_dir Directory of the file relative to the preset directory.
+     * @param[in] file_name Name of the file inside the directory.
+     * @return The path relative to the import root.
+     */
+    static std::wstring ImportRelativePath(const std::wstring& target_dir, const std::wstring& file_name);
+
+    /**
+     * @brief Whether one row and one startup file describe the same file.
      * @param[in] node Row to test.
      * @param[in] file Startup file to test.
-     * @return true when both name the same executable of the same import.
+     * @return true when both name the same file of the same import.
      */
     static bool Matches(const StartupNode& node, const StartupFile& file);
 
@@ -258,8 +377,29 @@ private:
      */
     int IndexOf(const StartupNode& node) const;
 
+    /**
+     * @brief The container row, null while the tree was not built.
+     */
+    StartupNode* container_ = nullptr;
+
+    /**
+     * @brief The rows of the tree, which hold the container row.
+     */
     std::vector<std::unique_ptr<StartupNode>> roots_;
-    std::vector<StartupFile>                  files_;
+
+    /**
+     * @brief The startup file list of the tree, in startup order.
+     */
+    std::vector<StartupFile> files_;
+
+    /**
+     * @brief The model the tree is built from.
+     *
+     * The tree reads the model while it is built and holds no reference to it
+     * afterwards, so a caller may build a tree from a model it owns and let the
+     * model go once the constructor returned.
+     */
+    const PackModel* model_ = nullptr;
 };
 
 } // namespace appbox

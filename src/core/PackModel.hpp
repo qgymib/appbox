@@ -90,11 +90,13 @@ struct VirtualDirectory
 };
 
 /**
- * @brief One executable the sandboxed application starts.
+ * @brief One file the sandboxed application starts.
  *
- * A startup file is an executable of an imported folder. The sandbox starts
- * every startup file whose `auto_start` flag is set; a startup file which is
- * not marked for auto start can be started by naming its `trigger` on the
+ * A startup file is a startable file of an imported folder: a program
+ * (`.exe`), a batch file (`.bat`), a command script (`.cmd`) or a PowerShell
+ * script (`.ps1`), see `common/StartupFileType.hpp`. The sandbox starts every
+ * startup file whose `auto_start` flag is set; a startup file which is not
+ * marked for auto start can be started by naming its `trigger` on the
  * `--X-AppBox-Startup` command line of the packaged launcher.
  */
 struct StartupFile
@@ -105,12 +107,12 @@ struct StartupFile
     std::string preset_id;
 
     /**
-     * @brief Imported folder containing the executable.
+     * @brief Imported folder containing the file.
      */
     std::wstring import_name;
 
     /**
-     * @brief Executable path relative to the imported folder root.
+     * @brief Path of the file relative to the imported folder root.
      */
     std::wstring relative_path;
 
@@ -119,7 +121,7 @@ struct StartupFile
      *
      * The trigger selects the startup file on the `--X-AppBox-Startup`
      * command line. It is unique ignoring case and defaults to the file name
-     * of the executable without its extension.
+     * of the file without its extension.
      */
     std::wstring trigger;
 
@@ -168,7 +170,7 @@ std::wstring FreeStartupTrigger(const std::vector<StartupFile>& files, const std
  *
  * The model tracks the imported folders per preset directory, the folders the
  * user created inside the sandbox view and the startup files of the packaged
- * application. All validation (name uniqueness, executable checks, trigger
+ * application. All validation (name uniqueness, startable file checks, trigger
  * uniqueness) happens here so the UI layer stays free of business rules.
  *
  * A folder the user created has no host counterpart: it is an entry of the
@@ -424,20 +426,21 @@ public:
                        const std::wstring& relative_path) const;
 
     /**
-     * @brief Append one executable to the startup files.
+     * @brief Append one startable file to the startup files.
      *
      * The relative path may use forward or backslashes and is normalized to
      * backslashes. The referenced file must exist inside the imported folder
-     * and must be an executable. The trigger defaults to the file name without
-     * its extension; when that trigger is taken already, a numeric suffix is
-     * appended so the list stays unambiguous.
+     * and must be a startable file (`.exe`, `.bat`, `.cmd` or `.ps1`). The
+     * trigger defaults to the file name without its extension; when that
+     * trigger is taken already, a numeric suffix is appended so the list stays
+     * unambiguous.
      *
-     * An executable which is already a startup file is not added a second
-     * time: its auto start flag is updated instead and its trigger is kept.
+     * A file which is already a startup file is not added a second time: its
+     * auto start flag is updated instead and its trigger is kept.
      *
      * @param[in] preset_id Identifier of the preset directory.
      * @param[in] import_name Name of the imported folder.
-     * @param[in] relative_path Executable path relative to the import root.
+     * @param[in] relative_path Path of the file relative to the import root.
      * @param[in] auto_start Whether the sandbox starts the file by itself.
      * @param[out] error Error description on failure.
      * @return true on success.
@@ -450,8 +453,8 @@ public:
      *
      * The operation is atomic: every entry is validated before the list is
      * replaced, so a rejected list leaves the model unchanged. Every entry
-     * must name an existing executable of an imported folder and must carry a
-     * trigger which is neither empty nor used by another entry (ignoring
+     * must name an existing startable file of an imported folder and must carry
+     * a trigger which is neither empty nor used by another entry (ignoring
      * case).
      *
      * @param[in] files The startup files in startup order.
@@ -507,13 +510,13 @@ public:
     /**
      * @brief Restore one startup file without touching the host filesystem.
      *
-     * Unlike AddStartupFile(), the referenced executable does not have to
-     * exist; only the shape of the path, the imported folder it lives in and
-     * the trigger are validated.
+     * Unlike AddStartupFile(), the referenced file does not have to exist; only
+     * the shape of the path, the imported folder it lives in and the trigger
+     * are validated.
      *
      * @param[in] preset_id Identifier of the preset directory.
      * @param[in] import_name Name of the imported folder containing the file.
-     * @param[in] relative_path Executable path relative to the import root.
+     * @param[in] relative_path Path of the file relative to the import root.
      * @param[in] trigger Trigger name of the startup file.
      * @param[in] auto_start Whether the sandbox starts the file by itself.
      * @param[out] error Error description on failure.
@@ -577,12 +580,12 @@ private:
      * @brief Resolve and validate one startup file reference.
      *
      * The preset directory and the imported folder have to exist, the path has
-     * to stay inside the imported folder and has to name an executable. When
+     * to stay inside the imported folder and has to name a startable file. When
      * `require_host` is set the file also has to exist on the host.
      *
      * @param[in] preset_id Identifier of the preset directory.
      * @param[in] import_name Name of the imported folder.
-     * @param[in] relative_path Executable path relative to the import root.
+     * @param[in] relative_path Path of the file relative to the import root.
      * @param[in] require_host Whether the executable must exist on the host.
      * @param[out] out The resolved startup file without its trigger.
      * @param[out] error Error description on failure.

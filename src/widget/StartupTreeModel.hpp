@@ -9,24 +9,25 @@
 #include <wx/wx.h>
 #include <wx/artprov.h>
 #include <wx/dataview.h>
-#include "core/PackModel.hpp"
 #include "core/StartupTree.hpp"
+#include <memory>
 #include <string>
 #include <vector>
 
 /**
  * @brief Tree model of the startup file browser.
  *
- * The model presents the startup file tree of the pack model as a tree table
- * with the columns Name, Type, Auto Start and Trigger. Host subfolders are
- * enumerated by the tree on demand, so a folder is read only once it is shown
- * for the first time.
+ * The model presents the startup file tree of the packer as a tree table with
+ * the columns Name, Type, Auto Start and Trigger. The tree is built by a
+ * background scan, because it reads the host folders of the imported folders
+ * and keeps only the folders on the way to a startable file; the model is
+ * empty until the scan hands its result over, see Adopt().
  *
- * The Auto Start and Trigger columns report a value for executable rows only;
- * the rows which cannot be a startup file report no value at all, which keeps
- * their cells empty and non clickable. Checking the box of an executable adds
- * it to the startup file list, clearing the box keeps it in the list but stops
- * the sandbox from starting it on its own.
+ * The Auto Start and Trigger columns report a value for the rows which name a
+ * startable file only; the rows which cannot be a startup file report no value
+ * at all, which keeps their cells empty and non clickable. Checking the box of
+ * a startable file adds it to the startup file list, clearing the box keeps it
+ * in the list but stops the sandbox from starting it on its own.
  */
 class StartupTreeModel : public wxDataViewModel
 {
@@ -43,10 +44,38 @@ public:
     };
 
     /**
-     * @brief Build the model of the imported folders.
-     * @param[in] model The pack model holding the imported folders.
+     * @brief Create the model of a scan which did not finish yet.
+     *
+     * The control starts with no row at all, which is the state the dialog
+     * shows while it reports that it is scanning the folders of the view.
      */
-    explicit StartupTreeModel(const appbox::PackModel& model);
+    StartupTreeModel();
+
+    /**
+     * @brief Take over the tree the background scan built.
+     *
+     * The control is told that the whole model was replaced, so it shows the
+     * rows of the new tree.
+     *
+     * @param[in] tree The finished tree, which the model keeps.
+     */
+    void Adopt(const std::shared_ptr<appbox::StartupTree>& tree);
+
+    /**
+     * @brief Whether the background scan handed its tree over already.
+     * @return true when the model holds a tree.
+     */
+    bool IsReady() const;
+
+    /**
+     * @brief Get the rows the control has to expand.
+     *
+     * The dialog expands every row it gets, so it opens with the whole tree in
+     * view instead of the rows on the way to a startup file only.
+     *
+     * @return The rows which hold children, empty while the scan runs.
+     */
+    std::vector<const appbox::StartupNode*> ExpandableRows() const;
 
     /**
      * @brief Get the row behind one data view item.
@@ -64,20 +93,10 @@ public:
 
     /**
      * @brief Find the row of a startup file.
-     *
-     * The folders on the way to the row are enumerated, so the row can be
-     * expanded and shown without expanding the tree by hand.
-     *
      * @param[in] file The startup file to look up.
      * @return The row, null when it does not exist.
      */
-    appbox::StartupNode* FindChoice(const appbox::StartupFile& file);
-
-    /**
-     * @brief Take over the startup file list of the model.
-     * @param[in] files The startup files to preselect.
-     */
-    void Preselect(const std::vector<appbox::StartupFile>& files);
+    appbox::StartupNode* FindChoice(const appbox::StartupFile& file) const;
 
     /**
      * @brief Whether the tree holds at least one startup file.
@@ -148,14 +167,14 @@ public:
     /**
      * @brief Get the parent row of one row.
      * @param[in] item Data view item of the row.
-     * @return The data view item of the parent, invalid for the preset rows.
+     * @return The data view item of the parent, invalid for the container row.
      */
     wxDataViewItem GetParent(const wxDataViewItem& item) const override;
 
     /**
      * @brief Whether one row can have children.
      * @param[in] item Data view item of the row.
-     * @return true for the preset, import and folder rows.
+     * @return true for the container, the preset, the import and the folder rows.
      */
     bool IsContainer(const wxDataViewItem& item) const override;
 
@@ -194,9 +213,9 @@ private:
     static wxString TypeLabel(const appbox::StartupNode& node);
 
     /**
-     * @brief Tree of the imports, expanded on demand.
+     * @brief The tree of the finished scan, null while the scan runs.
      */
-    mutable appbox::StartupTree tree_;
+    std::shared_ptr<appbox::StartupTree> tree_;
 
     /**
      * @brief Icon of a folder row.
@@ -204,7 +223,7 @@ private:
     wxBitmapBundle folder_icon_;
 
     /**
-     * @brief Icon of an executable row.
+     * @brief Icon of a row which names a startable file.
      */
     wxBitmapBundle executable_icon_;
 

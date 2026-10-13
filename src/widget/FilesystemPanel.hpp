@@ -708,21 +708,22 @@ private:
     /**
      * @brief Show the context menu of a row of the file list.
      *
-     * Only executable rows offer the startup file commands, because only an
-     * executable can be started by the sandbox.
+     * Only startable rows offer the startup file commands, because only a
+     * program, a batch file, a command script or a PowerShell script can be
+     * started by the sandbox.
      *
      * @param[in] event Table item context menu event.
      */
     void OnRowContextMenu(wxDataViewEvent& event);
 
     /**
-     * @brief Add the selected executable as an auto start startup file.
+     * @brief Add the selected startable file as an auto start startup file.
      * @param[in] event Command event.
      */
     void OnSetStartupFile(wxCommandEvent& event);
 
     /**
-     * @brief Add the selected executable as a startup file without auto start.
+     * @brief Add the selected startable file as a startup file without auto start.
      * @param[in] event Command event.
      */
     void OnAddToStartupFileList(wxCommandEvent& event);

@@ -1,4 +1,5 @@
 #include "PackModel.hpp"
+#include "StartupFileType.hpp"
 #include "WString.hpp"
 #include <algorithm>
 #include <cwctype>
@@ -215,11 +216,11 @@ bool IsPathBelow(const std::wstring& path, const std::wstring& ancestor)
 }
 
 /**
- * @brief Whether one startup file refers to an executable.
+ * @brief Whether one startup file refers to one file of the view.
  * @param[in] file Startup file to test.
  * @param[in] preset_id Identifier of the preset directory.
  * @param[in] import_name Name of the imported folder.
- * @param[in] relative_path Executable path relative to the import root.
+ * @param[in] relative_path Path of the file relative to the import root.
  * @return true when the three references match ignoring case.
  */
 bool SameStartupFile(const appbox::StartupFile& file, const std::string& preset_id, const std::wstring& import_name,
@@ -798,9 +799,15 @@ bool PackModel::ResolveStartupFile(const std::string& preset_id, const std::wstr
         return false;
     }
 
-    if (!EqualsIgnoreCase(std::filesystem::path(relative).extension().wstring(), L".exe"))
+    /*
+     * Only the files the launcher knows how to start can be a startup file: a
+     * program on its own, a batch file and a command script through the command
+     * interpreter and a PowerShell script through Windows PowerShell.
+     */
+    if (!IsStartableFile(relative))
     {
-        error = "the startup file must be an executable (.exe) file";
+        error = "the startup file '" + WideToUTF8(relative) + "' is not a startable file (" +
+                StartupFileExtensionList() + ")";
         return false;
     }
 
@@ -881,7 +888,7 @@ bool PackModel::AddStartupFile(const std::string& preset_id, const std::wstring&
     {
         if (SameStartupFile(file, resolved.preset_id, resolved.import_name, resolved.relative_path))
         {
-            /* The executable is in the list already: only the flag changes. */
+            /* The file is in the list already: only the flag changes. */
             file.auto_start = auto_start;
             return true;
         }

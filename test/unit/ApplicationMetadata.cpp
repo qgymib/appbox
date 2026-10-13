@@ -369,6 +369,38 @@ TEST(Unit_ApplicationMetadata, DefaultsToTheFirstAutoStartProgram)
     EXPECT_FALSE(metadata.IsEmpty());
 }
 
+TEST(Unit_ApplicationMetadata, PrefersAProgramOverAScript)
+{
+    TempDir temp;
+
+    const auto folder = MakeFolder(temp.Get(), L"MyApp");
+    MakeFile(folder, L"app.exe", "app");
+    MakeFile(folder, L"install.bat", "bat");
+    MakeFile(folder, L"setup.cmd", "cmd");
+    MakeFile(folder, L"deploy.ps1", "ps1");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", folder.wstring(), error)) << error;
+
+    /*
+     * Only a program image carries version information, so a program of the
+     * auto start files is described even while a script carries the smaller
+     * name.
+     */
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"install.bat", true, error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"setup.cmd", true, error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
+    EXPECT_EQ(appbox::DefaultMetadataSource(model), (folder / L"app.exe").wstring());
+
+    /* A session which starts scripts only falls back to its first script. */
+    appbox::PackModel scripts;
+    ASSERT_TRUE(scripts.ImportFolder("program_files", folder.wstring(), error)) << error;
+    ASSERT_TRUE(scripts.AddStartupFile("program_files", L"MyApp", L"deploy.ps1", true, error)) << error;
+    ASSERT_TRUE(scripts.AddStartupFile("program_files", L"MyApp", L"install.bat", true, error)) << error;
+    EXPECT_EQ(appbox::DefaultMetadataSource(scripts), (folder / L"deploy.ps1").wstring());
+}
+
 TEST(Unit_ApplicationMetadata, HasNoDefaultSourceWithoutAnAutoStartProgram)
 {
     TempDir temp;

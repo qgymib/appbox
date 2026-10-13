@@ -90,9 +90,11 @@ std::size_t ContentFileCount(const PackModel& model);
  * The launcher is named after the first startup file of the model, so the
  * extracted archive looks like the packaged application: an entry program
  * named `foo.exe` (optionally inside a subdirectory of the imported folder)
- * produces the launcher entry `foo.exe`. The launcher resolves its configuration
- * as `<own file name>.json` beside itself, so the archive entry of the
- * configuration is `<launcher entry>.json`, e.g. `foo.exe.json`.
+ * produces the launcher entry `foo.exe`. The entry always carries the `.exe`
+ * extension, because the payload is a program image: a first startup file named
+ * `run.bat` produces the launcher entry `run.exe`. The launcher resolves its
+ * configuration as `<own file name>.json` beside itself, so the archive entry of
+ * the configuration is `<launcher entry>.json`, e.g. `foo.exe.json`.
  *
  * @param[in] model The pack model.
  * @return The file name of the launcher entry, empty when the model has no
@@ -132,9 +134,9 @@ struct PackPayloads
  * deleting it resets the sandbox to the state the archive carries.
  *
  * ```
- * <first startup file name>              launcher payload (payloads.launcher_bytes)
- * <first startup file name>.json         startups[] = { trigger, auto_start,
- *                                        executable = <layer key>\<import>\<exe> }
+ * <launcher entry name>                  launcher payload (payloads.launcher_bytes)
+ * <launcher entry name>.json             startups[] = { trigger, auto_start,
+ *                                        executable = <layer key>\<import>\<file> }
  * app/sandbox32.dll                      injected sandbox DLL (32 bit)
  * app/sandbox64.dll                      injected sandbox DLL (64 bit)
  * app/startup/splash.png                 startup image of the session (optional)

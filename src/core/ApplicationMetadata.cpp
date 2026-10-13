@@ -1,5 +1,6 @@
 #include "ApplicationMetadata.hpp"
 #include "PeResourcePatch.hpp"
+#include "StartupFileType.hpp"
 #include "WString.hpp"
 #include <algorithm>
 #include <cstddef>
@@ -766,12 +767,18 @@ std::wstring DefaultMetadataSource(const PackModel& model)
     /*
      * The launcher of the archive carries the file name of the main program, so
      * the program which starts the application is the one its version
-     * information should describe. Programs which are not marked for auto start
-     * are not candidates, and the first executable name decides the choice, so
-     * the default does not depend on the order the files were added in.
+     * information should describe. Files which are not marked for auto start
+     * are not candidates, and the first file name decides the choice, so the
+     * default does not depend on the order the files were added in.
+     *
+     * A program image is preferred over a script, because only an image carries
+     * version information: a session which starts a batch file beside its
+     * program describes the program. A session which starts scripts only falls
+     * back to its first script, which carries no information at all.
      */
     const StartupFile* choice = nullptr;
     std::wstring       choice_name;
+    bool               choice_is_program = false;
 
     for (const auto& file : model.StartupFiles())
     {
@@ -780,11 +787,14 @@ std::wstring DefaultMetadataSource(const PackModel& model)
             continue;
         }
 
+        const bool is_program = StartupFileKindOf(file.relative_path) == StartupFileKind::Program;
         const auto name = std::filesystem::path(file.relative_path).filename().wstring();
-        if (choice == nullptr || name < choice_name)
+        if (choice == nullptr || (is_program && !choice_is_program) ||
+            (is_program == choice_is_program && name < choice_name))
         {
             choice = &file;
             choice_name = name;
+            choice_is_program = is_program;
         }
     }
 

@@ -460,17 +460,73 @@ TEST(Unit_PackModel, AddStartupFileNormalizesSeparators)
     EXPECT_EQ(model.StartupFiles()[0].relative_path, L"bin\\app.exe");
 }
 
-TEST(Unit_PackModel, AddStartupFileRejectsNonExecutable)
+TEST(Unit_PackModel, AddStartupFileAcceptsEveryStartableFile)
 {
-    TempDir temp;
-    MakeFile(temp.Get(), L"readme.txt", "TXT");
+    TempDir    temp;
+    const auto bin = MakeFolder(temp.Get(), L"bin");
+    MakeFile(temp.Get(), L"app.exe", "EXE");
+    MakeFile(temp.Get(), L"run.bat", "BAT");
+    MakeFile(temp.Get(), L"build.cmd", "CMD");
+    MakeFile(temp.Get(), L"deploy.ps1", "PS1");
+    MakeFile(bin, L"tool.CMD", "CMD");
     const auto import_name = temp.Get().filename().wstring();
 
     appbox::PackModel model;
     std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
-    EXPECT_FALSE(model.AddStartupFile("program_files", import_name, L"readme.txt", true, error));
-    EXPECT_NE(error.find(".exe"), std::string::npos);
+    ASSERT_TRUE(model.AddStartupFile("program_files", import_name, L"app.exe", true, error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", import_name, L"run.bat", false, error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", import_name, L"build.cmd", true, error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", import_name, L"deploy.ps1", true, error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", import_name, L"bin\\tool.CMD", true, error)) << error;
+
+    const auto& files = model.StartupFiles();
+    ASSERT_EQ(files.size(), static_cast<std::size_t>(5));
+    EXPECT_EQ(files[0].relative_path, L"app.exe");
+    EXPECT_EQ(files[0].trigger, L"app");
+    EXPECT_TRUE(files[0].auto_start);
+
+    EXPECT_EQ(files[1].relative_path, L"run.bat");
+    EXPECT_EQ(files[1].trigger, L"run");
+    EXPECT_FALSE(files[1].auto_start);
+
+    EXPECT_EQ(files[2].relative_path, L"build.cmd");
+    EXPECT_EQ(files[2].trigger, L"build");
+    EXPECT_EQ(files[3].relative_path, L"deploy.ps1");
+    EXPECT_EQ(files[3].trigger, L"deploy");
+
+    /* The extension is recognized ignoring the case. */
+    EXPECT_EQ(files[4].relative_path, L"bin\\tool.CMD");
+    EXPECT_EQ(files[4].trigger, L"tool");
+
+    EXPECT_TRUE(model.IsStartupFile("program_files", import_name, L"deploy.ps1"));
+    EXPECT_TRUE(model.IsStartupFile("program_files", import_name, L"BIN\\TOOL.cmd"));
+}
+
+TEST(Unit_PackModel, AddStartupFileRejectsFilesWhichCannotBeStarted)
+{
+    TempDir temp;
+    MakeFile(temp.Get(), L"readme.txt", "TXT");
+    MakeFile(temp.Get(), L"library.dll", "DLL");
+    MakeFile(temp.Get(), L"backup.exe.bak", "BAK");
+    MakeFile(temp.Get(), L"noextension", "TXT");
+    const auto import_name = temp.Get().filename().wstring();
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
+
+    const wchar_t* const refused[] = { L"readme.txt", L"library.dll", L"backup.exe.bak", L"noextension" };
+    for (const auto* name : refused)
+    {
+        error.clear();
+        EXPECT_FALSE(model.AddStartupFile("program_files", import_name, name, true, error)) << name;
+
+        /* The message names the extensions which can be chosen. */
+        EXPECT_NE(error.find(".exe"), std::string::npos) << error;
+        EXPECT_NE(error.find(".ps1"), std::string::npos) << error;
+    }
+
     EXPECT_FALSE(model.HasStartupFiles());
 }
 
@@ -621,6 +677,7 @@ TEST(Unit_PackModel, SetStartupFilesReplacesTheList)
     const auto app = MakeFolder(temp.Get(), L"MyApp");
     MakeFile(app, L"one.exe", "ONE");
     MakeFile(app, L"two.exe", "TWO");
+    MakeFile(app, L"deploy.cmd", "CMD");
 
     appbox::PackModel model;
     std::string       error;
@@ -634,14 +691,25 @@ TEST(Unit_PackModel, SetStartupFilesReplacesTheList)
     first.trigger = L" second ";
     first.auto_start = false;
 
-    ASSERT_TRUE(model.SetStartupFiles({ first }, error)) << error;
+    /* A script is a startup file as well. */
+    appbox::StartupFile second;
+    second.preset_id = "program_files";
+    second.import_name = L"MyApp";
+    second.relative_path = L"deploy.cmd";
+    second.trigger = L"deploy";
+    second.auto_start = true;
+
+    ASSERT_TRUE(model.SetStartupFiles({ first, second }, error)) << error;
 
     const auto& files = model.StartupFiles();
-    ASSERT_EQ(files.size(), static_cast<std::size_t>(1));
+    ASSERT_EQ(files.size(), static_cast<std::size_t>(2));
     EXPECT_EQ(files[0].import_name, L"MyApp");
     EXPECT_EQ(files[0].relative_path, L"two.exe");
     EXPECT_EQ(files[0].trigger, L"second");
     EXPECT_FALSE(files[0].auto_start);
+    EXPECT_EQ(files[1].relative_path, L"deploy.cmd");
+    EXPECT_EQ(files[1].trigger, L"deploy");
+    EXPECT_TRUE(files[1].auto_start);
 }
 
 TEST(Unit_PackModel, SetStartupFilesRejectsDuplicateTrigger)
@@ -1051,6 +1119,24 @@ TEST(Unit_PackModel, RestoreStartupFileAcceptsMissingExecutable)
     EXPECT_TRUE(model.StartupFilePath(files[0], path));
     EXPECT_EQ(std::filesystem::path(path).lexically_normal(),
               std::filesystem::path(L"C:\\MyApp\\bin\\app.exe").lexically_normal());
+}
+
+TEST(Unit_PackModel, RestoreStartupFileAcceptsAScript)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
+    ASSERT_TRUE(model.RestoreStartupFile("program_files", L"MyApp", L"bin\\deploy.ps1", L"deploy", true, error))
+        << error;
+    ASSERT_TRUE(model.RestoreStartupFile("program_files", L"MyApp", L"run.bat", L"run", false, error)) << error;
+
+    const auto& files = model.StartupFiles();
+    ASSERT_EQ(files.size(), static_cast<std::size_t>(2));
+    EXPECT_EQ(files[0].relative_path, L"bin\\deploy.ps1");
+    EXPECT_EQ(files[0].trigger, L"deploy");
+    EXPECT_TRUE(files[0].auto_start);
+    EXPECT_EQ(files[1].relative_path, L"run.bat");
+    EXPECT_FALSE(files[1].auto_start);
 }
 
 TEST(Unit_PackModel, RestoreStartupFileRejectsInvalidSelection)

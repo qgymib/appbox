@@ -466,6 +466,24 @@ appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, 
     return run;
 }
 
+appbox::test::ProgramRun appbox::test::ProbeProgramRun(const std::wstring& cwd, const LauncherConfig& launcher_config,
+                                                       const LogRun& log)
+{
+    /*
+     * The programs of the configuration are started as they are, so the
+     * configuration is only adapted to the machine the cases run on: the
+     * console window of a program is hidden and the startup screen is turned
+     * off.
+     */
+    appbox::LauncherConfig copy_config = launcher_config;
+    copy_config.hide_console = true;
+    copy_config.startup.screen = false;
+
+    ProgramRun run;
+    run.exit_code = static_cast<std::uint32_t>(RunLauncher(cwd, copy_config, {}, log));
+    return run;
+}
+
 appbox::test::ShellRun appbox::test::ProbeShellRun(const std::wstring& cwd, const LauncherConfig& launcher_config,
                                                    const std::vector<std::string>& shell_command,
                                                    const std::string& trigger, const LogRun& log)

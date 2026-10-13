@@ -155,6 +155,37 @@ StartupRun ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launch
                            bool startup_screen = false, const LogRun& log = {});
 
 /**
+ * @brief Result of a run which starts the programs of its configuration.
+ */
+struct ProgramRun
+{
+    /**
+     * @brief Exit code of the launcher.
+     */
+    std::uint32_t exit_code = 0;
+};
+
+/**
+ * @brief Run the launcher of a configuration without replacing its programs.
+ *
+ * The executable of every startup file is kept as the configuration spells it,
+ * which is what a case needs to check how the launcher starts a program of its
+ * own: ProbeStartupRun() points every startup file at the probe process of this
+ * executable, which would hide the kind of the file.
+ *
+ * The remaining arguments of the launcher are left out as well, because the
+ * launcher appends them to the arguments of every startup file. The console
+ * window of a started program is hidden and the startup screen is turned off,
+ * like every other run of a case.
+ *
+ * @param[in] cwd The current working directory.
+ * @param[in] launcher_config The launcher configuration.
+ * @param[in] log The log options of the run, see LogRun.
+ * @return The exit code of the launcher.
+ */
+ProgramRun ProbeProgramRun(const std::wstring& cwd, const LauncherConfig& launcher_config, const LogRun& log = {});
+
+/**
  * @brief Startup files the launcher started during one run of the shell.
  */
 struct ShellRun

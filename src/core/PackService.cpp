@@ -7,6 +7,7 @@
 #include "RegistryHive.hpp"
 #include "RegistryIsolationFile.hpp"
 #include "SandboxLayout.hpp"
+#include "StartupFileType.hpp"
 #include "ZipWriter.hpp"
 #include "Config.hpp"
 #include "WString.hpp"
@@ -82,6 +83,37 @@ std::wstring DisplayPath(const std::wstring& root, const std::wstring& relative)
         return relative;
     }
     return root + L"\\" + relative;
+}
+
+/**
+ * @brief Get the startup file the launcher inherits its file icon from.
+ *
+ * The icon and the file properties of the launcher are read from a program
+ * image, so the first startup file which is a program is used. A session which
+ * starts scripts only falls back to its first startup file: the image of a
+ * script cannot be read, so the launcher keeps its own icon and its own file
+ * properties and the reason is logged.
+ *
+ * @param[in] files The startup files in startup order.
+ * @return The first program of the list, the first file when the list holds no
+ *         program, null when the list is empty.
+ */
+const appbox::StartupFile* IconSourceOf(const std::vector<appbox::StartupFile>& files)
+{
+    if (files.empty())
+    {
+        return nullptr;
+    }
+
+    for (const auto& file : files)
+    {
+        if (appbox::StartupFileKindOf(file.relative_path) == appbox::StartupFileKind::Program)
+        {
+            return &file;
+        }
+    }
+
+    return &files.front();
 }
 
 /**
@@ -559,8 +591,14 @@ std::wstring LauncherEntryName(const PackModel& model)
     /*
      * Only the file name is used: the launcher lives in the archive root, which
      * is the single base filesystem of the extracted application.
+     *
+     * The launcher payload is a program image, so the entry always carries the
+     * `.exe` extension, also while the first startup file is a script: the file
+     * `run.bat` names the entry `run.exe`, which is the program a user of the
+     * extracted archive sees.
      */
-    return std::filesystem::path(model.StartupFiles().front().relative_path).filename().wstring();
+    const auto name = std::filesystem::path(model.StartupFiles().front().relative_path).filename();
+    return name.stem().wstring() + L".exe";
 }
 
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
@@ -632,14 +670,15 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         }
 
         /*
-         * The launcher carries the file icon of the first startup file, so
-         * Explorer shows the icon of the packaged application for the
-         * extracted program. A program without an icon never fails the pack
+         * The launcher carries the file icon of the program the application
+         * starts, so Explorer shows the icon of the packaged application for
+         * the extracted program. A program without an icon never fails the pack
          * run: the launcher then keeps its own icon and the reason is logged.
          */
         std::wstring      startup_path;
         std::vector<char> payload_image;
-        if (model.StartupFilePath(model.StartupFiles().front(), startup_path))
+        const auto* const icon_source = IconSourceOf(model.StartupFiles());
+        if (icon_source != nullptr && model.StartupFilePath(*icon_source, startup_path))
         {
             std::string icon_warning;
             payload_image =

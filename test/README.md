@@ -404,7 +404,10 @@ The unit tests of the packer:
   image is missing or of a format the launcher cannot decode before the first
   entry is written, and
   the launcher carries the file properties of the program the metadata of the
-  session inherits from with the fields the user edited applied on top of them;
+  session inherits from with the fields the user edited applied on top of them,
+  and the launcher entry is named after the first startup file and always carries
+  the `.exe` extension, so a session whose first startup file is a script writes
+  the launcher as `<name of the script>.exe` beside its configuration;
   the patch package carries the very same resources
   rooted at the archive root, without the launcher, without the injection modules
   and without an `app`
@@ -419,7 +422,9 @@ The unit tests of the packer:
   prefix plus its resource relative spelling.
 * `test/unit/PackModel.cpp` — the editable model of a packer session: the
   import of a host folder and of individual files, the rules of the import
-  names and of the executables, the startup file list with its triggers, the
+  names and of the startable files (a program, a batch file, a command script and
+  a PowerShell script are accepted, everything else is refused), the startup file
+  list with its triggers, the
   folders the user created inside the sandbox view (their creation below the
   layer root, below an import and below another created folder, the default name
   which avoids the names which are taken, the refusal of a name which an import,
@@ -502,7 +507,13 @@ executable carries itself:
   the shell of the host together with the arguments of the command it runs. The
   resolver falls back from `%COMSPEC%` to the command processor of the system
   root and refuses a value which names a folder; the command is run through
-  `/c` unless it is empty, which runs the shell interactively.
+  `/c` unless it is empty, which runs the shell interactively. The suite pins the
+  invocation of a startup file as well: a program is started on its own, a batch
+  file and a command script are run by the command interpreter of the host, a
+  PowerShell script is run by Windows PowerShell with its profile turned off and
+  with the execution policy bypassed, the extension is recognized ignoring the
+  case, a file which cannot be started is refused, and the resolver of Windows
+  PowerShell finds `powershell.exe` of the system root.
 * `test/unit/Md5.cpp` — the digest of a patch package: the digest of an empty
   file, of the text `abc` and of one million characters, which crosses the
   blocks the file is read in, plus the failure of a missing file. The digest of
@@ -562,9 +573,22 @@ executable carries itself:
   information, and the round trip of the information through a payload,
   including the replacement of a resource a payload already carries and the
   round trip through the real launcher payload.
-* `test/unit/StartupTree.cpp` — the startup file tree of the packer: the rows
-  of the imports, the default trigger of a file, the uniqueness of a trigger
-  and the auto start flag.
+* `test/unit/StartupFileType.cpp` — the startable files of the packer and of the
+  launcher: the extension of a file name decides the kind of the file (`.exe`,
+  `.bat`, `.cmd` and `.ps1`, compared ignoring the case), a dot of a directory of
+  the path is not taken for the extension of the file, both separators of Windows
+  are accepted, and the readable list of the extensions names every one of them.
+* `test/unit/StartupTree.cpp` — the startup file tree of the packer, which is the
+  tree of the startup files dialog: the container row with the preset directories
+  below it (a nested preset hangs below the preset which holds it), the imported
+  folders, the host subfolders, the folders the user created and the files which
+  were imported on their own, with the startable files below them. It pins that a
+  row is offered only while a startable file is below it (a folder which holds
+  none is hidden, together with the preset directories above it), that only the
+  extensions of `common/StartupFileType.hpp` are listed, that a startup file of
+  the model keeps its place although its host file is gone, the order of the rows
+  of a folder, the default trigger of a file, the uniqueness of a trigger and the
+  auto start flag, and that the list of the tree is accepted by the model.
 * `test/unit/StartupScreen.cpp` — the startup screen of a packer session: the
   session which shows the screen without an image, the formats the launcher can
   decode (`.png`, `.jpg`, `.jpeg` and `.bmp`, compared ignoring the case), the
@@ -1124,6 +1148,31 @@ documented in its own header comment.
 | `AutoStartAll` | – | `one` and `two` start, `manual` does not, the launcher exits with zero |
 | `SelectedByTrigger` | `manual` | only `manual` starts, the auto start files do not, the launcher exits with zero |
 | `UnknownTrigger` | `missing` | nothing starts, not even the auto start files, and the launcher reports a non zero exit code |
+
+### Launcher startup script cases
+
+The startup script cases (`test/e2e/Launcher_StartupScript.cpp`) start a script
+which lives in the layer of the case: the configuration names
+`#USERPROFILE#\AppBoxTest_Script\<script>`, the layer of the case is pinned to
+`Write Copy`, and the script writes a marker beside itself and returns 7. The
+cases run the launcher with `ProbeProgramRun()` of `test/utils/ProbeCall.*`,
+which keeps the programs of the configuration instead of pointing the startup
+files at the probe process, and they read the marker from the overlay of the
+sandbox afterwards: the exit code of the script and the marker in the overlay
+prove that the launcher ran the script inside the isolation, and the missing file
+in the folder of the host proves that the run never touched the host. Each case
+is documented in its own header comment.
+
+| Case | Startup file | Expected |
+| --- | --- | --- |
+| `ABatchFileIsRunByTheCommandInterpreter` | `run.bat` | the launcher runs the script through the command interpreter of the host, the run reports the exit code of the script, and the marker is in the overlay of the sandbox and not in the folder of the host |
+| `ACommandScriptIsRunByTheCommandInterpreter` | `run.cmd` | the same for a command script |
+| `AFileWhichCannotBeStartedRefusesTheRun` | `notes.txt` | no process is started and the launcher reports the failure through a non zero exit code |
+
+A PowerShell script has no case of its own: the launcher builds its invocation,
+but the sandbox refuses to run Windows PowerShell (see the limitation in
+[docs/Launcher.md](../docs/Launcher.md)), so a case would pin the failure of the
+sandbox instead of the behavior of the launcher.
 
 ### Launcher startup screen cases
 
