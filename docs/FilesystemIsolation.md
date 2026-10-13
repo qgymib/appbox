@@ -132,6 +132,48 @@ delete follows the same rule, so an entry the host holds is really removed from
 the host filesystem while an entry only the sandbox holds is recorded as
 deleted inside the sandbox.
 
+### Folders created in the workspace
+
+The `New Folder` command of the filesystem workspace creates a folder inside the
+folder the tree selects, which is the folder the list below the tree shows. The
+command is offered for every node but the `Sandbox Filesystem` container, which
+holds the preset directories and is not a folder of the view.
+
+A folder which was created has no host counterpart: it is an entry of the
+**layer** of the preset directory the selected node belongs to, so the pack run
+writes the directory itself into the archive and the packaged application sees
+it and can write into it. The command never writes to the host filesystem.
+
+A new folder carries the default name `New Folder`; a number is appended while
+that name is taken (`New Folder 2`, `New Folder 3`, ...). A name is taken when
+the directory already holds an entry of it: a folder the user created, an
+imported folder, an imported file, or an entry of the host folder the directory
+maps to. The name of a folder is edited in the `Filename` column of the list,
+which a second click on the row opens for editing, the way a name of the Windows
+Explorer is renamed; every other row keeps its name. A rename moves the
+isolation modes which were picked below the folder to the new path, so a folder
+keeps the modes of its subtree.
+
+A folder which the user created is removed together with everything below it:
+`Remove` drops the folder, the folders below it, the imported files which live
+in them and the startup files which point at those files. Removing an imported
+folder drops the folders which were created below that import as well.
+
+The folders travel with the project file as the `directories` member, which lists
+the path of every folder relative to its preset directory:
+
+```json
+"directories": [ { "preset": "program_files", "path": "MyApp\\logs" } ]
+```
+
+The member is written only while the workspace holds such a folder, so the text
+of a project file of a session without one stays unchanged.
+
+An imported file extends an existing lower layer, so `Add Files` accepts a
+target directory below an **imported** folder only: a folder which hangs
+directly below a preset directory cannot take imported files, it is an empty
+directory of the layer.
+
 ### The isolation file
 
 The packer writes the modes of the workspace as a JSON document, which `Build`
@@ -272,10 +314,17 @@ carries:
 <startup file name>.json               startup configuration
 app/filesystem/isolation.json          isolation modes of the filesystem workspace
 app/filesystem/<layer key>/<import>/... imported folder content
+app/filesystem/<layer key>/<folder>/   folder created in the workspace
 app/registry/user.hiv                  virtual registry of the workspace
 app/registry/isolation.json            isolation modes of the registry
 app/network/isolation.json             network configuration of the workspace
 ```
+
+A folder which was created in the workspace travels as a directory entry of the
+layer of its preset directory, so a preset directory whose folders are the only
+content it has still becomes a layer of the archive. A directory entry carries
+no file, so it is not covered by the progress total of a pack run, which counts
+the files which come from an import.
 
 A patch package carries the same resource tree rooted at the archive root and is
 applied on top of the archive: the layers and the isolation modes of a package

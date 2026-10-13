@@ -29,6 +29,7 @@ constexpr const char* kScreenKey = "screen";
 constexpr const char* kImageKey = "image";
 constexpr const char* kFoldersKey = "folders";
 constexpr const char* kFilesKey = "files";
+constexpr const char* kDirectoriesKey = "directories";
 constexpr const char* kStartupFilesKey = "startup_files";
 constexpr const char* kPresetKey = "preset";
 constexpr const char* kNameKey = "name";
@@ -606,6 +607,24 @@ void from_json(const nlohmann::ordered_json& json, ProjectFileRecord& record)
     record = std::move(candidate);
 }
 
+void to_json(nlohmann::ordered_json& json, const ProjectDirectoryRecord& record)
+{
+    json = nlohmann::ordered_json::object();
+    json[kPresetKey] = record.preset_id;
+    json[kPathKey] = WideToUTF8(record.path);
+}
+
+void from_json(const nlohmann::ordered_json& json, ProjectDirectoryRecord& record)
+{
+    RequireObject(json);
+
+    ProjectDirectoryRecord candidate;
+    candidate.preset_id = ReadRequiredString(json, kPresetKey);
+    candidate.path = ReadRequiredText(json, kPathKey);
+
+    record = std::move(candidate);
+}
+
 void to_json(nlohmann::ordered_json& json, const ProjectStartupRecord& record)
 {
     json = nlohmann::ordered_json::object();
@@ -774,6 +793,13 @@ void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
     json[kStartupKey] = document.startup;
     json[kFoldersKey] = document.folders;
     json[kFilesKey] = document.files;
+
+    /* A document without a created folder does not name the member at all. */
+    if (!document.directories.empty())
+    {
+        json[kDirectoriesKey] = document.directories;
+    }
+
     json[kStartupFilesKey] = document.startup_files;
     json[kRegistryKey] = document.registry;
     json[kFilesystemKey] = document.filesystem;
@@ -820,6 +846,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectDocument& document)
     ReadRecord(json, kStartupKey, candidate.startup);
     ReadRecordArray(json, kFoldersKey, candidate.folders);
     ReadRecordArray(json, kFilesKey, candidate.files);
+    ReadRecordArray(json, kDirectoriesKey, candidate.directories);
     ReadRecordArray(json, kStartupFilesKey, candidate.startup_files);
     ReadRecordArray(json, kRegistryKey, candidate.registry);
     ReadRecordArray(json, kFilesystemKey, candidate.filesystem);

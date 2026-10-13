@@ -339,7 +339,9 @@ The unit tests of the packer:
   the root of the view for the paths no entry covers, the call which sets that
   mode while it pins the layer roots of the view to the mode they show, the
   recursion which overwrites the folders below a folder, the removal of a
-  subtree and the order of the entries. It also pins the isolation
+  subtree, the move of the modes below a folder which is renamed together with
+  the refusal of a rename which would land on an entry of its own, and the order
+  of the entries. It also pins the isolation
   file the packer writes, including the root entry without a path and the round
   trip through the table of the sandbox, so the two sides of the schema cannot
   drift apart. The table itself is pinned as well: the files of the layers of a
@@ -364,16 +366,20 @@ The unit tests of the packer:
   absent, the optional `startup` member, which names the flag of the startup
   screen and the image it presents, is written for every session and read as
   the screen of a fresh session while it is absent, and refuses a member which
-  does not fit the schema, and the atomic read.
+  does not fit the schema, the optional `directories` member of the folders the
+  user created inside the sandbox view, which is omitted while the session holds
+  none and refuses a record which does not fit the schema, and the atomic read.
 * `test/unit/ProjectFile.cpp` — the file layer of a project file: the
-  round trip of the configuration, of the virtual registry, of the
+  round trip of the configuration, of the folders the user created inside the
+  sandbox view, of the virtual registry, of the
   filesystem isolation modes, of the proxy of the network workspace, of the
   environment variables of the environment workspace, of the project type, of
   the file properties the launcher carries and of the startup screen the
   launcher shows,
   the strict UTF-8 encoding, the failures of a malformed document and the
   atomicity of applying a document to the models, including a mode which a file
-  cannot hold, a path which is listed twice, a proxy the model refuses, a
+  cannot hold, a path which is listed twice, a created folder without a folder
+  of the view above it, a proxy the model refuses, a
   variable the model refuses and an unknown project type.
 * `test/unit/ProjectType.cpp` — the vocabulary of the `Project Type` box: the
   token of every project type, which is the text form the project file stores,
@@ -404,13 +410,23 @@ The unit tests of the packer:
   and without an `app`
   directory, and needs neither a startup file nor the payloads, which is
   what the patch cases of the suite pin: the root layout, the layer tree, the
-  registry artifacts, the imported files, the progress total, the cancellation
+  registry artifacts, the imported files, the folders the user created inside
+  the filesystem workspace, which are written as directory entries of the layer
+  of their preset directory (including the layer root of a preset directory
+  which holds no import) and which contribute no file to the progress total, the
+  progress total, the cancellation
   and the fact that the archive relative spelling of an entry is the `app`
   prefix plus its resource relative spelling.
 * `test/unit/PackModel.cpp` — the editable model of a packer session: the
   import of a host folder and of individual files, the rules of the import
   names and of the executables, the startup file list with its triggers, the
-  restoration of a project file without touching the host filesystem, and the
+  folders the user created inside the sandbox view (their creation below the
+  layer root, below an import and below another created folder, the default name
+  which avoids the names which are taken, the refusal of a name which an import,
+  a file or the host folder of the directory already holds, the rename of a
+  folder with everything below it, the removal of a folder with the files below
+  it, the cascade of removing an import, and the restoration of a project file
+  without touching the host filesystem), and the
   host folder a folder of the filesystem view maps to (the text the tooltip of
   the tree shows).
 * `test/unit/RegistryModel.cpp` — the model of the packer, including the
@@ -646,6 +662,7 @@ comment.
 | `ListDir_CreateFileHandle` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder with a handle of `CreateFileW` and with a handle of `NtOpenFile`, through both NT entry points and with two information classes | both handles report the same merged view: the file of the lower layer and the file of the host, while the file the whiteout hides and the marker are not listed |
 | `ListDir_DuplicatedHandle` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder through a handle the probe duplicated and closed the original of, through both NT entry points and with both ways a directory handle reaches the sandbox | every enumeration reports the same merged view as a handle the sandbox opened: the file of the lower layer and the file of the host, while the file the whiteout hides and the marker are not listed |
 | `ListDir_InformationClasses` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder with both NT entry points and with every information class which carries a name | every class reports the same merged view: the file of the lower layer and the file of the host, while the file the whiteout hides and the marker are not listed |
+| `ListDir_EmptyFolderOfTheLayer` | – | folder `logs` without content | list `#USERPROFILE#`, list `logs` and create `created.txt` inside it | `logs` is listed as a folder of the view, its own listing is empty, the new file is created in the state, resources unchanged |
 | `ListDir_LowerLayer` | – | `F.txt` | list `#USERPROFILE#` | `F.txt` appears exactly once, host entries also listed |
 | `ListDir_UnregisteredNotInView` | folder which is removed while its handle stays open | a file, the character device `NUL` | enumerate a duplicated handle of a file, of the device and of the removed folder | the calls of the file and of the device are forwarded to the file system, the call of the removed folder is refused by the view, and no call reports an entry of a layer |
 | `ListDir_UnsupportedClass` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder with the information classes which carry no name of an entry (`FileObjectIdInformation`, `FileReparsePointInformation`), through both NT entry points and with both ways a directory handle reaches the sandbox | every call is refused by the view with `STATUS_NOT_SUPPORTED` and reports no entry, so the view never answers with the content of the single layer the handle was opened with |

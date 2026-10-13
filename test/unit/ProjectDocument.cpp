@@ -83,6 +83,11 @@ appbox::ProjectDocument BuildSampleDocument()
     file.source_path = L"C:\\tmp\\settings.ini";
     document.files.push_back(file);
 
+    appbox::ProjectDirectoryRecord directory;
+    directory.preset_id = "program_files";
+    directory.path = L"MyApp\\logs";
+    document.directories.push_back(directory);
+
     appbox::ProjectStartupRecord startup;
     startup.preset_id = "program_files";
     startup.folder = L"MyApp";
@@ -177,6 +182,10 @@ TEST(Unit_ProjectDocument, RoundTripKeepsEveryMember)
     EXPECT_EQ(back.files[0].name, L"settings.ini");
     EXPECT_EQ(back.files[0].source_path, L"C:\\tmp\\settings.ini");
 
+    ASSERT_EQ(back.directories.size(), 1u);
+    EXPECT_EQ(back.directories[0].preset_id, "program_files");
+    EXPECT_EQ(back.directories[0].path, L"MyApp\\logs");
+
     ASSERT_EQ(back.startup_files.size(), 1u);
     EXPECT_EQ(back.startup_files[0].preset_id, "program_files");
     EXPECT_EQ(back.startup_files[0].folder, L"MyApp");
@@ -230,6 +239,33 @@ TEST(Unit_ProjectDocument, RoundTripKeepsEveryMember)
     EXPECT_EQ(back.environment[0].isolation, appbox::EnvironmentIsolation::WriteCopy);
     EXPECT_EQ(back.environment[0].merge, appbox::EnvironmentMergeMode::Prepend);
     EXPECT_EQ(back.environment[0].merge_string, L";");
+}
+
+TEST(Unit_ProjectDocument, ReadsADocumentWithoutCreatedFolders)
+{
+    /* The member is optional: a document which does not name it holds none. */
+    const auto document = ParseDocument(R"({"version":1})");
+    EXPECT_TRUE(document.directories.empty());
+
+    /*
+     * A session without such a folder does not name the member at all, so a
+     * file which was written before the member existed stays unchanged.
+     */
+    const auto text = nlohmann::ordered_json(appbox::ProjectDocument()).dump();
+    EXPECT_EQ(text.find("directories"), std::string::npos) << text;
+}
+
+TEST(Unit_ProjectDocument, RejectsAMalformedDirectoryRecord)
+{
+    const auto missing = ParseError(R"({"version":1,"directories":[{"preset":"program_files"}]})");
+    EXPECT_NE(missing.find("directories[0]"), std::string::npos) << missing;
+    EXPECT_NE(missing.find("path"), std::string::npos) << missing;
+
+    const auto mistyped = ParseError(R"({"version":1,"directories":[{"preset":7,"path":"logs"}]})");
+    EXPECT_NE(mistyped.find("directories[0]"), std::string::npos) << mistyped;
+
+    const auto not_an_array = ParseError(R"({"version":1,"directories":{}})");
+    EXPECT_NE(not_an_array.find("directories"), std::string::npos) << not_an_array;
 }
 
 TEST(Unit_ProjectDocument, RejectsAnIncompleteDnsRecord)
@@ -343,9 +379,9 @@ TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
      * The version comes first and the members follow the order of the schema,
      * so the text of a given document is stable and easy to diff.
      */
-    const std::vector<std::string> expected{ "version", "output_path", "project_type",  "metadata", "startup",
-                                             "folders", "files",       "startup_files", "registry", "filesystem",
-                                             "network", "proxy",       "environment" };
+    const std::vector<std::string> expected{ "version",    "output_path", "project_type", "metadata",      "startup",
+                                             "folders",    "files",       "directories",  "startup_files", "registry",
+                                             "filesystem", "network",     "proxy",        "environment" };
     EXPECT_EQ(members, expected);
     EXPECT_EQ(json.at("version").get<int>(), appbox::kProjectFileVersion);
 

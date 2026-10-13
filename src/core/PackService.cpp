@@ -367,6 +367,36 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
         }
     }
 
+    /*
+     * Folders the user created inside the workspace are entries of the layer of
+     * their preset directory: they have no host counterpart, so the directory
+     * itself is written. The layer root is written as well, because a preset
+     * directory which holds such a folder does not have to hold an import.
+     */
+    for (const auto& directory : model.AllVirtualDirectories())
+    {
+        const auto owner = std::find_if(
+            appbox::PresetDirectories().begin(), appbox::PresetDirectories().end(),
+            [&directory](const appbox::PresetDirectory& entry) { return entry.id == directory.preset_id; });
+        if (owner == appbox::PresetDirectories().end())
+        {
+            continue;
+        }
+
+        const auto layer = layer_prefix + "/" + appbox::WideToUTF8(owner->layer_key);
+        error = EnsureDirectory(writer, added, layer);
+        if (!error.empty())
+        {
+            return error;
+        }
+
+        error = EnsureDirectory(writer, added, layer + "/" + ToZipEntrySuffix(directory.target_dir));
+        if (!error.empty())
+        {
+            return error;
+        }
+    }
+
     /* Imported files are written on top of the imported folders. */
     for (const auto& file : model.AllImportedFiles())
     {

@@ -177,6 +177,27 @@ struct ProjectFileRecord
 };
 
 /**
+ * @brief One folder of the sandbox view the user created.
+ *
+ * At sandbox runtime the folder is visible as `<preset>\<path>` inside the
+ * view. Unlike an imported folder it has no host counterpart, so the document
+ * only records where the folder lives inside the layer of its preset
+ * directory.
+ */
+struct ProjectDirectoryRecord
+{
+    /**
+     * @brief Identifier of the owning preset directory.
+     */
+    std::string preset_id;
+
+    /**
+     * @brief Directory relative to the preset directory, e.g. `L"MyApp\logs"`.
+     */
+    std::wstring path;
+};
+
+/**
  * @brief One startup file of a project document.
  */
 struct ProjectStartupRecord
@@ -414,12 +435,13 @@ struct ProjectEnvironmentRecord
  *
  * The structure is the document of the `File -> Export Configuration...` and
  * `File -> Import Configuration...` commands: the imported folders and files,
- * the startup files, the virtual registry, the isolation modes of the virtual
- * filesystem, the DNS redirections of the network workspace, the proxy of the
- * network workspace, the environment variables of the environment workspace,
- * the kind of product the `Build` command writes, the file properties the
- * launcher carries and the path of the `Output File` box. It holds no host
- * state and no wxWidgets dependency, so the conversion is unit testable.
+ * the folders the user created inside the sandbox view, the startup files, the
+ * virtual registry, the isolation modes of the virtual filesystem, the DNS
+ * redirections of the network workspace, the proxy of the network workspace,
+ * the environment variables of the environment workspace, the kind of product
+ * the `Build` command writes, the file properties the launcher carries and the
+ * path of the `Output File` box. It holds no host state and no wxWidgets
+ * dependency, so the conversion is unit testable.
  *
  * `to_json()` and `from_json()` convert the structure to and from the JSON
  * text of a project file; the file itself is written and read by
@@ -443,6 +465,7 @@ struct ProjectEnvironmentRecord
  *                  "source": "C:\\Program Files\\MyApp" } ],
  *   "files": [ { "preset": "user_profile", "target_dir": "MyApp\\data",
  *                "name": "settings.ini", "source": "C:\\tmp\\settings.ini" } ],
+ *   "directories": [ { "preset": "program_files", "path": "MyApp\\logs" } ],
  *   "startup_files": [ { "preset": "program_files", "folder": "MyApp",
  *                        "path": "bin\\app.exe", "trigger": "app",
  *                        "auto_start": true } ],
@@ -471,6 +494,12 @@ struct ProjectEnvironmentRecord
  * The `proxy` member is written only while a proxy is configured, so a
  * document of a session without a proxy keeps the text it had before the
  * member was added to the schema.
+ *
+ * The `directories` member is written only while the session holds a folder
+ * the user created inside the sandbox view, for the same reason: the member
+ * was added to the schema later, so a session without one keeps the text it
+ * had before. A file which does not name the member describes a session which
+ * holds no such folder.
  *
  * The `project_type` member is optional as well: a file which does not name it
  * describes a standalone project, which is what every file written before the
@@ -527,6 +556,14 @@ struct ProjectDocument
      * @brief Individually imported files, in the order the document stores them.
      */
     std::vector<ProjectFileRecord> files;
+
+    /**
+     * @brief Folders the user created inside the sandbox view.
+     *
+     * A document which does not name the member describes a session which
+     * holds no such folder.
+     */
+    std::vector<ProjectDirectoryRecord> directories;
 
     /**
      * @brief The startup files of the packaged application, in startup order.
@@ -638,6 +675,21 @@ void to_json(nlohmann::ordered_json& json, const ProjectFileRecord& record);
  * @throw ProjectDocumentError The object does not fit the schema.
  */
 void from_json(const nlohmann::ordered_json& json, ProjectFileRecord& record);
+
+/**
+ * @brief Store one folder the user created inside the sandbox view.
+ * @param[out] json Object which receives the record.
+ * @param[in] record The record to store.
+ */
+void to_json(nlohmann::ordered_json& json, const ProjectDirectoryRecord& record);
+
+/**
+ * @brief Read one folder the user created inside the sandbox view.
+ * @param[in] json Object holding the record.
+ * @param[out] record The record to fill.
+ * @throw ProjectDocumentError The object does not fit the schema.
+ */
+void from_json(const nlohmann::ordered_json& json, ProjectDirectoryRecord& record);
 
 /**
  * @brief Store one startup file of a document.

@@ -480,6 +480,27 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
         document.startup_files.push_back(std::move(record));
     }
 
+    /*
+     * The folders the user created are listed preset directory by preset
+     * directory as well, so the order of the document does not depend on the
+     * order the folders were created in.
+     */
+    for (const auto& preset : PresetDirectories())
+    {
+        for (const auto& directory : model.AllVirtualDirectories())
+        {
+            if (directory.preset_id != preset.id)
+            {
+                continue;
+            }
+
+            ProjectDirectoryRecord record;
+            record.preset_id = directory.preset_id;
+            record.path = directory.target_dir;
+            document.directories.push_back(std::move(record));
+        }
+    }
+
     for (const auto& key : registry.Root().children)
     {
         document.registry.push_back(MakeRegistryKeyRecord(key));
@@ -575,6 +596,20 @@ bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, Reg
 
         std::string detail;
         if (!candidate.RestoreImportedFile(file.preset_id, file.target_dir, file.name, file.source_path, detail))
+        {
+            error = Scoped(scope, detail);
+            return false;
+        }
+    }
+
+    index = 0;
+    for (const auto& directory : document.directories)
+    {
+        const auto scope = "directories[" + std::to_string(index) + "]";
+        ++index;
+
+        std::string detail;
+        if (!candidate.RestoreVirtualDirectory(directory.preset_id, directory.path, detail))
         {
             error = Scoped(scope, detail);
             return false;

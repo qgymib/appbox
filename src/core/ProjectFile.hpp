@@ -18,17 +18,18 @@ namespace appbox
  * @brief Build the document of a project file from the models of a session.
  *
  * The document describes the current configuration: the imported folders, the
- * imported files, the startup files, the virtual registry with the isolation
- * modes of every key and value, the isolation modes of the virtual filesystem,
- * the DNS redirections and the proxy of the network workspace, the environment
- * variables of the environment workspace, the file properties the launcher
- * carries, the startup screen the launcher shows, the kind of product the
- * `Build` command writes and the path of the `Output File` box. The structure
- * and the schema of the document are described by ProjectDocument.
+ * imported files, the folders the user created inside the sandbox view, the
+ * startup files, the virtual registry with the isolation modes of every key and
+ * value, the isolation modes of the virtual filesystem, the DNS redirections
+ * and the proxy of the network workspace, the environment variables of the
+ * environment workspace, the file properties the launcher carries, the startup
+ * screen the launcher shows, the kind of product the `Build` command writes and
+ * the path of the `Output File` box. The structure and the schema of the
+ * document are described by ProjectDocument.
  *
- * The imported folders are listed preset directory by preset directory, so the
- * order of the document does not depend on the order the user imported them
- * in.
+ * The imported folders and the folders the user created are listed preset
+ * directory by preset directory, so the order of the document does not depend
+ * on the order the user added them in.
  *
  * @param[in] model Configuration of the packer session.
  * @param[in] registry Virtual registry of the workspace.
@@ -62,6 +63,10 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
  * document are not required to exist - a project can be imported on a machine
  * where the packaged application is not installed yet - so only the structure
  * of the document is validated.
+ *
+ * The folders the user created are restored in document order, which lists a
+ * folder after the folder which holds it, so every parent is part of the model
+ * by the time its child is restored.
  *
  * @param[in] document Document to apply.
  * @param[out] model Model replaced with the configuration of the document.

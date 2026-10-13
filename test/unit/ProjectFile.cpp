@@ -89,7 +89,8 @@ std::string ReadBytes(const std::filesystem::path& path)
 }
 
 /**
- * @brief Build a model with one import, one imported file and a startup file.
+ * @brief Build a model with one import, one imported file, a folder the user
+ *        created and a startup file.
  * @param[out] model Model to fill.
  * @return true when every entry was accepted.
  */
@@ -99,6 +100,7 @@ bool BuildSampleModel(appbox::PackModel& model)
     return model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\Program Files\\MyApp", detail) &&
            model.RestoreImportedFile("program_files", L"MyApp\\data", L"settings.ini", L"C:\\tmp\\settings.ini",
                                      detail) &&
+           model.RestoreVirtualDirectory("program_files", L"MyApp\\logs", detail) &&
            model.RestoreStartupFile("program_files", L"MyApp", L"bin\\app.exe", L"app", true, detail);
 }
 
@@ -365,6 +367,11 @@ TEST(Unit_ProjectFile, RoundTripKeepsTheModelsAndTheOutputPath)
     EXPECT_EQ(files[0].file_name, L"settings.ini");
     EXPECT_EQ(files[0].source_path, L"C:\\tmp\\settings.ini");
 
+    const auto directories = loaded.AllVirtualDirectories();
+    ASSERT_EQ(directories.size(), 1u);
+    EXPECT_EQ(directories[0].preset_id, "program_files");
+    EXPECT_EQ(directories[0].target_dir, L"MyApp\\logs");
+
     ASSERT_TRUE(loaded.HasStartupFiles());
     const auto& startup = loaded.StartupFiles();
     ASSERT_EQ(startup.size(), 1u);
@@ -461,6 +468,48 @@ TEST(Unit_ProjectFile, MakeProjectDocumentListsTheFoldersInPresetOrder)
     EXPECT_EQ(document.folders[1].preset_id, "user_profile");
     EXPECT_EQ(document.folders[1].name, L"Tool");
     EXPECT_TRUE(document.startup_files.empty());
+}
+
+TEST(Unit_ProjectFile, MakeProjectDocumentListsTheCreatedFoldersInPresetOrder)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.RestoreImportedFolder("user_profile", L"Tool", L"C:\\Tool", error)) << error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
+    ASSERT_TRUE(model.RestoreVirtualDirectory("program_files", L"MyApp\\logs", error)) << error;
+    ASSERT_TRUE(model.RestoreVirtualDirectory("user_profile", L"Tool\\logs", error)) << error;
+
+    const auto document = MakeDocument(model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, L"");
+
+    /* The order of the document follows the preset directories, not the user. */
+    ASSERT_EQ(document.directories.size(), 2u);
+    EXPECT_EQ(document.directories[0].preset_id, "program_files");
+    EXPECT_EQ(document.directories[0].path, L"MyApp\\logs");
+    EXPECT_EQ(document.directories[1].preset_id, "user_profile");
+    EXPECT_EQ(document.directories[1].path, L"Tool\\logs");
+}
+
+TEST(Unit_ProjectFile, ApplyRejectsACreatedFolderWithoutAFolderOfTheView)
+{
+    /*
+     * A folder the user created hangs below a folder of the view, so a
+     * document which names a folder that no import and no created folder
+     * provides is refused and leaves the session untouched.
+     */
+    appbox::ProjectDocument        document;
+    appbox::ProjectDirectoryRecord directory;
+    directory.preset_id = "program_files";
+    directory.path = L"Missing\\logs";
+    document.directories.push_back(directory);
+
+    appbox::PackModel                model;
+    appbox::RegistryModel            registry;
+    appbox::FilesystemIsolationModel isolation;
+    std::wstring                     output;
+    std::string                      error;
+    EXPECT_FALSE(ApplyDocument(document, model, registry, isolation, output, error));
+    EXPECT_NE(error.find("directories[0]"), std::string::npos) << error;
+    EXPECT_TRUE(model.IsEmpty());
 }
 
 TEST(Unit_ProjectFile, LoadKeepsSourcePathsWhichDoNotExist)

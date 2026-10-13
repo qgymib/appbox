@@ -111,6 +111,7 @@ add_executable(AppBoxTests
     "e2e/Fs_Link.cpp"
     "e2e/Fs_ListDir_CreateFileHandle.cpp"
     "e2e/Fs_ListDir_DuplicatedHandle.cpp"
+    "e2e/Fs_ListDir_EmptyFolderOfTheLayer.cpp"
     "e2e/Fs_ListDir_InformationClasses.cpp"
     "e2e/Fs_ListDir_IsolationFiltered.cpp"
     "e2e/Fs_ListDir_LowerLayer.cpp"

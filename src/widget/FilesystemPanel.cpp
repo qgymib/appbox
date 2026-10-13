@@ -39,6 +39,9 @@ const int kMenuIsolation = wxNewId();
 /** Minimum width of the tree pane. */
 constexpr int kTreePaneWidth = 260;
 
+/** Model column of the filename. */
+constexpr unsigned int kFilenameColumn = 0;
+
 /** Model column of the isolation dropdown. */
 constexpr unsigned int kIsolationColumn = 1;
 
@@ -145,6 +148,32 @@ bool IsExecutableName(const std::wstring& name)
     return EqualsIgnoreCase(std::filesystem::path(name).extension().wstring(), L".exe");
 }
 
+/**
+ * @brief Get the first component of a path relative to a preset directory.
+ *
+ * The first component of a directory below a preset directory is the name of
+ * the imported folder which owns it, which is the root a startup file of the
+ * directory is stored relative to.
+ *
+ * @param[in] path Path relative to a preset directory.
+ * @return The first component of the path.
+ */
+std::wstring RootSegment(const std::wstring& path)
+{
+    const auto separator = path.find_first_of(L'\\');
+    return separator == std::wstring::npos ? path : path.substr(0, separator);
+}
+
+/**
+ * @brief Get the name of an entry from a path relative to a preset directory.
+ * @param[in] path Path relative to a preset directory.
+ * @return The last component of the path.
+ */
+std::wstring LeafName(const std::wstring& path)
+{
+    return path.substr(path.find_last_of(L'\\') + 1);
+}
+
 } // namespace
 
 FilesystemPanel::FilesystemPanel(wxWindow* parent, appbox::PackModel& model,
@@ -216,8 +245,14 @@ void FilesystemPanel::CreateList(wxWindow* parent)
      * for a folder and a plain file for a file, so the kind of a row is
      * visible without reading the mode column. Its values are icon-text
      * variants, see AppendRow().
+     *
+     * The column is editable because the name of a folder the user created is
+     * renamed in place: the control starts the edit when the user clicks the
+     * cell a second time without a double click, which is the way a name of the
+     * Windows Explorer is renamed as well. Every other row refuses the edit,
+     * see OnFilenameStartEditing().
      */
-    list_->AppendIconTextColumn("Filename", wxDATAVIEW_CELL_INERT, 220);
+    list_->AppendIconTextColumn("Filename", wxDATAVIEW_CELL_EDITABLE, 220);
 
     /*
      * The isolation column uses a dropdown whose options depend on the row: a
@@ -248,6 +283,8 @@ void FilesystemPanel::CreateList(wxWindow* parent)
         event.Skip();
     });
     list_->Bind(wxEVT_DATAVIEW_ITEM_ACTIVATED, &FilesystemPanel::OnRowActivated, this);
+    list_->Bind(wxEVT_DATAVIEW_ITEM_START_EDITING, &FilesystemPanel::OnFilenameStartEditing, this);
+    list_->Bind(wxEVT_DATAVIEW_ITEM_EDITING_DONE, &FilesystemPanel::OnFilenameEditingDone, this);
     list_->Bind(wxEVT_DATAVIEW_ITEM_VALUE_CHANGED, &FilesystemPanel::OnIsolationChanged, this);
     list_->Bind(wxEVT_DATAVIEW_ITEM_CONTEXT_MENU, &FilesystemPanel::OnRowContextMenu, this);
 }
@@ -265,9 +302,9 @@ wxWindow* FilesystemPanel::CreateToolBarRow(wxWindow* parent)
     add_folder_->SetToolTip("Import a host folder below the selected preset directory");
     add_folder_->Bind(wxEVT_BUTTON, &FilesystemPanel::OnAddFolder, this);
 
-    auto* new_folder = new wxButton(row, wxID_ANY, "New Folder", wxDefaultPosition, wxSize(-1, 26));
-    new_folder->SetToolTip("Reserved: the packer imports existing host folders only");
-    new_folder->Enable(false);
+    new_folder_ = new wxButton(row, wxID_ANY, "New Folder", wxDefaultPosition, wxSize(-1, 26));
+    new_folder_->SetToolTip("Create an empty folder inside the selected folder");
+    new_folder_->Bind(wxEVT_BUTTON, &FilesystemPanel::OnNewFolder, this);
 
     remove_ = new wxButton(row, wxID_ANY, "Remove", wxDefaultPosition, wxSize(-1, 26));
     remove_->SetToolTip("Remove the selected imported folder or imported file");
@@ -286,7 +323,7 @@ wxWindow* FilesystemPanel::CreateToolBarRow(wxWindow* parent)
     auto* sizer = new wxBoxSizer(wxHORIZONTAL);
     sizer->Add(add_files_, 0, wxALL, 4);
     sizer->Add(add_folder_, 0, wxTOP | wxBOTTOM | wxRIGHT, 4);
-    sizer->Add(new_folder, 0, wxTOP | wxBOTTOM | wxRIGHT, 4);
+    sizer->Add(new_folder_, 0, wxTOP | wxBOTTOM | wxRIGHT, 4);
     sizer->Add(remove_, 0, wxTOP | wxBOTTOM | wxRIGHT, 4);
     sizer->Add(up_dir_, 0, wxTOP | wxBOTTOM | wxRIGHT, 4);
     sizer->AddStretchSpacer();
@@ -365,14 +402,45 @@ wxTreeItemId FilesystemPanel::AppendPreset(const wxTreeItemId& parent, const app
         tree_->SetItemHasChildren(import_item);
     }
 
+    /* The folders the user created come after the content which was imported. */
+    for (const auto& directory : model_.VirtualDirectoriesOf(preset.id, L""))
+    {
+        AppendVirtualDirectory(item, preset.id, directory.target_dir);
+    }
+
     tree_->Expand(item);
+    return item;
+}
+
+wxTreeItemId FilesystemPanel::AppendVirtualDirectory(const wxTreeItemId& parent, const std::string& preset_id,
+                                                     const std::wstring& path)
+{
+    auto* data = new TreeNode();
+    data->preset_id = preset_id;
+    data->virtual_dir = path;
+
+    const auto item = tree_->AppendItem(parent, LeafName(path), 0, -1, data);
+
+    /* The folders below the folder are listed on demand, see PopulateNode(). */
+    tree_->SetItemHasChildren(item);
     return item;
 }
 
 void FilesystemPanel::PopulateNode(const wxTreeItemId& item)
 {
     auto* node = static_cast<TreeNode*>(tree_->GetItemData(item));
-    if (node == nullptr || node->import_name.empty() || node->populated)
+    if (node == nullptr || node->populated)
+    {
+        return;
+    }
+
+    /*
+     * The container holds the preset directories and a preset directory holds
+     * the fixed entries of the tree, so only the folders of the view below
+     * them are listed here: an imported folder, a folder below an import and a
+     * folder the user created.
+     */
+    if (node->preset_id.empty() || (node->import_name.empty() && node->virtual_dir.empty()))
     {
         return;
     }
@@ -381,41 +449,50 @@ void FilesystemPanel::PopulateNode(const wxTreeItemId& item)
     /*
      * The host folder of the node is the one the tooltip of the tree shows as
      * well, so the mapping of the model is used instead of composing the path
-     * here.
+     * here. A folder the user created maps to no host folder, so only an
+     * imported folder and a folder below one are listed from the host.
      */
-    std::wstring host_path;
-    if (!model_.HostFolderPath(node->preset_id, node->import_name, node->relative_dir, host_path))
+    if (!node->import_name.empty())
     {
-        return;
+        std::wstring host_path;
+        if (model_.HostFolderPath(node->preset_id, node->import_name, node->relative_dir, host_path) &&
+            !host_path.empty())
+        {
+            const auto folder = std::filesystem::path(host_path);
+
+            std::vector<std::wstring> subfolders;
+            std::error_code           ec;
+            for (auto it = std::filesystem::directory_iterator(folder, ec); it != std::filesystem::directory_iterator();
+                 it.increment(ec))
+            {
+                if (ec)
+                {
+                    break;
+                }
+                if (it->is_directory(ec) && !ec)
+                {
+                    subfolders.push_back(it->path().filename().wstring());
+                }
+            }
+
+            std::sort(subfolders.begin(), subfolders.end());
+            for (const auto& name : subfolders)
+            {
+                auto* child = new TreeNode();
+                child->preset_id = node->preset_id;
+                child->import_name = node->import_name;
+                child->relative_dir = node->relative_dir.empty() ? name : node->relative_dir + L"\\" + name;
+
+                const auto child_item = tree_->AppendItem(item, name, 0, -1, child);
+                tree_->SetItemHasChildren(child_item);
+            }
+        }
     }
 
-    const auto folder = std::filesystem::path(host_path);
-
-    std::vector<std::wstring> subfolders;
-    std::error_code           ec;
-    for (auto it = std::filesystem::directory_iterator(folder, ec); it != std::filesystem::directory_iterator();
-         it.increment(ec))
+    /* The folders the user created below the directory come after the host content. */
+    for (const auto& directory : model_.VirtualDirectoriesOf(node->preset_id, NodeDirectoryPath(*node)))
     {
-        if (ec)
-        {
-            break;
-        }
-        if (it->is_directory(ec) && !ec)
-        {
-            subfolders.push_back(it->path().filename().wstring());
-        }
-    }
-
-    std::sort(subfolders.begin(), subfolders.end());
-    for (const auto& name : subfolders)
-    {
-        auto* child = new TreeNode();
-        child->preset_id = node->preset_id;
-        child->import_name = node->import_name;
-        child->relative_dir = node->relative_dir.empty() ? name : node->relative_dir + L"\\" + name;
-
-        const auto child_item = tree_->AppendItem(item, name, 0, -1, child);
-        tree_->SetItemHasChildren(child_item);
+        AppendVirtualDirectory(item, node->preset_id, directory.target_dir);
     }
 }
 
@@ -430,6 +507,10 @@ void FilesystemPanel::RefreshList()
         if (node->preset_id.empty())
         {
             ListPresets();
+        }
+        else if (!node->virtual_dir.empty())
+        {
+            ListVirtualFolderContent(*node);
         }
         else if (node->import_name.empty())
         {
@@ -489,6 +570,9 @@ void FilesystemPanel::ListPresetImports(const TreeNode& node)
         row.is_directory = true;
         rows_.push_back(std::move(row));
     }
+
+    /* The folders the user created come after the content which was imported. */
+    ListVirtualFolders(node.preset_id, L"");
 }
 
 void FilesystemPanel::ListFolderContent(const TreeNode& node)
@@ -569,6 +653,50 @@ void FilesystemPanel::ListFolderContent(const TreeNode& node)
                               model_.IsStartupFile(row.preset_id, row.import_name, StartupRelativePath(row));
         rows_.push_back(std::move(row));
     }
+
+    /* The folders the user created come after the content of the host folder. */
+    ListVirtualFolders(node.preset_id, target_dir);
+}
+
+void FilesystemPanel::ListVirtualFolders(const std::string& preset_id, const std::wstring& target_dir)
+{
+    for (const auto& directory : model_.VirtualDirectoriesOf(preset_id, target_dir))
+    {
+        RowInfo row;
+        row.kind = RowInfo::Kind::VirtualFolder;
+        row.preset_id = preset_id;
+        row.target_dir = target_dir;
+        row.file_name = LeafName(directory.target_dir);
+        row.is_directory = true;
+        rows_.push_back(std::move(row));
+    }
+}
+
+void FilesystemPanel::ListVirtualFolderContent(const TreeNode& node)
+{
+    const auto target_dir = node.virtual_dir;
+
+    /*
+     * The folder has no host counterpart, so it only holds the folders the
+     * user created inside it and the files which were imported into it. An
+     * imported file always extends an imported folder, so the first component
+     * of the path names the import root the file belongs to.
+     */
+    for (const auto& file : model_.FilesOf(node.preset_id, target_dir))
+    {
+        RowInfo row;
+        row.kind = RowInfo::Kind::ImportedFile;
+        row.preset_id = node.preset_id;
+        row.import_name = RootSegment(target_dir);
+        row.target_dir = target_dir;
+        row.file_name = file.file_name;
+        row.source_path = file.source_path;
+        row.is_startup_file = IsExecutableName(row.file_name) &&
+                              model_.IsStartupFile(row.preset_id, row.import_name, StartupRelativePath(row));
+        rows_.push_back(std::move(row));
+    }
+
+    ListVirtualFolders(node.preset_id, target_dir);
 }
 
 void FilesystemPanel::ApplyFilter()
@@ -665,7 +793,29 @@ bool FilesystemPanel::SelectedTreePath(TreePath& path) const
     path.preset_id = node->preset_id;
     path.import_name = node->import_name;
     path.relative_dir = node->relative_dir;
+    path.virtual_dir = node->virtual_dir;
     return true;
+}
+
+std::wstring FilesystemPanel::NodeDirectoryPath(const TreeNode& node)
+{
+    if (!node.virtual_dir.empty())
+    {
+        return node.virtual_dir;
+    }
+
+    /* The container and a preset directory name the layer root itself. */
+    if (node.import_name.empty())
+    {
+        return {};
+    }
+
+    return appbox::JoinViewPath(node.import_name, node.relative_dir);
+}
+
+std::wstring FilesystemPanel::DirectoryPathOf(const RowInfo& row)
+{
+    return row.target_dir.empty() ? row.file_name : row.target_dir + L"\\" + row.file_name;
 }
 
 wxTreeItemId FilesystemPanel::FindPresetItem(const wxTreeItemId& parent, const std::string& preset_id) const
@@ -693,6 +843,64 @@ wxTreeItemId FilesystemPanel::FindPresetItem(const wxTreeItemId& parent, const s
     }
 
     return wxTreeItemId();
+}
+
+wxTreeItemId FilesystemPanel::FindVirtualDirectoryItem(const wxTreeItemId& preset_item, const std::wstring& path)
+{
+    auto         current = preset_item;
+    std::wstring walked;
+
+    /*
+     * The folders below a folder are listed on demand, so every level of the
+     * path is opened before the next one can be looked up. A level is named
+     * either by an imported folder or by a folder the user created, because a
+     * folder of the user can hang below an import as well.
+     */
+    for (const auto& segment : appbox::Split(path, L"\\"))
+    {
+        if (segment.empty())
+        {
+            continue;
+        }
+        if (!walked.empty())
+        {
+            walked.push_back(L'\\');
+        }
+        walked += segment;
+
+        PopulateNode(current);
+        tree_->Expand(current);
+
+        wxTreeItemId      next;
+        wxTreeItemIdValue child_cookie = nullptr;
+        for (auto child = tree_->GetFirstChild(current, child_cookie); child.IsOk();
+             child = tree_->GetNextChild(current, child_cookie))
+        {
+            auto* node = static_cast<TreeNode*>(tree_->GetItemData(child));
+            if (node == nullptr)
+            {
+                continue;
+            }
+            if (!node->virtual_dir.empty() && EqualsIgnoreCase(node->virtual_dir, walked))
+            {
+                next = child;
+                break;
+            }
+            if (node->virtual_dir.empty() && EqualsIgnoreCase(node->import_name, walked))
+            {
+                next = child;
+                break;
+            }
+        }
+        if (!next.IsOk())
+        {
+            /* The folder is gone, so the deepest level which was found stays. */
+            break;
+        }
+        current = next;
+    }
+
+    return current;
 }
 
 void FilesystemPanel::SelectTreePath(const TreePath& path)
@@ -778,6 +986,16 @@ void FilesystemPanel::SelectTreePath(const TreePath& path)
         }
     }
 
+    /*
+     * A folder the user created is stored relative to the preset directory,
+     * so it is looked up from the preset item: the levels of its path are the
+     * imported folders and the created folders below them.
+     */
+    if (selected != root && !path.virtual_dir.empty())
+    {
+        selected = FindVirtualDirectoryItem(selected, path.virtual_dir);
+    }
+
     tree_->SelectItem(selected);
     tree_->EnsureVisible(selected);
 }
@@ -786,15 +1004,37 @@ bool FilesystemPanel::SelectedTarget(std::string& preset_id, std::wstring& targe
 {
     const auto selection = tree_->GetSelection();
     auto*      node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
-    if (node == nullptr || node->import_name.empty())
+    if (node == nullptr || node->preset_id.empty())
     {
         return false;
     }
 
-    preset_id = node->preset_id;
-    import_name = node->import_name;
-    target_dir = node->relative_dir.empty() ? node->import_name : node->import_name + L"\\" + node->relative_dir;
-    return true;
+    if (!node->import_name.empty())
+    {
+        preset_id = node->preset_id;
+        import_name = node->import_name;
+        target_dir = NodeDirectoryPath(*node);
+        return true;
+    }
+
+    /*
+     * An imported file extends an imported folder, so a folder the user
+     * created is a target only while it hangs below an import: the first
+     * component of its path names the import root the file belongs to.
+     */
+    if (!node->virtual_dir.empty())
+    {
+        appbox::ImportedFolder imported;
+        if (model_.GetImport(node->preset_id, RootSegment(node->virtual_dir), imported))
+        {
+            preset_id = node->preset_id;
+            import_name = imported.import_name;
+            target_dir = node->virtual_dir;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 int FilesystemPanel::RowIndex(const wxDataViewItem& item) const
@@ -820,6 +1060,24 @@ int FilesystemPanel::SelectedRowIndex() const
         return -1;
     }
     return RowIndex(list_->RowToItem(selected));
+}
+
+void FilesystemPanel::SelectRowOfPath(const std::wstring& view_path)
+{
+    const int count = list_->GetItemCount();
+    for (int row = 0; row < count; ++row)
+    {
+        const auto item = list_->RowToItem(row);
+        const int  index = RowIndex(item);
+        if (index < 0 || !appbox::ViewPathEquals(RowViewPath(rows_[static_cast<std::size_t>(index)]), view_path))
+        {
+            continue;
+        }
+
+        list_->Select(item);
+        list_->EnsureVisible(item);
+        return;
+    }
 }
 
 appbox::FilesystemEntryKind FilesystemPanel::RowKind(const RowInfo& row)
@@ -899,6 +1157,7 @@ std::wstring FilesystemPanel::RowViewPath(const RowInfo& row) const
         return VirtualPath(preset, L"", row.import_name);
     case RowInfo::Kind::HostEntry:
     case RowInfo::Kind::ImportedFile:
+    case RowInfo::Kind::VirtualFolder:
         return VirtualPath(preset, row.target_dir, row.file_name);
     }
     return {};
@@ -940,10 +1199,19 @@ void FilesystemPanel::UpdateToolBarState()
     auto*      node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
 
     const bool has_node = node != nullptr;
-    const bool inside_import = has_node && !node->import_name.empty();
 
     /* The container holds the preset directories only, so it owns no import. */
     const bool has_preset = has_node && !node->preset_id.empty();
+
+    /*
+     * The command which imports files works on the folder of the tree, so the
+     * rule which decides whether it is offered is the one the command applies:
+     * the folder has to be part of an import, see SelectedTarget().
+     */
+    std::string  target_preset;
+    std::wstring target_dir;
+    std::wstring target_import;
+    const bool   inside_import = SelectedTarget(target_preset, target_dir, target_import);
 
     if (add_files_ != nullptr)
     {
@@ -953,19 +1221,30 @@ void FilesystemPanel::UpdateToolBarState()
     {
         add_folder_->Enable(has_preset);
     }
+    if (new_folder_ != nullptr)
+    {
+        /*
+         * The container holds the preset directories and is not a folder of
+         * the view, so the command is offered for every other node: the
+         * folder it creates is an entry of the layer of the preset directory
+         * the node belongs to.
+         */
+        new_folder_->Enable(has_preset);
+    }
     if (remove_ != nullptr)
     {
         /*
          * The preset directories are fixed and the host entries of an import
-         * belong to it, so only an imported folder and an individually
-         * imported file can be removed.
+         * belong to it, so only an imported folder, a folder the user created
+         * and an individually imported file can be removed.
          */
         bool      removable = false;
         const int index = SelectedRowIndex();
         if (index >= 0)
         {
             const auto kind = rows_[static_cast<std::size_t>(index)].kind;
-            removable = kind == RowInfo::Kind::ImportedFolder || kind == RowInfo::Kind::ImportedFile;
+            removable = kind == RowInfo::Kind::ImportedFolder || kind == RowInfo::Kind::ImportedFile ||
+                        kind == RowInfo::Kind::VirtualFolder;
         }
         remove_->Enable(removable);
     }
@@ -986,15 +1265,16 @@ void FilesystemPanel::OnRowActivated(wxDataViewEvent& event)
     const auto item = event.GetItem();
     const auto index = item.IsOk() ? static_cast<std::size_t>(list_->GetItemData(item)) : rows_.size();
 
-    if (index >= rows_.size() || rows_[index].kind != RowInfo::Kind::Preset)
+    if (index >= rows_.size() ||
+        (rows_[index].kind != RowInfo::Kind::Preset && rows_[index].kind != RowInfo::Kind::VirtualFolder))
     {
-        /* The rows of a preset keep the default behaviour of the table. */
+        /* The rows of a folder of the host keep the default behaviour of the table. */
         event.Skip();
         return;
     }
 
     /*
-     * Entering a preset selects its tree node, which rebuilds the table. The
+     * Entering a folder selects its tree node, which rebuilds the table. The
      * table must not be rebuilt from inside its own activation event: the
      * control keeps using the row index it captured before the event and
      * selects a row which the rebuilt model no longer holds, which makes
@@ -1004,8 +1284,117 @@ void FilesystemPanel::OnRowActivated(wxDataViewEvent& event)
      * and the activation counts as handled so that the control does not fall
      * back to its plain click handling either.
      */
-    const auto preset_id = rows_[index].preset_id;
-    CallAfter([this, preset_id]() { SelectTreePath(TreePath{ preset_id }); });
+    const auto row = rows_[index];
+    if (row.kind == RowInfo::Kind::Preset)
+    {
+        const auto preset_id = row.preset_id;
+        CallAfter([this, preset_id]() { SelectTreePath(TreePath{ preset_id }); });
+        return;
+    }
+
+    TreePath path;
+    path.preset_id = row.preset_id;
+    path.virtual_dir = DirectoryPathOf(row);
+    CallAfter([this, path]() { SelectTreePath(path); });
+}
+
+void FilesystemPanel::OnFilenameStartEditing(wxDataViewEvent& event)
+{
+    const int  index = RowIndex(event.GetItem());
+    const bool renamable = event.GetColumn() == kFilenameColumn && index >= 0 &&
+                           rows_[static_cast<std::size_t>(index)].kind == RowInfo::Kind::VirtualFolder;
+    if (!renamable)
+    {
+        /* Only a folder the user created carries a name which may be edited. */
+        event.Veto();
+    }
+}
+
+void FilesystemPanel::OnFilenameEditingDone(wxDataViewEvent& event)
+{
+    if (event.GetColumn() != kFilenameColumn)
+    {
+        return;
+    }
+    if (event.IsEditCancelled())
+    {
+        /* The user left the editor without accepting the name. */
+        return;
+    }
+
+    /*
+     * The name is stored through the pack model, so the value of the event is
+     * not written into the control: the row is rebuilt from the model, which
+     * keeps the old name while the model refuses the new one.
+     */
+    event.Veto();
+
+    const int index = RowIndex(event.GetItem());
+    if (index < 0)
+    {
+        return;
+    }
+
+    wxDataViewIconText edited;
+    edited << event.GetValue();
+
+    const auto row = rows_[static_cast<std::size_t>(index)];
+    const auto name = edited.GetText().ToStdWstring();
+    if (name == row.file_name)
+    {
+        /* The name did not change, so nothing is stored. */
+        return;
+    }
+
+    /*
+     * The table is rebuilt once the control finished its edit; doing it inside
+     * the event would delete the row the control still holds.
+     */
+    CallAfter([this, row, name]() { RenameVirtualDirectory(row, name); });
+}
+
+void FilesystemPanel::RenameVirtualDirectory(const RowInfo& row, const std::wstring& new_name)
+{
+    appbox::PresetDirectory preset;
+    if (!appbox::FindPresetDirectory(row.preset_id, preset))
+    {
+        return;
+    }
+
+    const auto path = DirectoryPathOf(row);
+    const auto view_path = RowViewPath(row);
+    const auto renamed_view_path = VirtualPath(preset, row.target_dir, new_name);
+
+    /*
+     * Both models are asked before either of them is changed: the pack model
+     * rewrites the path of the folder and of everything below it, and the
+     * isolation model moves the modes which were picked below the folder to
+     * the new path. A refusal of either of them leaves the workspace as it is.
+     */
+    std::string error;
+    {
+        appbox::PackModel copy = model_;
+        if (!copy.RenameVirtualDirectory(row.preset_id, path, new_name, error))
+        {
+            wxMessageBox(wxString::FromUTF8(error), "Rename Folder", wxOK | wxICON_ERROR, this);
+            return;
+        }
+    }
+    {
+        appbox::FilesystemIsolationModel copy = isolation_;
+        if (!copy.RenameSubtree(view_path, new_name, error))
+        {
+            wxMessageBox(wxString::FromUTF8(error), "Rename Folder", wxOK | wxICON_ERROR, this);
+            return;
+        }
+    }
+
+    model_.RenameVirtualDirectory(row.preset_id, path, new_name, error);
+    isolation_.RenameSubtree(view_path, new_name, error);
+
+    /* The tree shows the new name as well, so it is rebuilt with the selection kept. */
+    RefreshModel();
+    SelectRowOfPath(renamed_view_path);
 }
 
 void FilesystemPanel::OnIsolationChanged(wxDataViewEvent& event)
@@ -1344,6 +1733,38 @@ void FilesystemPanel::OnAddFolder(wxCommandEvent&)
     RefreshList();
 }
 
+void FilesystemPanel::OnNewFolder(wxCommandEvent&)
+{
+    const auto selection = tree_->GetSelection();
+    auto*      node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
+    if (node == nullptr || node->preset_id.empty())
+    {
+        /* The container holds the preset directories and is not a folder of the view. */
+        return;
+    }
+
+    const auto preset_id = node->preset_id;
+    const auto parent_dir = NodeDirectoryPath(*node);
+    const auto name = model_.FreeVirtualDirectoryName(preset_id, parent_dir);
+
+    std::string error;
+    if (!model_.CreateVirtualDirectory(preset_id, parent_dir, name, error))
+    {
+        wxMessageBox(wxString::FromUTF8(error), "New Folder", wxOK | wxICON_ERROR, this);
+        return;
+    }
+
+    /* The tree gains the folder, so it is rebuilt with the selection kept. */
+    RefreshModel();
+
+    /* The new folder becomes the selected row, so the user sees where it went. */
+    appbox::PresetDirectory preset;
+    if (appbox::FindPresetDirectory(preset_id, preset))
+    {
+        SelectRowOfPath(VirtualPath(preset, parent_dir, name));
+    }
+}
+
 void FilesystemPanel::OnRemove(wxCommandEvent&)
 {
     const auto index = SelectedRowIndex();
@@ -1365,6 +1786,24 @@ void FilesystemPanel::OnRemove(wxCommandEvent&)
         wxMessageBox("'" + wxString(row.file_name) +
                          "' belongs to the imported folder and is removed together with it.",
                      "Remove", wxOK | wxICON_INFORMATION, this);
+        return;
+    }
+
+    if (row.kind == RowInfo::Kind::VirtualFolder)
+    {
+        const auto      question = "Remove the folder '" + wxString(row.file_name) + "' and everything below it?";
+        wxMessageDialog dialog(this, question, "Remove", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
+        if (dialog.ShowModal() != wxID_YES)
+        {
+            return;
+        }
+
+        /* The isolation modes of the removed subtree go with it, see OnRemove(). */
+        isolation_.RemoveSubtree(RowViewPath(row));
+        model_.RemoveVirtualDirectory(row.preset_id, DirectoryPathOf(row));
+
+        /* The tree loses the folder as well, so it is rebuilt with the selection kept. */
+        RefreshModel();
         return;
     }
 

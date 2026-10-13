@@ -652,6 +652,67 @@ TEST(Unit_FilesystemIsolation, RemoveSubtreeDropsTheEntryAndItsDescendants)
     EXPECT_FALSE(model.RemoveSubtree(L""));
 }
 
+TEST(Unit_FilesystemIsolation, RenameSubtreeMovesTheModesBelowTheFolder)
+{
+    appbox::FilesystemIsolationModel model;
+    SetMode(model, kAppFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
+    SetMode(model, kDataFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Whiteout);
+    SetMode(model, L"#ProgramFiles#\\MyApp\\data\\logs", appbox::FilesystemEntryKind::Directory,
+            appbox::FilesystemIsolation::Full);
+    SetMode(model, L"#ProgramFiles#\\MyApp\\data\\logs\\tool.exe", appbox::FilesystemEntryKind::File,
+            appbox::FilesystemIsolation::Whiteout);
+
+    std::string error;
+    ASSERT_TRUE(model.RenameSubtree(kDataFolder, L"storage", error)) << error;
+
+    /* The modes of the folder and of everything below it travel with it. */
+    EXPECT_FALSE(model.HasExplicitIsolation(kDataFolder));
+    EXPECT_FALSE(model.HasExplicitIsolation(L"#ProgramFiles#\\MyApp\\data\\logs"));
+    EXPECT_TRUE(model.HasExplicitIsolation(L"#ProgramFiles#\\MyApp\\storage"));
+    EXPECT_TRUE(model.HasExplicitIsolation(L"#ProgramFiles#\\MyApp\\storage\\logs"));
+    EXPECT_TRUE(model.HasExplicitIsolation(L"#ProgramFiles#\\MyApp\\storage\\logs\\tool.exe"));
+
+    /* The mode of a moved entry is kept, the folder above it stays as it was. */
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\storage", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Whiteout);
+    EXPECT_TRUE(model.HasExplicitIsolation(kAppFolder));
+
+    /* The entries stay ordered by their path, which the document relies on. */
+    const auto& entries = model.Entries();
+    ASSERT_EQ(entries.size(), 4u);
+    EXPECT_EQ(entries[0].path, kAppFolder);
+    EXPECT_EQ(entries[1].path, L"#ProgramFiles#\\MyApp\\storage");
+    EXPECT_EQ(entries[2].path, L"#ProgramFiles#\\MyApp\\storage\\logs");
+    EXPECT_EQ(entries[3].path, L"#ProgramFiles#\\MyApp\\storage\\logs\\tool.exe");
+}
+
+TEST(Unit_FilesystemIsolation, RenameSubtreeRefusesATakenPathAndAnInvalidName)
+{
+    appbox::FilesystemIsolationModel model;
+    SetMode(model, kDataFolder, appbox::FilesystemEntryKind::Directory, appbox::FilesystemIsolation::Full);
+    SetMode(model, L"#ProgramFiles#\\MyApp\\storage", appbox::FilesystemEntryKind::Directory,
+            appbox::FilesystemIsolation::Whiteout);
+
+    std::string error;
+
+    /* The new path carries a mode of its own, so nothing is changed at all. */
+    EXPECT_FALSE(model.RenameSubtree(kDataFolder, L"storage", error));
+    EXPECT_FALSE(error.empty());
+    EXPECT_TRUE(model.HasExplicitIsolation(kDataFolder));
+    EXPECT_EQ(model.EffectiveIsolation(L"#ProgramFiles#\\MyApp\\storage", appbox::FilesystemEntryKind::Directory),
+              appbox::FilesystemIsolation::Whiteout);
+
+    /* A name with a separator and an empty name are not folder names. */
+    EXPECT_FALSE(model.RenameSubtree(kDataFolder, L"a\\b", error));
+    EXPECT_FALSE(model.RenameSubtree(kDataFolder, std::wstring(), error));
+
+    /* The root of the view carries no name of its own. */
+    EXPECT_FALSE(model.RenameSubtree(std::wstring(), L"root", error));
+
+    /* A folder which holds no mode of its own is accepted and changes nothing. */
+    EXPECT_TRUE(model.RenameSubtree(L"#Windows#", L"win", error)) << error;
+}
+
 TEST(Unit_FilesystemIsolation, EntriesAreOrderedByPath)
 {
     appbox::FilesystemIsolationModel model;

@@ -18,10 +18,10 @@ class wxSearchCtrl;
  * `Sandbox Filesystem` container with the preset directories below it. A
  * preset directory can hold nested preset directories of its own (the folders
  * of the user profile hang below `Current User Directory`), and every preset
- * directory holds its imported folders and the host subfolders of the
- * imports, expanded on demand. Right side: a toolbar row (Add Files, Add
- * Folder, New Folder, Remove, Up Dir and a search box) above the report style
- * list of the selected folder.
+ * directory holds its imported folders, the folders the user created and the
+ * host subfolders of the imports, expanded on demand. Right side: a toolbar
+ * row (Add Files, Add Folder, New Folder, Remove, Up Dir and a search box)
+ * above the report style list of the selected folder.
  *
  * The list shows the filename, the isolation mode, the size and the virtual
  * source path of every entry, following the layout of the reference packaging
@@ -35,6 +35,16 @@ class wxSearchCtrl;
  * A nested preset directory is offered by the same commands as a top level
  * one: it accepts imported folders and imported files, and it can be entered
  * from the list.
+ *
+ * The `New Folder` command creates an empty folder inside the folder the tree
+ * selects, which is the entry the list below it shows. The folder has no host
+ * counterpart: it is an entry of the layer of its preset directory, which the
+ * pack run writes into the archive, so the packaged application sees it and can
+ * write into it. The command is offered for every node but the container,
+ * because the container holds the preset directories and is not a folder of
+ * the view. A folder which was created carries a default name and is renamed
+ * in the list: the `Filename` column of such a row is edited in place, exactly
+ * like a name of the Windows Explorer is, while every other row keeps its name.
  *
  * The isolation mode of a folder is picked from the context menu of the tree,
  * which reaches every node of the view: the dialog it opens offers the modes a
@@ -76,8 +86,9 @@ private:
      *
      * The fields mirror the client data of the tree items: the container
      * leaves all of them empty, a preset directory carries its identifier
-     * only, an imported folder adds its name, and a folder below an import
-     * adds its path relative to the import root. The path does not record
+     * only, an imported folder adds its name, a folder below an import adds
+     * its path relative to the import root, and a folder the user created adds
+     * its path relative to the preset directory. The path does not record
      * whether a preset directory hangs below another one, because the preset
      * identifiers are unique and a preset is looked up in the whole tree.
      */
@@ -98,6 +109,15 @@ private:
          *        roots.
          */
         std::wstring relative_dir;
+
+        /**
+         * @brief Path of a folder the user created, relative to the preset
+         *        directory, empty for every other node.
+         *
+         * A created folder hangs below the layer of its preset directory and
+         * not below an import, so its path is looked up from the preset node.
+         */
+        std::wstring virtual_dir;
     };
 
     /**
@@ -122,7 +142,13 @@ private:
         std::wstring relative_dir;
 
         /**
-         * @brief Whether the host subfolders were already listed.
+         * @brief Path of a folder the user created, relative to the preset
+         *        directory, empty for every other node.
+         */
+        std::wstring virtual_dir;
+
+        /**
+         * @brief Whether the subfolders were already listed.
          */
         bool populated = false;
     };
@@ -139,6 +165,7 @@ private:
         {
             Preset,         ///< A preset directory of the filesystem tree.
             ImportedFolder, ///< An imported folder below a preset directory.
+            VirtualFolder,  ///< A folder the user created inside the view.
             HostEntry,      ///< An entry of the host folder of an import.
             ImportedFile    ///< A file imported on its own.
         };
@@ -222,7 +249,28 @@ private:
     wxTreeItemId AppendPreset(const wxTreeItemId& parent, const appbox::PresetDirectory& preset);
 
     /**
-     * @brief Append the host subfolders of one import node.
+     * @brief Append one folder the user created and mark it as a folder.
+     *
+     * The folders below the folder are listed on demand, like the host
+     * subfolders of an import are, so the item is marked as one which holds
+     * children without listing them.
+     *
+     * @param[in] parent Item which holds the folder.
+     * @param[in] preset_id Identifier of the owning preset directory.
+     * @param[in] path Path of the folder relative to the preset directory.
+     * @return The item of the folder.
+     */
+    wxTreeItemId AppendVirtualDirectory(const wxTreeItemId& parent, const std::string& preset_id,
+                                        const std::wstring& path);
+
+    /**
+     * @brief Append the subfolders of one directory node.
+     *
+     * The host subfolders of the directory are appended first, because they
+     * come from the imported folder, and the folders the user created follow.
+     * The container and the preset directories are not populated: their
+     * children belong to the fixed tree, see AppendPreset().
+     *
      * @param[in] item Tree item holding TreeNode data.
      */
     void PopulateNode(const wxTreeItemId& item);
@@ -253,6 +301,28 @@ private:
      * @param[in] node Data of the selected import or folder node.
      */
     void ListFolderContent(const TreeNode& node);
+
+    /**
+     * @brief Fill the rows with the folders the user created inside a directory.
+     *
+     * The rows are appended after the rows of the host content and of the
+     * imported files, so the order of the list mirrors the order of the tree.
+     *
+     * @param[in] preset_id Identifier of the owning preset directory.
+     * @param[in] target_dir Directory relative to the preset directory, empty
+     *            for the layer root.
+     */
+    void ListVirtualFolders(const std::string& preset_id, const std::wstring& target_dir);
+
+    /**
+     * @brief Fill the rows with the content of a folder the user created.
+     *
+     * Such a folder has no host counterpart, so it holds the folders the user
+     * created inside it and the imported files which were imported into it.
+     *
+     * @param[in] node Data of the selected folder node.
+     */
+    void ListVirtualFolderContent(const TreeNode& node);
 
     /**
      * @brief Rebuild the list from the rows matching the search box.
@@ -295,6 +365,21 @@ private:
     wxTreeItemId FindPresetItem(const wxTreeItemId& parent, const std::string& preset_id) const;
 
     /**
+     * @brief Find the item of a folder the user created inside a subtree.
+     *
+     * The path of such a folder is stored relative to the preset directory, so
+     * the lookup starts at the preset item and walks the levels of the path:
+     * every level is listed on demand and is named either by an imported folder
+     * or by a folder the user created.
+     *
+     * @param[in] preset_item Item of the preset directory which owns the folder.
+     * @param[in] path Path of the folder relative to the preset directory.
+     * @return The item of the folder, an invalid item when the tree does not
+     *         hold it.
+     */
+    wxTreeItemId FindVirtualDirectoryItem(const wxTreeItemId& preset_item, const std::wstring& path);
+
+    /**
      * @brief Select the tree item of a path.
      *
      * The folders below an imported folder are listed on demand, so the levels
@@ -316,6 +401,30 @@ private:
     bool SelectedTarget(std::string& preset_id, std::wstring& target_dir, std::wstring& import_name) const;
 
     /**
+     * @brief Get the directory a tree node names, relative to its preset directory.
+     *
+     * The container and a preset directory name the layer root, which is the
+     * empty path; an imported folder and a folder below it name the path below
+     * the import root, and a folder the user created names the path it was
+     * stored under.
+     *
+     * @param[in] node Data of the tree node.
+     * @return The path relative to the preset directory.
+     */
+    static std::wstring NodeDirectoryPath(const TreeNode& node);
+
+    /**
+     * @brief Get the directory a row of a created folder names.
+     *
+     * A row stores the directory it lives in, so the folder itself is that
+     * directory extended by its name.
+     *
+     * @param[in] row Row description of a created folder.
+     * @return The path of the folder relative to the preset directory.
+     */
+    static std::wstring DirectoryPathOf(const RowInfo& row);
+
+    /**
      * @brief Get the index of a row inside the row vector.
      * @param[in] item Item of the row.
      * @return The row index, -1 when the item does not describe a row.
@@ -327,6 +436,17 @@ private:
      * @return The row index, -1 when no row is selected.
      */
     int SelectedRowIndex() const;
+
+    /**
+     * @brief Select the row which shows one entry of the view.
+     *
+     * The row is looked up by the virtual path the `Source Path` column shows,
+     * because the rows are rebuilt from the model and the indices of a rebuild
+     * differ from the ones of the table which was shown before it.
+     *
+     * @param[in] view_path Virtual path of the entry.
+     */
+    void SelectRowOfPath(const std::wstring& view_path);
 
     /**
      * @brief Get the kind of the entry behind a row.
@@ -482,6 +602,19 @@ private:
     void OnAddFolder(wxCommandEvent& event);
 
     /**
+     * @brief Create an empty folder inside the folder the tree selects.
+     *
+     * The folder carries the default name of the directory, see
+     * PackModel::FreeVirtualDirectoryName(), and becomes the selected row of
+     * the list, so the user sees it and can rename it in place. The container
+     * holds the preset directories and is not a folder of the view, so the
+     * command is refused for it.
+     *
+     * @param[in] event Command event.
+     */
+    void OnNewFolder(wxCommandEvent& event);
+
+    /**
      * @brief Remove the selected import after confirmation.
      * @param[in] event Command event.
      */
@@ -522,6 +655,44 @@ private:
      * @param[in] event Table item activation event.
      */
     void OnRowActivated(wxDataViewEvent& event);
+
+    /**
+     * @brief Decide whether a cell of the file list may be edited in place.
+     *
+     * Only the name of a folder the user created is edited in the list, so the
+     * edit is refused for every other row. The control starts the edit of a
+     * cell when the user clicks it a second time without a double click, which
+     * is the way a name of the Windows Explorer is renamed as well.
+     *
+     * @param[in] event Table item start editing event.
+     */
+    void OnFilenameStartEditing(wxDataViewEvent& event);
+
+    /**
+     * @brief Store the name the user typed for a folder of the list.
+     *
+     * The event carries the typed name while the model of the control still
+     * holds the old one, so the name is stored through the pack model and the
+     * table is rebuilt afterwards, which restores the old name when the model
+     * refuses the new one. The value of the event is not stored in the control,
+     * because the row is rebuilt from the model either way.
+     *
+     * @param[in] event Table item editing done event.
+     */
+    void OnFilenameEditingDone(wxDataViewEvent& event);
+
+    /**
+     * @brief Rename a folder the user created and keep its isolation modes.
+     *
+     * The pack model renames the folder and its subtree, the isolation model
+     * moves the modes which were picked below it to the new path, and the tree
+     * and the list are rebuilt. Both models are asked before either of them is
+     * changed, so a refusal leaves the workspace as it was.
+     *
+     * @param[in] row Row description of the folder.
+     * @param[in] new_name Name the user typed.
+     */
+    void RenameVirtualDirectory(const RowInfo& row, const std::wstring& new_name);
 
     /**
      * @brief Handle a mode picked from the isolation dropdown of a row.
@@ -583,6 +754,7 @@ private:
     wxSearchCtrl*       search_ = nullptr;
     wxButton*           add_files_ = nullptr;
     wxButton*           add_folder_ = nullptr;
+    wxButton*           new_folder_ = nullptr;
     wxButton*           remove_ = nullptr;
     wxButton*           up_dir_ = nullptr;
 

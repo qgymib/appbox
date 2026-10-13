@@ -1494,3 +1494,81 @@ TEST(Unit_PackService, PackWritesTheFilePropertiesOfTheMainProgram)
     ASSERT_NE(company, nullptr);
     EXPECT_EQ(*company, L"ACME");
 }
+
+TEST(Unit_PackService, PackWritesTheFoldersTheUserCreated)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
+
+    /*
+     * A folder inside the import and a folder of a preset directory which
+     * holds no import at all: the second one is why the layer root of its
+     * preset directory has to be written as well.
+     */
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"MyApp", L"logs", error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("user_profile", std::wstring(), L"logs", error)) << error;
+
+    /* A folder the user created holds no file, so the total is the one of the imports. */
+    EXPECT_EQ(appbox::ContentFileCount(model), static_cast<std::size_t>(1));
+
+    const auto zip_path = temp.Get() / L"folders.zip";
+    ASSERT_EQ(appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                           appbox::EnvironmentModel(), appbox::ApplicationMetadata(), appbox::StartupScreen{},
+                           FakePayloads(), zip_path.wstring(), nullptr),
+              "");
+
+    ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
+    zip_t*           archive = closer.archive;
+    ASSERT_NE(archive, nullptr);
+
+    const auto names = EntryNames(archive);
+
+    /* A folder the user created is a directory entry of the layer of its preset. */
+    EXPECT_EQ(names.count("app/filesystem/#ProgramFiles#/MyApp/logs/"), static_cast<std::size_t>(1));
+    EXPECT_EQ(names.count("app/filesystem/#USERPROFILE#/logs/"), static_cast<std::size_t>(1));
+
+    /* The layer root of a preset directory without an import is written as well. */
+    EXPECT_EQ(names.count("app/filesystem/#USERPROFILE#/"), static_cast<std::size_t>(1));
+
+    /* The content of the import is packed next to the folder of the user. */
+    EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE");
+}
+
+TEST(Unit_PackService, PatchWritesTheFoldersTheUserCreated)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"MyApp", L"logs", error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"MyApp\\logs", L"cache", error)) << error;
+
+    const auto zip_path = temp.Get() / L"folders-patch.zip";
+    ASSERT_EQ(appbox::PackPatch(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                                appbox::EnvironmentModel(), zip_path.wstring(), nullptr),
+              "");
+
+    ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
+    zip_t*           archive = closer.archive;
+    ASSERT_NE(archive, nullptr);
+
+    /*
+     * A patch package roots the resources at the archive root, and every
+     * folder is written once, which the zip writer requires.
+     */
+    const auto names = EntryNames(archive);
+    EXPECT_EQ(names.count("filesystem/#ProgramFiles#/MyApp/logs/"), static_cast<std::size_t>(1));
+    EXPECT_EQ(names.count("filesystem/#ProgramFiles#/MyApp/logs/cache/"), static_cast<std::size_t>(1));
+    EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE");
+}

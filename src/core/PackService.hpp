@@ -140,6 +140,7 @@ struct PackPayloads
  * app/startup/splash.png                 startup image of the session (optional)
  * app/filesystem/isolation.json          isolation modes of the filesystem
  * app/filesystem/<layer key>/<import>/... imported folder content
+ * app/filesystem/<layer key>/<folder>/   folder created inside the workspace
  * app/filesystem/<layer key>/<target>/<file> imported file content
  * app/registry/user.hiv                  virtual registry of the workspace
  * app/registry/isolation.json            isolation modes of the registry
@@ -150,6 +151,12 @@ struct PackPayloads
  * The launcher program and its configuration carry the file name of the first
  * startup file, see LauncherEntryName(). The entry programs themselves keep
  * their place below the layer tree.
+ *
+ * A folder the user created inside the filesystem workspace has no host
+ * counterpart, so the run writes the directory itself below the layer of its
+ * preset directory, which keeps it visible inside the sandbox view. Directory
+ * entries are not covered by the progress total, which counts the files which
+ * come from an import.
  *
  * The two sandbox injection modules are resources of the archive: they land
  * directly below `app`, beside the four isolation domains, and the launcher
@@ -273,6 +280,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
  * ```
  * filesystem/isolation.json            isolation modes of the filesystem
  * filesystem/<layer key>/<import>/...  imported folder content
+ * filesystem/<layer key>/<folder>/     folder created inside the workspace
  * filesystem/<layer key>/<target>/...  imported file content
  * registry/user.hiv                    virtual registry of the workspace
  * registry/isolation.json              isolation modes of the registry

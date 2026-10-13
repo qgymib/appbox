@@ -351,6 +351,60 @@ bool FilesystemIsolationModel::ApplyIsolationToSubtree(const std::wstring& view_
     return true;
 }
 
+bool FilesystemIsolationModel::RenameSubtree(const std::wstring& view_path, const std::wstring& new_name,
+                                             std::string& error)
+{
+    std::wstring path;
+    if (!NormalizeEntryPath(view_path, path) || path.empty())
+    {
+        error = "the path does not name a folder of the virtual filesystem";
+        return false;
+    }
+
+    const auto name = NormalizeViewPath(new_name);
+    if (name.empty() || name.find(kFilesystemViewPathSeparator) != std::wstring::npos)
+    {
+        error = Quote(new_name) + " is not a usable folder name";
+        return false;
+    }
+
+    const auto renamed = JoinViewPath(ViewPathParent(path), name);
+    if (ViewPathEquals(renamed, path))
+    {
+        /* The folder keeps the name it carries, so its entries stay as they are. */
+        return true;
+    }
+
+    /*
+     * The call is validated before the model is touched: an entry which is
+     * already listed at the new path would be overwritten by the move, which
+     * would silently drop the mode the user picked for it.
+     */
+    for (const auto& entry : entries_)
+    {
+        if (ViewPathEquals(entry.path, renamed) || IsViewPathBelow(entry.path, renamed))
+        {
+            error = "the entry " + Quote(entry.path) + " is already listed at " + Quote(renamed);
+            return false;
+        }
+    }
+
+    for (auto& entry : entries_)
+    {
+        if (ViewPathEquals(entry.path, path))
+        {
+            entry.path = renamed;
+        }
+        else if (IsViewPathBelow(entry.path, path))
+        {
+            entry.path = JoinViewPath(renamed, entry.path.substr(path.size() + 1));
+        }
+    }
+
+    SortEntries();
+    return true;
+}
+
 bool FilesystemIsolationModel::SetRootIsolation(FilesystemIsolation              isolation,
                                                 const std::vector<std::wstring>& layer_roots, std::string& error)
 {

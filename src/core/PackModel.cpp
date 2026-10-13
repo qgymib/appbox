@@ -170,6 +170,51 @@ std::wstring JoinSegments(const std::vector<std::wstring>& segments, std::size_t
 }
 
 /**
+ * @brief Get the directory a normalized relative path lives in.
+ * @param[in] path Path to split.
+ * @return The parent directory, empty when the path has no separator.
+ */
+std::wstring ParentDirectory(const std::wstring& path)
+{
+    const auto separator = path.find_last_of(L'\\');
+    return separator == std::wstring::npos ? std::wstring() : path.substr(0, separator);
+}
+
+/**
+ * @brief Get the last component of a normalized relative path.
+ * @param[in] path Path to split.
+ * @return The name of the entry.
+ */
+std::wstring LeafName(const std::wstring& path)
+{
+    const auto separator = path.find_last_of(L'\\');
+    return separator == std::wstring::npos ? path : path.substr(separator + 1);
+}
+
+/**
+ * @brief Whether a path names an entry below another one.
+ *
+ * The ancestor has to be a whole component prefix, so `MyAppData` is not below
+ * `MyApp`.
+ *
+ * @param[in] path Path of the entry to test.
+ * @param[in] ancestor Path of the directory to test against.
+ * @return true when the path is a strict descendant of the ancestor.
+ */
+bool IsPathBelow(const std::wstring& path, const std::wstring& ancestor)
+{
+    if (ancestor.empty() || path.size() <= ancestor.size())
+    {
+        return false;
+    }
+    if (!EqualsIgnoreCase(path.substr(0, ancestor.size()), ancestor))
+    {
+        return false;
+    }
+    return path[ancestor.size()] == L'\\';
+}
+
+/**
  * @brief Whether one startup file refers to an executable.
  * @param[in] file Startup file to test.
  * @param[in] preset_id Identifier of the preset directory.
@@ -228,12 +273,13 @@ void PackModel::Clear()
 {
     imports_.clear();
     imported_files_.clear();
+    directories_.clear();
     startup_files_.clear();
 }
 
 bool PackModel::IsEmpty() const
 {
-    return imports_.empty() && imported_files_.empty() && startup_files_.empty();
+    return imports_.empty() && imported_files_.empty() && directories_.empty() && startup_files_.empty();
 }
 
 bool PackModel::ImportFolder(const std::string& preset_id, const std::wstring& source_path, std::string& error)
@@ -298,6 +344,22 @@ void PackModel::RemoveImport(const std::string& preset_id, const std::wstring& i
                                                             EqualsIgnoreCase(segments.front(), removed.import_name);
                                                  }),
                                   imported_files_.end());
+
+            /*
+             * Folders the user created below the removed import have no layer
+             * of the view anymore, so they go with it.
+             */
+            directories_.erase(std::remove_if(directories_.begin(), directories_.end(),
+                                              [&removed](const VirtualDirectory& directory) {
+                                                  if (directory.preset_id != removed.preset_id)
+                                                  {
+                                                      return false;
+                                                  }
+                                                  const auto segments = Split(directory.target_dir, L"\\");
+                                                  return !segments.empty() &&
+                                                         EqualsIgnoreCase(segments.front(), removed.import_name);
+                                              }),
+                               directories_.end());
 
             /* Startup files of the removed folder have no lower layer anymore. */
             startup_files_.erase(std::remove_if(startup_files_.begin(), startup_files_.end(),
@@ -388,6 +450,13 @@ bool PackModel::ImportFiles(const std::string& preset_id, const std::wstring& ta
             return false;
         }
 
+        /* A file below a folder the user created would collide in the archive. */
+        if (HasVirtualDirectory(preset_id, canonical_dir + L"\\" + name))
+        {
+            error = "'" + WideToUTF8(name) + "' is a folder of the view";
+            return false;
+        }
+
         /*
          * A name which already exists in the imported folder would produce a
          * duplicate entry inside the archive.
@@ -440,6 +509,248 @@ bool PackModel::RemoveImportedFile(const std::string& preset_id, const std::wstr
         }
     }
     return false;
+}
+
+std::wstring PackModel::FreeVirtualDirectoryName(const std::string& preset_id, const std::wstring& parent_dir) const
+{
+    const auto parent = NormalizeRelativeDir(parent_dir);
+
+    const std::wstring base = L"New Folder";
+    std::wstring       candidate = base;
+    for (int suffix = 2; !CheckVirtualDirectoryName(preset_id, parent, candidate).empty(); ++suffix)
+    {
+        candidate = base + L" " + std::to_wstring(suffix);
+    }
+    return candidate;
+}
+
+bool PackModel::CreateVirtualDirectory(const std::string& preset_id, const std::wstring& parent_dir,
+                                       const std::wstring& name, std::string& error)
+{
+    PresetDirectory preset;
+    if (!FindPresetDirectory(preset_id, preset))
+    {
+        error = "unknown preset directory: " + preset_id;
+        return false;
+    }
+
+    const auto parent = NormalizeRelativeDir(parent_dir);
+    if (!parent_dir.empty() && parent.empty())
+    {
+        error = "the parent directory is not a valid relative path";
+        return false;
+    }
+
+    if (!IsPlainName(name))
+    {
+        error = "'" + WideToUTF8(name) + "' is not a usable folder name";
+        return false;
+    }
+
+    if (!DirectoryParentExists(preset_id, parent, true))
+    {
+        error = "'" + WideToUTF8(parent) + "' is not a folder of the view";
+        return false;
+    }
+
+    error = CheckVirtualDirectoryName(preset_id, parent, name);
+    if (!error.empty())
+    {
+        return false;
+    }
+
+    VirtualDirectory directory;
+    directory.preset_id = preset_id;
+    directory.target_dir = CanonicalDirectoryPath(preset_id, parent.empty() ? name : parent + L"\\" + name);
+    directories_.push_back(std::move(directory));
+    return true;
+}
+
+bool PackModel::RenameVirtualDirectory(const std::string& preset_id, const std::wstring& target_dir,
+                                       const std::wstring& new_name, std::string& error)
+{
+    PresetDirectory preset;
+    if (!FindPresetDirectory(preset_id, preset))
+    {
+        error = "unknown preset directory: " + preset_id;
+        return false;
+    }
+
+    const auto path = NormalizeRelativeDir(target_dir);
+    if (path.empty() || !HasVirtualDirectory(preset_id, path))
+    {
+        error = "'" + WideToUTF8(target_dir) + "' is not a folder of the view";
+        return false;
+    }
+
+    if (!IsPlainName(new_name))
+    {
+        error = "'" + WideToUTF8(new_name) + "' is not a usable folder name";
+        return false;
+    }
+
+    if (EqualsIgnoreCase(LeafName(path), new_name))
+    {
+        /* The folder keeps the name it carries, so its subtree stays as it is. */
+        return true;
+    }
+
+    const auto parent = ParentDirectory(path);
+    error = CheckVirtualDirectoryName(preset_id, parent, new_name);
+    if (!error.empty())
+    {
+        return false;
+    }
+
+    /*
+     * The folder and every folder below it are stored under the new path, so
+     * the subtree keeps its shape.
+     */
+    const auto renamed = parent.empty() ? new_name : parent + L"\\" + new_name;
+    for (auto& directory : directories_)
+    {
+        if (directory.preset_id != preset_id)
+        {
+            continue;
+        }
+        if (EqualsIgnoreCase(directory.target_dir, path))
+        {
+            directory.target_dir = renamed;
+        }
+        else if (IsPathBelow(directory.target_dir, path))
+        {
+            directory.target_dir = renamed + directory.target_dir.substr(path.size());
+        }
+    }
+    return true;
+}
+
+bool PackModel::RemoveVirtualDirectory(const std::string& preset_id, const std::wstring& target_dir)
+{
+    const auto path = NormalizeRelativeDir(target_dir);
+    if (path.empty() || !HasVirtualDirectory(preset_id, path))
+    {
+        return false;
+    }
+
+    /*
+     * An imported file below the folder has no directory of the view anymore,
+     * so it is removed the way RemoveImportedFile() removes one, which drops
+     * the startup file pointing at it as well.
+     */
+    std::vector<ImportedFile> orphans;
+    for (const auto& file : imported_files_)
+    {
+        if (file.preset_id == preset_id &&
+            (EqualsIgnoreCase(file.target_dir, path) || IsPathBelow(file.target_dir, path)))
+        {
+            orphans.push_back(file);
+        }
+    }
+    for (const auto& file : orphans)
+    {
+        RemoveImportedFile(preset_id, file.target_dir, file.file_name);
+    }
+
+    directories_.erase(std::remove_if(directories_.begin(), directories_.end(),
+                                      [&](const VirtualDirectory& directory) {
+                                          return directory.preset_id == preset_id &&
+                                                 (EqualsIgnoreCase(directory.target_dir, path) ||
+                                                  IsPathBelow(directory.target_dir, path));
+                                      }),
+                       directories_.end());
+    return true;
+}
+
+std::vector<VirtualDirectory> PackModel::VirtualDirectoriesOf(const std::string&  preset_id,
+                                                              const std::wstring& target_dir) const
+{
+    const auto parent = NormalizeRelativeDir(target_dir);
+
+    std::vector<VirtualDirectory> result;
+    for (const auto& directory : directories_)
+    {
+        if (directory.preset_id == preset_id && EqualsIgnoreCase(ParentDirectory(directory.target_dir), parent))
+        {
+            result.push_back(directory);
+        }
+    }
+    return result;
+}
+
+const std::vector<VirtualDirectory>& PackModel::AllVirtualDirectories() const
+{
+    return directories_;
+}
+
+bool PackModel::HasVirtualDirectory(const std::string& preset_id, const std::wstring& target_dir) const
+{
+    const auto path = NormalizeRelativeDir(target_dir);
+    if (path.empty())
+    {
+        /* The layer root of a preset directory is not a folder of the model. */
+        return false;
+    }
+
+    return std::any_of(directories_.begin(), directories_.end(), [&](const VirtualDirectory& directory) {
+        return directory.preset_id == preset_id && EqualsIgnoreCase(directory.target_dir, path);
+    });
+}
+
+bool PackModel::RestoreVirtualDirectory(const std::string& preset_id, const std::wstring& target_dir,
+                                        std::string& error)
+{
+    PresetDirectory preset;
+    if (!FindPresetDirectory(preset_id, preset))
+    {
+        error = "unknown preset directory: " + preset_id;
+        return false;
+    }
+
+    const auto path = NormalizeRelativeDir(target_dir);
+    if (path.empty())
+    {
+        error = "the folder path is empty or leaves the preset directory";
+        return false;
+    }
+
+    /*
+     * The parent is checked without the host: a project can be imported on a
+     * machine where the folder of the import does not exist, and the document
+     * lists the folders from the top down, so the parent is part of the model
+     * already.
+     */
+    const auto parent = ParentDirectory(path);
+    if (!DirectoryParentExists(preset_id, parent, false))
+    {
+        error = "'" + WideToUTF8(parent) + "' is not a folder of the view";
+        return false;
+    }
+
+    if (HasVirtualDirectory(preset_id, path))
+    {
+        error = "'" + WideToUTF8(path) + "' is listed twice";
+        return false;
+    }
+
+    ImportedFolder imported;
+    if (GetImport(preset_id, path, imported))
+    {
+        error = "'" + WideToUTF8(path) + "' is an imported folder";
+        return false;
+    }
+
+    if (HasImportedFileAt(preset_id, path))
+    {
+        error = "'" + WideToUTF8(path) + "' is an imported file";
+        return false;
+    }
+
+    VirtualDirectory directory;
+    directory.preset_id = preset_id;
+    directory.target_dir = CanonicalDirectoryPath(preset_id, path);
+    directories_.push_back(std::move(directory));
+    return true;
 }
 
 std::vector<ImportedFile> PackModel::FilesOf(const std::string& preset_id, const std::wstring& target_dir) const
@@ -728,6 +1039,13 @@ bool PackModel::RestoreImportedFile(const std::string& preset_id, const std::wst
         }
     }
 
+    /* A file below a folder the user created would collide in the archive. */
+    if (HasVirtualDirectory(preset_id, canonical_dir + L"\\" + file_name))
+    {
+        error = "'" + WideToUTF8(file_name) + "' is a folder of the view";
+        return false;
+    }
+
     ImportedFile file;
     file.preset_id = preset_id;
     file.target_dir = canonical_dir;
@@ -849,6 +1167,146 @@ bool PackModel::HostFolderPath(const std::string& preset_id, const std::wstring&
     path = relative_dir.empty() ? imported.source_path
                                 : (std::filesystem::path(imported.source_path) / relative_dir).wstring();
     return true;
+}
+
+bool PackModel::DirectoryParentExists(const std::string& preset_id, const std::wstring& parent_dir,
+                                      bool require_host) const
+{
+    /* The layer root of a preset directory is always a folder of the view. */
+    if (parent_dir.empty())
+    {
+        return true;
+    }
+
+    if (HasVirtualDirectory(preset_id, parent_dir))
+    {
+        return true;
+    }
+
+    const auto     segments = Split(parent_dir, L"\\");
+    ImportedFolder imported;
+    if (segments.empty() || !GetImport(preset_id, segments.front(), imported))
+    {
+        return false;
+    }
+
+    const auto remainder = JoinSegments(segments, 1);
+    if (remainder.empty() || !require_host)
+    {
+        return true;
+    }
+
+    std::error_code ec;
+    const auto      folder = std::filesystem::path(imported.source_path) / remainder;
+    return std::filesystem::is_directory(folder, ec) && !ec;
+}
+
+bool PackModel::HostFolderOf(const std::string& preset_id, const std::wstring& target_dir, std::wstring& path) const
+{
+    /*
+     * A folder the user created is an entry of the layer alone, so it maps to
+     * no folder of the host.
+     */
+    if (HasVirtualDirectory(preset_id, target_dir))
+    {
+        return false;
+    }
+
+    if (target_dir.empty())
+    {
+        PresetDirectory preset;
+        if (!FindPresetDirectory(preset_id, preset) || preset.real_path.empty())
+        {
+            return false;
+        }
+
+        path = preset.real_path;
+        return true;
+    }
+
+    const auto     segments = Split(target_dir, L"\\");
+    ImportedFolder imported;
+    if (segments.empty() || !GetImport(preset_id, segments.front(), imported))
+    {
+        return false;
+    }
+
+    const auto remainder = JoinSegments(segments, 1);
+    path =
+        remainder.empty() ? imported.source_path : (std::filesystem::path(imported.source_path) / remainder).wstring();
+    return true;
+}
+
+std::string PackModel::CheckVirtualDirectoryName(const std::string& preset_id, const std::wstring& parent_dir,
+                                                 const std::wstring& name) const
+{
+    if (!IsPlainName(name))
+    {
+        return "'" + WideToUTF8(name) + "' is not a usable folder name";
+    }
+
+    const auto path = parent_dir.empty() ? name : parent_dir + L"\\" + name;
+
+    if (HasVirtualDirectory(preset_id, path))
+    {
+        return "'" + WideToUTF8(name) + "' is already a folder of the view";
+    }
+
+    ImportedFolder imported;
+    if (GetImport(preset_id, path, imported))
+    {
+        return "'" + WideToUTF8(name) + "' is an imported folder";
+    }
+
+    /*
+     * A folder and a file of the same path would be two entries of one name
+     * inside the archive, which the zip writer refuses.
+     */
+    if (HasImportedFileAt(preset_id, path))
+    {
+        return "'" + WideToUTF8(name) + "' is an imported file";
+    }
+
+    /*
+     * A folder of the host of the same name would show up twice in the view of
+     * the directory, because the layer is merged with the host at run time. The
+     * host is only read, so a name stays usable while the imported folder is
+     * missing on this machine.
+     */
+    std::wstring host_parent;
+    if (HostFolderOf(preset_id, parent_dir, host_parent))
+    {
+        std::error_code ec;
+        if (std::filesystem::exists(std::filesystem::path(host_parent) / name, ec) && !ec)
+        {
+            return "'" + WideToUTF8(name) + "' already exists in the host folder of the view";
+        }
+    }
+
+    return {};
+}
+
+bool PackModel::HasImportedFileAt(const std::string& preset_id, const std::wstring& path) const
+{
+    const auto directory = ParentDirectory(path);
+    const auto name = LeafName(path);
+    return std::any_of(imported_files_.begin(), imported_files_.end(), [&](const ImportedFile& file) {
+        return file.preset_id == preset_id && EqualsIgnoreCase(file.target_dir, directory) &&
+               EqualsIgnoreCase(file.file_name, name);
+    });
+}
+
+std::wstring PackModel::CanonicalDirectoryPath(const std::string& preset_id, const std::wstring& path) const
+{
+    const auto     segments = Split(path, L"\\");
+    ImportedFolder imported;
+    if (segments.empty() || !GetImport(preset_id, segments.front(), imported))
+    {
+        return path;
+    }
+
+    const auto remainder = JoinSegments(segments, 1);
+    return remainder.empty() ? imported.import_name : imported.import_name + L"\\" + remainder;
 }
 
 } // namespace appbox

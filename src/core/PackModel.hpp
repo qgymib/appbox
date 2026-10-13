@@ -65,6 +65,31 @@ struct ImportedFile
 };
 
 /**
+ * @brief A folder of the sandbox view which has no host counterpart.
+ *
+ * The record describes a folder the user created inside the packer: it is an
+ * entry of the layer of its preset directory, so at sandbox runtime it is
+ * visible as `<preset>\<target_dir>` and holds whatever is imported into it.
+ * Unlike an imported folder it maps to no folder of the host, so the pack run
+ * writes the directory itself into the archive instead of copying a folder.
+ */
+struct VirtualDirectory
+{
+    /**
+     * @brief Identifier of the owning preset directory.
+     */
+    std::string preset_id;
+
+    /**
+     * @brief Directory relative to the preset directory, e.g. `L"MyApp\logs"`.
+     *
+     * The path is never empty: a folder which was created always names a
+     * subdirectory of the layer of its preset directory.
+     */
+    std::wstring target_dir;
+};
+
+/**
  * @brief One executable the sandboxed application starts.
  *
  * A startup file is an executable of an imported folder. The sandbox starts
@@ -141,10 +166,16 @@ std::wstring FreeStartupTrigger(const std::vector<StartupFile>& files, const std
 /**
  * @brief Editable model of a packer session.
  *
- * The model tracks the imported folders per preset directory and the startup
- * files of the packaged application. All validation (name uniqueness,
- * executable checks, trigger uniqueness) happens here so the UI layer stays
- * free of business rules.
+ * The model tracks the imported folders per preset directory, the folders the
+ * user created inside the sandbox view and the startup files of the packaged
+ * application. All validation (name uniqueness, executable checks, trigger
+ * uniqueness) happens here so the UI layer stays free of business rules.
+ *
+ * A folder the user created has no host counterpart: it is an entry of the
+ * layer of its preset directory, which the pack run writes into the archive as
+ * a directory of its own. The folders are stored as the path relative to the
+ * preset directory, so a folder and everything below it is one prefix of a
+ * path and renaming or removing a folder is a prefix operation.
  *
  * The startup file list keeps the order the files were added in, which is the
  * order the sandbox starts them in. The first entry also names the launcher
@@ -163,7 +194,7 @@ public:
     void Clear();
 
     /**
-     * @brief Whether the model holds no import and no startup file.
+     * @brief Whether the model holds no import, no created folder and no startup file.
      * @return true when the model describes an empty session.
      */
     bool IsEmpty() const;
@@ -230,6 +261,125 @@ public:
      */
     bool RemoveImportedFile(const std::string& preset_id, const std::wstring& target_dir,
                             const std::wstring& file_name);
+
+    /**
+     * @brief Get the default name of a new folder inside a directory.
+     *
+     * The name `New Folder` is used while it is free inside the directory;
+     * otherwise a numeric suffix is appended (`New Folder 2`, `New Folder 3`,
+     * ...), the way FreeStartupTrigger() names the triggers of the startup
+     * files. A name is free when the directory of the view holds no entry of
+     * it, see CreateVirtualDirectory().
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] parent_dir Directory relative to the preset directory, empty
+     *            for the layer root.
+     * @return The default name of a new folder.
+     */
+    std::wstring FreeVirtualDirectoryName(const std::string& preset_id, const std::wstring& parent_dir) const;
+
+    /**
+     * @brief Create an empty folder inside a directory of the sandbox view.
+     *
+     * The folder is an entry of the layer of the preset directory and has no
+     * host counterpart: the host filesystem is only read to decide whether a
+     * name is still free, never written.
+     *
+     * The operation fails when the preset is unknown, the parent directory is
+     * not a folder of the view, the name is not a plain folder name, or the
+     * name is taken inside the parent by a folder the user created, an
+     * imported folder, an imported file or an entry of the host folder the
+     * parent maps to.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] parent_dir Directory relative to the preset directory, empty
+     *            for the layer root.
+     * @param[in] name Name of the new folder.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool CreateVirtualDirectory(const std::string& preset_id, const std::wstring& parent_dir, const std::wstring& name,
+                                std::string& error);
+
+    /**
+     * @brief Rename a folder the user created, together with everything below it.
+     *
+     * The folder and every folder below it are stored under the new path, so
+     * the subtree keeps its shape. The operation fails when the folder is not
+     * one the user created, the new name is not a plain folder name, or the
+     * new name is taken next to the folder, see CreateVirtualDirectory().
+     *
+     * A rename to the name the folder carries today is accepted and changes
+     * nothing.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] target_dir Directory relative to the preset directory.
+     * @param[in] new_name New name of the folder.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool RenameVirtualDirectory(const std::string& preset_id, const std::wstring& target_dir,
+                                const std::wstring& new_name, std::string& error);
+
+    /**
+     * @brief Remove a folder the user created and everything below it.
+     *
+     * The imported files below the folder have no directory of the view
+     * anymore and are dropped together with the startup files which point at
+     * them, exactly like RemoveImport() drops the content of an import.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] target_dir Directory relative to the preset directory.
+     * @return true when at least one folder was removed.
+     */
+    bool RemoveVirtualDirectory(const std::string& preset_id, const std::wstring& target_dir);
+
+    /**
+     * @brief Get the folders the user created inside one directory.
+     *
+     * Only the direct children are reported: a folder below a child is reached
+     * by asking for that child.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] target_dir Directory relative to the preset directory, empty
+     *            for the layer root.
+     * @return The folders in the order they were created in.
+     */
+    std::vector<VirtualDirectory> VirtualDirectoriesOf(const std::string&  preset_id,
+                                                       const std::wstring& target_dir) const;
+
+    /**
+     * @brief Get every folder the user created.
+     * @return The folders in the order they were created in.
+     */
+    const std::vector<VirtualDirectory>& AllVirtualDirectories() const;
+
+    /**
+     * @brief Whether the user created the folder of a path.
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] target_dir Directory relative to the preset directory.
+     * @return true when the path names a folder the user created.
+     */
+    bool HasVirtualDirectory(const std::string& preset_id, const std::wstring& target_dir) const;
+
+    /**
+     * @brief Restore a folder the user created without touching the host filesystem.
+     *
+     * Unlike CreateVirtualDirectory(), which derives the parent of the new folder from
+     * the directory the user is in and checks it against the host, this entry
+     * point stores the path as the document records it: a project can be
+     * imported on a machine where the packaged application is not installed,
+     * so neither the folder of the import nor the host content below it has to
+     * exist. The structural rules still apply: the preset directory has to be
+     * known, the path has to stay inside the layer and its parent has to be a
+     * folder of the view.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] target_dir Directory relative to the preset directory.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool RestoreVirtualDirectory(const std::string& preset_id, const std::wstring& target_dir, std::string& error);
 
     /**
      * @brief Get the imported files of one directory.
@@ -442,9 +592,86 @@ private:
                             const std::wstring& relative_path, bool require_host, StartupFile& out,
                             std::string& error) const;
 
-    std::vector<ImportedFolder> imports_;
-    std::vector<ImportedFile>   imported_files_;
-    std::vector<StartupFile>    startup_files_;
+    /**
+     * @brief Whether a directory of the view holds a folder of a path.
+     *
+     * A parent is a folder of the view when it is the layer root of its preset
+     * directory, a folder the user created, an imported folder or a folder
+     * below an imported folder. The last case is the only one which is not
+     * decided by the model alone: a folder below an import lives in the host
+     * folder of the import, so it is asked for there while \p require_host is
+     * set.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] parent_dir Directory relative to the preset directory, empty
+     *            for the layer root.
+     * @param[in] require_host Whether a folder below an import has to exist in
+     *            the host folder of the import.
+     * @return true when the path names a folder of the view.
+     */
+    bool DirectoryParentExists(const std::string& preset_id, const std::wstring& parent_dir, bool require_host) const;
+
+    /**
+     * @brief Get the host folder a directory of the view maps to.
+     *
+     * The layer root of a preset directory maps to the real folder of that
+     * preset, an imported folder and a folder below it map to the host folder
+     * of the import, and a folder the user created maps to none, because it is
+     * an entry of the layer alone.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] target_dir Directory relative to the preset directory, empty
+     *            for the layer root.
+     * @param[out] path The host folder when the directory maps to one.
+     * @return true when the directory maps to a host folder.
+     */
+    bool HostFolderOf(const std::string& preset_id, const std::wstring& target_dir, std::wstring& path) const;
+
+    /**
+     * @brief Check whether a name can be used for a new folder inside a directory.
+     *
+     * The name is usable when the directory of the view holds no entry of it:
+     * no folder the user created, no imported folder, no imported file and no
+     * entry of the host folder the directory maps to. The host filesystem is
+     * only read, so a name stays usable while the imported folder is missing
+     * on this machine.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] parent_dir Directory relative to the preset directory, empty
+     *            for the layer root.
+     * @param[in] name Name to check.
+     * @return An empty text when the name is free, otherwise the reason.
+     */
+    std::string CheckVirtualDirectoryName(const std::string& preset_id, const std::wstring& parent_dir,
+                                          const std::wstring& name) const;
+
+    /**
+     * @brief Whether an imported file lives at a path of the view.
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] path Path relative to the preset directory.
+     * @return true when an imported file of the path exists.
+     */
+    bool HasImportedFileAt(const std::string& preset_id, const std::wstring& path) const;
+
+    /**
+     * @brief Store the canonical spelling of the imported folder a path starts with.
+     *
+     * The first component of a path below a preset directory is the name of an
+     * imported folder whenever the path names a folder inside an import, so it
+     * is replaced by the spelling the model stores, exactly like the target
+     * directory of an imported file is normalized. A path which starts with a
+     * folder the user created is returned unchanged.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] path Normalized path relative to the preset directory.
+     * @return The path with the canonical spelling of its import.
+     */
+    std::wstring CanonicalDirectoryPath(const std::string& preset_id, const std::wstring& path) const;
+
+    std::vector<ImportedFolder>   imports_;
+    std::vector<ImportedFile>     imported_files_;
+    std::vector<VirtualDirectory> directories_;
+    std::vector<StartupFile>      startup_files_;
 };
 
 } // namespace appbox

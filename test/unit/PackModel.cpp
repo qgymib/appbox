@@ -936,6 +936,7 @@ TEST(Unit_PackModel, ClearResetsEveryPartOfTheModel)
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
     ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp", { extra.wstring() }, error)) << error;
     ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"tool.exe", true, error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"MyApp", L"logs", error)) << error;
     EXPECT_FALSE(model.IsEmpty());
 
     model.Clear();
@@ -943,6 +944,7 @@ TEST(Unit_PackModel, ClearResetsEveryPartOfTheModel)
     EXPECT_TRUE(model.IsEmpty());
     EXPECT_EQ(model.ImportsOf("program_files").size(), static_cast<std::size_t>(0));
     EXPECT_EQ(model.AllImportedFiles().size(), static_cast<std::size_t>(0));
+    EXPECT_EQ(model.AllVirtualDirectories().size(), static_cast<std::size_t>(0));
     EXPECT_FALSE(model.HasStartupFiles());
 }
 
@@ -1170,4 +1172,351 @@ TEST(Unit_PackModel, HostFolderPathRejectsUnknownPresetAndImport)
     /* The preset exists, but the folder below it is not imported. */
     EXPECT_FALSE(model.HostFolderPath("program_files", L"Missing", L"bin", path));
     EXPECT_EQ(path, L"untouched");
+}
+
+TEST(Unit_PackModel, CreateVirtualDirectoryBelowTheLayerRoot)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", std::wstring(), L"appbox-logs", error)) << error;
+
+    const auto directories = model.AllVirtualDirectories();
+    ASSERT_EQ(directories.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(directories[0].preset_id, "program_files");
+    EXPECT_EQ(directories[0].target_dir, L"appbox-logs");
+
+    /* A path of the view is matched ignoring the case, like every other lookup. */
+    EXPECT_TRUE(model.HasVirtualDirectory("program_files", L"APPBOX-LOGS"));
+    EXPECT_FALSE(model.HasVirtualDirectory("user_profile", L"appbox-logs"));
+    EXPECT_FALSE(model.HasVirtualDirectory("program_files", std::wstring()));
+
+    EXPECT_FALSE(model.IsEmpty());
+    EXPECT_EQ(model.VirtualDirectoriesOf("program_files", std::wstring()).size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(model.VirtualDirectoriesOf("program_files", L"appbox-logs").size(), static_cast<std::size_t>(0));
+
+    /* A folder the user created is neither an import nor a file of the host. */
+    EXPECT_TRUE(model.ImportsOf("program_files").empty());
+    EXPECT_TRUE(model.AllImportedFiles().empty());
+}
+
+TEST(Unit_PackModel, CreateVirtualDirectoryRejectsUnknownPreset)
+{
+    appbox::PackModel model;
+    std::string       error;
+    EXPECT_FALSE(model.CreateVirtualDirectory("does_not_exist", std::wstring(), L"logs", error));
+    EXPECT_FALSE(error.empty());
+    EXPECT_TRUE(model.IsEmpty());
+}
+
+TEST(Unit_PackModel, CreateVirtualDirectoryRejectsUnusableName)
+{
+    appbox::PackModel model;
+    std::string       error;
+
+    EXPECT_FALSE(model.CreateVirtualDirectory("program_files", std::wstring(), std::wstring(), error));
+    EXPECT_FALSE(model.CreateVirtualDirectory("program_files", std::wstring(), L".", error));
+    EXPECT_FALSE(model.CreateVirtualDirectory("program_files", std::wstring(), L"..", error));
+    EXPECT_FALSE(model.CreateVirtualDirectory("program_files", std::wstring(), L"logs\\cache", error));
+    EXPECT_FALSE(model.CreateVirtualDirectory("program_files", std::wstring(), L"logs/cache", error));
+    EXPECT_TRUE(model.IsEmpty());
+}
+
+TEST(Unit_PackModel, CreateVirtualDirectoryRejectsDuplicateName)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", std::wstring(), L"appbox-logs", error)) << error;
+
+    EXPECT_FALSE(model.CreateVirtualDirectory("program_files", std::wstring(), L"APPBOX-LOGS", error));
+    EXPECT_NE(error.find("folder of the view"), std::string::npos);
+    EXPECT_EQ(model.AllVirtualDirectories().size(), static_cast<std::size_t>(1));
+
+    /* The same name below another preset directory is a folder of its own. */
+    EXPECT_TRUE(model.CreateVirtualDirectory("user_profile", std::wstring(), L"appbox-logs", error)) << error;
+}
+
+TEST(Unit_PackModel, CreateVirtualDirectoryRejectsAnImportedFolderName)
+{
+    TempDir    temp;
+    const auto app = MakeFolder(temp.Get(), L"MyApp");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
+
+    EXPECT_FALSE(model.CreateVirtualDirectory("program_files", std::wstring(), L"MyApp", error));
+    EXPECT_NE(error.find("imported folder"), std::string::npos);
+    EXPECT_TRUE(model.AllVirtualDirectories().empty());
+}
+
+TEST(Unit_PackModel, CreateVirtualDirectoryRejectsANameOfTheHostFolder)
+{
+    TempDir    temp;
+    const auto app = MakeFolder(temp.Get(), L"MyApp");
+    MakeFolder(app, L"logs");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
+
+    /*
+     * The folder of the host would show up twice in the view of the directory,
+     * because the layer is merged with the imported folder at run time.
+     */
+    EXPECT_FALSE(model.CreateVirtualDirectory("program_files", L"MyApp", L"logs", error));
+    EXPECT_NE(error.find("host folder"), std::string::npos);
+    EXPECT_TRUE(model.AllVirtualDirectories().empty());
+}
+
+TEST(Unit_PackModel, CreateVirtualDirectoryBelowAnImport)
+{
+    TempDir    temp;
+    const auto app = MakeFolder(temp.Get(), L"MyApp");
+    MakeFolder(app, L"bin");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
+
+    const auto import_name = app.filename().wstring();
+
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", import_name, L"logs", error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", import_name + L"\\bin", L"cache", error)) << error;
+
+    const auto directories = model.AllVirtualDirectories();
+    ASSERT_EQ(directories.size(), static_cast<std::size_t>(2));
+    EXPECT_EQ(directories[0].target_dir, L"MyApp\\logs");
+    EXPECT_EQ(directories[1].target_dir, L"MyApp\\bin\\cache");
+
+    /* A folder which is not part of the view is refused as a parent. */
+    EXPECT_FALSE(model.CreateVirtualDirectory("program_files", import_name + L"\\missing", L"cache", error));
+    EXPECT_NE(error.find("not a folder of the view"), std::string::npos);
+    EXPECT_EQ(model.AllVirtualDirectories().size(), static_cast<std::size_t>(2));
+}
+
+TEST(Unit_PackModel, CreateVirtualDirectoryBelowACreatedFolder)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", std::wstring(), L"appbox-logs", error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"appbox-logs", L"cache", error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"appbox-logs\\cache", L"deep", error)) << error;
+
+    EXPECT_EQ(model.AllVirtualDirectories().size(), static_cast<std::size_t>(3));
+    EXPECT_TRUE(model.HasVirtualDirectory("program_files", L"APPBOX-LOGS\\CACHE\\DEEP"));
+
+    /* Only the direct children of a directory are reported. */
+    const auto children = model.VirtualDirectoriesOf("program_files", L"appbox-logs");
+    ASSERT_EQ(children.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(children[0].target_dir, L"appbox-logs\\cache");
+    EXPECT_EQ(model.VirtualDirectoriesOf("program_files", L"appbox-logs\\cache").size(), static_cast<std::size_t>(1));
+}
+
+TEST(Unit_PackModel, FreeVirtualDirectoryNameDerivesUniqueNames)
+{
+    appbox::PackModel model;
+    std::string       error;
+
+    EXPECT_EQ(model.FreeVirtualDirectoryName("program_files", std::wstring()), L"New Folder");
+
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", std::wstring(), L"New Folder", error)) << error;
+    EXPECT_EQ(model.FreeVirtualDirectoryName("program_files", std::wstring()), L"New Folder 2");
+
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", std::wstring(), L"new folder 2", error)) << error;
+    EXPECT_EQ(model.FreeVirtualDirectoryName("program_files", std::wstring()), L"New Folder 3");
+
+    /* The name is asked for inside one directory, so another one is free. */
+    EXPECT_EQ(model.FreeVirtualDirectoryName("program_files", L"New Folder"), L"New Folder");
+
+    /* An imported folder of the directory takes the name as well. */
+    TempDir    temp;
+    const auto app = MakeFolder(temp.Get(), L"New Folder 3");
+    ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
+    EXPECT_EQ(model.FreeVirtualDirectoryName("program_files", std::wstring()), L"New Folder 4");
+
+    /* The name of the import itself is free below the import. */
+    EXPECT_EQ(model.FreeVirtualDirectoryName("program_files", L"New Folder 3"), L"New Folder");
+}
+
+TEST(Unit_PackModel, RenameVirtualDirectoryRenamesTheSubtree)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", std::wstring(), L"appbox-logs", error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"appbox-logs", L"cache", error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"appbox-logs\\cache", L"deep", error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", std::wstring(), L"appbox-other", error)) << error;
+
+    ASSERT_TRUE(model.RenameVirtualDirectory("program_files", L"appbox-logs", L"appbox-data", error)) << error;
+
+    const auto directories = model.AllVirtualDirectories();
+    ASSERT_EQ(directories.size(), static_cast<std::size_t>(4));
+    EXPECT_EQ(directories[0].target_dir, L"appbox-data");
+    EXPECT_EQ(directories[1].target_dir, L"appbox-data\\cache");
+    EXPECT_EQ(directories[2].target_dir, L"appbox-data\\cache\\deep");
+    EXPECT_EQ(directories[3].target_dir, L"appbox-other");
+
+    EXPECT_TRUE(model.HasVirtualDirectory("program_files", L"appbox-data\\cache\\deep"));
+    EXPECT_FALSE(model.HasVirtualDirectory("program_files", L"appbox-logs"));
+}
+
+TEST(Unit_PackModel, RenameVirtualDirectoryAcceptsTheSameName)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", std::wstring(), L"appbox-logs", error)) << error;
+
+    ASSERT_TRUE(model.RenameVirtualDirectory("program_files", L"appbox-logs", L"APPBOX-LOGS", error)) << error;
+
+    ASSERT_EQ(model.AllVirtualDirectories().size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(model.AllVirtualDirectories()[0].target_dir, L"appbox-logs");
+}
+
+TEST(Unit_PackModel, RenameVirtualDirectoryRejectsATakenName)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", std::wstring(), L"appbox-logs", error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", std::wstring(), L"appbox-data", error)) << error;
+
+    EXPECT_FALSE(model.RenameVirtualDirectory("program_files", L"appbox-logs", L"appbox-data", error));
+    EXPECT_NE(error.find("folder of the view"), std::string::npos);
+
+    /* A refusal leaves the model as it was. */
+    EXPECT_TRUE(model.HasVirtualDirectory("program_files", L"appbox-logs"));
+    EXPECT_TRUE(model.HasVirtualDirectory("program_files", L"appbox-data"));
+}
+
+TEST(Unit_PackModel, RenameVirtualDirectoryRejectsAFolderTheUserDidNotCreate)
+{
+    TempDir    temp;
+    const auto app = MakeFolder(temp.Get(), L"MyApp");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
+
+    /* An imported folder and the layer root are not folders of the user. */
+    EXPECT_FALSE(model.RenameVirtualDirectory("program_files", L"MyApp", L"Other", error));
+    EXPECT_FALSE(model.RenameVirtualDirectory("program_files", std::wstring(), L"Other", error));
+    EXPECT_FALSE(model.RenameVirtualDirectory("program_files", L"Missing", L"Other", error));
+    EXPECT_NE(error.find("not a folder of the view"), std::string::npos);
+}
+
+TEST(Unit_PackModel, RenameVirtualDirectoryRejectsAnUnusableName)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", std::wstring(), L"appbox-logs", error)) << error;
+
+    EXPECT_FALSE(model.RenameVirtualDirectory("program_files", L"appbox-logs", L"..", error));
+    EXPECT_FALSE(model.RenameVirtualDirectory("program_files", L"appbox-logs", L"a\\b", error));
+    EXPECT_FALSE(model.RenameVirtualDirectory("program_files", L"appbox-logs", std::wstring(), error));
+    EXPECT_TRUE(model.HasVirtualDirectory("program_files", L"appbox-logs"));
+}
+
+TEST(Unit_PackModel, RemoveVirtualDirectoryRemovesTheFilesBelowIt)
+{
+    TempDir    temp;
+    const auto app = MakeFolder(temp.Get(), L"MyApp");
+    const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"MyApp", L"logs", error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"MyApp\\logs", L"cache", error)) << error;
+
+    /* An imported file lives in the folder, so the folder is a lower layer. */
+    ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp\\logs", { tool.wstring() }, error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"logs\\tool.exe", true, error)) << error;
+
+    EXPECT_TRUE(model.RemoveVirtualDirectory("program_files", L"MyApp\\logs"));
+
+    EXPECT_TRUE(model.AllVirtualDirectories().empty());
+    EXPECT_TRUE(model.AllImportedFiles().empty());
+    EXPECT_FALSE(model.HasStartupFiles());
+
+    /* A folder which the user did not create is not removed. */
+    EXPECT_FALSE(model.RemoveVirtualDirectory("program_files", L"MyApp"));
+}
+
+TEST(Unit_PackModel, RemoveImportCascadesVirtualDirectories)
+{
+    TempDir    temp;
+    const auto app = MakeFolder(temp.Get(), L"MyApp");
+    const auto other = MakeFolder(temp.Get(), L"OtherApp");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
+    ASSERT_TRUE(model.ImportFolder("program_files", other.wstring(), error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"MyApp", L"logs", error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"OtherApp", L"logs", error)) << error;
+    ASSERT_EQ(model.AllVirtualDirectories().size(), static_cast<std::size_t>(2));
+
+    model.RemoveImport("program_files", L"MyApp");
+
+    const auto directories = model.AllVirtualDirectories();
+    ASSERT_EQ(directories.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(directories[0].target_dir, L"OtherApp\\logs");
+}
+
+TEST(Unit_PackModel, ImportFilesRejectsANameOfACreatedFolder)
+{
+    TempDir    temp;
+    const auto app = MakeFolder(temp.Get(), L"MyApp");
+    const auto logs = MakeFile(temp.Get(), L"logs", "LOGS");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"MyApp", L"logs", error)) << error;
+
+    /*
+     * A file and a folder of the same path would be two entries of one name
+     * inside the archive, which the zip writer refuses.
+     */
+    EXPECT_FALSE(model.ImportFiles("program_files", L"MyApp", { logs.wstring() }, error));
+    EXPECT_NE(error.find("folder of the view"), std::string::npos);
+    EXPECT_TRUE(model.AllImportedFiles().empty());
+}
+
+TEST(Unit_PackModel, RestoreVirtualDirectoryAcceptsAMissingHostFolder)
+{
+    appbox::PackModel model;
+    std::string       error;
+
+    /* The import is restored from the document, its host folder may be gone. */
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\Missing\\MyApp", error)) << error;
+    ASSERT_TRUE(model.RestoreVirtualDirectory("program_files", L"myapp\\logs", error)) << error;
+    ASSERT_TRUE(model.RestoreVirtualDirectory("program_files", L"MyApp\\logs\\cache", error)) << error;
+
+    const auto directories = model.AllVirtualDirectories();
+    ASSERT_EQ(directories.size(), static_cast<std::size_t>(2));
+
+    /* The stored path uses the canonical spelling of the imported folder. */
+    EXPECT_EQ(directories[0].target_dir, L"MyApp\\logs");
+    EXPECT_EQ(directories[1].target_dir, L"MyApp\\logs\\cache");
+    EXPECT_FALSE(model.IsEmpty());
+}
+
+TEST(Unit_PackModel, RestoreVirtualDirectoryRejectsInvalidPaths)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\Missing\\MyApp", error)) << error;
+
+    EXPECT_FALSE(model.RestoreVirtualDirectory("does_not_exist", L"MyApp\\logs", error));
+    EXPECT_FALSE(model.RestoreVirtualDirectory("program_files", std::wstring(), error));
+    EXPECT_FALSE(model.RestoreVirtualDirectory("program_files", L"..\\logs", error));
+
+    /* The parent has to be a folder of the view. */
+    EXPECT_FALSE(model.RestoreVirtualDirectory("program_files", L"Missing\\logs", error));
+    EXPECT_NE(error.find("not a folder of the view"), std::string::npos);
+
+    ASSERT_TRUE(model.RestoreVirtualDirectory("program_files", L"MyApp\\logs", error)) << error;
+    EXPECT_FALSE(model.RestoreVirtualDirectory("program_files", L"myapp\\LOGS", error));
+    EXPECT_NE(error.find("listed twice"), std::string::npos);
+    EXPECT_EQ(model.AllVirtualDirectories().size(), static_cast<std::size_t>(1));
 }

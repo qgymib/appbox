@@ -286,6 +286,28 @@ public:
     bool ApplyIsolationToSubtree(const std::wstring& view_path, FilesystemIsolation isolation, std::string& error);
 
     /**
+     * @brief Move the entries of a folder and of everything below it to a new name.
+     *
+     * The call is the counterpart of renaming a folder of the workspace: the
+     * modes the user picked below the folder are stored under the path of the
+     * entry, so a folder which is renamed would lose them. The folder keeps its
+     * parent, only its last component changes.
+     *
+     * The call fails when the path does not name a folder of the view, when the
+     * name is not a plain name, or when an entry is already listed at the new
+     * path: moving the subtree onto it would silently drop a mode the user
+     * picked, so nothing is changed instead. A folder which carries no entry of
+     * its own and holds no folder with one below it is accepted and changes
+     * nothing.
+     *
+     * @param[in] view_path Path of the folder inside the virtual filesystem.
+     * @param[in] new_name New name of the folder, without a separator.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool RenameSubtree(const std::wstring& view_path, const std::wstring& new_name, std::string& error);
+
+    /**
      * @brief Set the isolation mode of the root of the view and keep the layers.
      *
      * The mode of the root of the view covers every path no other entry names,
