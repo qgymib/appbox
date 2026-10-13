@@ -14,6 +14,7 @@
 extern const int kSettingsOutputPath = wxNewId();
 extern const int kSettingsBrowseOutput = wxNewId();
 extern const int kSettingsProjectType = wxNewId();
+extern const int kSettingsCompressionLevel = wxNewId();
 extern const int kSettingsMetadataSource = wxNewId();
 extern const int kSettingsMetadataBrowse = wxNewId();
 extern const int kSettingsMetadataField = wxNewId();
@@ -36,7 +37,7 @@ namespace
  */
 enum class SettingsPage
 {
-    Output = 0,   ///< Destination archive and project type of the session.
+    Output = 0,   ///< Destination archive, project type and compression level of the session.
     Metadata = 1, ///< File properties the launcher of the archive carries.
     Startup = 2   ///< Startup screen the launcher of the archive shows.
 };
@@ -57,7 +58,7 @@ constexpr int kFieldGap = 8;
 constexpr int kFieldWidth = 260;
 
 /** Rows of the form of the Output tab, one per option. */
-constexpr int kFormRows = 2;
+constexpr int kFormRows = 3;
 
 /** Columns of the form: the labels, the controls and the button of the path row. */
 constexpr int kFormColumns = 3;
@@ -78,6 +79,9 @@ const char* const kOutputFileLabel = "Output File:";
 /** Label of the project type row. */
 const char* const kProjectTypeLabel = "Project Type:";
 
+/** Label of the compression level row. */
+const char* const kCompressionLevelLabel = "Compression:";
+
 /** Tooltip of the `Browse...` button. */
 const char* const kBrowseTooltip = "Choose the destination archive of the Build command";
 
@@ -85,6 +89,11 @@ const char* const kBrowseTooltip = "Choose the destination archive of the Build 
 const char* const kProjectTypeTooltip =
     "Standalone writes a self-contained archive with the launcher; Patch writes the resources "
     "of the app directory without a launcher, for the patch directory next to it";
+
+/** Tooltip of the compression level box. */
+const char* const kCompressionLevelTooltip =
+    "How hard the Build command squeezes the archive it writes: Store Only keeps the content of every entry as it "
+    "is, a level above it deflates the entries and keeps the smaller of the deflated and the stored data";
 
 /** Label of the inherit source row of the Metadata tab. */
 const char* const kMetadataSourceLabel = "Inherit From:";
@@ -190,6 +199,33 @@ void SettingsPanel::SetProjectType(appbox::ProjectType type)
     project_type_->SetSelection(static_cast<int>(appbox::ProjectTypeIndexOf(type)));
 }
 
+appbox::CompressionLevel SettingsPanel::GetCompressionLevel() const
+{
+    if (compression_level_ == nullptr)
+    {
+        return appbox::kDefaultCompressionLevel;
+    }
+
+    const auto selection = compression_level_->GetSelection();
+    if (selection < 0)
+    {
+        return appbox::kDefaultCompressionLevel;
+    }
+
+    return appbox::CompressionLevelAt(static_cast<std::size_t>(selection));
+}
+
+void SettingsPanel::SetCompressionLevel(appbox::CompressionLevel level)
+{
+    if (compression_level_ == nullptr)
+    {
+        return;
+    }
+
+    /* SetSelection() does not raise a command event, so this is not a re-entry. */
+    compression_level_->SetSelection(static_cast<int>(appbox::CompressionLevelIndexOf(level)));
+}
+
 wxWindow* SettingsPanel::CreateOutputPage(wxWindow* parent)
 {
     auto* page = new wxPanel(parent, wxID_ANY);
@@ -234,10 +270,32 @@ wxWindow* SettingsPanel::CreateOutputPage(wxWindow* parent)
     type_cell->Add(project_type_, 1, wxALIGN_CENTER_VERTICAL);
 
     /*
-     * The two options share one grid, which lines the labels up in the first
-     * column and the controls up in the second one: the archive path box and
-     * the project type box share their left and their right edge, because the
-     * second column is the only one which takes the spare width of the form.
+     * The compression level box lists the levels in the order of the core
+     * enumeration, like the project type box above it.
+     */
+    wxArrayString compression_levels;
+    for (std::size_t index = 0; index < appbox::CompressionLevelCount(); ++index)
+    {
+        compression_levels.Add(appbox::CompressionLevelDisplayName(appbox::CompressionLevelAt(index)));
+    }
+
+    compression_level_ = new wxComboBox(page, kSettingsCompressionLevel,
+                                        appbox::CompressionLevelDisplayName(appbox::kDefaultCompressionLevel),
+                                        wxDefaultPosition, wxDefaultSize, compression_levels, wxCB_READONLY);
+    compression_level_->SetMinSize(wxSize(kFieldWidth, -1));
+    compression_level_->SetSelection(
+        static_cast<int>(appbox::CompressionLevelIndexOf(appbox::kDefaultCompressionLevel)));
+    compression_level_->SetToolTip(kCompressionLevelTooltip);
+
+    auto* compression_cell = new wxBoxSizer(wxHORIZONTAL);
+    compression_cell->Add(compression_level_, 1, wxALIGN_CENTER_VERTICAL);
+
+    /*
+     * The options share one grid, which lines the labels up in the first column
+     * and the controls up in the second one: the archive path box, the project
+     * type box and the compression level box share their left and their right
+     * edge, because the second column is the only one which takes the spare
+     * width of the form.
      */
     auto* grid = new wxFlexGridSizer(kFormRows, kFormColumns, kRowGap, kFieldGap);
     grid->AddGrowableCol(kControlColumn, 1);
@@ -247,7 +305,10 @@ wxWindow* SettingsPanel::CreateOutputPage(wxWindow* parent)
     grid->Add(new wxStaticText(page, wxID_ANY, kProjectTypeLabel), 0, wxALIGN_CENTER_VERTICAL);
     grid->Add(type_cell, 1, wxEXPAND);
 
-    /* The third column of the second row holds no control; the cell keeps the columns of the two rows aligned. */
+    /* The third column of the rows below the first one holds no control; the cells keep the columns aligned. */
+    grid->Add(0, 0);
+    grid->Add(new wxStaticText(page, wxID_ANY, kCompressionLevelLabel), 0, wxALIGN_CENTER_VERTICAL);
+    grid->Add(compression_cell, 1, wxEXPAND);
     grid->Add(0, 0);
 
     auto* sizer = new wxBoxSizer(wxVERTICAL);

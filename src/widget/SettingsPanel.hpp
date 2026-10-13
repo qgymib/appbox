@@ -10,6 +10,7 @@
 #include <wx/checkbox.h>
 #include <wx/combobox.h>
 #include "core/ApplicationMetadata.hpp"
+#include "core/CompressionLevel.hpp"
 #include "core/ProjectType.hpp"
 #include "core/StartupScreen.hpp"
 #include <vector>
@@ -22,6 +23,9 @@ extern const int kSettingsBrowseOutput;
 
 /** Command id of the project type box of the Output tab. */
 extern const int kSettingsProjectType;
+
+/** Command id of the compression level box of the Output tab. */
+extern const int kSettingsCompressionLevel;
 
 /** Command id of the inherit source box of the Metadata tab. */
 extern const int kSettingsMetadataSource;
@@ -83,8 +87,9 @@ class wxSimplebook;
  *
  * The workspace holds a tab strip above the page of the selected tab. The
  * `Output` tab carries the destination of the pack run: the archive path with
- * the `Browse...` button which picks it, and the project type which decides
- * what the `Build` command writes. The `Metadata` tab carries the file
+ * the `Browse...` button which picks it, the project type which decides what
+ * the `Build` command writes and the compression level of the archive it
+ * writes. The `Metadata` tab carries the file
  * properties the launcher of the archive is packed with: the program they are
  * inherited from with the `Browse...` button which picks it, the fields a user
  * fills in most of the time and the `Customize...` button which opens the
@@ -95,10 +100,11 @@ class wxSimplebook;
  * further tab is added by appending to the strip and to the book.
  *
  * The workspace holds no model of its own: the session of the frame owns the
- * output path, the project type, the metadata and the startup screen, pushes
- * them into the controls through SetOutputPath(), SetProjectType(),
- * SetMetadataSources(), SetMetadataValues() and SetStartupScreen(), and reads
- * them back through GetOutputPath(), GetProjectType(), GetMetadataSource(),
+ * output path, the project type, the compression level, the metadata and the
+ * startup screen, pushes them into the controls through SetOutputPath(),
+ * SetProjectType(), SetCompressionLevel(), SetMetadataSources(),
+ * SetMetadataValues() and SetStartupScreen(), and reads them back through
+ * GetOutputPath(), GetProjectType(), GetCompressionLevel(), GetMetadataSource(),
  * GetMetadataValues() and GetStartupScreen(). The controls raise their command
  * events without a handler of their own, so the frame handles them the same
  * way it handles every other workspace; an edit of the metadata is reported
@@ -152,6 +158,23 @@ public:
      * @param[in] type Project type to show.
      */
     void SetProjectType(appbox::ProjectType type);
+
+    /**
+     * @brief Get the compression level the Output tab shows.
+     * @return The selected compression level, the default level when the box
+     *         shows no selection.
+     */
+    appbox::CompressionLevel GetCompressionLevel() const;
+
+    /**
+     * @brief Select a compression level in the Output tab.
+     *
+     * The box is changed without raising a command event, so a caller which
+     * restores a configuration does not re-enter its own handler.
+     *
+     * @param[in] level Compression level to show.
+     */
+    void SetCompressionLevel(appbox::CompressionLevel level);
 
     /**
      * @brief Fill the inherit source box of the Metadata tab.
@@ -356,6 +379,14 @@ private:
      * selection is the index of the type it shows.
      */
     wxComboBox* project_type_ = nullptr;
+
+    /**
+     * @brief The `Compression` box of the Output tab.
+     *
+     * The box lists the compression levels in the order of CompressionLevelAt(),
+     * so the selection is the index of the level it shows.
+     */
+    wxComboBox* compression_level_ = nullptr;
 
     /**
      * @brief Text the archive path box currently shows as its tooltip.

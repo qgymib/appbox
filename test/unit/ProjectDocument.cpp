@@ -60,6 +60,7 @@ appbox::ProjectDocument BuildSampleDocument()
     appbox::ProjectDocument document;
     document.output_path = L"D:\\out\\MyApp.zip";
     document.project_type = appbox::ProjectType::Patch;
+    document.compression_level = appbox::CompressionLevel::Extreme;
 
     appbox::ProjectMetadataFieldRecord description;
     description.key = appbox::metadata_field::kFileDescription;
@@ -162,6 +163,7 @@ TEST(Unit_ProjectDocument, RoundTripKeepsEveryMember)
 
     EXPECT_EQ(back.output_path, document.output_path);
     EXPECT_EQ(back.project_type, document.project_type);
+    EXPECT_EQ(back.compression_level, document.compression_level);
 
     EXPECT_EQ(back.metadata.source, L"C:\\Program Files\\MyApp\\app.exe");
     ASSERT_EQ(back.metadata.overrides.size(), 1u);
@@ -379,14 +381,18 @@ TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
      * The version comes first and the members follow the order of the schema,
      * so the text of a given document is stable and easy to diff.
      */
-    const std::vector<std::string> expected{ "version",    "output_path", "project_type", "metadata",      "startup",
-                                             "folders",    "files",       "directories",  "startup_files", "registry",
-                                             "filesystem", "network",     "proxy",        "environment" };
+    const std::vector<std::string> expected{ "version",     "output_path",   "project_type", "compression_level",
+                                             "metadata",    "startup",       "folders",      "files",
+                                             "directories", "startup_files", "registry",     "filesystem",
+                                             "network",     "proxy",         "environment" };
     EXPECT_EQ(members, expected);
     EXPECT_EQ(json.at("version").get<int>(), appbox::kProjectFileVersion);
 
     /* The kind of product is stored as the token of the project type. */
     EXPECT_EQ(json.at("project_type").get<std::string>(), "patch");
+
+    /* The compression level is stored as the token of the level as well. */
+    EXPECT_EQ(json.at("compression_level").get<std::string>(), "extreme");
 
     /* The file properties name their source and the fields the user edited. */
     const auto& metadata = json.at("metadata");
@@ -577,6 +583,9 @@ TEST(Unit_ProjectDocument, ReadsMissingMembersAsEmpty)
     /* A file written before the member existed describes a standalone project. */
     EXPECT_EQ(document.project_type, appbox::ProjectType::Standalone);
 
+    /* A file written before the member existed describes the default level. */
+    EXPECT_EQ(document.compression_level, appbox::kDefaultCompressionLevel);
+
     EXPECT_TRUE(document.folders.empty());
     EXPECT_TRUE(document.files.empty());
     EXPECT_TRUE(document.startup_files.empty());
@@ -764,6 +773,8 @@ TEST(Unit_ProjectDocument, RejectsUnknownTokens)
                   .find("unknown merge mode 'merge'"),
               std::string::npos);
     EXPECT_NE(ParseError(R"({ "version": 1, "project_type": "installer" })").find("unknown project type 'installer'"),
+              std::string::npos);
+    EXPECT_NE(ParseError(R"({ "version": 1, "compression_level": "best" })").find("unknown compression level 'best'"),
               std::string::npos);
 }
 

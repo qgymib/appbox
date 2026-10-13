@@ -24,6 +24,7 @@ add_executable(AppBoxTests
     "unit/ApplicationIcon.cpp"
     "unit/ApplicationMetadata.cpp"
     "unit/BuildReport.cpp"
+    "unit/CompressionLevel.cpp"
     "unit/EnvironmentIsolation.cpp"
     "unit/EnvironmentIsolationFile.cpp"
     "unit/EnvironmentModel.cpp"
@@ -352,6 +353,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationIcon.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationMetadata.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/CompressionLevel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EmbeddedResource.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentModel.cpp

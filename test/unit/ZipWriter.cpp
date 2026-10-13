@@ -3,6 +3,7 @@
 #include "WString.hpp"
 #include <zip.h>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <set>
 #include <string>
@@ -108,6 +109,77 @@ std::set<std::string> EntryNames(zip_t* archive)
         }
     }
     return names;
+}
+
+/**
+ * @brief Read the stat of one zip entry.
+ * @param[in] archive Open zip archive.
+ * @param[in] name Entry name.
+ * @param[out] stat Stat of the entry.
+ * @return true when the entry exists and its stat could be read.
+ */
+bool EntryStat(zip_t* archive, const char* name, zip_stat_t& stat)
+{
+    const auto index = zip_name_locate(archive, name, 0);
+    if (index < 0)
+    {
+        return false;
+    }
+
+    zip_stat_init(&stat);
+    return zip_stat_index(archive, static_cast<zip_uint64_t>(index), 0, &stat) == 0;
+}
+
+/**
+ * @brief Generate content deflate shrinks a lot.
+ * @param[in] size Size of the content in bytes.
+ * @return The content.
+ */
+std::string CompressibleContent(std::size_t size)
+{
+    std::string content;
+    content.reserve(size);
+    for (std::size_t index = 0; index < size; ++index)
+    {
+        content.push_back(static_cast<char>('A' + (index % 8)));
+    }
+    return content;
+}
+
+/**
+ * @brief Generate content deflate cannot shrink.
+ *
+ * The bytes come from a xorshift sequence, so the content carries no pattern a
+ * compressor could exploit.
+ *
+ * @param[in] size Size of the content in bytes.
+ * @return The content.
+ */
+std::string IncompressibleContent(std::size_t size)
+{
+    std::string   content;
+    std::uint32_t state = 0x12345678u;
+    content.reserve(size);
+    for (std::size_t index = 0; index < size; ++index)
+    {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        content.push_back(static_cast<char>(state & 0xFFu));
+    }
+    return content;
+}
+
+/**
+ * @brief Open an archive written by a test.
+ * @param[in] zip_path Path of the archive.
+ * @return The open archive; the caller closes it.
+ */
+zip_t* OpenArchive(const std::filesystem::path& zip_path)
+{
+    int    error_code = 0;
+    zip_t* archive = zip_open(appbox::WideToUTF8(zip_path.wstring()).c_str(), ZIP_RDONLY, &error_code);
+    return archive;
 }
 
 } // namespace
@@ -225,6 +297,118 @@ TEST(Unit_ZipWriter, KeepsEmptyDirectories)
     ASSERT_EQ(names.size(), static_cast<std::size_t>(1));
     EXPECT_TRUE(names.count("filesystem/#ProgramFiles#/MyApp/empty/") > 0 ||
                 names.count("filesystem/#ProgramFiles#/MyApp/empty") > 0);
+
+    zip_close(archive);
+}
+
+TEST(Unit_ZipWriter, StoreOnlyWritesTheContentWithoutCompressingIt)
+{
+    TempDir    temp;
+    const auto zip_path = temp.Get() / L"stored.zip";
+    const auto payload = CompressibleContent(64 * 1024);
+
+    {
+        appbox::ZipWriter writer(zip_path.wstring(), appbox::CompressionLevel::StoreOnly);
+        std::string       error;
+        ASSERT_TRUE(writer.AddFileBuffer("content.bin", payload.data(), payload.size(), error)) << error;
+        ASSERT_TRUE(writer.Close(error)) << error;
+    }
+
+    zip_t* archive = OpenArchive(zip_path);
+    ASSERT_NE(archive, nullptr);
+
+    zip_stat_t stat = {};
+    ASSERT_TRUE(EntryStat(archive, "content.bin", stat));
+
+    /* The entry is written as it is, so it neither shrinks nor grows. */
+    EXPECT_EQ(stat.comp_method, ZIP_CM_STORE);
+    EXPECT_EQ(stat.size, static_cast<zip_uint64_t>(payload.size()));
+    EXPECT_EQ(stat.comp_size, static_cast<zip_uint64_t>(payload.size()));
+    EXPECT_EQ(ReadEntry(archive, "content.bin"), payload);
+
+    zip_close(archive);
+}
+
+TEST(Unit_ZipWriter, TheDefaultLevelCompressesTheEntries)
+{
+    TempDir    temp;
+    const auto zip_path = temp.Get() / L"default.zip";
+    const auto payload = CompressibleContent(64 * 1024);
+
+    {
+        /* A writer which names no level compresses with the default level. */
+        appbox::ZipWriter writer(zip_path.wstring());
+        std::string       error;
+        ASSERT_TRUE(writer.AddFileBuffer("content.bin", payload.data(), payload.size(), error)) << error;
+        ASSERT_TRUE(writer.Close(error)) << error;
+    }
+
+    zip_t* archive = OpenArchive(zip_path);
+    ASSERT_NE(archive, nullptr);
+
+    zip_stat_t stat = {};
+    ASSERT_TRUE(EntryStat(archive, "content.bin", stat));
+
+    EXPECT_EQ(stat.comp_method, ZIP_CM_DEFLATE);
+    EXPECT_LT(stat.comp_size, static_cast<zip_uint64_t>(payload.size()));
+    EXPECT_EQ(ReadEntry(archive, "content.bin"), payload);
+
+    zip_close(archive);
+}
+
+TEST(Unit_ZipWriter, ACompressingLevelDeflatesTheEntries)
+{
+    TempDir    temp;
+    const auto zip_path = temp.Get() / L"extreme.zip";
+    const auto payload = CompressibleContent(64 * 1024);
+
+    {
+        appbox::ZipWriter writer(zip_path.wstring(), appbox::CompressionLevel::Extreme);
+        std::string       error;
+        ASSERT_TRUE(writer.AddFileBuffer("content.bin", payload.data(), payload.size(), error)) << error;
+        ASSERT_TRUE(writer.Close(error)) << error;
+    }
+
+    zip_t* archive = OpenArchive(zip_path);
+    ASSERT_NE(archive, nullptr);
+
+    zip_stat_t stat = {};
+    ASSERT_TRUE(EntryStat(archive, "content.bin", stat));
+
+    EXPECT_EQ(stat.comp_method, ZIP_CM_DEFLATE);
+    EXPECT_LT(stat.comp_size, static_cast<zip_uint64_t>(payload.size()));
+    EXPECT_EQ(ReadEntry(archive, "content.bin"), payload);
+
+    zip_close(archive);
+}
+
+TEST(Unit_ZipWriter, ACompressingLevelKeepsAnEntryWhichDoesNotShrink)
+{
+    TempDir    temp;
+    const auto zip_path = temp.Get() / L"incompressible.zip";
+    const auto payload = IncompressibleContent(512);
+
+    {
+        appbox::ZipWriter writer(zip_path.wstring(), appbox::CompressionLevel::Extreme);
+        std::string       error;
+        ASSERT_TRUE(writer.AddFileBuffer("content.bin", payload.data(), payload.size(), error)) << error;
+        ASSERT_TRUE(writer.Close(error)) << error;
+    }
+
+    zip_t* archive = OpenArchive(zip_path);
+    ASSERT_NE(archive, nullptr);
+
+    zip_stat_t stat = {};
+    ASSERT_TRUE(EntryStat(archive, "content.bin", stat));
+
+    /*
+     * A compressing level never makes an entry larger than a stored one: libzip
+     * holds the whole content of a single read while it deflates an entry and
+     * writes the stored data when deflating it did not pay off.
+     */
+    EXPECT_EQ(stat.comp_method, ZIP_CM_STORE);
+    EXPECT_EQ(stat.comp_size, static_cast<zip_uint64_t>(payload.size()));
+    EXPECT_EQ(ReadEntry(archive, "content.bin"), payload);
 
     zip_close(archive);
 }

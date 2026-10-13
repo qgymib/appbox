@@ -3,6 +3,7 @@
 
 #include "ApplicationMetadata.hpp"
 #include "BuildReport.hpp"
+#include "CompressionLevel.hpp"
 #include "EnvironmentModel.hpp"
 #include "FilesystemIsolationModel.hpp"
 #include "NetworkModel.hpp"
@@ -256,6 +257,10 @@ struct PackPayloads
  *                    application and the progress of the run only.
  * @param[in] payloads Embedded launcher program and sandbox injection modules,
  *                     written beside the resources of the archive.
+ * @param[in] compression Compression level of the file entries of the archive:
+ *                        `StoreOnly` writes them without any compression, a
+ *                        level above it deflates them and keeps the smaller of
+ *                        the deflated and the stored data of an entry.
  * @param[in] zip_path Destination zip path (truncated when it exists).
  * @param[in] progress Called once per packed file; returning false aborts the
  *                     pack with kBuildCancelledError. May be empty to disable
@@ -264,8 +269,8 @@ struct PackPayloads
  */
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
                  const NetworkModel& network, const EnvironmentModel& environment, const ApplicationMetadata& metadata,
-                 const StartupScreen& startup, const PackPayloads& payloads, const std::wstring& zip_path,
-                 const BuildProgressCallback& progress);
+                 const StartupScreen& startup, const PackPayloads& payloads, CompressionLevel compression,
+                 const std::wstring& zip_path, const BuildProgressCallback& progress);
 
 /**
  * @brief Pack the resources of the model into a patch package.
@@ -309,6 +314,9 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
  *                    written into the network domain of the package.
  * @param[in] environment Environment variables of the workspace, which are
  *                        written into the environment domain of the package.
+ * @param[in] compression Compression level of the file entries of the package,
+ *                        which the packer handles like the entries of a
+ *                        standalone archive.
  * @param[in] zip_path Destination zip path (truncated when it exists).
  * @param[in] progress Called once per packed file; returning false aborts the
  *                     pack with kBuildCancelledError. May be empty to disable
@@ -316,8 +324,8 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
  * @return Error description, empty on success.
  */
 std::string PackPatch(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
-                      const NetworkModel& network, const EnvironmentModel& environment, const std::wstring& zip_path,
-                      const BuildProgressCallback& progress);
+                      const NetworkModel& network, const EnvironmentModel& environment, CompressionLevel compression,
+                      const std::wstring& zip_path, const BuildProgressCallback& progress);
 
 } // namespace appbox
 

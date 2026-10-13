@@ -23,9 +23,10 @@ namespace appbox
  * value, the isolation modes of the virtual filesystem, the DNS redirections
  * and the proxy of the network workspace, the environment variables of the
  * environment workspace, the file properties the launcher carries, the startup
- * screen the launcher shows, the kind of product the `Build` command writes and
- * the path of the `Output File` box. The structure and the schema of the
- * document are described by ProjectDocument.
+ * screen the launcher shows, the kind of product the `Build` command writes,
+ * the compression level of the archive it writes and the path of the
+ * `Output File` box. The structure and the schema of the document are described
+ * by ProjectDocument.
  *
  * The imported folders and the folders the user created are listed preset
  * directory by preset directory, so the order of the document does not depend
@@ -39,6 +40,8 @@ namespace appbox
  * @param[in] metadata File properties the launcher of the session carries.
  * @param[in] startup Startup screen the launcher of the session shows.
  * @param[in] project_type Kind of product the `Build` command writes.
+ * @param[in] compression_level Compression level of the archive the `Build`
+ *                              command writes.
  * @param[in] output_path Destination archive path of the configuration, which
  *                        may be empty when no path was chosen yet.
  * @return The document of the session.
@@ -47,7 +50,7 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
                                     const FilesystemIsolationModel& isolation, const NetworkModel& network,
                                     const EnvironmentModel& environment, const ApplicationMetadata& metadata,
                                     const StartupScreen& startup, ProjectType project_type,
-                                    const std::wstring& output_path);
+                                    CompressionLevel compression_level, const std::wstring& output_path);
 
 /**
  * @brief Replace the models of a session with the content of a document.
@@ -80,6 +83,8 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
  * @param[out] startup Startup screen replaced with the one of the document.
  * @param[out] project_type Kind of product the document describes, which the
  *                          session adopts together with the models.
+ * @param[out] compression_level Compression level of the document, which the
+ *                              session adopts together with the models.
  * @param[out] output_path Destination archive path of the document.
  * @param[out] error Error description on failure, prefixed with the path of the
  *                   entry which was rejected, for example `folders[1]: ...`.
@@ -88,7 +93,7 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
 bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, RegistryModel& registry,
                           FilesystemIsolationModel& isolation, NetworkModel& network, EnvironmentModel& environment,
                           ApplicationMetadata& metadata, StartupScreen& startup, ProjectType& project_type,
-                          std::wstring& output_path, std::string& error);
+                          CompressionLevel& compression_level, std::wstring& output_path, std::string& error);
 
 /**
  * @brief Write the content of a document into a project file.

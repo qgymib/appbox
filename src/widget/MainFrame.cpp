@@ -621,13 +621,14 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     appbox::ApplicationMetadata      loaded_metadata;
     appbox::StartupScreen            loaded_startup;
     appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
+    appbox::CompressionLevel         loaded_compression_level = appbox::kDefaultCompressionLevel;
     std::wstring                     output_path;
     std::string                      error;
 
     if (!appbox::LoadProject(dialog.GetPath().ToStdWstring(), document, error) ||
         !appbox::ApplyProjectDocument(document, loaded, loaded_registry, loaded_isolation, loaded_network,
                                       loaded_environment, loaded_metadata, loaded_startup, loaded_project_type,
-                                      output_path, error))
+                                      loaded_compression_level, output_path, error))
     {
         spdlog::error("importing the configuration failed: {}", error);
         wxMessageBox("The configuration could not be imported:\n\n" + wxString::FromUTF8(error), "Import Configuration",
@@ -666,6 +667,9 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     /* The type of the document decides which product the next Build writes. */
     ApplyProjectType(loaded_project_type);
 
+    /* The level of the document decides how hard the next Build squeezes the archive. */
+    settings_panel_->SetCompressionLevel(loaded_compression_level);
+
     SetStatusText("Configuration imported from " + dialog.GetPath());
 }
 
@@ -686,9 +690,9 @@ void MainFrame::OnExportConfiguration(wxCommandEvent&)
     }
 
     std::string error;
-    const auto  document =
-        appbox::MakeProjectDocument(model_, registry_model_, filesystem_isolation_, network_, environment_, metadata_,
-                                    startup_screen_, project_type_, OutputPath().ToStdWstring());
+    const auto  document = appbox::MakeProjectDocument(
+        model_, registry_model_, filesystem_isolation_, network_, environment_, metadata_, startup_screen_,
+        project_type_, settings_panel_->GetCompressionLevel(), OutputPath().ToStdWstring());
     if (!appbox::SaveProject(document, dialog.GetPath().ToStdWstring(), error))
     {
         spdlog::error("exporting the configuration failed: {}", error);
@@ -927,58 +931,59 @@ void MainFrame::StartPack(bool run_after)
     const auto startup_snapshot = startup_screen_;
     const auto zip_wide = zip_path.ToStdWstring();
     const auto project_type = project_type_;
+    const auto compression_level = settings_panel_->GetCompressionLevel();
 
-    pack_thread_ =
-        std::thread([this, snapshot, registry_snapshot, isolation_snapshot, network_snapshot, environment_snapshot,
-                     metadata_snapshot, startup_snapshot, payloads, zip_wide, run_after, project_type]() {
-            const auto report_progress = [this](const appbox::BuildProgress& report) {
-                auto* event = new wxThreadEvent(APPBOX_PACK_PROGRESS);
-                event->SetPayload(report);
-                this->GetEventHandler()->QueueEvent(event);
-                return !this->pack_cancelled_.load();
-            };
+    pack_thread_ = std::thread([this, snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
+                                environment_snapshot, metadata_snapshot, startup_snapshot, payloads, zip_wide,
+                                run_after, project_type, compression_level]() {
+        const auto report_progress = [this](const appbox::BuildProgress& report) {
+            auto* event = new wxThreadEvent(APPBOX_PACK_PROGRESS);
+            event->SetPayload(report);
+            this->GetEventHandler()->QueueEvent(event);
+            return !this->pack_cancelled_.load();
+        };
 
-            PackOutcome outcome;
-            if (project_type == appbox::ProjectType::Patch)
+        PackOutcome outcome;
+        if (project_type == appbox::ProjectType::Patch)
+        {
+            /* A patch package holds the resources without a launcher. */
+            outcome.error = appbox::PackPatch(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
+                                              environment_snapshot, compression_level, zip_wide, report_progress);
+        }
+        else
+        {
+            outcome.error = appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
+                                         environment_snapshot, metadata_snapshot, startup_snapshot, payloads,
+                                         compression_level, zip_wide, report_progress);
+        }
+
+        if (outcome.error.empty())
+        {
+            /*
+             * The launcher is named after the main program of the snapshot; a
+             * patch package has none, because it is not started on its own.
+             */
+            if (project_type == appbox::ProjectType::Standalone)
             {
-                /* A patch package holds the resources without a launcher. */
-                outcome.error = appbox::PackPatch(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
-                                                  environment_snapshot, zip_wide, report_progress);
+                outcome.launcher_entry = appbox::LauncherEntryName(snapshot);
             }
-            else
-            {
-                outcome.error = appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
-                                             environment_snapshot, metadata_snapshot, startup_snapshot, payloads,
-                                             zip_wide, report_progress);
-            }
+            outcome.archive_path = zip_wide;
+        }
 
+        if (outcome.error.empty() && run_after)
+        {
+            const auto folder = std::filesystem::temp_directory_path() / UniqueExtractFolder();
+            outcome.error = appbox::ExtractArchive(zip_wide, folder.wstring(), report_progress);
             if (outcome.error.empty())
             {
-                /*
-                 * The launcher is named after the main program of the snapshot; a
-                 * patch package has none, because it is not started on its own.
-                 */
-                if (project_type == appbox::ProjectType::Standalone)
-                {
-                    outcome.launcher_entry = appbox::LauncherEntryName(snapshot);
-                }
-                outcome.archive_path = zip_wide;
+                outcome.extract_dir = folder.wstring();
             }
+        }
 
-            if (outcome.error.empty() && run_after)
-            {
-                const auto folder = std::filesystem::temp_directory_path() / UniqueExtractFolder();
-                outcome.error = appbox::ExtractArchive(zip_wide, folder.wstring(), report_progress);
-                if (outcome.error.empty())
-                {
-                    outcome.extract_dir = folder.wstring();
-                }
-            }
-
-            auto* event = new wxThreadEvent(APPBOX_PACK_FINISHED);
-            event->SetPayload(outcome);
-            this->GetEventHandler()->QueueEvent(event);
-        });
+        auto* event = new wxThreadEvent(APPBOX_PACK_FINISHED);
+        event->SetPayload(outcome);
+        this->GetEventHandler()->QueueEvent(event);
+    });
 }
 
 void MainFrame::UpdateProgressDialog(int value, const wxString& text)

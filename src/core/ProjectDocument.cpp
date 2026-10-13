@@ -21,6 +21,7 @@ using Json = nlohmann::ordered_json;
 constexpr const char* kVersionKey = "version";
 constexpr const char* kOutputPathKey = "output_path";
 constexpr const char* kProjectTypeKey = "project_type";
+constexpr const char* kCompressionLevelKey = "compression_level";
 constexpr const char* kMetadataKey = "metadata";
 constexpr const char* kOverridesKey = "overrides";
 constexpr const char* kKeyKey = "key";
@@ -184,6 +185,40 @@ appbox::ProjectType ReadProjectType(const Json& json)
     }
 
     return type;
+}
+
+/**
+ * @brief Read the compression level of a document.
+ *
+ * A document which does not name the member describes a session which uses the
+ * default level, which is what a file written before the member existed
+ * describes.
+ *
+ * @param[in] json Object to read from.
+ * @return The compression level of the member.
+ * @throw appbox::ProjectDocumentError The member is present but not a known
+ *        compression level.
+ */
+appbox::CompressionLevel ReadCompressionLevel(const Json& json)
+{
+    const auto member = json.find(kCompressionLevelKey);
+    if (member == json.end())
+    {
+        return appbox::kDefaultCompressionLevel;
+    }
+    if (!member->is_string())
+    {
+        throw appbox::ProjectDocumentError(std::string("the '") + kCompressionLevelKey + "' member is not a string");
+    }
+
+    const auto               text = member->get<std::string>();
+    appbox::CompressionLevel level = appbox::kDefaultCompressionLevel;
+    if (!appbox::ParseCompressionLevelToken(text, level))
+    {
+        throw appbox::ProjectDocumentError("unknown compression level '" + text + "'");
+    }
+
+    return level;
 }
 
 /**
@@ -789,6 +824,7 @@ void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
     json[kVersionKey] = kProjectFileVersion;
     json[kOutputPathKey] = WideToUTF8(document.output_path);
     json[kProjectTypeKey] = ProjectTypeToken(document.project_type);
+    json[kCompressionLevelKey] = CompressionLevelToken(document.compression_level);
     json[kMetadataKey] = document.metadata;
     json[kStartupKey] = document.startup;
     json[kFoldersKey] = document.folders;
@@ -842,6 +878,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectDocument& document)
     ProjectDocument candidate;
     candidate.output_path = ReadOptionalText(json, kOutputPathKey);
     candidate.project_type = ReadProjectType(json);
+    candidate.compression_level = ReadCompressionLevel(json);
     ReadRecord(json, kMetadataKey, candidate.metadata);
     ReadRecord(json, kStartupKey, candidate.startup);
     ReadRecordArray(json, kFoldersKey, candidate.folders);

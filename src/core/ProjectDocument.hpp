@@ -1,6 +1,7 @@
 #ifndef APPBOX_PACKER_CORE_PROJECT_DOCUMENT_HPP
 #define APPBOX_PACKER_CORE_PROJECT_DOCUMENT_HPP
 
+#include "CompressionLevel.hpp"
 #include "EnvironmentIsolation.hpp"
 #include "FilesystemIsolation.hpp"
 #include "NetworkModel.hpp"
@@ -439,9 +440,10 @@ struct ProjectEnvironmentRecord
  * virtual registry, the isolation modes of the virtual filesystem, the DNS
  * redirections of the network workspace, the proxy of the network workspace,
  * the environment variables of the environment workspace, the kind of product
- * the `Build` command writes, the file properties the launcher carries and the
- * path of the `Output File` box. It holds no host state and no wxWidgets
- * dependency, so the conversion is unit testable.
+ * the `Build` command writes, the compression level of the archive it writes,
+ * the file properties the launcher carries and the path of the `Output File`
+ * box. It holds no host state and no wxWidgets dependency, so the conversion is
+ * unit testable.
  *
  * `to_json()` and `from_json()` convert the structure to and from the JSON
  * text of a project file; the file itself is written and read by
@@ -457,6 +459,7 @@ struct ProjectEnvironmentRecord
  *   "version": 1,
  *   "output_path": "D:\\out\\MyApp.zip",
  *   "project_type": "standalone",
+ *   "compression_level": "normal",
  *   "metadata": { "source": "C:\\Program Files\\MyApp\\app.exe",
  *                 "overrides": [ { "key": "FileDescription",
  *                                  "value": "My Application" } ] },
@@ -505,6 +508,11 @@ struct ProjectEnvironmentRecord
  * describes a standalone project, which is what every file written before the
  * member existed describes.
  *
+ * The `compression_level` member is optional as well: a file which does not name
+ * it describes a session which compresses the archive it writes with the
+ * default level, which is what every file written before the member existed
+ * describes.
+ *
  * The `metadata` member is optional as well: a file which does not name it
  * describes a session which inherits the file properties of its launcher from
  * the default source without editing a field. Every key of an override has to
@@ -529,6 +537,15 @@ struct ProjectDocument
      * which is what a file written before the member existed describes.
      */
     ProjectType project_type = ProjectType::Standalone;
+
+    /**
+     * @brief Compression level of the archive the `Build` command writes.
+     *
+     * A document which does not name the member describes a session which uses
+     * the default level, which is what a file written before the member existed
+     * describes.
+     */
+    CompressionLevel compression_level = kDefaultCompressionLevel;
 
     /**
      * @brief The file properties the launcher of a standalone archive carries.

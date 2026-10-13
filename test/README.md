@@ -359,7 +359,9 @@ The unit tests of the packer:
   environment variables, which is always written, the optional `proxy` member,
   which is omitted while it is absent and read back as absent, the optional
   `project_type` member, which is written for every project type and read as
-  `standalone` while it is absent, the optional `metadata` member, which names
+  `standalone` while it is absent, the optional `compression_level` member,
+  which is written for every session and read as the default level while it is
+  absent, the optional `metadata` member, which names
   the program the file properties of the launcher are inherited from and the
   fields the user edited, refuses a key which is not a field of a version
   resource and a field which is listed twice, and is read as empty while it is
@@ -374,17 +376,26 @@ The unit tests of the packer:
   sandbox view, of the virtual registry, of the
   filesystem isolation modes, of the proxy of the network workspace, of the
   environment variables of the environment workspace, of the project type, of
+  the compression level, of
   the file properties the launcher carries and of the startup screen the
   launcher shows,
   the strict UTF-8 encoding, the failures of a malformed document and the
   atomicity of applying a document to the models, including a mode which a file
   cannot hold, a path which is listed twice, a created folder without a folder
   of the view above it, a proxy the model refuses, a
-  variable the model refuses and an unknown project type.
+  variable the model refuses, an unknown project type and an unknown
+  compression level.
 * `test/unit/ProjectType.cpp` — the vocabulary of the `Project Type` box: the
   token of every project type, which is the text form the project file stores,
   the token which is parsed whatever the case it was written with, the tokens
   which are refused, the label of every entry of the box, and the mapping
+  between the entries of the box and the enumeration, including the fallback of
+  an index which is outside of the box.
+* `test/unit/CompressionLevel.cpp` — the vocabulary of the `Compression` box:
+  the token of every level, which is the text form the project file stores, the
+  token which is parsed whatever the case it was written with, the tokens which
+  are refused, the label of every entry of the box, the zlib level of every
+  level, the order of the scale, the default level of a session, and the mapping
   between the entries of the box and the enumeration, including the fallback of
   an index which is outside of the box.
 * `test/unit/EmbeddedResource.cpp` — the payloads the packer carries as RCDATA
@@ -419,7 +430,10 @@ The unit tests of the packer:
   which holds no import) and which contribute no file to the progress total, the
   progress total, the cancellation
   and the fact that the archive relative spelling of an entry is the `app`
-  prefix plus its resource relative spelling.
+  prefix plus its resource relative spelling. The compression level of the
+  session reaches the entries of both products: a run which stores them writes a
+  stored entry while a run which deflates them writes a deflated one, so the
+  level cannot be lost on the way from the session to the archive.
 * `test/unit/PackModel.cpp` — the editable model of a packer session: the
   import of a host folder and of individual files, the rules of the import
   names and of the startable files (a program, a batch file, a command script and
@@ -558,7 +572,10 @@ executable carries itself:
   layer which carries the requests of the probes.
 * `test/unit/WString.cpp` — the UTF-8 and UTF-16 conversions of `common/`.
 * `test/unit/ZipReader.cpp`, `test/unit/ZipWriter.cpp` — the zip
-  layer of the packer, including the zip slip protection of an extraction.
+  layer of the packer, including the zip slip protection of an extraction and
+  the compression level of the entries: a level which stores them keeps the
+  content of an entry, a level above it deflates a repetitive entry, and an
+  entry which does not shrink by being deflated is stored even so.
 * `test/unit/BuildReport.cpp` — the progress and the result texts of the
   build report.
 * `test/unit/ApplicationIcon.cpp` — the icon the packer writes into the first

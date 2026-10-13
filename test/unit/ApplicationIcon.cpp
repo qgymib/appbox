@@ -695,7 +695,7 @@ TEST(Unit_ApplicationIcon, PackWritesTheIconOfTheStartupFile)
     const appbox::RegistryModel registry;
     ASSERT_EQ(appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
                            appbox::EnvironmentModel(), appbox::ApplicationMetadata(), appbox::StartupScreen{}, payloads,
-                           zip_path.wstring(), nullptr),
+                           appbox::CompressionLevel::Normal, zip_path.wstring(), nullptr),
               "");
 
     const auto extracted = temp.Get() / L"extracted";

@@ -172,6 +172,21 @@ appbox::StartupScreen& ScratchStartup()
 }
 
 /**
+ * @brief Sink of the compression level for the cases which do not check it.
+ *
+ * The compression level of the archive is not the subject of the cases which
+ * use this helper, so it is restored into one sink which every case shares; a
+ * case which describes it keeps a state of its own.
+ *
+ * @return The sink of the compression level.
+ */
+appbox::CompressionLevel& ScratchCompressionLevel()
+{
+    static appbox::CompressionLevel level = appbox::kDefaultCompressionLevel;
+    return level;
+}
+
+/**
  * @brief Build the document of a session with the network and the environment
  *        model left out.
  *
@@ -196,7 +211,7 @@ appbox::ProjectDocument MakeDocument(const appbox::PackModel& model, const appbo
                                      const appbox::StartupScreen&       startup = {})
 {
     return appbox::MakeProjectDocument(model, registry, isolation, appbox::NetworkModel{}, appbox::EnvironmentModel{},
-                                       metadata, startup, project_type, output_path);
+                                       metadata, startup, project_type, appbox::CompressionLevel::Normal, output_path);
 }
 
 /**
@@ -218,7 +233,7 @@ bool ApplyDocument(const appbox::ProjectDocument& document, appbox::PackModel& m
     appbox::EnvironmentModel environment;
     appbox::ProjectType      project_type = appbox::ProjectType::Standalone;
     return appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, ScratchMetadata(),
-                                        ScratchStartup(), project_type, output_path, error);
+                                        ScratchStartup(), project_type, ScratchCompressionLevel(), output_path, error);
 }
 
 /**
@@ -232,7 +247,8 @@ appbox::ProjectDocument MakeEnvironmentDocument(const appbox::EnvironmentModel& 
 {
     return appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
                                        appbox::NetworkModel{}, environment, appbox::ApplicationMetadata{},
-                                       appbox::StartupScreen{}, appbox::ProjectType::Standalone, output_path);
+                                       appbox::StartupScreen{}, appbox::ProjectType::Standalone,
+                                       appbox::CompressionLevel::Normal, output_path);
 }
 
 /**
@@ -256,7 +272,7 @@ bool ApplyEnvironmentDocument(const appbox::ProjectDocument& document, appbox::E
     appbox::ProjectType              project_type = appbox::ProjectType::Standalone;
     std::wstring                     output_path;
     return appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, ScratchMetadata(),
-                                        ScratchStartup(), project_type, output_path, error);
+                                        ScratchStartup(), project_type, ScratchCompressionLevel(), output_path, error);
 }
 
 /**
@@ -1133,10 +1149,10 @@ TEST(Unit_ProjectFile, NetworkRedirectionsTravelWithTheProjectFile)
     ASSERT_TRUE(network.AddDnsEntry(L"update.example.com", L"127.0.0.1", error)) << error;
     ASSERT_TRUE(network.AddDnsEntry(L"api.example.com", L"::1", error)) << error;
 
-    const auto document =
-        appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
-                                    network, appbox::EnvironmentModel{}, appbox::ApplicationMetadata(),
-                                    appbox::StartupScreen{}, appbox::ProjectType::Standalone, L"D:\\out\\MyApp.zip");
+    const auto document = appbox::MakeProjectDocument(
+        appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, network,
+        appbox::EnvironmentModel{}, appbox::ApplicationMetadata(), appbox::StartupScreen{},
+        appbox::ProjectType::Standalone, appbox::CompressionLevel::Normal, L"D:\\out\\MyApp.zip");
 
     const auto path = temp.File(L"network.json");
     ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
@@ -1153,7 +1169,7 @@ TEST(Unit_ProjectFile, NetworkRedirectionsTravelWithTheProjectFile)
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, ScratchMetadata(), ScratchStartup(),
-                                             loaded_project_type, loaded_output, error))
+                                             loaded_project_type, ScratchCompressionLevel(), loaded_output, error))
         << error;
 
     ASSERT_EQ(loaded_network.DnsEntries().size(), 2u);
@@ -1195,7 +1211,7 @@ TEST(Unit_ProjectFile, FilePropertiesTravelWithTheProjectFile)
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, loaded_metadata, ScratchStartup(), loaded_project_type,
-                                             loaded_output, error))
+                                             ScratchCompressionLevel(), loaded_output, error))
         << error;
 
     EXPECT_EQ(loaded_metadata.source, metadata.source);
@@ -1214,7 +1230,7 @@ TEST(Unit_ProjectFile, FilePropertiesTravelWithTheProjectFile)
     appbox::ApplicationMetadata cleared = loaded_metadata;
     ASSERT_TRUE(appbox::ApplyProjectDocument(plain, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, cleared, ScratchStartup(), loaded_project_type,
-                                             loaded_output, error))
+                                             ScratchCompressionLevel(), loaded_output, error))
         << error;
     EXPECT_TRUE(cleared.source.empty());
     EXPECT_TRUE(cleared.overrides.empty());
@@ -1248,7 +1264,7 @@ TEST(Unit_ProjectFile, StartupScreenTravelsWithTheProjectFile)
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, ScratchMetadata(), loaded_startup, loaded_project_type,
-                                             loaded_output, error))
+                                             ScratchCompressionLevel(), loaded_output, error))
         << error;
 
     EXPECT_FALSE(loaded_startup.enabled);
@@ -1263,7 +1279,7 @@ TEST(Unit_ProjectFile, StartupScreenTravelsWithTheProjectFile)
     appbox::StartupScreen cleared = loaded_startup;
     ASSERT_TRUE(appbox::ApplyProjectDocument(plain, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, ScratchMetadata(), cleared, loaded_project_type,
-                                             loaded_output, error))
+                                             ScratchCompressionLevel(), loaded_output, error))
         << error;
     EXPECT_TRUE(cleared.enabled);
     EXPECT_TRUE(cleared.image.empty());
@@ -1304,13 +1320,15 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenNetworkMember)
      * the failure is reported while the document is applied. */
     ASSERT_TRUE(appbox::LoadProject(bad_address.wstring(), document, error)) << error;
     EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
-                                              ScratchMetadata(), ScratchStartup(), project_type, output, error));
+                                              ScratchMetadata(), ScratchStartup(), project_type,
+                                              ScratchCompressionLevel(), output, error));
     EXPECT_NE(error.find("network[0]"), std::string::npos);
     EXPECT_NE(error.find("is not an IPv4 or an IPv6 address"), std::string::npos);
 
     ASSERT_TRUE(appbox::LoadProject(duplicate.wstring(), document, error)) << error;
     EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
-                                              ScratchMetadata(), ScratchStartup(), project_type, output, error));
+                                              ScratchMetadata(), ScratchStartup(), project_type,
+                                              ScratchCompressionLevel(), output, error));
     EXPECT_NE(error.find("network[1]"), std::string::npos);
     EXPECT_NE(error.find("listed twice"), std::string::npos);
 
@@ -1338,10 +1356,10 @@ TEST(Unit_ProjectFile, ProxyTravelsWithTheProjectFile)
     ASSERT_TRUE(network.SetProxy(proxy, error)) << error;
     ASSERT_TRUE(network.AddDnsEntry(L"update.example.com", L"127.0.0.1", error)) << error;
 
-    const auto document =
-        appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
-                                    network, appbox::EnvironmentModel{}, appbox::ApplicationMetadata(),
-                                    appbox::StartupScreen{}, appbox::ProjectType::Standalone, L"");
+    const auto document = appbox::MakeProjectDocument(
+        appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, network,
+        appbox::EnvironmentModel{}, appbox::ApplicationMetadata(), appbox::StartupScreen{},
+        appbox::ProjectType::Standalone, appbox::CompressionLevel::Normal, L"");
 
     const auto path = temp.File(L"proxy.json");
     ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
@@ -1358,7 +1376,7 @@ TEST(Unit_ProjectFile, ProxyTravelsWithTheProjectFile)
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, ScratchMetadata(), ScratchStartup(),
-                                             loaded_project_type, loaded_output, error))
+                                             loaded_project_type, ScratchCompressionLevel(), loaded_output, error))
         << error;
 
     ASSERT_TRUE(loaded_network.HasProxy());
@@ -1389,10 +1407,10 @@ TEST(Unit_ProjectFile, KeepsAProxyWhichIsTurnedOff)
     std::string          error;
     ASSERT_TRUE(network.SetProxy(proxy, error)) << error;
 
-    const auto document =
-        appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
-                                    network, appbox::EnvironmentModel{}, appbox::ApplicationMetadata(),
-                                    appbox::StartupScreen{}, appbox::ProjectType::Standalone, L"");
+    const auto document = appbox::MakeProjectDocument(
+        appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, network,
+        appbox::EnvironmentModel{}, appbox::ApplicationMetadata(), appbox::StartupScreen{},
+        appbox::ProjectType::Standalone, appbox::CompressionLevel::Normal, L"");
 
     /*
      * A proxy which was typed and then disabled is part of the document, so
@@ -1426,7 +1444,8 @@ TEST(Unit_ProjectFile, ApplyOfADocumentWithoutAProxyClearsTheProxy)
     appbox::ProjectType              project_type = appbox::ProjectType::Standalone;
     std::wstring                     output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
-                                             ScratchMetadata(), ScratchStartup(), project_type, output, error))
+                                             ScratchMetadata(), ScratchStartup(), project_type,
+                                             ScratchCompressionLevel(), output, error))
         << error;
 
     /* A session which imports a configuration without a proxy holds none. */
@@ -1464,7 +1483,8 @@ TEST(Unit_ProjectFile, ApplyRejectsAProxyTheModelRefuses)
     appbox::ProjectType              project_type = appbox::ProjectType::Standalone;
     std::wstring                     output;
     EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
-                                              ScratchMetadata(), ScratchStartup(), project_type, output, error));
+                                              ScratchMetadata(), ScratchStartup(), project_type,
+                                              ScratchCompressionLevel(), output, error));
     EXPECT_NE(error.find("proxy"), std::string::npos) << error;
     EXPECT_NE(error.find("must not be empty"), std::string::npos) << error;
 
@@ -1642,7 +1662,7 @@ TEST(Unit_ProjectFile, ProjectTypeTravelsWithTheProjectFile)
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, ScratchMetadata(), ScratchStartup(),
-                                             loaded_project_type, loaded_output, error))
+                                             loaded_project_type, ScratchCompressionLevel(), loaded_output, error))
         << error;
 
     /* The session adopts the type of the file together with the models. */
@@ -1671,7 +1691,8 @@ TEST(Unit_ProjectFile, AFileWithoutAProjectTypeIsAStandaloneProject)
     appbox::ProjectType              project_type = appbox::ProjectType::Patch;
     std::wstring                     output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
-                                             ScratchMetadata(), ScratchStartup(), project_type, output, error))
+                                             ScratchMetadata(), ScratchStartup(), project_type,
+                                             ScratchCompressionLevel(), output, error))
         << error;
 
     EXPECT_EQ(project_type, appbox::ProjectType::Standalone);
@@ -1689,4 +1710,86 @@ TEST(Unit_ProjectFile, ApplyRejectsAnUnknownProjectType)
     std::string             error;
     EXPECT_FALSE(appbox::LoadProject(path.wstring(), document, error));
     EXPECT_NE(error.find("unknown project type 'installer'"), std::string::npos) << error;
+}
+
+TEST(Unit_ProjectFile, CompressionLevelTravelsWithTheProjectFile)
+{
+    TempDir temp;
+
+    /* The compression level of the archive the Build command writes is part of a session. */
+    const auto document = appbox::MakeProjectDocument(
+        appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, appbox::NetworkModel{},
+        appbox::EnvironmentModel{}, appbox::ApplicationMetadata{}, appbox::StartupScreen{},
+        appbox::ProjectType::Standalone, appbox::CompressionLevel::Extreme, L"D:\\out\\MyApp.zip");
+    EXPECT_EQ(document.compression_level, appbox::CompressionLevel::Extreme);
+
+    std::string error;
+    const auto  path = temp.File(L"extreme-project.json");
+    ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
+
+    appbox::ProjectDocument loaded_document;
+    ASSERT_TRUE(appbox::LoadProject(path.wstring(), loaded_document, error)) << error;
+    EXPECT_EQ(loaded_document.compression_level, appbox::CompressionLevel::Extreme);
+
+    /* The file spells the level, so a hand written configuration stays readable. */
+    EXPECT_NE(ReadBytes(path).find("\"compression_level\": \"extreme\""), std::string::npos);
+
+    appbox::PackModel                loaded;
+    appbox::RegistryModel            loaded_registry;
+    appbox::FilesystemIsolationModel loaded_isolation;
+    appbox::NetworkModel             loaded_network;
+    appbox::EnvironmentModel         loaded_environment;
+    appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
+    appbox::CompressionLevel         loaded_compression_level = appbox::CompressionLevel::StoreOnly;
+    std::wstring                     loaded_output;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
+                                             loaded_environment, ScratchMetadata(), ScratchStartup(),
+                                             loaded_project_type, loaded_compression_level, loaded_output, error))
+        << error;
+
+    /* The session adopts the level of the file together with the models. */
+    EXPECT_EQ(loaded_compression_level, appbox::CompressionLevel::Extreme);
+    EXPECT_EQ(loaded_output, L"D:\\out\\MyApp.zip");
+}
+
+TEST(Unit_ProjectFile, AFileWithoutACompressionLevelUsesTheDefaultOne)
+{
+    TempDir temp;
+
+    /* A file which was written before the member existed. */
+    const auto path = temp.File(L"default-level.json");
+    WriteBytes(path, "{ \"version\": 1, \"output_path\": \"D:\\\\out\\\\MyApp.zip\" }");
+
+    appbox::ProjectDocument document;
+    std::string             error;
+    ASSERT_TRUE(appbox::LoadProject(path.wstring(), document, error)) << error;
+    EXPECT_EQ(document.compression_level, appbox::kDefaultCompressionLevel);
+
+    appbox::PackModel                model;
+    appbox::RegistryModel            registry;
+    appbox::FilesystemIsolationModel isolation;
+    appbox::NetworkModel             network;
+    appbox::EnvironmentModel         environment;
+    appbox::ProjectType              project_type = appbox::ProjectType::Standalone;
+    appbox::CompressionLevel         compression_level = appbox::CompressionLevel::StoreOnly;
+    std::wstring                     output;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
+                                             ScratchMetadata(), ScratchStartup(), project_type, compression_level,
+                                             output, error))
+        << error;
+
+    EXPECT_EQ(compression_level, appbox::kDefaultCompressionLevel);
+}
+
+TEST(Unit_ProjectFile, ApplyRejectsAnUnknownCompressionLevel)
+{
+    TempDir temp;
+
+    const auto path = temp.File(L"unknown-level.json");
+    WriteBytes(path, "{ \"version\": 1, \"compression_level\": \"best\" }");
+
+    appbox::ProjectDocument document;
+    std::string             error;
+    EXPECT_FALSE(appbox::LoadProject(path.wstring(), document, error));
+    EXPECT_NE(error.find("unknown compression level 'best'"), std::string::npos) << error;
 }

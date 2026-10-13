@@ -1,7 +1,9 @@
 #ifndef APPBOX_PACKER_CORE_ZIP_WRITER_HPP
 #define APPBOX_PACKER_CORE_ZIP_WRITER_HPP
 
+#include "CompressionLevel.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -17,6 +19,12 @@ namespace appbox
  * portable zip convention; host paths are wide strings converted internally.
  * Buffered payloads are copied and kept alive by the writer until the
  * archive is closed, as required by zip_source_buffer.
+ *
+ * Every file entry is written with the compression level of the session: a
+ * level of `StoreOnly` keeps the content of the entry as it is, a level above
+ * it deflates the entry and lets libzip keep the smaller of the deflated and
+ * the stored data, so an entry which does not compress never grows. Directory
+ * entries carry no content and are written as they are.
  */
 class ZipWriter
 {
@@ -24,9 +32,11 @@ public:
     /**
      * @brief Create (truncate) a zip archive.
      * @param[in] path Archive path.
+     * @param[in] level Compression level of the file entries; the default level
+     *                  of a session is used when the caller names none.
      * @throw std::runtime_error The archive could not be created.
      */
-    explicit ZipWriter(const std::wstring& path);
+    explicit ZipWriter(const std::wstring& path, CompressionLevel level = kDefaultCompressionLevel);
 
     /**
      * @brief Close or discard the archive.
@@ -90,6 +100,20 @@ public:
 
 private:
     /**
+     * @brief Ask libzip for the compression of one entry of the archive.
+     *
+     * The entry keeps the content of its source while the level stores it, and
+     * is deflated with the level of the session otherwise. The call is made for
+     * every file entry right after it was added, because libzip writes the
+     * content only while the archive is closed.
+     *
+     * @param[in] index Index of the entry inside the archive.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool SetEntryCompression(std::uint64_t index, std::string& error);
+
+    /**
      * @brief Format the pending libzip error.
      * @param[in] context Description of the failed operation.
      * @return The composed error message.
@@ -97,6 +121,7 @@ private:
     std::string FormatError(const char* context) const;
 
     zip*                           archive_ = nullptr;
+    CompressionLevel               level_ = kDefaultCompressionLevel;
     std::vector<std::vector<char>> buffers_;
 };
 

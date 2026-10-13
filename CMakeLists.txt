@@ -176,6 +176,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/ApplicationIcon.cpp"
     "${APPBOX_SOURCE_DIR}/core/ApplicationMetadata.cpp"
     "${APPBOX_SOURCE_DIR}/core/BuildReport.cpp"
+    "${APPBOX_SOURCE_DIR}/core/CompressionLevel.cpp"
     "${APPBOX_SOURCE_DIR}/core/EmbeddedResource.cpp"
     "${APPBOX_SOURCE_DIR}/core/EnvironmentIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/EnvironmentModel.cpp"

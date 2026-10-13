@@ -603,8 +603,8 @@ std::wstring LauncherEntryName(const PackModel& model)
 
 std::string Pack(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
                  const NetworkModel& network, const EnvironmentModel& environment, const ApplicationMetadata& metadata,
-                 const StartupScreen& startup, const PackPayloads& payloads, const std::wstring& zip_path,
-                 const BuildProgressCallback& progress)
+                 const StartupScreen& startup, const PackPayloads& payloads, CompressionLevel compression,
+                 const std::wstring& zip_path, const BuildProgressCallback& progress)
 {
     if (!model.HasStartupFiles())
     {
@@ -655,7 +655,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
 
     try
     {
-        ZipWriter   writer(zip_path);
+        ZipWriter   writer(zip_path, compression);
         std::string error;
 
         /*
@@ -839,8 +839,8 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
 }
 
 std::string PackPatch(const PackModel& model, const RegistryModel& registry, const FilesystemIsolationModel& isolation,
-                      const NetworkModel& network, const EnvironmentModel& environment, const std::wstring& zip_path,
-                      const BuildProgressCallback& progress)
+                      const NetworkModel& network, const EnvironmentModel& environment, CompressionLevel compression,
+                      const std::wstring& zip_path, const BuildProgressCallback& progress)
 {
     /*
      * A patch package carries no launcher, so neither a startup file nor the
@@ -857,7 +857,7 @@ std::string PackPatch(const PackModel& model, const RegistryModel& registry, con
 
     try
     {
-        ZipWriter   writer(zip_path);
+        ZipWriter   writer(zip_path, compression);
         std::string error;
 
         /*

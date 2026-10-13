@@ -6,10 +6,48 @@
 #include <cstring>
 #include <stdexcept>
 
+namespace
+{
+
+/**
+ * @brief The compression libzip is asked for one entry of an archive.
+ */
+struct CompressionSpec
+{
+    zip_int32_t  method; ///< Compression method of the entry.
+    zip_uint32_t flags;  ///< Deflate level of the entry, `0` for a stored one.
+};
+
+/**
+ * @brief Map the compression level of a session to the libzip request.
+ *
+ * The level of a session is the zlib level the packer asks for, and the level
+ * which stores the entries asks libzip for the stored method instead. A deflate
+ * level is requested as the default method of the archive rather than as
+ * deflate, because libzip only falls back to a stored entry for the default
+ * method: an entry which does not get smaller by being deflated is written as
+ * it is, so a level never makes an archive larger than a stored one.
+ *
+ * @param[in] level Compression level of the session.
+ * @return The method and the level libzip is asked for.
+ */
+CompressionSpec SpecOf(appbox::CompressionLevel level)
+{
+    const auto value = static_cast<zip_uint32_t>(appbox::CompressionLevelValue(level));
+    if (value == 0)
+    {
+        return { ZIP_CM_STORE, 0 };
+    }
+
+    return { ZIP_CM_DEFAULT, value };
+}
+
+} // namespace
+
 namespace appbox
 {
 
-ZipWriter::ZipWriter(const std::wstring& path)
+ZipWriter::ZipWriter(const std::wstring& path, CompressionLevel level) : level_(level)
 {
     int error = 0;
     archive_ = zip_open(WideToUTF8(path).c_str(), ZIP_CREATE | ZIP_TRUNCATE, &error);
@@ -73,14 +111,16 @@ bool ZipWriter::AddFileBuffer(const std::string& entry, const void* data, std::s
         return false;
     }
 
-    if (zip_file_add(archive_, entry.c_str(), source, ZIP_FL_ENC_UTF_8) < 0)
+    const auto index = zip_file_add(archive_, entry.c_str(), source, ZIP_FL_ENC_UTF_8);
+    if (index < 0)
     {
         /* The source is not owned by the archive when the add failed. */
         zip_source_free(source);
         error = FormatError("failed to add the file entry");
         return false;
     }
-    return true;
+
+    return SetEntryCompression(static_cast<std::uint64_t>(index), error);
 }
 
 bool ZipWriter::AddFileDisk(const std::wstring& disk_path, const std::string& entry, std::string& error)
@@ -100,12 +140,32 @@ bool ZipWriter::AddFileDisk(const std::wstring& disk_path, const std::string& en
         return false;
     }
 
-    if (zip_file_add(archive_, entry.c_str(), source, ZIP_FL_ENC_UTF_8) < 0)
+    const auto index = zip_file_add(archive_, entry.c_str(), source, ZIP_FL_ENC_UTF_8);
+    if (index < 0)
     {
         zip_source_free(source);
         error = FormatError("failed to add the file entry");
         return false;
     }
+
+    return SetEntryCompression(static_cast<std::uint64_t>(index), error);
+}
+
+bool ZipWriter::SetEntryCompression(std::uint64_t index, std::string& error)
+{
+    if (archive_ == nullptr)
+    {
+        error = "the archive is already closed";
+        return false;
+    }
+
+    const auto spec = SpecOf(level_);
+    if (zip_set_file_compression(archive_, index, spec.method, spec.flags) < 0)
+    {
+        error = FormatError("failed to set the compression of the file entry");
+        return false;
+    }
+
     return true;
 }
 

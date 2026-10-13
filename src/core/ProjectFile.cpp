@@ -430,11 +430,12 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
                                     const FilesystemIsolationModel& isolation, const NetworkModel& network,
                                     const EnvironmentModel& environment, const ApplicationMetadata& metadata,
                                     const StartupScreen& startup, ProjectType project_type,
-                                    const std::wstring& output_path)
+                                    CompressionLevel compression_level, const std::wstring& output_path)
 {
     ProjectDocument document;
     document.output_path = output_path;
     document.project_type = project_type;
+    document.compression_level = compression_level;
     document.startup.enabled = startup.enabled;
     document.startup.image = startup.image;
 
@@ -555,7 +556,7 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
 bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, RegistryModel& registry,
                           FilesystemIsolationModel& isolation, NetworkModel& network, EnvironmentModel& environment,
                           ApplicationMetadata& metadata, StartupScreen& startup, ProjectType& project_type,
-                          std::wstring& output_path, std::string& error)
+                          CompressionLevel& compression_level, std::wstring& output_path, std::string& error)
 {
     PackModel                candidate;
     RegistryModel            candidate_registry;
@@ -665,6 +666,7 @@ bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, Reg
     metadata = std::move(candidate_metadata);
     startup = std::move(candidate_startup);
     project_type = document.project_type;
+    compression_level = document.compression_level;
     output_path = document.output_path;
     return true;
 }
