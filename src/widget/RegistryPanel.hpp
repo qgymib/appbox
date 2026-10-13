@@ -28,7 +28,10 @@ class wxButton;
  * other column is edited by double clicking the row, which opens the key or value
  * dialog, and both dialogs pick the isolation mode of the entry as well. The
  * context menu of the tree offers `Isolation Mode...`, which applies a key mode
- * to the key alone or to its whole subtree, as the dialog asks for.
+ * to the key alone or to its whole subtree, as the dialog asks for. The
+ * container carries no mode of its own, so the command is offered for it as
+ * well and its mode reaches the five preset root keys, or the whole tree when
+ * the dialog asks for the subtree.
  *
  * The `Up Dir` command moves the tree selection to the key above the selected
  * one. The container is the root of the tree and the only node without a parent,
@@ -238,9 +241,12 @@ private:
      * @brief Open the isolation dialog of a key.
      *
      * The dialog decides whether the mode reaches the key alone or its whole
-     * subtree; the tree and the table are rebuilt afterwards.
+     * subtree; the tree and the table are rebuilt afterwards. An empty path
+     * names the container of the tree, whose mode reaches the five root keys
+     * alone or the whole tree, because the container carries no mode of its
+     * own.
      *
-     * @param[in] path Path of the key.
+     * @param[in] path Path of the key, empty for the container.
      */
     void EditIsolation(const std::wstring& path);
 

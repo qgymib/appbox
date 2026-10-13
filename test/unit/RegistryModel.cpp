@@ -485,6 +485,109 @@ TEST(Unit_RegistryModel, ApplyIsolationToSubtreeOverwritesEveryKeyAndValue)
     EXPECT_FALSE(model.ApplyIsolationToSubtree(L"HKEY_CURRENT_USER\\Missing", appbox::RegistryKeyIsolation::Full));
 }
 
+TEST(Unit_RegistryModel, SetRootKeyIsolationOnlyChangesTheRootKeys)
+{
+    appbox::RegistryModel model;
+    std::string           error;
+
+    ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor\\App", error)) << error;
+    ASSERT_TRUE(
+        model.SetValue(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path", appbox::RegistryValueType::String, {}, error))
+        << error;
+    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {}, error))
+        << error;
+    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor", appbox::RegistryKeyIsolation::Full));
+
+    /* The container carries no mode of its own, so its mode reaches its children. */
+    model.SetRootKeyIsolation(appbox::RegistryKeyIsolation::Hide);
+
+    const auto& roots = appbox::RegistryRootKeyNames();
+    for (const auto& name : roots)
+    {
+        const auto* root = model.FindKey(name);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(root->isolation, appbox::RegistryKeyIsolation::Hide);
+    }
+
+    /* Everything below a root key keeps the mode it held before. */
+    const auto* vendor = model.FindKey(L"HKEY_CURRENT_USER\\Vendor");
+    ASSERT_NE(vendor, nullptr);
+    EXPECT_EQ(vendor->isolation, appbox::RegistryKeyIsolation::Full);
+    ASSERT_EQ(vendor->values.size(), 1u);
+    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryValueIsolation::Full);
+
+    ASSERT_EQ(vendor->children.size(), 1u);
+    EXPECT_EQ(vendor->children[0].isolation, appbox::RegistryKeyIsolation::Merge);
+    ASSERT_EQ(vendor->children[0].values.size(), 1u);
+    EXPECT_EQ(vendor->children[0].values[0].isolation, appbox::RegistryValueIsolation::Full);
+
+    /* The container itself is not a key of the view and keeps its field untouched. */
+    EXPECT_EQ(model.Root().isolation, appbox::RegistryKeyIsolation::Merge);
+}
+
+TEST(Unit_RegistryModel, ApplyIsolationToViewOverwritesEveryKeyAndValue)
+{
+    appbox::RegistryModel model;
+    std::string           error;
+
+    ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Vendor\\App\\Sub", error)) << error;
+    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Vendor", L"Name", appbox::RegistryValueType::String, {}, error))
+        << error;
+    ASSERT_TRUE(
+        model.SetValue(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path", appbox::RegistryValueType::String, {}, error))
+        << error;
+    ASSERT_TRUE(model.SetKeyIsolation(L"HKEY_CURRENT_USER\\Vendor\\App", appbox::RegistryKeyIsolation::Hide));
+    ASSERT_TRUE(
+        model.SetValueIsolation(L"HKEY_CURRENT_USER\\Vendor\\App", L"Path", appbox::RegistryValueIsolation::Hide));
+
+    model.ApplyIsolationToView(appbox::RegistryKeyIsolation::Full);
+
+    /* Every root key follows the mode, the keys the user never touched included. */
+    const auto& roots = appbox::RegistryRootKeyNames();
+    for (const auto& name : roots)
+    {
+        const auto* root = model.FindKey(name);
+        ASSERT_NE(root, nullptr);
+        EXPECT_EQ(root->isolation, appbox::RegistryKeyIsolation::Full);
+    }
+
+    const auto* vendor = model.FindKey(L"HKEY_CURRENT_USER\\Vendor");
+    ASSERT_NE(vendor, nullptr);
+    EXPECT_EQ(vendor->isolation, appbox::RegistryKeyIsolation::Full);
+    ASSERT_EQ(vendor->values.size(), 1u);
+    EXPECT_EQ(vendor->values[0].isolation, appbox::RegistryValueIsolation::Full);
+
+    const auto* app = model.FindKey(L"HKEY_CURRENT_USER\\Vendor\\App");
+    ASSERT_NE(app, nullptr);
+    EXPECT_EQ(app->isolation, appbox::RegistryKeyIsolation::Full);
+    ASSERT_EQ(app->values.size(), 1u);
+    EXPECT_EQ(app->values[0].isolation, appbox::RegistryValueIsolation::Full);
+
+    ASSERT_EQ(app->children.size(), 1u);
+    EXPECT_EQ(app->children[0].isolation, appbox::RegistryKeyIsolation::Full);
+
+    /* The container itself is not a key of the view and keeps its field untouched. */
+    EXPECT_EQ(model.Root().isolation, appbox::RegistryKeyIsolation::Merge);
+}
+
+TEST(Unit_RegistryModel, CommonRootKeyIsolationReportsTheSharedMode)
+{
+    appbox::RegistryModel model;
+
+    /* The five root keys start as `Merge`, so the container reports it. */
+    EXPECT_EQ(model.CommonRootKeyIsolation(), appbox::RegistryKeyIsolation::Merge);
+
+    for (const auto& name : appbox::RegistryRootKeyNames())
+    {
+        ASSERT_TRUE(model.SetKeyIsolation(name, appbox::RegistryKeyIsolation::Hide));
+    }
+    EXPECT_EQ(model.CommonRootKeyIsolation(), appbox::RegistryKeyIsolation::Hide);
+
+    /* One root key of its own makes the mode of the container undecided. */
+    ASSERT_TRUE(model.SetKeyIsolation(appbox::RegistryRootKeyNames().back(), appbox::RegistryKeyIsolation::Full));
+    EXPECT_EQ(model.CommonRootKeyIsolation(), appbox::RegistryKeyIsolation::Merge);
+}
+
 TEST(Unit_RegistryModel, NewEntriesFollowTheKeyTheyAreCreatedIn)
 {
     appbox::RegistryModel model;

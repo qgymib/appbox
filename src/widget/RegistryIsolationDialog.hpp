@@ -22,6 +22,12 @@ class wxCheckBox;
  * alone, with it the whole subtree of the key follows the mode, the values of
  * the subtree included (see `RegistryModel::ApplyIsolationToSubtree`).
  *
+ * The first line of the dialog names the target of the mode and is built by the
+ * caller, because the container of the tree carries no mode of its own: it uses
+ * the line to spell out that a mode picked for the container reaches the five
+ * root keys, or the whole tree with the recursion. The dialog itself is the
+ * same for every node.
+ *
  * A value carries the two value modes alone, so the modes of a value are picked
  * in the `Isolation` column of the table instead of this dialog.
  */
@@ -31,10 +37,11 @@ public:
     /**
      * @brief Create the isolation dialog of a key.
      * @param[in] parent Parent window.
-     * @param[in] key_path Path of the key the dialog applies to.
+     * @param[in] target Text of the first line, which names what the mode
+     *                   reaches.
      * @param[in] initial Isolation mode selected when the dialog opens.
      */
-    RegistryIsolationDialog(wxWindow* parent, const wxString& key_path, appbox::RegistryKeyIsolation initial);
+    RegistryIsolationDialog(wxWindow* parent, const wxString& target, appbox::RegistryKeyIsolation initial);
 
     /**
      * @brief Get the selected isolation mode.

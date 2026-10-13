@@ -462,6 +462,70 @@ TEST(Unit_RegistryHive, IsolationFileOfADefaultModel)
 }
 
 /**
+ * @brief A mode picked for the container reaches the root keys or the whole view.
+ *
+ * The container of the tree is not a key of the view, so its mode is written to
+ * the five root keys when the recursion is off and to every key and value of the
+ * view when it is on. The isolation file is the artifact the sandbox reads, so
+ * the mode of the container has to show up in it.
+ */
+TEST(Unit_RegistryHive, IsolationFileOfAContainerMode)
+{
+    appbox::RegistryModel model;
+    std::string           error;
+
+    ASSERT_TRUE(model.EnsureKey(L"HKEY_CURRENT_USER\\Software\\Vendor\\App", error)) << error;
+    ASSERT_TRUE(model.SetValue(L"HKEY_CURRENT_USER\\Software\\Vendor\\App", L"Path", appbox::RegistryValueType::String,
+                               appbox::RegistryStringData(L"app"), error))
+        << error;
+
+    /* Without the recursion the mode reaches the five preset root keys alone. */
+    model.SetRootKeyIsolation(appbox::RegistryKeyIsolation::Hide);
+
+    std::string text;
+    ASSERT_TRUE(appbox::BuildRegistryIsolationFile(model, text, error)) << error;
+
+    auto        document = nlohmann::json::parse(text);
+    const auto& keys = document["keys"];
+    ASSERT_EQ(keys.size(), appbox::RegistryRootKeyNames().size() + 3u);
+
+    std::size_t root_keys = 0;
+    for (const auto& key : keys)
+    {
+        const auto path = key["path"].get<std::string>();
+        if (path.find('\\') == std::string::npos)
+        {
+            ++root_keys;
+            EXPECT_EQ(key["isolation"].get<std::string>(), "hide") << path;
+            continue;
+        }
+
+        /* The keys below a root key keep the mode they held before. */
+        EXPECT_EQ(key["isolation"].get<std::string>(), "merge") << path;
+    }
+    EXPECT_EQ(root_keys, appbox::RegistryRootKeyNames().size());
+
+    const auto& values = document["values"];
+    ASSERT_EQ(values.size(), 1u);
+    EXPECT_EQ(values[0]["isolation"].get<std::string>(), "full");
+
+    /* With the recursion the whole view follows the mode. */
+    model.ApplyIsolationToView(appbox::RegistryKeyIsolation::Full);
+    ASSERT_TRUE(appbox::BuildRegistryIsolationFile(model, text, error)) << error;
+
+    document = nlohmann::json::parse(text);
+    ASSERT_EQ(document["keys"].size(), appbox::RegistryRootKeyNames().size() + 3u);
+    for (const auto& key : document["keys"])
+    {
+        EXPECT_EQ(key["isolation"].get<std::string>(), "full") << key["path"].get<std::string>();
+    }
+    for (const auto& value : document["values"])
+    {
+        EXPECT_EQ(value["isolation"].get<std::string>(), "full");
+    }
+}
+
+/**
  * @brief Build the text of an isolation file which lists one key mode.
  * @param[in] path Path of the key in the hive.
  * @param[in] isolation Mode of the key.

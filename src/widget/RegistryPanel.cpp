@@ -678,12 +678,12 @@ void RegistryPanel::OnTreeRightClick(wxTreeEvent& event)
      */
     tree_->SelectItem(item);
 
+    /*
+     * The container is offered the command as well: it carries no mode of its
+     * own, so a mode picked for it reaches the five root keys or the whole tree
+     * below them, as the dialog asks for.
+     */
     const auto path = SelectedTreePath();
-    if (path.empty())
-    {
-        /* The container holds the root keys only, so it carries no mode. */
-        return;
-    }
 
     wxMenu menu;
     menu.Append(IsolationMenuId(), "Isolation Mode...");
@@ -699,13 +699,37 @@ void RegistryPanel::EditIsolation(const std::wstring& path)
         return;
     }
 
-    RegistryIsolationDialog dialog(this, wxString(path), key->isolation);
+    /*
+     * The container is not a key of the view and carries no mode of its own, so
+     * its dialog starts at the mode the five root keys share and its first line
+     * spells the two scopes out: without the recursion the mode reaches the five
+     * preset root keys alone, with it the whole tree follows the mode.
+     */
+    const bool container = path.empty();
+
+    const wxString target = container ? wxString(appbox::kRegistryContainerLabel) +
+                                            ": the five root keys, or the whole tree with the option below"
+                                      : "Key: " + wxString(path);
+    const auto     initial = container ? model_.CommonRootKeyIsolation() : key->isolation;
+
+    RegistryIsolationDialog dialog(this, target, initial);
     if (dialog.ShowModal() != wxID_OK)
     {
         return;
     }
 
-    if (dialog.Recursive())
+    if (container)
+    {
+        if (dialog.Recursive())
+        {
+            model_.ApplyIsolationToView(dialog.Isolation());
+        }
+        else
+        {
+            model_.SetRootKeyIsolation(dialog.Isolation());
+        }
+    }
+    else if (dialog.Recursive())
     {
         model_.ApplyIsolationToSubtree(path, dialog.Isolation());
     }

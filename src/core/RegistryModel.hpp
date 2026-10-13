@@ -503,7 +503,9 @@ bool ParseRegistryValueText(RegistryValueType type, const std::wstring& text, st
  * imported from `.reg` files or entered by hand. Every key and every value
  * carries its own isolation mode: the five preset root keys start as `Merge`,
  * a key which is created below another key follows that key, and a value
- * starts with the mode DefaultValueIsolation() reports for its key.
+ * starts with the mode DefaultValueIsolation() reports for its key. The
+ * container carries no mode of its own, so a mode picked for the container
+ * reaches its children, see SetRootKeyIsolation() and ApplyIsolationToView().
  *
  * The class holds no wxWidgets dependency, so the tree rules, the isolation
  * rules and the validation are unit testable.
@@ -689,6 +691,41 @@ public:
      * @return true when the key exists and was updated.
      */
     bool ApplyIsolationToSubtree(const std::wstring& path, RegistryKeyIsolation isolation);
+
+    /**
+     * @brief Set the isolation mode of the five root keys alone.
+     *
+     * The container is not a key of the view and carries no mode of its own, so
+     * a mode picked for the container reaches its children: the five root keys
+     * are set and the sub keys and the values below them keep their modes.
+     *
+     * @param[in] isolation New isolation mode of every root key.
+     */
+    void SetRootKeyIsolation(RegistryKeyIsolation isolation);
+
+    /**
+     * @brief Overwrite the isolation mode of every key of the view.
+     *
+     * The container is the root of the view and not a key of it, so the mode
+     * reaches the five root keys and every key below them, and the values
+     * follow the key which holds them (see DefaultValueIsolation()). The mode
+     * of the container itself stays untouched, because the container carries
+     * none.
+     *
+     * @param[in] isolation New isolation mode of every key of the view.
+     */
+    void ApplyIsolationToView(RegistryKeyIsolation isolation);
+
+    /**
+     * @brief Get the isolation mode the five root keys share.
+     *
+     * The mode is the one a mode picked for the container starts with, so a
+     * container whose root keys agree shows the mode which applies to them
+     * today.
+     *
+     * @return The mode of every root key, `Merge` when they differ.
+     */
+    RegistryKeyIsolation CommonRootKeyIsolation() const;
 
 private:
     /**

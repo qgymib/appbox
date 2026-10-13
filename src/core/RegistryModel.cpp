@@ -1209,6 +1209,51 @@ bool RegistryModel::ApplyIsolationToSubtree(const std::wstring& path, RegistryKe
     return true;
 }
 
+void RegistryModel::SetRootKeyIsolation(RegistryKeyIsolation isolation)
+{
+    /*
+     * The container carries no mode of its own, so a mode picked for the
+     * container reaches its children: the root keys themselves are set, and
+     * everything below them keeps the modes it held before.
+     */
+    for (auto& root : root_.children)
+    {
+        root.isolation = isolation;
+    }
+}
+
+void RegistryModel::ApplyIsolationToView(RegistryKeyIsolation isolation)
+{
+    /*
+     * The container is the root of the view and not a key of it: the mode
+     * reaches the root keys and every key below them, while the container
+     * itself keeps its field untouched.
+     */
+    for (auto& root : root_.children)
+    {
+        ApplyIsolation(root, isolation);
+    }
+}
+
+RegistryKeyIsolation RegistryModel::CommonRootKeyIsolation() const
+{
+    if (root_.children.empty())
+    {
+        return RegistryKeyIsolation::Merge;
+    }
+
+    const auto common = root_.children[0].isolation;
+    for (std::size_t index = 1; index < root_.children.size(); ++index)
+    {
+        if (root_.children[index].isolation != common)
+        {
+            /* The root keys disagree, so the view has no mode of its own. */
+            return RegistryKeyIsolation::Merge;
+        }
+    }
+    return common;
+}
+
 std::ptrdiff_t RegistryModel::ChildIndex(const RegistryKeyNode& parent, const std::wstring& name)
 {
     for (std::size_t index = 0; index < parent.children.size(); ++index)

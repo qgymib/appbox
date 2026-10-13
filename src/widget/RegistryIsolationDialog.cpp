@@ -10,15 +10,26 @@ namespace
 /** Border of the dialog and gap between its parts. */
 constexpr int kBorder = 12;
 
+/**
+ * @brief Width the first line is wrapped at.
+ *
+ * The line names what the mode reaches and the container spells its two scopes
+ * out in it, so the text is wrapped to the column of the mode explanations
+ * instead of growing the dialog to the length of the sentence.
+ */
+constexpr int kTargetWidth = 380;
+
 } // namespace
 
-RegistryIsolationDialog::RegistryIsolationDialog(wxWindow* parent, const wxString& key_path,
+RegistryIsolationDialog::RegistryIsolationDialog(wxWindow* parent, const wxString& target,
                                                  appbox::RegistryKeyIsolation initial)
     : wxDialog(parent, wxID_ANY, "Isolation Mode", wxDefaultPosition, wxDefaultSize, wxDEFAULT_DIALOG_STYLE)
 {
     auto* sizer = new wxBoxSizer(wxVERTICAL);
 
-    sizer->Add(new wxStaticText(this, wxID_ANY, "Key: " + key_path), 0, wxALL, kBorder);
+    auto* target_text = new wxStaticText(this, wxID_ANY, target);
+    target_text->Wrap(kTargetWidth);
+    sizer->Add(target_text, 0, wxALL, kBorder);
 
     /*
      * The options are ordered like the enumeration of the modes, so the

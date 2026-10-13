@@ -414,10 +414,14 @@ The unit tests of the packer:
   host folder a folder of the filesystem view maps to (the text the tooltip of
   the tree shows).
 * `test/unit/RegistryModel.cpp` — the model of the packer, including the
-  mode of a single row and the explicit recursion of the isolation dialog.
+  mode of a single row, the explicit recursion of the isolation dialog and the
+  mode of the container of the tree, which reaches the five preset root keys
+  alone or every key and value of the view.
 * `test/unit/RegistryHive.cpp` — the hive writer (all seven value types,
   several roots, nested keys, replacement of an existing hive, failure), the
-  isolation file writer and the layer order of the isolation files of a run: a
+  isolation file writer — the mode of the container of the tree included, which
+  has to show up in the file the sandbox reads — and the layer order of the
+  isolation files of a run: a
   later file overrides the entry it names while an entry it does not name keeps
   the mode of the layers below it, and a document which cannot be parsed leaves
   those layers alone.
