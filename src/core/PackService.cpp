@@ -2,6 +2,7 @@
 #include "ApplicationIcon.hpp"
 #include "EnvironmentIsolationFile.hpp"
 #include "FilesystemIsolationFile.hpp"
+#include "FilesystemMarker.hpp"
 #include "NetworkIsolationFile.hpp"
 #include "PresetDirectory.hpp"
 #include "RegistryHive.hpp"
@@ -474,6 +475,61 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
         }
     }
 
+    /*
+     * An entry the session hides travels as the whiteout marker of the entry:
+     * the marker is a name of the view, so the layer only carries the
+     * directory chain which holds it, and the sandbox hides the entry of the
+     * host and of every layer below the marker while the packaged application
+     * runs. The marker is an empty file, so it carries no content.
+     */
+    for (const auto& entry : model.AllWhiteouts())
+    {
+        const auto owner =
+            std::find_if(appbox::PresetDirectories().begin(), appbox::PresetDirectories().end(),
+                         [&entry](const appbox::PresetDirectory& preset) { return preset.id == entry.preset_id; });
+        if (owner == appbox::PresetDirectories().end())
+        {
+            continue;
+        }
+
+        std::string prefix = layer_prefix + "/" + appbox::WideToUTF8(owner->layer_key);
+        error = EnsureDirectory(writer, added, prefix);
+        if (!error.empty())
+        {
+            return error;
+        }
+
+        for (const auto& part : appbox::Split(entry.target_dir, L"\\"))
+        {
+            if (part.empty())
+            {
+                continue;
+            }
+            prefix += "/" + appbox::WideToUTF8(part);
+            error = EnsureDirectory(writer, added, prefix);
+            if (!error.empty())
+            {
+                return error;
+            }
+        }
+
+        const auto marker = appbox::filesystem_marker::WhiteoutNameOf(entry.name);
+
+        done++;
+        if (progress && !progress(appbox::BuildProgress{ appbox::BuildStage::Packing, done, total,
+                                                         DisplayPath(entry.target_dir, marker) }))
+        {
+            return appbox::kBuildCancelledError;
+        }
+
+        /* An empty marker file: the buffer only has to be a valid pointer. */
+        const char empty = 0;
+        if (!writer.AddFileBuffer(prefix + "/" + appbox::WideToUTF8(marker), &empty, 0, error))
+        {
+            return error;
+        }
+    }
+
     return {};
 }
 
@@ -564,7 +620,11 @@ std::size_t CountFilesBelow(const std::wstring& folder)
 
 std::size_t ContentFileCount(const PackModel& model)
 {
-    std::size_t count = model.AllImportedFiles().size();
+    /*
+     * The whiteout markers are file entries of the archive as well, so they
+     * are part of the total the progress reports announce.
+     */
+    std::size_t count = model.AllImportedFiles().size() + model.AllWhiteouts().size();
     for (const auto& entry : PresetDirectories())
     {
         for (const auto& imported : model.ImportsOf(entry.id))

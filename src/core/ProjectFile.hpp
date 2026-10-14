@@ -19,18 +19,18 @@ namespace appbox
  *
  * The document describes the current configuration: the imported folders, the
  * imported files, the folders the user created inside the sandbox view, the
- * startup files, the virtual registry with the isolation modes of every key and
- * value, the isolation modes of the virtual filesystem, the DNS redirections
- * and the proxy of the network workspace, the environment variables of the
- * environment workspace, the file properties the launcher carries, the startup
- * screen the launcher shows, the kind of product the `Build` command writes,
- * the compression level of the archive it writes and the path of the
- * `Output File` box. The structure and the schema of the document are described
- * by ProjectDocument.
+ * entries the archive hides, the startup files, the virtual registry with the
+ * isolation modes of every key and value, the isolation modes of the virtual
+ * filesystem, the DNS redirections and the proxy of the network workspace, the
+ * environment variables of the environment workspace, the file properties the
+ * launcher carries, the startup screen the launcher shows, the kind of product
+ * the `Build` command writes, the compression level of the archive it writes
+ * and the path of the `Output File` box. The structure and the schema of the
+ * document are described by ProjectDocument.
  *
- * The imported folders and the folders the user created are listed preset
- * directory by preset directory, so the order of the document does not depend
- * on the order the user added them in.
+ * The imported folders, the folders the user created and the hidden entries are
+ * listed preset directory by preset directory, so the order of the document
+ * does not depend on the order the user added them in.
  *
  * @param[in] model Configuration of the packer session.
  * @param[in] registry Virtual registry of the workspace.
@@ -69,7 +69,8 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
  *
  * The folders the user created are restored in document order, which lists a
  * folder after the folder which holds it, so every parent is part of the model
- * by the time its child is restored.
+ * by the time its child is restored. The hidden entries follow them, so an
+ * entry which hangs below a folder of the document is restored as well.
  *
  * @param[in] document Document to apply.
  * @param[out] model Model replaced with the configuration of the document.

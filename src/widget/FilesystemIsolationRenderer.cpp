@@ -21,8 +21,13 @@ wxWindow* FilesystemIsolationRenderer::CreateEditorCtrl(wxWindow* parent, wxRect
     }
     if (options.IsEmpty())
     {
-        /* Without an answer the options of the column keep the cell editable. */
-        options = GetChoices();
+        /*
+         * A row without an option cannot be edited: the caller reports no
+         * option for a row whose mode is not a mode of the isolation table
+         * (an entry the archive hides), and wxWidgets treats an editor control
+         * which is not created as an edit which did not start.
+         */
+        return nullptr;
     }
 
     auto* choice = new wxChoice(parent, wxID_ANY, labelRect.GetTopLeft(), wxSize(labelRect.GetWidth(), -1), options);

@@ -122,6 +122,12 @@ appbox::ProjectDocument BuildSampleDocument()
 
     document.registry.push_back(root);
 
+    appbox::ProjectWhiteoutRecord whiteout;
+    whiteout.preset_id = "program_files";
+    whiteout.target_dir = L"MyApp\\bin";
+    whiteout.name = L"old.dll";
+    document.whiteouts.push_back(whiteout);
+
     appbox::ProjectFilesystemRecord entry;
     entry.path = L"#ProgramFiles#\\MyApp\\app.exe";
     entry.kind = appbox::FilesystemEntryKind::File;
@@ -187,6 +193,11 @@ TEST(Unit_ProjectDocument, RoundTripKeepsEveryMember)
     ASSERT_EQ(back.directories.size(), 1u);
     EXPECT_EQ(back.directories[0].preset_id, "program_files");
     EXPECT_EQ(back.directories[0].path, L"MyApp\\logs");
+
+    ASSERT_EQ(back.whiteouts.size(), 1u);
+    EXPECT_EQ(back.whiteouts[0].preset_id, "program_files");
+    EXPECT_EQ(back.whiteouts[0].target_dir, L"MyApp\\bin");
+    EXPECT_EQ(back.whiteouts[0].name, L"old.dll");
 
     ASSERT_EQ(back.startup_files.size(), 1u);
     EXPECT_EQ(back.startup_files[0].preset_id, "program_files");
@@ -268,6 +279,33 @@ TEST(Unit_ProjectDocument, RejectsAMalformedDirectoryRecord)
 
     const auto not_an_array = ParseError(R"({"version":1,"directories":{}})");
     EXPECT_NE(not_an_array.find("directories"), std::string::npos) << not_an_array;
+}
+
+TEST(Unit_ProjectDocument, ReadsADocumentWithoutHiddenEntries)
+{
+    /* The member is optional: a document which does not name it hides nothing. */
+    const auto document = ParseDocument(R"({"version":1})");
+    EXPECT_TRUE(document.whiteouts.empty());
+
+    /*
+     * A session which hides nothing does not name the member at all, so a file
+     * which was written before the member existed stays unchanged.
+     */
+    const auto text = nlohmann::ordered_json(appbox::ProjectDocument()).dump();
+    EXPECT_EQ(text.find("whiteouts"), std::string::npos) << text;
+}
+
+TEST(Unit_ProjectDocument, RejectsAMalformedWhiteoutRecord)
+{
+    const auto missing = ParseError(R"({"version":1,"whiteouts":[{"preset":"program_files","target_dir":"bin"}]})");
+    EXPECT_NE(missing.find("whiteouts[0]"), std::string::npos) << missing;
+    EXPECT_NE(missing.find("name"), std::string::npos) << missing;
+
+    const auto mistyped = ParseError(R"({"version":1,"whiteouts":[{"preset":7,"target_dir":"bin","name":"a"}]})");
+    EXPECT_NE(mistyped.find("whiteouts[0]"), std::string::npos) << mistyped;
+
+    const auto not_an_array = ParseError(R"({"version":1,"whiteouts":{}})");
+    EXPECT_NE(not_an_array.find("whiteouts"), std::string::npos) << not_an_array;
 }
 
 TEST(Unit_ProjectDocument, RejectsAnIncompleteDnsRecord)
@@ -381,10 +419,10 @@ TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
      * The version comes first and the members follow the order of the schema,
      * so the text of a given document is stable and easy to diff.
      */
-    const std::vector<std::string> expected{ "version",     "output_path",   "project_type", "compression_level",
-                                             "metadata",    "startup",       "folders",      "files",
-                                             "directories", "startup_files", "registry",     "filesystem",
-                                             "network",     "proxy",         "environment" };
+    const std::vector<std::string> expected{ "version",     "output_path", "project_type",  "compression_level",
+                                             "metadata",    "startup",     "folders",       "files",
+                                             "directories", "whiteouts",   "startup_files", "registry",
+                                             "filesystem",  "network",     "proxy",         "environment" };
     EXPECT_EQ(members, expected);
     EXPECT_EQ(json.at("version").get<int>(), appbox::kProjectFileVersion);
 
@@ -427,6 +465,12 @@ TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
 
     /* A sub key is nested below the key which holds it. */
     EXPECT_EQ(root.at("children").at(0).at("name").get<std::string>(), "Software");
+
+    /* A hidden entry names its preset, its directory and the name it hides. */
+    const auto& whiteout = json.at("whiteouts").at(0);
+    EXPECT_EQ(whiteout.at("preset").get<std::string>(), "program_files");
+    EXPECT_EQ(whiteout.at("target_dir").get<std::string>(), "MyApp\\bin");
+    EXPECT_EQ(whiteout.at("name").get<std::string>(), "old.dll");
 
     EXPECT_EQ(json.at("filesystem").at(0).at("kind").get<std::string>(), "file");
     EXPECT_EQ(json.at("filesystem").at(0).at("isolation").get<std::string>(), "whiteout");

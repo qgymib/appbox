@@ -1005,6 +1005,7 @@ TEST(Unit_PackModel, ClearResetsEveryPartOfTheModel)
     ASSERT_TRUE(model.ImportFiles("program_files", L"MyApp", { extra.wstring() }, error)) << error;
     ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"tool.exe", true, error)) << error;
     ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"MyApp", L"logs", error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"MyApp\\bin", L"old.dll", error)) << error;
     EXPECT_FALSE(model.IsEmpty());
 
     model.Clear();
@@ -1013,6 +1014,7 @@ TEST(Unit_PackModel, ClearResetsEveryPartOfTheModel)
     EXPECT_EQ(model.ImportsOf("program_files").size(), static_cast<std::size_t>(0));
     EXPECT_EQ(model.AllImportedFiles().size(), static_cast<std::size_t>(0));
     EXPECT_EQ(model.AllVirtualDirectories().size(), static_cast<std::size_t>(0));
+    EXPECT_EQ(model.AllWhiteouts().size(), static_cast<std::size_t>(0));
     EXPECT_FALSE(model.HasStartupFiles());
 }
 
@@ -1605,4 +1607,219 @@ TEST(Unit_PackModel, RestoreVirtualDirectoryRejectsInvalidPaths)
     EXPECT_FALSE(model.RestoreVirtualDirectory("program_files", L"myapp\\LOGS", error));
     EXPECT_NE(error.find("listed twice"), std::string::npos);
     EXPECT_EQ(model.AllVirtualDirectories().size(), static_cast<std::size_t>(1));
+}
+
+TEST(Unit_PackModel, AddWhiteoutHidesAnEntryOfTheLayerRootAndOfAFolder)
+{
+    appbox::PackModel model;
+    std::string       error;
+
+    EXPECT_TRUE(model.IsEmpty());
+
+    ASSERT_TRUE(model.AddWhiteout("program_files", std::wstring(), L"appbox-legacy.exe", error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"MyApp\\bin", L"old.dll", error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("user_profile", std::wstring(), L"appbox-legacy.exe", error)) << error;
+
+    EXPECT_FALSE(model.IsEmpty());
+
+    const auto all = model.AllWhiteouts();
+    ASSERT_EQ(all.size(), static_cast<std::size_t>(3));
+    EXPECT_EQ(all[0].preset_id, "program_files");
+    EXPECT_EQ(all[0].target_dir, std::wstring());
+    EXPECT_EQ(all[0].name, L"appbox-legacy.exe");
+    EXPECT_EQ(all[1].target_dir, L"MyApp\\bin");
+    EXPECT_EQ(all[1].name, L"old.dll");
+    EXPECT_EQ(all[2].preset_id, "user_profile");
+
+    /* Only the direct children of a directory are reported. */
+    const auto root = model.WhiteoutsOf("program_files", std::wstring());
+    ASSERT_EQ(root.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(root[0].name, L"appbox-legacy.exe");
+
+    const auto bin = model.WhiteoutsOf("program_files", L"myapp\\BIN");
+    ASSERT_EQ(bin.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(bin[0].name, L"old.dll");
+
+    EXPECT_TRUE(model.WhiteoutsOf("program_files", L"MyApp").empty());
+
+    /* A path of the view is matched ignoring the case, like every other lookup. */
+    EXPECT_TRUE(model.HasWhiteout("program_files", L"APPBOX-LEGACY.EXE"));
+    EXPECT_TRUE(model.HasWhiteout("program_files", L"MyApp\\bin\\OLD.DLL"));
+    EXPECT_FALSE(model.HasWhiteout("program_files", L"Other.exe"));
+    EXPECT_FALSE(model.HasWhiteout("user_profile", L"MyApp\\bin\\old.dll"));
+}
+
+TEST(Unit_PackModel, AddWhiteoutNormalizesTheTargetDirectory)
+{
+    appbox::PackModel model;
+    std::string       error;
+
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"/MyApp//bin/", L"old.dll", error)) << error;
+
+    const auto all = model.AllWhiteouts();
+    ASSERT_EQ(all.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(all[0].target_dir, L"MyApp\\bin");
+}
+
+TEST(Unit_PackModel, AddWhiteoutRejectsInvalidRecords)
+{
+    appbox::PackModel model;
+    std::string       error;
+
+    EXPECT_FALSE(model.AddWhiteout("does_not_exist", std::wstring(), L"old.dll", error));
+    EXPECT_FALSE(error.empty());
+
+    EXPECT_FALSE(model.AddWhiteout("program_files", L"..\\MyApp", L"old.dll", error));
+    EXPECT_FALSE(error.empty());
+
+    EXPECT_FALSE(model.AddWhiteout("program_files", std::wstring(), std::wstring(), error));
+    EXPECT_FALSE(model.AddWhiteout("program_files", std::wstring(), L"..", error));
+    EXPECT_FALSE(model.AddWhiteout("program_files", std::wstring(), L"bin\\old.dll", error));
+
+    /*
+     * The names the view reserves for its markers name no entry which could be
+     * hidden.
+     */
+    EXPECT_FALSE(model.AddWhiteout("program_files", std::wstring(), L".$APPBOX_OPAQUE$", error));
+    EXPECT_FALSE(model.AddWhiteout("program_files", std::wstring(), L"old.dll.$APPBOX_DELETE$", error));
+
+    EXPECT_TRUE(model.IsEmpty());
+}
+
+TEST(Unit_PackModel, AddWhiteoutRejectsAnEntryWhichIsHiddenAlready)
+{
+    appbox::PackModel model;
+    std::string       error;
+
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"MyApp", L"old.dll", error)) << error;
+
+    EXPECT_FALSE(model.AddWhiteout("program_files", L"MyApp", L"OLD.DLL", error));
+    EXPECT_NE(error.find("hidden already"), std::string::npos);
+    EXPECT_EQ(model.AllWhiteouts().size(), static_cast<std::size_t>(1));
+}
+
+TEST(Unit_PackModel, RemoveWhiteoutDropsTheEntry)
+{
+    appbox::PackModel model;
+    std::string       error;
+
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"MyApp", L"old.dll", error)) << error;
+
+    EXPECT_TRUE(model.RemoveWhiteout("program_files", L"myapp", L"OLD.DLL"));
+    EXPECT_TRUE(model.AllWhiteouts().empty());
+    EXPECT_TRUE(model.IsEmpty());
+
+    EXPECT_FALSE(model.RemoveWhiteout("program_files", L"MyApp", L"old.dll"));
+}
+
+TEST(Unit_PackModel, RemoveWhiteoutsUnderDropsTheSubtree)
+{
+    appbox::PackModel model;
+    std::string       error;
+
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"MyApp", L"old.dll", error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"MyApp\\bin", L"deep.dll", error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"MyApp\\bin\\x64", L"deepest.dll", error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"Other", L"other.dll", error)) << error;
+
+    EXPECT_TRUE(model.RemoveWhiteoutsUnder("program_files", L"myapp\\bin"));
+
+    const auto all = model.AllWhiteouts();
+    ASSERT_EQ(all.size(), static_cast<std::size_t>(2));
+    EXPECT_EQ(all[0].name, L"old.dll");
+    EXPECT_EQ(all[1].name, L"other.dll");
+
+    /* An empty directory names the layer root, which holds every entry. */
+    EXPECT_TRUE(model.RemoveWhiteoutsUnder("program_files", std::wstring()));
+    EXPECT_TRUE(model.AllWhiteouts().empty());
+}
+
+TEST(Unit_PackModel, RemoveImportCascadesWhiteouts)
+{
+    TempDir    temp;
+    const auto app = MakeFolder(temp.Get(), L"MyApp");
+    const auto other = MakeFolder(temp.Get(), L"OtherApp");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
+    ASSERT_TRUE(model.ImportFolder("program_files", other.wstring(), error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"MyApp\\bin", L"old.dll", error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"OtherApp\\bin", L"old.dll", error)) << error;
+
+    /*
+     * The entry which hides the imported folder itself hangs below the layer
+     * root and not below the import, so it stays.
+     */
+    ASSERT_TRUE(model.AddWhiteout("program_files", std::wstring(), L"MyApp", error)) << error;
+
+    model.RemoveImport("program_files", L"MyApp");
+
+    const auto all = model.AllWhiteouts();
+    ASSERT_EQ(all.size(), static_cast<std::size_t>(2));
+    EXPECT_EQ(all[0].target_dir, L"OtherApp\\bin");
+    EXPECT_EQ(all[0].name, L"old.dll");
+    EXPECT_EQ(all[1].preset_id, "program_files");
+    EXPECT_EQ(all[1].target_dir, std::wstring());
+    EXPECT_EQ(all[1].name, L"MyApp");
+}
+
+TEST(Unit_PackModel, RemoveVirtualDirectoryCascadesWhiteouts)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", std::wstring(), L"appbox-logs", error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"appbox-logs", L"old.log", error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"appbox-logs\\deep", L"old.log", error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("program_files", std::wstring(), L"appbox-other.log", error)) << error;
+
+    EXPECT_TRUE(model.RemoveVirtualDirectory("program_files", L"appbox-logs"));
+
+    const auto all = model.AllWhiteouts();
+    ASSERT_EQ(all.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(all[0].name, L"appbox-other.log");
+}
+
+TEST(Unit_PackModel, IsDirectoryOfViewReportsTheFoldersOfTheView)
+{
+    TempDir    temp;
+    const auto app = MakeFolder(temp.Get(), L"MyApp");
+    MakeFolder(app, L"bin");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"MyApp", L"logs", error)) << error;
+
+    /* The layer root, the import root, a folder below the import and a created folder. */
+    EXPECT_TRUE(model.IsDirectoryOfView("program_files", std::wstring()));
+    EXPECT_TRUE(model.IsDirectoryOfView("program_files", L"myapp"));
+    EXPECT_TRUE(model.IsDirectoryOfView("program_files", L"MyApp\\bin"));
+    EXPECT_TRUE(model.IsDirectoryOfView("program_files", L"MyApp\\logs"));
+    EXPECT_TRUE(model.IsDirectoryOfView("program_files", L"MyApp\\logs\\deep"));
+
+    EXPECT_FALSE(model.IsDirectoryOfView("program_files", L"Missing"));
+    EXPECT_FALSE(model.IsDirectoryOfView("program_files", L"Missing\\deep"));
+    EXPECT_FALSE(model.IsDirectoryOfView("program_files", L"..\\MyApp"));
+    EXPECT_FALSE(model.IsDirectoryOfView("does_not_exist", std::wstring()));
+}
+
+TEST(Unit_PackModel, RestoreWhiteoutAcceptsAnEntryWhichIsNotOnTheHost)
+{
+    appbox::PackModel model;
+    std::string       error;
+
+    /*
+     * The record of a document names an entry of the host which does not have
+     * to exist on the machine which reads the document.
+     */
+    ASSERT_TRUE(model.RestoreWhiteout("program_files", L"Missing\\bin", L"old.dll", error)) << error;
+
+    const auto all = model.AllWhiteouts();
+    ASSERT_EQ(all.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(all[0].target_dir, L"Missing\\bin");
+    EXPECT_FALSE(model.IsEmpty());
+
+    EXPECT_FALSE(model.RestoreWhiteout("program_files", L"Missing\\bin", L"old.dll", error));
+    EXPECT_NE(error.find("hidden already"), std::string::npos);
 }

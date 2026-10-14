@@ -90,6 +90,39 @@ struct VirtualDirectory
 };
 
 /**
+ * @brief An entry of the sandbox view the archive hides.
+ *
+ * The record describes an entry of the host filesystem the packaged
+ * application must not see. The pack run writes the whiteout marker of the
+ * entry (`<name>.$APPBOX_DELETE$`) into the layer of its preset directory, and
+ * a marker which any layer of the view holds is honoured at run time, so the
+ * archive hides the entry of the host as well.
+ *
+ * Unlike an imported folder the record does not name a host folder which has
+ * to exist: the marker is a name of the view, so the layer only carries the
+ * directory chain which holds it. The record is what the capture workspace
+ * writes for an entry a snapshot reports as removed.
+ */
+struct WhiteoutEntry
+{
+    /**
+     * @brief Identifier of the owning preset directory.
+     */
+    std::string preset_id;
+
+    /**
+     * @brief Directory relative to the preset directory, empty for the layer
+     *        root.
+     */
+    std::wstring target_dir;
+
+    /**
+     * @brief Name of the entry inside the target directory.
+     */
+    std::wstring name;
+};
+
+/**
  * @brief One file the sandboxed application starts.
  *
  * A startup file is a startable file of an imported folder: a program
@@ -363,6 +396,112 @@ public:
      * @return true when the path names a folder the user created.
      */
     bool HasVirtualDirectory(const std::string& preset_id, const std::wstring& target_dir) const;
+
+    /**
+     * @brief Hide one entry of the host filesystem from the packaged application.
+     *
+     * The target directory is relative to the preset directory and may be
+     * empty, which names the layer root of the preset directory. The parent of
+     * the entry does not have to be a folder of the view: a snapshot which
+     * reports the delete of an entry of a folder nothing was imported from
+     * still describes a delete of the view.
+     *
+     * The operation fails when the preset is unknown, the target directory is
+     * not a valid relative path, the name is not a plain name, the name is a
+     * name the view reserves for its markers, or the entry is hidden already.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] target_dir Directory relative to the preset directory.
+     * @param[in] name Name of the entry to hide.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool AddWhiteout(const std::string& preset_id, const std::wstring& target_dir, const std::wstring& name,
+                     std::string& error);
+
+    /**
+     * @brief Stop hiding an entry of the host filesystem.
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] target_dir Directory relative to the preset directory.
+     * @param[in] name Name of the entry.
+     * @return true when the entry was hidden and is not anymore.
+     */
+    bool RemoveWhiteout(const std::string& preset_id, const std::wstring& target_dir, const std::wstring& name);
+
+    /**
+     * @brief Stop hiding every entry of a directory and of everything below it.
+     *
+     * The call is the cascade of a removed folder: the entries the folder hid
+     * have no parent of the view anymore.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] target_dir Directory relative to the preset directory, empty
+     *            for the layer root.
+     * @return true when at least one entry was dropped.
+     */
+    bool RemoveWhiteoutsUnder(const std::string& preset_id, const std::wstring& target_dir);
+
+    /**
+     * @brief Get the entries a directory of the view hides.
+     *
+     * Only the direct children are reported: an entry below a child is reached
+     * by asking for that child.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] target_dir Directory relative to the preset directory, empty
+     *            for the layer root.
+     * @return The entries in the order they were added in.
+     */
+    std::vector<WhiteoutEntry> WhiteoutsOf(const std::string& preset_id, const std::wstring& target_dir) const;
+
+    /**
+     * @brief Get every entry the archive hides.
+     * @return The entries in the order they were added in.
+     */
+    const std::vector<WhiteoutEntry>& AllWhiteouts() const;
+
+    /**
+     * @brief Whether a path of the view is hidden.
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] path Path relative to the preset directory.
+     * @return true when the path is hidden.
+     */
+    bool HasWhiteout(const std::string& preset_id, const std::wstring& path) const;
+
+    /**
+     * @brief Restore an entry the archive hides without touching the host filesystem.
+     *
+     * Unlike AddWhiteout(), which is called for an entry the user picked, this
+     * entry point restores a record of a stored document, so it only validates
+     * the shape of the record and refuses a path which is hidden already.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] target_dir Directory relative to the preset directory.
+     * @param[in] name Name of the entry.
+     * @param[out] error Error description on failure.
+     * @return true on success.
+     */
+    bool RestoreWhiteout(const std::string& preset_id, const std::wstring& target_dir, const std::wstring& name,
+                         std::string& error);
+
+    /**
+     * @brief Whether a directory of a preset directory is a folder of the view.
+     *
+     * A folder of the view is the layer root of a preset directory, an imported
+     * folder, a folder below an import and a folder the user created together
+     * with everything below it. The host filesystem is only read for a folder
+     * below an import, exactly like DirectoryParentExists() does it.
+     *
+     * The lookup is what tells a hidden entry which hangs below a folder of the
+     * view apart from one which does not: the first is shown by the folder
+     * which holds it, the second has no parent the workspace shows.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] target_dir Directory relative to the preset directory, empty
+     *            for the layer root.
+     * @return true when the path names a folder of the view.
+     */
+    bool IsDirectoryOfView(const std::string& preset_id, const std::wstring& target_dir) const;
 
     /**
      * @brief Restore a folder the user created without touching the host filesystem.
@@ -674,6 +813,7 @@ private:
     std::vector<ImportedFolder>   imports_;
     std::vector<ImportedFile>     imported_files_;
     std::vector<VirtualDirectory> directories_;
+    std::vector<WhiteoutEntry>    whiteouts_;
     std::vector<StartupFile>      startup_files_;
 };
 

@@ -300,11 +300,12 @@ headers have to win; the known folder helper of the cases is called
 
 The unit tests cover the modules the end-to-end cases cannot reach: the packer
 (`src/core`), the launcher helpers, the modules of the sandbox which run in the
-process of the test executable and the tracer. No case includes a header of
-`src/core`, so the packer has no end-to-end coverage of its own; the only
-contact of the end-to-end suite with it is the helper
-`test/utils/PatchBuilder.*`, which builds a patch package with the `ZipWriter`
-the packer writes its archives with.
+process of the test executable and the tracer. The end-to-end suite reaches the
+packer through two helpers — `test/utils/PatchBuilder.*`, which builds a patch
+package with the `ZipWriter` the packer writes its archives with, and
+`test/e2e/Snapshot_CapturedFolderIsVisible.cpp`, which drives the capture, the
+comparison and the packing of a session itself — while the rules of the packer
+stay covered by the unit tests.
 
 A module whose execution path an end-to-end case already drives keeps no unit
 test of its own. The suites which were dropped for that reason are the
@@ -328,6 +329,12 @@ The build information the About dialog shows:
 
 The unit tests of the packer:
 
+* `test/unit/ActionThrottle.cpp` — the rate gate of the action dialog: the
+  first update passes, an update inside the interval is refused, the boundary
+  of the interval itself passes, a refused update does not shift the window of
+  the next one, the gate uses the interval it was created with, a non positive
+  interval passes every update and the gate without an injected clock passes
+  the first update.
 * `test/unit/FilesystemIsolation.cpp` — the vocabulary of the filesystem
   isolation (the tokens and the display names of the modes, the explanation the
   isolation dialog shows below the name of a mode, which never repeats the name,
@@ -370,10 +377,13 @@ The unit tests of the packer:
   the screen of a fresh session while it is absent, and refuses a member which
   does not fit the schema, the optional `directories` member of the folders the
   user created inside the sandbox view, which is omitted while the session holds
-  none and refuses a record which does not fit the schema, and the atomic read.
+  none and refuses a record which does not fit the schema, the optional
+  `whiteouts` member of the entries the archive hides, which is omitted while the
+  session hides none and refuses a record which does not fit the schema, and the
+  atomic read.
 * `test/unit/ProjectFile.cpp` — the file layer of a project file: the
   round trip of the configuration, of the folders the user created inside the
-  sandbox view, of the virtual registry, of the
+  sandbox view, of the entries the archive hides, of the virtual registry, of the
   filesystem isolation modes, of the proxy of the network workspace, of the
   environment variables of the environment workspace, of the project type, of
   the compression level, of
@@ -382,7 +392,8 @@ The unit tests of the packer:
   the strict UTF-8 encoding, the failures of a malformed document and the
   atomicity of applying a document to the models, including a mode which a file
   cannot hold, a path which is listed twice, a created folder without a folder
-  of the view above it, a proxy the model refuses, a
+  of the view above it, an entry which is hidden with a name the view reserves, a
+  proxy the model refuses, a
   variable the model refuses, an unknown project type and an unknown
   compression level.
 * `test/unit/ProjectType.cpp` — the vocabulary of the `Project Type` box: the
@@ -434,6 +445,11 @@ The unit tests of the packer:
   session reaches the entries of both products: a run which stores them writes a
   stored entry while a run which deflates them writes a deflated one, so the
   level cannot be lost on the way from the session to the archive.
+  An entry the session hides travels as the whiteout marker of the entry, an
+  empty file below the layer of its preset directory whose directory chain is
+  written as well, in both products, and the markers are part of the total the
+  progress reports announce, so the bar of a `Build and Run` run does not
+  overrun while the archive is extracted.
 * `test/unit/PackModel.cpp` — the editable model of a packer session: the
   import of a host folder and of individual files, the rules of the import
   names and of the startable files (a program, a batch file, a command script and
@@ -445,9 +461,72 @@ The unit tests of the packer:
   a file or the host folder of the directory already holds, the rename of a
   folder with everything below it, the removal of a folder with the files below
   it, the cascade of removing an import, and the restoration of a project file
-  without touching the host filesystem), and the
+  without touching the host filesystem), the
+  entries the archive hides (their addition below the layer root and below a
+  folder, the normalization of their directory, the refusal of an unknown preset
+  directory, of a path which leaves the layer, of an unusable name, of a name the
+  view reserves for its markers and of an entry which is hidden already, their
+  removal with a subtree and the cascade of removing an import and of removing a
+  folder the user created), the question whether a directory of a preset
+  directory is a folder of the view, and the
   host folder a folder of the filesystem view maps to (the text the tooltip of
   the tree shows).
+* `test/unit/SnapshotModel.cpp` — the identifiers the comparison of two states
+  is built on: the fold of the case and the key of an entry of the filesystem,
+  of a key and of a value of the registry and of an environment variable.
+* `test/unit/SnapshotStore.cpp` — the snapshot file: the round trip of every
+  part of a phase (including a path of the host which is not ASCII, the raw
+  bytes of a registry value and a value which holds no byte, which is stored as
+  a blob of length zero and not as the absence of a value), the two phases of a
+  file which stay apart, the replacement of the state after the change, the
+  baseline which clears both phases, a phase which was started but never
+  committed and is reported as absent, the lookup of an entry by a name of any
+  case, the counts of a phase, the copy of a baseline into another file, the
+  refusal of a copy of a phase which is absent, a file which is not a snapshot,
+  a schema version which is not supported, a missing file which no call
+  creates, an empty path, a destination whose folder does not exist and a write
+  which fails after the file was created, which leaves no file behind.
+* `test/unit/SnapshotCapture.cpp` — the walk of the host, which runs against a
+  folder of the case below `#USERPROFILE#` and writes its entries into the phase
+  before the change of a snapshot file: the entries of the folder (the scanned
+  folder itself, its subfolders, the size and the write time of a file), an
+  empty folder, a reparse point which is not followed and not recorded, the file
+  the run was told to leave out, the refusal of a folder which is not part of
+  its preset directory, of an unknown preset directory and of an unknown root
+  key, the walk of a registry root key together with the environment of the
+  machine, the reports of every stage and the abort through the progress
+  callback, which leaves a phase which carries no marker.
+* `test/unit/SnapshotDiff.cpp` — the comparison of the two phases of a snapshot
+  file: the added, the modified and the removed entries of the filesystem, of
+  the registry and of the environment, the case insensitive names, a directory
+  which is only added or removed, the modification of a file by its size and by
+  its write time, the modification of a registry value by its type and by its
+  data, the raw data of an added value, the independence of the order of the
+  entries of a state and the refusal of a file which does not hold both states.
+* `test/unit/SnapshotApply.cpp` — the rules which write a difference into the
+  models: the import of a folder which is new below a preset directory and the
+  folder which is part of the archive already, the report of a folder which
+  existed before the capture and of a file which was added directly below a
+  preset directory, the summary of the messages which were left out, the entries
+  which are hidden, the registry keys and values which are created with the type
+  and the bytes of the newer snapshot, a removed registry key which hides its
+  whole subtree with one entry, a removed registry value which is written with
+  the data of the older snapshot and hidden, the environment keys of the machine
+  which the registry part leaves out, the environment variables which are written
+  with the default modes and the value of which is rewritten, a removed variable
+  which is only reported and the refusal of a difference which cannot be
+  interpreted.
+* `test/unit/KnownFolderReference.cpp` — the rewrite of an absolute path to the
+  reference of its preset directory: the path of a preset directory, of the
+  folder itself and of a path below it, the case, the boundary before and behind
+  the path, the longest of several matching paths, every path of a text, an
+  unknown path, a text which already carries a reference, a value of a string
+  type which keeps its terminator, a multi string value whose items are rewritten
+  on their own and the types which keep their bytes.
+* `test/unit/FilesystemMarker.cpp` — the names of the markers of the view as the
+  packer spells them against the macros of the sandbox, which is what keeps the
+  two spellings from drifting apart while the packer must not include a header of
+  the injection module.
 * `test/unit/RegistryModel.cpp` — the model of the packer, including the
   mode of a single row, the explicit recursion of the isolation dialog and the
   mode of the container of the tree, which reaches the five preset root keys
@@ -576,8 +655,8 @@ executable carries itself:
   the compression level of the entries: a level which stores them keeps the
   content of an entry, a level above it deflates a repetitive entry, and an
   entry which does not shrink by being deflated is stored even so.
-* `test/unit/BuildReport.cpp` — the progress and the result texts of the
-  build report.
+* `test/unit/BuildReport.cpp` — the elapsed time text of the build report,
+  which the elapsed row of an action dialog shows.
 * `test/unit/ApplicationIcon.cpp` — the icon the packer writes into the first
   startup file of an archive, including the round trip through the real launcher
   payload.
@@ -1360,6 +1439,23 @@ header comment.
 | `BrokenEnvironmentResourcesAreSkipped` | `00-foo.zip` configures a variable, `01-bar.zip` carries an environment document which is not valid JSON, `02-baz.zip` configures another variable | both variables report their value, so the layers below and above the broken package stay in place |
 | `FontOfTheLastLayerWins` | the archive and `00-foo.zip` carry a font of their own under the same name in the `#Fonts#` layer of the resources, and the two fonts carry different families | the sandboxed process enumerates both families: the family of the package is the one of the font table and the family of the archive is not loaded at all, because the layer of the package comes first in the view |
 
+### Snapshot capture cases
+
+The capture cases (`test/e2e/Snapshot_*.cpp`) run the chain of the capture of the
+packer: the state of a folder of the host is written into the phase before the
+change of a snapshot file, the state after the change is written into the same
+file, the two phases are compared, the difference is written into the models of
+the session and packed into an archive, which is what the two commands of the
+toolbar do (see [Snapshot Capture](../docs/Snapshot.md)). The rules of the
+capture themselves live in `src/core` and are covered by the unit tests; these
+cases are what pins the runtime side and the whole chain. Each case is
+documented in its own header comment.
+
+| Case | Steps | Expected |
+| --- | --- | --- |
+| `WhiteoutHidesAHostEntry` | the host holds `old.dll` and `keep.dll`; the layer `#USERPROFILE#` of the archive carries `packed.txt` and the whiteout marker of `old.dll` | the listing of the folder reports `keep.dll` and `packed.txt` and not `old.dll`, so the marker of a layer of the archive hides the entry of the host, and the folder of the host is untouched |
+| `CapturedFolderTravelsIntoTheArchive` | the state before the change is written into the phase before the change of a snapshot file (the folder of the installation is not part of it), the installation writes a file into the folder below `#USERPROFILE#`, the state after it is written into the same file, the two phases are compared and the difference is written into the models and packed; the archive is extracted into the directory of the case and the folder of the host is removed | the folder was imported below its preset directory and the packaged application reads the file of the folder although the folder of the host does not exist anymore, so the content of the capture reached the archive |
+
 ## Test helpers
 
 * `test/utils/FsBuilder.*` — declarative tree builder. `FsRoot(root, {dirs})`
@@ -1603,10 +1699,30 @@ header comment.
   forward unchanged. The registry cases of the patch suite pin the supported
   path, in which the hive holds the key (see the known gaps of
   [RegistryIsolation.md](../docs/RegistryIsolation.md)).
+* **The capture commands of the packer are verified by hand.** The rules of the
+  capture live in `src/core` and are covered by the unit tests and by
+  `E2E_Snapshot.CapturedFolderTravelsIntoTheArchive`, which drives the same
+  chain; the two commands of the toolbar (which ask for the snapshot file and
+  which drop the baseline once a comparison wrote its result), the snapshot
+  commands of the `File` menu and the progress dialog and the summary around
+  them belong to `src/widget`, which no test executable links (see
+  [Snapshot Capture](../docs/Snapshot.md)).
+* **The entries a capture leaves out are not driven end to end.** A difference
+  which names a file of the layer root or an entry below a folder which existed
+  before the capture is reported instead of being applied; the report is covered
+  by `test/unit/SnapshotApply.cpp`, and a case which drives it would have to
+  build a state of the host which is not reproducible on every machine.
+* **The snapshot file of a run is not stored below a preset directory end to
+  end.** The rule which keeps a run from recording the file it writes is covered
+  by `test/unit/SnapshotCapture.cpp`; a case which drove it would have to store
+  the file of the run in a folder of the host, which is where the file of a
+  case does not belong.
 
 ## Related documentation
 
 * [README.md](../README.md) — build, components and artifacts.
+* [Snapshot.md](../docs/Snapshot.md) — snapshot capture: commands, scope, the
+  snapshot file, the rules which apply a difference and the runtime side.
 * [FilesystemIsolation.md](../docs/FilesystemIsolation.md) — filesystem
   isolation architecture.
 * [RegistryIsolation.md](../docs/RegistryIsolation.md) — registry isolation

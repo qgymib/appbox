@@ -101,6 +101,7 @@ bool BuildSampleModel(appbox::PackModel& model)
            model.RestoreImportedFile("program_files", L"MyApp\\data", L"settings.ini", L"C:\\tmp\\settings.ini",
                                      detail) &&
            model.RestoreVirtualDirectory("program_files", L"MyApp\\logs", detail) &&
+           model.RestoreWhiteout("program_files", L"MyApp\\bin", L"old.dll", detail) &&
            model.RestoreStartupFile("program_files", L"MyApp", L"bin\\app.exe", L"app", true, detail);
 }
 
@@ -388,6 +389,12 @@ TEST(Unit_ProjectFile, RoundTripKeepsTheModelsAndTheOutputPath)
     EXPECT_EQ(directories[0].preset_id, "program_files");
     EXPECT_EQ(directories[0].target_dir, L"MyApp\\logs");
 
+    const auto whiteouts = loaded.AllWhiteouts();
+    ASSERT_EQ(whiteouts.size(), 1u);
+    EXPECT_EQ(whiteouts[0].preset_id, "program_files");
+    EXPECT_EQ(whiteouts[0].target_dir, L"MyApp\\bin");
+    EXPECT_EQ(whiteouts[0].name, L"old.dll");
+
     ASSERT_TRUE(loaded.HasStartupFiles());
     const auto& startup = loaded.StartupFiles();
     ASSERT_EQ(startup.size(), 1u);
@@ -503,6 +510,63 @@ TEST(Unit_ProjectFile, MakeProjectDocumentListsTheCreatedFoldersInPresetOrder)
     EXPECT_EQ(document.directories[0].path, L"MyApp\\logs");
     EXPECT_EQ(document.directories[1].preset_id, "user_profile");
     EXPECT_EQ(document.directories[1].path, L"Tool\\logs");
+}
+
+TEST(Unit_ProjectFile, MakeProjectDocumentListsTheHiddenEntriesInPresetOrder)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.RestoreImportedFolder("user_profile", L"Tool", L"C:\\Tool", error)) << error;
+    ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
+    ASSERT_TRUE(model.RestoreWhiteout("user_profile", L"Tool\\bin", L"old.dll", error)) << error;
+    ASSERT_TRUE(model.RestoreWhiteout("program_files", std::wstring(), L"legacy.exe", error)) << error;
+
+    const auto document = MakeDocument(model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, L"");
+
+    /* The order of the document follows the preset directories, not the user. */
+    ASSERT_EQ(document.whiteouts.size(), 2u);
+    EXPECT_EQ(document.whiteouts[0].preset_id, "program_files");
+    EXPECT_EQ(document.whiteouts[0].target_dir, std::wstring());
+    EXPECT_EQ(document.whiteouts[0].name, L"legacy.exe");
+    EXPECT_EQ(document.whiteouts[1].preset_id, "user_profile");
+    EXPECT_EQ(document.whiteouts[1].target_dir, L"Tool\\bin");
+    EXPECT_EQ(document.whiteouts[1].name, L"old.dll");
+}
+
+TEST(Unit_ProjectFile, ApplyRejectsABrokenHiddenEntry)
+{
+    appbox::ProjectDocument       document;
+    appbox::ProjectWhiteoutRecord entry;
+    entry.preset_id = "program_files";
+    entry.target_dir = L"MyApp";
+    entry.name = L"old.dll.$APPBOX_DELETE$";
+    document.whiteouts.push_back(entry);
+
+    appbox::PackModel                model;
+    appbox::RegistryModel            registry;
+    appbox::FilesystemIsolationModel isolation;
+    std::wstring                     output;
+    std::string                      error;
+    EXPECT_FALSE(ApplyDocument(document, model, registry, isolation, output, error));
+    EXPECT_NE(error.find("whiteouts[0]"), std::string::npos) << error;
+    EXPECT_TRUE(model.IsEmpty());
+}
+
+TEST(Unit_ProjectFile, ApplyOfADocumentWithoutHiddenEntriesHidesNothing)
+{
+    appbox::ProjectDocument document;
+    appbox::PackModel       model;
+    std::string             error;
+    ASSERT_TRUE(model.RestoreWhiteout("program_files", L"MyApp", L"old.dll", error)) << error;
+
+    appbox::RegistryModel            registry;
+    appbox::FilesystemIsolationModel isolation;
+    std::wstring                     output;
+    ASSERT_TRUE(ApplyDocument(document, model, registry, isolation, output, error)) << error;
+
+    /* The models are replaced as a whole, so the entry of the session before is gone. */
+    EXPECT_TRUE(model.AllWhiteouts().empty());
+    EXPECT_TRUE(model.IsEmpty());
 }
 
 TEST(Unit_ProjectFile, ApplyRejectsACreatedFolderWithoutAFolderOfTheView)

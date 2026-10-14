@@ -23,6 +23,10 @@
  * is about to be edited. The renderer base class stores the item it starts to
  * edit before it asks for the editor control, which is what makes that lookup
  * possible.
+ *
+ * A row the panel reports no option for is not edited at all: the editor
+ * control is not created, which wxWidgets treats as an edit which did not
+ * start.
  */
 class FilesystemIsolationRenderer : public wxDataViewChoiceRenderer
 {
@@ -44,7 +48,8 @@ public:
      * @param[in] parent Parent window of the dropdown.
      * @param[in] labelRect Rectangle of the cell.
      * @param[in] value Value the cell shows.
-     * @return The dropdown control.
+     * @return The dropdown control, null when the row offers no option and the
+     *         cell is therefore not editable.
      */
     wxWindow* CreateEditorCtrl(wxWindow* parent, wxRect labelRect, const wxVariant& value) override;
 

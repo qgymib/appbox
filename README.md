@@ -13,6 +13,7 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 - **Network Isolation**: Answers the name resolution of the packaged application from the redirections of the workspace, and optionally carries its TCP and UDP traffic through a SOCKS5 proxy (see [Network Isolation](docs/NetworkIsolation.md)).
 - **Environment Isolation**: Collects the environment variables the packaged application sees inside the sandbox with the isolation mode and the merge mode of every variable; the composed environment lives in a private table of the sandbox, so the environment of the host is never modified and the modifications of the application survive in the state directory of the sandbox (see [Environment Isolation](docs/EnvironmentIsolation.md)).
 - **Fonts Isolation**: Loads the fonts a layer of the filesystem carries into the font table of every process of a run, so the packaged application creates, enumerates and renders them as if they were installed, while the font directory, the font table and the registry of the host stay untouched (see [Fonts Isolation](docs/FontsIsolation.md)).
+- **Snapshot Capture**: The `Capture Before` and `Capture and Diff` commands of the toolbar describe an application by the change it made to the machine: `Capture Before` asks for a snapshot file and writes the state of the preset directories, of the registry and of the environment into it as the baseline, `Capture and Diff` writes the state the installation left behind into the same file and fills the three workspaces with the difference of the two states, so a session does not have to be filled by hand; the comparison never becomes the next baseline, `File -> Save Snapshot As...` writes the baseline into another file and `File -> Load Snapshot...` records the path of a file whose state before the change is used as the baseline (see [Snapshot Capture](docs/Snapshot.md)).
 - **Patch Packages**: The `Project Type` box of the packer writes either a self-contained archive or a patch package which holds the resources of the packaged application without the launcher and without the sandbox injection modules; the packages of the `patch` directory next to a standalone archive are merged into its resources in ascending name order — the filesystem layers, the virtual registry, the network configuration and the environment variables of a package included (see [Patch Layers](docs/PatchLayer.md)).
 - **Startup Screen**: The launcher of a standalone archive presents the name of the packaged application, the startup image of the session and the progress of the run while it prepares the sandbox, and the screen disappears as soon as the processes of the run were started; the image, the flag which turns the screen off and the settings themselves are edited in the `Startup` tab of the Settings workspace and travel with the project file (see [Startup Screen](docs/StartupScreen.md)).
 
@@ -129,6 +130,12 @@ Where a reference may be used:
   its own. `REG_DWORD`, `REG_BINARY` and every other type keep their bytes, even
   when they happen to spell a reference.
 
+The capture of the packer fills the references in on its own: an absolute path of
+a registry value or of an environment variable which points into a preset
+directory is rewritten to the reference of that folder while the difference of
+two snapshots is written into the workspaces (see
+[Snapshot Capture](docs/Snapshot.md)).
+
 The rules of the expansion:
 
 * A reference whose name is not listed, a reference without the `APPBOX:` prefix
@@ -154,6 +161,7 @@ pure function `appbox::ExpandVariables()` of
 - [Network Isolation](docs/NetworkIsolation.md) - Network isolation architecture
 - [Environment Isolation](docs/EnvironmentIsolation.md) - Environment isolation architecture
 - [Fonts Isolation](docs/FontsIsolation.md) - Fonts isolation architecture
+- [Snapshot Capture](docs/Snapshot.md) - Capturing the state of a machine and comparing it with a baseline
 - [Patch Layers](docs/PatchLayer.md) - Patch packages: layout, merge rules and the launcher side
 - [Launcher](docs/Launcher.md) - Launcher command line options and the log files of a run
 - [Startup Screen](docs/StartupScreen.md) - Startup screen of the launcher: settings, archive layout and behavior

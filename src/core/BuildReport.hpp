@@ -12,8 +12,8 @@ namespace appbox
 /**
  * @brief Final state of one build run.
  *
- * The state drives the message shown inside the build progress dialog once
- * the background pack thread finished.
+ * The state drives the fields the action dialog shows once the background
+ * pack thread finished.
  */
 enum class BuildOutcome
 {
@@ -114,39 +114,7 @@ inline constexpr const char* kBuildCancelledError = "cancelled by the user";
 using BuildProgressCallback = std::function<bool(const BuildProgress&)>;
 
 /**
- * @brief Room a message needs inside the build progress dialog.
- *
- * The native dialog keeps the size it was created with and does not grow when
- * a later message is longer, which would push its buttons out of the visible
- * area; the measured room tells the dialog when a message needs more space.
- */
-struct MessageExtent
-{
-    /**
-     * @brief Number of lines of the message.
-     */
-    std::size_t lines = 1;
-
-    /**
-     * @brief Display width of the longest line.
-     */
-    std::size_t width = 0;
-};
-
-/**
- * @brief Measure the room a message needs inside the build progress dialog.
- *
- * The width counts characters and not bytes: a character outside of the ASCII
- * range is a single character of a double byte script and occupies two columns
- * of the dialog font.
- *
- * @param[in] text UTF-8 message text.
- * @return Room the message needs.
- */
-MessageExtent MeasureMessageExtent(const std::string& text);
-
-/**
- * @brief Format an elapsed duration for the build progress dialog.
+ * @brief Format an elapsed duration for the elapsed row of an action dialog.
  *
  * The result is `mm:ss` and switches to `h:mm:ss` once the run lasts an hour
  * or longer, so the text keeps a fixed width in the common case.
@@ -155,52 +123,6 @@ MessageExtent MeasureMessageExtent(const std::string& text);
  * @return UTF-8 text, e.g. `"00:12"`.
  */
 std::string FormatElapsed(std::chrono::milliseconds elapsed);
-
-/**
- * @brief Build the progress text of the build progress dialog.
- *
- * The first line names the stage, the number of handled files and the elapsed
- * time, so a long run does not only show a counter. The file which is being
- * handled follows on a line of its own, which the dialog shows as a detail
- * line in a smaller font. The elapsed time is part of the text because the
- * dialog itself is created without the timing flags of wxWidgets, which would
- * add a collapsible details area the user has to open first.
- *
- * @param[in] progress Progress report of the running stage.
- * @param[in] elapsed Time since the run started.
- * @return UTF-8 message text.
- */
-std::string BuildProgressMessage(const BuildProgress& progress, std::chrono::milliseconds elapsed);
-
-/**
- * @brief Build the result text of the build progress dialog.
- *
- * The text is shown in the same dialog which reported the packing progress
- * before, so it replaces the progress message of that dialog. Outcomes which
- * leave an archive behind also report the path of that archive on a line of
- * its own, introduced by a label which tells what the path is, so the user
- * does not have to look it up in the output box of the window.
- *
- * @param[in] outcome Final state of the build run.
- * @param[in] archive_path Path of the written archive, empty when the run did
- *                         not produce one.
- * @param[in] error Error description, only used by BuildOutcome::Failed.
- * @return UTF-8 message text.
- */
-std::string BuildResultMessage(BuildOutcome outcome, const std::wstring& archive_path, const std::string& error);
-
-/**
- * @brief Map a packing progress report onto the value of the progress dialog.
- *
- * The maximum value of the dialog is reserved for the finished state: reaching
- * it turns the dialog into the modal completion state, so a progress report
- * must never reach it while the run is still going on.
- *
- * @param[in] done Number of files packed so far.
- * @param[in] range Maximum value of the progress dialog.
- * @return A value in `[0, range - 1]`, or 0 when range is not positive.
- */
-int BuildProgressValue(std::size_t done, int range);
 
 } // namespace appbox
 

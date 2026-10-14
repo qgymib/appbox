@@ -173,6 +173,7 @@ set(APPBOX_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/AboutInfo.cpp"
+    "${APPBOX_SOURCE_DIR}/core/ActionThrottle.cpp"
     "${APPBOX_SOURCE_DIR}/core/ApplicationIcon.cpp"
     "${APPBOX_SOURCE_DIR}/core/ApplicationMetadata.cpp"
     "${APPBOX_SOURCE_DIR}/core/BuildReport.cpp"
@@ -182,6 +183,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/EnvironmentModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/FilesystemIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/FilesystemIsolationModel.cpp"
+    "${APPBOX_SOURCE_DIR}/core/KnownFolderReference.cpp"
     "${APPBOX_SOURCE_DIR}/core/NetworkIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/NetworkModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/PackModel.cpp"
@@ -194,6 +196,11 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/RegistryHive.cpp"
     "${APPBOX_SOURCE_DIR}/core/RegistryIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/RegistryModel.cpp"
+    "${APPBOX_SOURCE_DIR}/core/SnapshotApply.cpp"
+    "${APPBOX_SOURCE_DIR}/core/SnapshotCapture.cpp"
+    "${APPBOX_SOURCE_DIR}/core/SnapshotDiff.cpp"
+    "${APPBOX_SOURCE_DIR}/core/SnapshotModel.cpp"
+    "${APPBOX_SOURCE_DIR}/core/SnapshotStore.cpp"
     "${APPBOX_SOURCE_DIR}/core/StartupScreen.cpp"
     "${APPBOX_SOURCE_DIR}/core/StartupTree.cpp"
     "${APPBOX_SOURCE_DIR}/core/TracerModel.cpp"
@@ -209,6 +216,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/tracer/TargetProgram.cpp"
     "${APPBOX_SOURCE_DIR}/tracer/TracedModules.cpp"
     "${APPBOX_SOURCE_DIR}/widget/AboutDialog.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/ActionDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/DataViewTooltip.cpp"
     "${APPBOX_SOURCE_DIR}/widget/DebugPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/EnvironmentPanel.cpp"
@@ -302,6 +310,11 @@ target_link_libraries(AppBox PRIVATE version)
 find_package(ZLIB REQUIRED)
 find_package(libzip REQUIRED)
 target_link_libraries(AppBox PRIVATE libzip::zip)
+
+# Snapshot files of the capture workspace are SQLite databases, so the core
+# links the library of the submodule (see cmake/Findsqlite.cmake).
+find_package(sqlite REQUIRED)
+target_link_libraries(AppBox PRIVATE sqlite::sqlite3)
 
 ###############################################################################
 # Embed the payloads

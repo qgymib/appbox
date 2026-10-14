@@ -177,6 +177,13 @@ isolation has for a folder. The content of the hidden store is not lost: a layer
 which gives the entry another mode makes it visible again, see
 [Patch layers](#patch-layers).
 
+`Hide` is also what the capture of the packer writes for an entry a snapshot
+found missing: the entry is added with the data of the older snapshot and the
+mode `Hide`, which keeps the entry of the host invisible for the packaged
+application without deleting anything (see [Snapshot Capture](Snapshot.md)). A
+key which is gone hides its whole subtree with one entry, so the packer writes
+the shallowest key of such a subtree and the values below it are covered by it.
+
 ### Value modes
 
 The mode of a value decides how the value itself is seen:

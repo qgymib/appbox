@@ -12,6 +12,12 @@
 /** Command id of the "Startup Files" tool. */
 extern const int kToolbarStartupFiles;
 
+/** Command id of the "Capture Before" tool. */
+extern const int kToolbarCaptureBefore;
+
+/** Command id of the "Capture and Diff" tool. */
+extern const int kToolbarCaptureAndDiff;
+
 /** Command id of the "Build" tool. */
 extern const int kToolbarBuild;
 
@@ -22,9 +28,12 @@ extern const int kToolbarBuildAndRun;
  * @brief Native toolbar of the packer.
  *
  * The bar carries the commands of the packaging workflow in the order they are
- * used: `Startup Files` selects the main program, `Build` writes the archive
- * and `Build and Run` writes the archive and starts it. Every tool is drawn
- * with its icon above its label and explains itself with a tooltip.
+ * used: `Capture Before` keeps the state of the machine as the baseline of a
+ * capture, `Capture and Diff` writes the difference of the baseline and the
+ * state of the machine into the workspaces, `Startup Files` selects the main
+ * program, `Build` writes the archive and `Build and Run` writes the archive
+ * and starts it. Every tool is drawn with its icon above its label and
+ * explains itself with a tooltip.
  *
  * The bar only raises tool events; every action lives in the frame.
  */

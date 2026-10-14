@@ -502,6 +502,28 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
         }
     }
 
+    /*
+     * The entries the archive hides are listed preset directory by preset
+     * directory as well, so the order of the document does not depend on the
+     * order they were added in.
+     */
+    for (const auto& preset : PresetDirectories())
+    {
+        for (const auto& entry : model.AllWhiteouts())
+        {
+            if (entry.preset_id != preset.id)
+            {
+                continue;
+            }
+
+            ProjectWhiteoutRecord record;
+            record.preset_id = entry.preset_id;
+            record.target_dir = entry.target_dir;
+            record.name = entry.name;
+            document.whiteouts.push_back(std::move(record));
+        }
+    }
+
     for (const auto& key : registry.Root().children)
     {
         document.registry.push_back(MakeRegistryKeyRecord(key));
@@ -611,6 +633,20 @@ bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, Reg
 
         std::string detail;
         if (!candidate.RestoreVirtualDirectory(directory.preset_id, directory.path, detail))
+        {
+            error = Scoped(scope, detail);
+            return false;
+        }
+    }
+
+    index = 0;
+    for (const auto& entry : document.whiteouts)
+    {
+        const auto scope = "whiteouts[" + std::to_string(index) + "]";
+        ++index;
+
+        std::string detail;
+        if (!candidate.RestoreWhiteout(entry.preset_id, entry.target_dir, entry.name, detail))
         {
             error = Scoped(scope, detail);
             return false;

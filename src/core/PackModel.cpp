@@ -1,4 +1,5 @@
 #include "PackModel.hpp"
+#include "FilesystemMarker.hpp"
 #include "StartupFileType.hpp"
 #include "WString.hpp"
 #include <algorithm>
@@ -216,6 +217,32 @@ bool IsPathBelow(const std::wstring& path, const std::wstring& ancestor)
 }
 
 /**
+ * @brief Whether a name is one of the names the view reserves for its markers.
+ *
+ * The marker of an entry is a sibling of the entry, so a name which carries
+ * the suffix of a whiteout, and the name of the opaque marker itself, name the
+ * view rather than an entry it holds.
+ *
+ * @param[in] name Name to check.
+ * @return true when the name is reserved.
+ */
+bool IsMarkerName(const std::wstring& name)
+{
+    if (EqualsIgnoreCase(name, std::wstring(appbox::filesystem_marker::kOpaqueName)))
+    {
+        return true;
+    }
+
+    const auto suffix = std::wstring(appbox::filesystem_marker::kWhiteoutSuffix);
+    if (name.size() <= suffix.size())
+    {
+        return false;
+    }
+
+    return EqualsIgnoreCase(name.substr(name.size() - suffix.size()), suffix);
+}
+
+/**
  * @brief Whether one startup file refers to one file of the view.
  * @param[in] file Startup file to test.
  * @param[in] preset_id Identifier of the preset directory.
@@ -275,12 +302,14 @@ void PackModel::Clear()
     imports_.clear();
     imported_files_.clear();
     directories_.clear();
+    whiteouts_.clear();
     startup_files_.clear();
 }
 
 bool PackModel::IsEmpty() const
 {
-    return imports_.empty() && imported_files_.empty() && directories_.empty() && startup_files_.empty();
+    return imports_.empty() && imported_files_.empty() && directories_.empty() && whiteouts_.empty() &&
+           startup_files_.empty();
 }
 
 bool PackModel::ImportFolder(const std::string& preset_id, const std::wstring& source_path, std::string& error)
@@ -361,6 +390,22 @@ void PackModel::RemoveImport(const std::string& preset_id, const std::wstring& i
                                                          EqualsIgnoreCase(segments.front(), removed.import_name);
                                               }),
                                directories_.end());
+
+            /*
+             * An entry the removed folder hid has no parent of the view
+             * anymore, so the marker goes with the folder which carried it.
+             */
+            whiteouts_.erase(std::remove_if(whiteouts_.begin(), whiteouts_.end(),
+                                            [&removed](const WhiteoutEntry& entry) {
+                                                if (entry.preset_id != removed.preset_id)
+                                                {
+                                                    return false;
+                                                }
+                                                const auto segments = Split(entry.target_dir, L"\\");
+                                                return !segments.empty() &&
+                                                       EqualsIgnoreCase(segments.front(), removed.import_name);
+                                            }),
+                             whiteouts_.end());
 
             /* Startup files of the removed folder have no lower layer anymore. */
             startup_files_.erase(std::remove_if(startup_files_.begin(), startup_files_.end(),
@@ -660,6 +705,9 @@ bool PackModel::RemoveVirtualDirectory(const std::string& preset_id, const std::
                                                   IsPathBelow(directory.target_dir, path));
                                       }),
                        directories_.end());
+
+    /* The entries the removed folder hid have no parent of the view anymore. */
+    RemoveWhiteoutsUnder(preset_id, path);
     return true;
 }
 
@@ -752,6 +800,162 @@ bool PackModel::RestoreVirtualDirectory(const std::string& preset_id, const std:
     directory.target_dir = CanonicalDirectoryPath(preset_id, path);
     directories_.push_back(std::move(directory));
     return true;
+}
+
+bool PackModel::AddWhiteout(const std::string& preset_id, const std::wstring& target_dir, const std::wstring& name,
+                            std::string& error)
+{
+    PresetDirectory preset;
+    if (!FindPresetDirectory(preset_id, preset))
+    {
+        error = "unknown preset directory: " + preset_id;
+        return false;
+    }
+
+    const auto directory = NormalizeRelativeDir(target_dir);
+    if (!target_dir.empty() && directory.empty())
+    {
+        error = "the target directory is not a valid relative path";
+        return false;
+    }
+
+    if (!IsPlainName(name))
+    {
+        error = "'" + WideToUTF8(name) + "' is not a usable name";
+        return false;
+    }
+
+    /*
+     * The marker of an entry is a sibling of the entry, so a name the view
+     * reserves for its markers names no entry which could be hidden.
+     */
+    if (IsMarkerName(name))
+    {
+        error = "'" + WideToUTF8(name) + "' is a name the sandbox view reserves";
+        return false;
+    }
+
+    if (HasWhiteout(preset_id, directory.empty() ? name : directory + L"\\" + name))
+    {
+        error = "'" + WideToUTF8(name) + "' is hidden already";
+        return false;
+    }
+
+    WhiteoutEntry entry;
+    entry.preset_id = preset_id;
+    entry.target_dir = directory;
+    entry.name = name;
+    whiteouts_.push_back(std::move(entry));
+    return true;
+}
+
+bool PackModel::RemoveWhiteout(const std::string& preset_id, const std::wstring& target_dir, const std::wstring& name)
+{
+    const auto directory = NormalizeRelativeDir(target_dir);
+
+    for (auto it = whiteouts_.begin(); it != whiteouts_.end(); ++it)
+    {
+        if (it->preset_id == preset_id && EqualsIgnoreCase(it->target_dir, directory) &&
+            EqualsIgnoreCase(it->name, name))
+        {
+            whiteouts_.erase(it);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool PackModel::RemoveWhiteoutsUnder(const std::string& preset_id, const std::wstring& target_dir)
+{
+    const auto directory = NormalizeRelativeDir(target_dir);
+
+    /*
+     * An empty directory names the layer root, which holds every entry of the
+     * preset directory, so all of them are dropped in that case.
+     */
+    const bool every_entry = directory.empty();
+
+    const auto before = whiteouts_.size();
+    whiteouts_.erase(std::remove_if(whiteouts_.begin(), whiteouts_.end(),
+                                    [&](const WhiteoutEntry& entry) {
+                                        if (entry.preset_id != preset_id)
+                                        {
+                                            return false;
+                                        }
+                                        return every_entry || EqualsIgnoreCase(entry.target_dir, directory) ||
+                                               IsPathBelow(entry.target_dir, directory);
+                                    }),
+                     whiteouts_.end());
+
+    return whiteouts_.size() != before;
+}
+
+std::vector<WhiteoutEntry> PackModel::WhiteoutsOf(const std::string& preset_id, const std::wstring& target_dir) const
+{
+    const auto directory = NormalizeRelativeDir(target_dir);
+
+    std::vector<WhiteoutEntry> result;
+    for (const auto& entry : whiteouts_)
+    {
+        if (entry.preset_id == preset_id && EqualsIgnoreCase(entry.target_dir, directory))
+        {
+            result.push_back(entry);
+        }
+    }
+    return result;
+}
+
+const std::vector<WhiteoutEntry>& PackModel::AllWhiteouts() const
+{
+    return whiteouts_;
+}
+
+bool PackModel::HasWhiteout(const std::string& preset_id, const std::wstring& path) const
+{
+    const auto normalized = NormalizeRelativeDir(path);
+    const auto directory = ParentDirectory(normalized);
+    const auto name = LeafName(normalized);
+
+    return std::any_of(whiteouts_.begin(), whiteouts_.end(), [&](const WhiteoutEntry& entry) {
+        return entry.preset_id == preset_id && EqualsIgnoreCase(entry.target_dir, directory) &&
+               EqualsIgnoreCase(entry.name, name);
+    });
+}
+
+bool PackModel::RestoreWhiteout(const std::string& preset_id, const std::wstring& target_dir, const std::wstring& name,
+                                std::string& error)
+{
+    /*
+     * A record of a document names an entry of the host which does not have to
+     * exist on the machine which reads the document, so the shape of the
+     * record is the only thing which is validated; that is what AddWhiteout()
+     * checks as well.
+     */
+    return AddWhiteout(preset_id, target_dir, name, error);
+}
+
+bool PackModel::IsDirectoryOfView(const std::string& preset_id, const std::wstring& target_dir) const
+{
+    PresetDirectory preset;
+    if (!FindPresetDirectory(preset_id, preset))
+    {
+        return false;
+    }
+
+    const auto path = NormalizeRelativeDir(target_dir);
+    if (!target_dir.empty() && path.empty())
+    {
+        /* A path which leaves the preset directory is not a folder of the view. */
+        return false;
+    }
+
+    /*
+     * The rule is the one which decides whether a folder can hold an entry:
+     * the layer root, a folder the user created, an import root and a folder
+     * below an import are folders of the view.
+     */
+    return DirectoryParentExists(preset_id, path, false);
 }
 
 std::vector<ImportedFile> PackModel::FilesOf(const std::string& preset_id, const std::wstring& target_dir) const

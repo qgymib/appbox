@@ -16,8 +16,12 @@
 #include "core/PackModel.hpp"
 #include "core/ProjectType.hpp"
 #include "core/RegistryModel.hpp"
+#include "core/SnapshotApply.hpp"
+#include "core/SnapshotCapture.hpp"
+#include "core/SnapshotStore.hpp"
 #include "core/StartupScreen.hpp"
 
+class ActionDialog;
 class DebugPanel;
 class EnvironmentPanel;
 class FilesystemPanel;
@@ -26,13 +30,12 @@ class RegistryPanel;
 class SettingsPanel;
 class SideNav;
 class Toolbar;
-class wxProgressDialog;
 class wxSimplebook;
-class wxTimer;
-class wxTimerEvent;
 
 wxDECLARE_EVENT(APPBOX_PACK_PROGRESS, wxThreadEvent);
 wxDECLARE_EVENT(APPBOX_PACK_FINISHED, wxThreadEvent);
+wxDECLARE_EVENT(APPBOX_CAPTURE_PROGRESS, wxThreadEvent);
+wxDECLARE_EVENT(APPBOX_CAPTURE_FINISHED, wxThreadEvent);
 
 /**
  * @brief Result of one background pack run.
@@ -64,12 +67,62 @@ struct PackOutcome
 };
 
 /**
+ * @brief Result of one background capture run.
+ *
+ * The run reads the state of the machine into one phase of a snapshot file,
+ * and a run which compares the state with the baseline of the session applies
+ * the difference to copies of the models, which the window adopts when the run
+ * is over. The copies keep the background thread from reading or writing the
+ * models the workspace shows.
+ */
+struct CaptureOutcome
+{
+    /**
+     * @brief Error description, empty when the run succeeded.
+     */
+    std::string error;
+
+    /**
+     * @brief Whether the difference was applied to the models below.
+     */
+    bool applied = false;
+
+    /**
+     * @brief The pack model with the difference applied, see applied.
+     */
+    appbox::PackModel model;
+
+    /**
+     * @brief The registry with the difference applied, see applied.
+     */
+    appbox::RegistryModel registry;
+
+    /**
+     * @brief The environment with the difference applied, see applied.
+     */
+    appbox::EnvironmentModel environment;
+
+    /**
+     * @brief Number of the entries the run wrote into the phase, all zero for
+     *        a run which failed.
+     */
+    appbox::SnapshotPhaseCounts counts;
+
+    /**
+     * @brief Summary of the difference and of what it did, empty for a
+     *        baseline run.
+     */
+    std::wstring summary;
+};
+
+/**
  * @brief Main window of the packer.
  *
  * The window follows the three part layout of the reference packaging tool:
  * the toolbar on top, the vertical icon navigation on the left and the
  * workspace on the right. The pack run itself executes on a background thread
- * and reports back through thread events.
+ * and reports back through thread events, and so does the capture of the state
+ * of the machine, which the two capture commands of the toolbar start.
  */
 class MainFrame : public wxFrame
 {
@@ -246,6 +299,58 @@ private:
     void OnExportConfiguration(wxCommandEvent& event);
 
     /**
+     * @brief Keep the state of the machine as the baseline of the session.
+     *
+     * The command asks for the snapshot file to write first and reads the
+     * folders of the preset directories, the registry and the environment of
+     * the machine into it, which is the state the next comparison uses, see
+     * OnCaptureAndDiff().
+     *
+     * @param[in] event Command event.
+     */
+    void OnCaptureBefore(wxCommandEvent& event);
+
+    /**
+     * @brief Compare the state of the machine with the baseline of the session.
+     *
+     * The state the machine is in now is written into the phase after the
+     * change of the snapshot file which holds the baseline, and the difference
+     * of the two phases is applied to the filesystem, the registry and the
+     * environment workspace, so the session describes the change the machine
+     * went through and the archive carries it.
+     *
+     * The comparison does not become the baseline of the next one: the file
+     * holds a state which the machine has already left behind, so a new
+     * `Capture Before` is required.
+     *
+     * @param[in] event Command event.
+     */
+    void OnCaptureAndDiff(wxCommandEvent& event);
+
+    /**
+     * @brief Save the baseline of the session into another snapshot file.
+     *
+     * The command writes the state before the change of the file the session
+     * uses into a file the user picks, so a baseline can be kept and loaded
+     * later on; the session keeps working with its own file.
+     *
+     * @param[in] event Command event.
+     */
+    void OnSaveSnapshotAs(wxCommandEvent& event);
+
+    /**
+     * @brief Load a snapshot file and use it as the baseline.
+     *
+     * Only the path of the file is kept: the state before the change of the
+     * file is the baseline and the comparison writes the state after the
+     * change into the same file, which is what lets a session compare the
+     * machine with a state an earlier run captured.
+     *
+     * @param[in] event Command event.
+     */
+    void OnLoadSnapshot(wxCommandEvent& event);
+
+    /**
      * @brief Merge a `.reg` file into the registry workspace.
      *
      * The file is parsed first and only applied when it is valid as a whole,
@@ -283,7 +388,7 @@ private:
     /**
      * @brief Start the background pack run.
      *
-     * The run reports its progress into a single progress dialog which also
+     * The run reports its progress into a single action dialog which also
      * presents the result of the run once it finished.
      *
      * @param[in] run_after Whether the archive is extracted and started after
@@ -292,7 +397,7 @@ private:
     void StartPack(bool run_after);
 
     /**
-     * @brief Forward pack progress into the progress dialog.
+     * @brief Forward pack progress into the action dialog.
      *
      * The report names the file which is being handled, so the dialog shows
      * what the run is working on instead of only counting files.
@@ -302,47 +407,64 @@ private:
     void OnPackProgress(wxThreadEvent& event);
 
     /**
-     * @brief Refresh the elapsed time of the progress dialog.
+     * @brief Show the last pack report in the action dialog.
      *
-     * A single large file keeps the worker busy without producing a new
-     * report, so the time shown by the dialog is refreshed by a timer as well.
-     *
-     * @param[in] event Timer event of the progress timer.
+     * The dialog keeps the elapsed time on its own clock, so a report only
+     * updates the action, the object, the file counter and the progress bar.
      */
-    void OnProgressTimer(wxTimerEvent& event);
+    void ApplyPackProgress();
 
     /**
-     * @brief Show the last progress report and the current elapsed time.
-     *
-     * Both a progress report of the worker thread and the progress timer end
-     * up here, so the text of the dialog is composed in a single place.
-     */
-    void RefreshProgressDialog();
-
-    /**
-     * @brief Show a message inside the progress dialog.
-     *
-     * The native task dialog sizes itself from the message it was created with
-     * and keeps that size when a later message is longer, which pushes the
-     * buttons at its bottom out of the visible area. The dialog is therefore
-     * re-fitted as soon as a message needs more room than every message before
-     * it; the room needed only grows, so the dialog does not resize back and
-     * forth while the run is going on.
-     *
-     * @param[in] value Progress value to show.
-     * @param[in] text Message text.
-     */
-    void UpdateProgressDialog(int value, const wxString& text);
-
-    /**
-     * @brief Finish the pack run and present the result inside the progress dialog.
+     * @brief Finish the pack run and present the result inside the action dialog.
      *
      * The dialog is reused: it keeps its progress bar and shows the result
-     * text until the user closes it, so a build run needs a single dialog.
+     * in its fields until the user closes it, so a build run needs a single
+     * dialog.
      *
      * @param[in] event Thread event carrying the pack outcome.
      */
     void OnPackFinished(wxThreadEvent& event);
+
+    /**
+     * @brief Start the background capture run.
+     *
+     * @param[in] diff Whether the run compares the state with the baseline of
+     *                 the session and writes the difference into the
+     *                 workspaces; a run without it writes the baseline.
+     * @param[in] path Path of the snapshot file the run works with: the file
+     *                 which is written as the baseline, or the file which
+     *                 holds the baseline and receives the state after the
+     *                 change.
+     */
+    void StartCapture(bool diff, const std::wstring& path);
+
+    /**
+     * @brief Forward capture progress into the action dialog.
+     * @param[in] event Thread event carrying the progress report.
+     */
+    void OnCaptureProgress(wxThreadEvent& event);
+
+    /**
+     * @brief Show the last capture report in the action dialog.
+     *
+     * The dialog keeps the elapsed time and the cycle of its bar on its own
+     * clock, so a report only updates the action, the object and the entry
+     * counter.
+     */
+    void ApplyCaptureProgress();
+
+    /**
+     * @brief Finish the capture run and present the result.
+     *
+     * The result of a baseline run is the file which was written and the
+     * counts of the state it holds, the result of a comparison is the summary
+     * of the difference which was written into the workspaces. The window
+     * keeps the file of a baseline as the baseline of the session and drops
+     * the one of a comparison, which the user takes again before the next one.
+     *
+     * @param[in] event Thread event carrying the capture outcome.
+     */
+    void OnCaptureFinished(wxThreadEvent& event);
 
     appbox::PackModel model_;
 
@@ -428,19 +550,37 @@ private:
     DebugPanel*       debug_panel_ = nullptr;
     SettingsPanel*    settings_panel_ = nullptr;
 
+    /**
+     * @brief Snapshot file which holds the baseline of the session.
+     *
+     * The file is the baseline: `Capture and Diff` writes the state of the
+     * machine after the change into its phase after the change and compares
+     * the two phases of the file. An empty path means that the session holds
+     * no baseline, which is what the commands report when a comparison is
+     * asked for before a state was captured.
+     *
+     * The path belongs to the session alone: it names a file of the machine
+     * the packer runs on and not a setting of the configuration, so it never
+     * travels with the project file.
+     */
+    std::wstring snapshot_path_;
+
+    /**
+     * @brief Snapshot file the running capture works with.
+     *
+     * The path is kept while the run is in flight, because the result of the
+     * run decides what the session does with it: a baseline which was read as
+     * a whole becomes the baseline of the session, while a comparison leaves
+     * the session without one.
+     */
+    std::wstring capture_path_;
+
     bool output_path_edited_ = false;
 
     std::thread       pack_thread_;
-    wxProgressDialog* progress_dialog_ = nullptr;
-    wxTimer*          progress_timer_ = nullptr;
+    ActionDialog*     progress_dialog_ = nullptr;
     std::atomic<bool> pack_cancelled_{ false };
     bool              run_after_pack_ = false;
-
-    /**
-     * @brief Time the running pack thread started, used for the elapsed time
-     *        shown by the progress dialog.
-     */
-    std::chrono::steady_clock::time_point pack_start_;
 
     /**
      * @brief Number of files the packing stage reports.
@@ -451,7 +591,7 @@ private:
     std::size_t pack_phase_total_ = 0;
 
     /**
-     * @brief Maximum of the progress dialog, which is also the value of its
+     * @brief Maximum of the progress bar, which is also the value of its
      *        finished state.
      */
     int pack_range_ = 0;
@@ -459,24 +599,29 @@ private:
     /**
      * @brief Last report of the running stage.
      *
-     * The timer reuses it to refresh the elapsed time without a new report.
+     * The action dialog reads it whenever a report of the worker thread
+     * arrives.
      */
     appbox::BuildProgress last_progress_;
-
-    /**
-     * @brief Room the messages shown by the progress dialog needed so far.
-     *
-     * The native task dialog keeps the size it was created with, so a message
-     * which needs more room than every message before it has to re-fit the
-     * dialog, see UpdateProgressDialog().
-     */
-    std::size_t progress_fitted_lines_ = 0;
-    std::size_t progress_fitted_width_ = 0;
 
     /**
      * @brief Whether the run finished and the dialog presents its result.
      */
     bool pack_finished_ = false;
+
+    std::thread       capture_thread_;
+    ActionDialog*     capture_dialog_ = nullptr;
+    std::atomic<bool> capture_cancelled_{ false };
+
+    /**
+     * @brief Whether the capture finished and its dialog was dismissed.
+     */
+    bool capture_finished_ = false;
+
+    /**
+     * @brief Last progress report of the running capture.
+     */
+    appbox::CaptureProgress last_capture_progress_;
 };
 
 #endif // APPBOX_PACKER_WIDGET_MAIN_FRAME_HPP

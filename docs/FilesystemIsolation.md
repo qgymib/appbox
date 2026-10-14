@@ -174,6 +174,33 @@ target directory below an **imported** folder only: a folder which hangs
 directly below a preset directory cannot take imported files, it is an empty
 directory of the layer.
 
+### Entries the archive hides
+
+The workspace shows an entry the archive hides as a row of the folder it
+belongs to: the name of the row is the name of the entry and the `Isolation`
+column shows `Whiteout`, which is what the marker of the entry does at run
+time. The cell offers no other mode, because the marker is what hides the entry
+and not a mode of the isolation table: a hidden entry is an entry of the layer
+of its preset directory and not a mode of a path.
+
+Such a row is written by the capture of the packer, which reports the entries a
+snapshot found missing after an installation (see
+[Snapshot Capture](Snapshot.md)); `Remove` drops the row and with it the marker.
+A row whose parent directory is not a folder of the view — a folder nothing was
+imported from — is listed by the preset directory itself, so every hidden entry
+stays visible.
+
+The entries travel with the project file as the `whiteouts` member:
+
+```json
+"whiteouts": [ { "preset": "program_files", "target_dir": "MyApp\\bin",
+                 "name": "old.dll" } ]
+```
+
+The member is written only while the session hides an entry, like the
+`directories` member, so the text of a project file of a session which hides
+nothing stays unchanged.
+
 ### The isolation file
 
 The packer writes the modes of the workspace as a JSON document, which `Build`
@@ -315,6 +342,7 @@ carries:
 app/filesystem/isolation.json          isolation modes of the filesystem workspace
 app/filesystem/<layer key>/<import>/... imported folder content
 app/filesystem/<layer key>/<folder>/   folder created in the workspace
+app/filesystem/<layer key>/<name>.$APPBOX_DELETE$  whiteout marker of a hidden entry
 app/registry/user.hiv                  virtual registry of the workspace
 app/registry/isolation.json            isolation modes of the registry
 app/network/isolation.json             network configuration of the workspace
@@ -325,6 +353,13 @@ layer of its preset directory, so a preset directory whose folders are the only
 content it has still becomes a layer of the archive. A directory entry carries
 no file, so it is not covered by the progress total of a pack run, which counts
 the files which come from an import.
+
+An entry the session hides travels as the whiteout marker of the entry, an
+empty file of the layer of its preset directory. The marker is a name of the
+view and not an entry it holds, so the layer only carries the directory chain
+which holds it, and a marker which any layer of the view holds is honoured: that
+is what lets an archive carry the delete of an entry. A marker is a file entry
+of the archive, so it is covered by the progress total like an imported file.
 
 A patch package carries the same resource tree rooted at the archive root and is
 applied on top of the archive: the layers and the isolation modes of a package

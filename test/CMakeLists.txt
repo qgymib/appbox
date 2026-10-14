@@ -21,6 +21,7 @@ add_executable(AppBoxTests
     # Unit tests. They run in the process of the test executable and do not
     # start the launcher, so they are listed first and run first.
     "unit/AboutInfo.cpp"
+    "unit/ActionThrottle.cpp"
     "unit/ApplicationIcon.cpp"
     "unit/ApplicationMetadata.cpp"
     "unit/BuildReport.cpp"
@@ -32,8 +33,10 @@ add_executable(AppBoxTests
     "unit/EnvironmentTable.cpp"
     "unit/ExpandKnownFolder.cpp"
     "unit/FilesystemIsolation.cpp"
+    "unit/FilesystemMarker.cpp"
     "unit/GetExecutableDir.cpp"
     "unit/HiveMerge.cpp"
+    "unit/KnownFolderReference.cpp"
     "unit/HookTransaction.cpp"
     "unit/IsolationDocument.cpp"
     "unit/Log.cpp"
@@ -57,6 +60,11 @@ add_executable(AppBoxTests
     "unit/RemoteClient.cpp"
     "unit/RpcCodec.cpp"
     "unit/Shell.cpp"
+    "unit/SnapshotApply.cpp"
+    "unit/SnapshotCapture.cpp"
+    "unit/SnapshotDiff.cpp"
+    "unit/SnapshotModel.cpp"
+    "unit/SnapshotStore.cpp"
     "unit/Socks5.cpp"
     "unit/Splash.cpp"
     "unit/StartupFileType.cpp"
@@ -256,6 +264,8 @@ add_executable(AppBoxTests
     "e2e/Reg_WriteCopy_CreateDisposition.cpp"
     "e2e/Reg_WriteCopy_WriteOpen_CopyUp.cpp"
     "e2e/Reg_WriteValue_NewKey.cpp"
+    "e2e/Snapshot_CapturedFolderIsVisible.cpp"
+    "e2e/Snapshot_WhiteoutHidesAHostEntry.cpp"
 
     # The operations which are executed inside the sandbox. The launcher starts
     # this executable as the probe process of a case.
@@ -350,6 +360,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/WinCall.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/Splash.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/AboutInfo.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ActionThrottle.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationIcon.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationMetadata.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
@@ -359,6 +370,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/KnownFolderReference.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/NetworkIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/NetworkModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackModel.cpp
@@ -371,6 +383,11 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryHive.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/SnapshotApply.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/SnapshotCapture.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/SnapshotDiff.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/SnapshotModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/SnapshotStore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/StartupScreen.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/StartupTree.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipReader.cpp
@@ -495,6 +512,10 @@ target_link_libraries(AppBoxTests PRIVATE dbghelp)
 find_package(ZLIB REQUIRED)
 find_package(libzip REQUIRED)
 target_link_libraries(AppBoxTests PRIVATE libzip::zip)
+
+# The snapshot store of the packer core writes SQLite database files.
+find_package(sqlite REQUIRED)
+target_link_libraries(AppBoxTests PRIVATE sqlite::sqlite3)
 
 ###############################################################################
 # Test entries

@@ -167,7 +167,8 @@ private:
             ImportedFolder, ///< An imported folder below a preset directory.
             VirtualFolder,  ///< A folder the user created inside the view.
             HostEntry,      ///< An entry of the host folder of an import.
-            ImportedFile    ///< A file imported on its own.
+            ImportedFile,   ///< A file imported on its own.
+            Whiteout        ///< An entry of the host the archive hides.
         };
 
         /**
@@ -323,6 +324,32 @@ private:
      * @param[in] node Data of the selected folder node.
      */
     void ListVirtualFolderContent(const TreeNode& node);
+
+    /**
+     * @brief Fill the rows with the entries a directory of the view hides.
+     *
+     * A hidden entry has no host counterpart of its own: it is an entry of the
+     * layer of its preset directory, which the pack run writes as the whiteout
+     * marker of the entry. Its row shows the mode `Whiteout` and offers no
+     * other mode, because the marker is what hides the entry and not a mode of
+     * the isolation table.
+     *
+     * @param[in] preset_id Identifier of the owning preset directory.
+     * @param[in] target_dir Directory relative to the preset directory, empty
+     *            for the layer root.
+     */
+    void ListWhiteouts(const std::string& preset_id, const std::wstring& target_dir);
+
+    /**
+     * @brief Fill the rows with the hidden entries which hang below no folder of the view.
+     *
+     * An entry whose parent directory is not a folder of the view has no list
+     * which could show it, so it is listed by the preset directory it belongs
+     * to. Its source path still names the place of the entry inside the view.
+     *
+     * @param[in] preset_id Identifier of the owning preset directory.
+     */
+    void ListOrphanWhiteouts(const std::string& preset_id);
 
     /**
      * @brief Rebuild the list from the rows matching the search box.

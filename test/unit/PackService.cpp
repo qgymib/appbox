@@ -1671,6 +1671,112 @@ TEST(Unit_PackService, PatchWritesTheFoldersTheUserCreated)
     EXPECT_EQ(ReadEntry(archive, "filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE");
 }
 
+TEST(Unit_PackService, PackWritesTheWhiteoutMarkers)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
+
+    /* An entry inside the import, one of the layer root and one below no folder of the view. */
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"MyApp\\bin", L"old.dll", error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("program_files", std::wstring(), L"legacy.exe", error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("user_profile", L"Missing\\deep", L"gone.txt", error)) << error;
+
+    /* The markers are file entries of the archive, so they are part of the total. */
+    EXPECT_EQ(appbox::ContentFileCount(model), static_cast<std::size_t>(4));
+
+    const auto zip_path = temp.Get() / L"whiteouts.zip";
+    ASSERT_EQ(appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                           appbox::EnvironmentModel(), appbox::ApplicationMetadata(), appbox::StartupScreen{},
+                           FakePayloads(), appbox::CompressionLevel::Normal, zip_path.wstring(), nullptr),
+              "");
+
+    ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
+    zip_t*           archive = closer.archive;
+    ASSERT_NE(archive, nullptr);
+
+    const auto names = EntryNames(archive);
+    EXPECT_EQ(names.count("app/filesystem/#ProgramFiles#/MyApp/bin/old.dll.$APPBOX_DELETE$"),
+              static_cast<std::size_t>(1));
+    EXPECT_EQ(names.count("app/filesystem/#ProgramFiles#/legacy.exe.$APPBOX_DELETE$"), static_cast<std::size_t>(1));
+
+    /* The directory chain of a marker is written, so the layer holds the marker. */
+    EXPECT_EQ(names.count("app/filesystem/#USERPROFILE#/Missing/deep/gone.txt.$APPBOX_DELETE$"),
+              static_cast<std::size_t>(1));
+    EXPECT_EQ(names.count("app/filesystem/#USERPROFILE#/Missing/deep/"), static_cast<std::size_t>(1));
+
+    /* A marker is an empty file. */
+    zip_stat_t stat = {};
+    ASSERT_TRUE(EntryStat(archive, "app/filesystem/#ProgramFiles#/legacy.exe.$APPBOX_DELETE$", stat));
+    EXPECT_EQ(stat.size, static_cast<zip_uint64_t>(0));
+}
+
+TEST(Unit_PackService, PackCountsTheWhiteoutMarkersInTheProgressTotal)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"MyApp", L"old.dll", error)) << error;
+
+    const auto expected_total =
+        appbox::NonContentArchiveEntryCount(appbox::StartupScreen{}) + appbox::ContentFileCount(model);
+
+    std::size_t seen_total = 0;
+    std::size_t max_done = 0;
+    const auto  progress = [&](const appbox::BuildProgress& report) {
+        seen_total = report.total;
+        max_done = report.done > max_done ? report.done : max_done;
+        EXPECT_LE(report.done, report.total);
+        return true;
+    };
+
+    const auto zip_path = temp.Get() / L"whiteouts-progress.zip";
+    ASSERT_EQ(appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                           appbox::EnvironmentModel(), appbox::ApplicationMetadata(), appbox::StartupScreen{},
+                           FakePayloads(), appbox::CompressionLevel::Normal, zip_path.wstring(), progress),
+              "");
+
+    EXPECT_EQ(seen_total, expected_total);
+    EXPECT_EQ(max_done, expected_total);
+}
+
+TEST(Unit_PackService, PatchWritesTheWhiteoutMarkers)
+{
+    TempDir temp;
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.AddWhiteout("program_files", L"MyApp\\bin", L"old.dll", error)) << error;
+
+    const auto zip_path = temp.Get() / L"whiteouts-patch.zip";
+    ASSERT_EQ(appbox::PackPatch(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                                appbox::EnvironmentModel(), appbox::CompressionLevel::Normal, zip_path.wstring(),
+                                nullptr),
+              "");
+
+    ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
+    zip_t*           archive = closer.archive;
+    ASSERT_NE(archive, nullptr);
+
+    /* A patch package roots its resources at the archive root. */
+    const auto names = EntryNames(archive);
+    EXPECT_EQ(names.count("filesystem/#ProgramFiles#/MyApp/bin/old.dll.$APPBOX_DELETE$"), static_cast<std::size_t>(1));
+    EXPECT_EQ(names.count("filesystem/#ProgramFiles#/MyApp/bin/"), static_cast<std::size_t>(1));
+}
+
 TEST(Unit_PackService, PackWritesTheEntriesWithTheLevelOfTheSession)
 {
     TempDir    temp;

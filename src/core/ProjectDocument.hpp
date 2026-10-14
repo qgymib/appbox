@@ -199,6 +199,33 @@ struct ProjectDirectoryRecord
 };
 
 /**
+ * @brief One entry of the host filesystem a project document hides.
+ *
+ * At sandbox runtime the entry is invisible for the packaged application: the
+ * pack run writes the whiteout marker of the entry into the layer of its
+ * preset directory, and a marker which any layer of the view holds is honoured
+ * by the sandbox.
+ */
+struct ProjectWhiteoutRecord
+{
+    /**
+     * @brief Identifier of the owning preset directory.
+     */
+    std::string preset_id;
+
+    /**
+     * @brief Directory relative to the preset directory, empty for the layer
+     *        root.
+     */
+    std::wstring target_dir;
+
+    /**
+     * @brief Name of the hidden entry.
+     */
+    std::wstring name;
+};
+
+/**
  * @brief One startup file of a project document.
  */
 struct ProjectStartupRecord
@@ -469,6 +496,8 @@ struct ProjectEnvironmentRecord
  *   "files": [ { "preset": "user_profile", "target_dir": "MyApp\\data",
  *                "name": "settings.ini", "source": "C:\\tmp\\settings.ini" } ],
  *   "directories": [ { "preset": "program_files", "path": "MyApp\\logs" } ],
+ *   "whiteouts": [ { "preset": "program_files", "target_dir": "MyApp\\bin",
+ *                    "name": "old.dll" } ],
  *   "startup_files": [ { "preset": "program_files", "folder": "MyApp",
  *                        "path": "bin\\app.exe", "trigger": "app",
  *                        "auto_start": true } ],
@@ -503,6 +532,12 @@ struct ProjectEnvironmentRecord
  * was added to the schema later, so a session without one keeps the text it
  * had before. A file which does not name the member describes a session which
  * holds no such folder.
+ *
+ * The `whiteouts` member is written only while the session hides an entry of
+ * the host filesystem, for the same reason as `directories`: the member was
+ * added to the schema later, so a session which hides nothing keeps the text it
+ * had before. A file which does not name the member describes a session which
+ * hides no entry.
  *
  * The `project_type` member is optional as well: a file which does not name it
  * describes a standalone project, which is what every file written before the
@@ -581,6 +616,14 @@ struct ProjectDocument
      * holds no such folder.
      */
     std::vector<ProjectDirectoryRecord> directories;
+
+    /**
+     * @brief The entries of the host filesystem the archive hides.
+     *
+     * A document which does not name the member describes a session which
+     * hides no entry.
+     */
+    std::vector<ProjectWhiteoutRecord> whiteouts;
 
     /**
      * @brief The startup files of the packaged application, in startup order.
@@ -707,6 +750,21 @@ void to_json(nlohmann::ordered_json& json, const ProjectDirectoryRecord& record)
  * @throw ProjectDocumentError The object does not fit the schema.
  */
 void from_json(const nlohmann::ordered_json& json, ProjectDirectoryRecord& record);
+
+/**
+ * @brief Store one hidden entry of a document.
+ * @param[out] json Object which receives the record.
+ * @param[in] record The record to store.
+ */
+void to_json(nlohmann::ordered_json& json, const ProjectWhiteoutRecord& record);
+
+/**
+ * @brief Read one hidden entry of a document.
+ * @param[in] json Object holding the record.
+ * @param[out] record The record to fill.
+ * @throw ProjectDocumentError The object does not fit the schema.
+ */
+void from_json(const nlohmann::ordered_json& json, ProjectWhiteoutRecord& record);
 
 /**
  * @brief Store one startup file of a document.

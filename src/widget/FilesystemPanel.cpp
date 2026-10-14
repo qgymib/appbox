@@ -564,6 +564,10 @@ void FilesystemPanel::ListPresetImports(const TreeNode& node)
 
     /* The folders the user created come after the content which was imported. */
     ListVirtualFolders(node.preset_id, L"");
+
+    /* The entries the archive hides come last, like the other entries of the layer. */
+    ListWhiteouts(node.preset_id, L"");
+    ListOrphanWhiteouts(node.preset_id);
 }
 
 void FilesystemPanel::ListFolderContent(const TreeNode& node)
@@ -647,6 +651,7 @@ void FilesystemPanel::ListFolderContent(const TreeNode& node)
 
     /* The folders the user created come after the content of the host folder. */
     ListVirtualFolders(node.preset_id, target_dir);
+    ListWhiteouts(node.preset_id, target_dir);
 }
 
 void FilesystemPanel::ListVirtualFolders(const std::string& preset_id, const std::wstring& target_dir)
@@ -688,6 +693,43 @@ void FilesystemPanel::ListVirtualFolderContent(const TreeNode& node)
     }
 
     ListVirtualFolders(node.preset_id, target_dir);
+    ListWhiteouts(node.preset_id, target_dir);
+}
+
+void FilesystemPanel::ListWhiteouts(const std::string& preset_id, const std::wstring& target_dir)
+{
+    for (const auto& entry : model_.WhiteoutsOf(preset_id, target_dir))
+    {
+        RowInfo row;
+        row.kind = RowInfo::Kind::Whiteout;
+        row.preset_id = preset_id;
+        row.target_dir = entry.target_dir;
+        row.file_name = entry.name;
+        rows_.push_back(std::move(row));
+    }
+}
+
+void FilesystemPanel::ListOrphanWhiteouts(const std::string& preset_id)
+{
+    for (const auto& entry : model_.AllWhiteouts())
+    {
+        if (entry.preset_id != preset_id || entry.target_dir.empty())
+        {
+            continue;
+        }
+        if (model_.IsDirectoryOfView(preset_id, entry.target_dir))
+        {
+            /* The folder which holds the entry lists it itself. */
+            continue;
+        }
+
+        RowInfo row;
+        row.kind = RowInfo::Kind::Whiteout;
+        row.preset_id = preset_id;
+        row.target_dir = entry.target_dir;
+        row.file_name = entry.name;
+        rows_.push_back(std::move(row));
+    }
 }
 
 void FilesystemPanel::ApplyFilter()
@@ -739,9 +781,11 @@ void FilesystemPanel::AppendRow(const RowInfo& row, std::size_t index)
     /*
      * A row which carries no mode of its own shows the mode it inherits from
      * the closest folder above it, so the mode of a folder reaches the rows
-     * below it.
+     * below it. A hidden entry shows `Whiteout`, which is what the marker of
+     * the entry does at run time.
      */
-    const auto mode = isolation_.EffectiveIsolation(view_path, RowKind(row));
+    const auto mode = row.kind == RowInfo::Kind::Whiteout ? appbox::FilesystemIsolation::Whiteout
+                                                          : isolation_.EffectiveIsolation(view_path, RowKind(row));
 
     /*
      * The filename column carries the icon of the row as well, so its value is
@@ -1149,6 +1193,7 @@ std::wstring FilesystemPanel::RowViewPath(const RowInfo& row) const
     case RowInfo::Kind::HostEntry:
     case RowInfo::Kind::ImportedFile:
     case RowInfo::Kind::VirtualFolder:
+    case RowInfo::Kind::Whiteout:
         return VirtualPath(preset, row.target_dir, row.file_name);
     }
     return {};
@@ -1164,8 +1209,18 @@ wxArrayString FilesystemPanel::IsolationChoices(const wxDataViewItem& item) cons
         return choices;
     }
 
-    const auto kind = RowKind(rows_[static_cast<std::size_t>(index)]);
-    for (const auto& name : appbox::FilesystemIsolationNamesFor(kind))
+    const auto& row = rows_[static_cast<std::size_t>(index)];
+    if (row.kind == RowInfo::Kind::Whiteout)
+    {
+        /*
+         * An empty list leaves the cell without an editor, which is what a
+         * hidden entry needs: the marker of the entry is not a mode of the
+         * isolation table and cannot be replaced by one.
+         */
+        return choices;
+    }
+
+    for (const auto& name : appbox::FilesystemIsolationNamesFor(RowKind(row)))
     {
         choices.Add(wxString(name));
     }
@@ -1235,7 +1290,7 @@ void FilesystemPanel::UpdateToolBarState()
         {
             const auto kind = rows_[static_cast<std::size_t>(index)].kind;
             removable = kind == RowInfo::Kind::ImportedFolder || kind == RowInfo::Kind::ImportedFile ||
-                        kind == RowInfo::Kind::VirtualFolder;
+                        kind == RowInfo::Kind::VirtualFolder || kind == RowInfo::Kind::Whiteout;
         }
         remove_->Enable(removable);
     }
@@ -1434,9 +1489,12 @@ void FilesystemPanel::OnRowContextMenu(wxDataViewEvent& event)
     }
 
     const auto& row = rows_[static_cast<std::size_t>(index)];
-    if (row.is_directory || !appbox::IsStartableFile(row.file_name))
+    if (row.is_directory || row.kind == RowInfo::Kind::Whiteout || !appbox::IsStartableFile(row.file_name))
     {
-        /* Only a startable file of an imported folder can be started. */
+        /*
+         * Only a startable file of an imported folder can be started; a hidden
+         * entry has no file of the host which could be started.
+         */
         return;
     }
 
@@ -1795,6 +1853,24 @@ void FilesystemPanel::OnRemove(wxCommandEvent&)
 
         /* The tree loses the folder as well, so it is rebuilt with the selection kept. */
         RefreshModel();
+        return;
+    }
+
+    if (row.kind == RowInfo::Kind::Whiteout)
+    {
+        const auto      question = "Stop hiding '" + wxString(row.file_name) + "'?";
+        wxMessageDialog dialog(this, question, "Remove", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
+        if (dialog.ShowModal() != wxID_YES)
+        {
+            return;
+        }
+
+        /*
+         * Only the marker is dropped: the entry is an entry of the host
+         * filesystem and no mode of the isolation table is involved.
+         */
+        model_.RemoveWhiteout(row.preset_id, row.target_dir, row.file_name);
+        RefreshList();
         return;
     }
 

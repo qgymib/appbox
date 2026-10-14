@@ -2,6 +2,8 @@
 #include <wx/artprov.h>
 
 extern const int kToolbarStartupFiles = wxNewId();
+extern const int kToolbarCaptureBefore = wxNewId();
+extern const int kToolbarCaptureAndDiff = wxNewId();
 extern const int kToolbarBuild = wxNewId();
 extern const int kToolbarBuildAndRun = wxNewId();
 
@@ -41,8 +43,21 @@ Toolbar::Toolbar(wxWindow* parent, wxWindowID id)
 {
     SetToolBitmapSize(kIconSize);
 
+    /*
+     * The capture commands open the bar: they read the machine instead of the
+     * session, so they are grouped on their own and kept apart from the
+     * commands which select, edit and build the session.
+     */
+    AddTool(kToolbarCaptureBefore, "Capture Before", LoadIcon(wxART_NEW, kIconSize),
+            "Scan the machine into a snapshot file and keep its state as the baseline of a capture");
+    AddTool(kToolbarCaptureAndDiff, "Capture and Diff", LoadIcon(wxART_FIND, kIconSize),
+            "Scan the machine again and write the difference of the baseline into the workspaces");
+    AddSeparator();
+
     AddTool(kToolbarStartupFiles, "Startup Files", LoadIcon(wxART_FILE_OPEN, kIconSize),
             "Browse the imported folders and manage the startup files");
+    AddSeparator();
+
     AddTool(kToolbarBuild, "Build", LoadIcon(wxART_FILE_SAVE, kIconSize),
             "Pack the imported folders and the launcher into a zip archive");
     /*
