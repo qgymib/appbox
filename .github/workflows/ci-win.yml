@@ -2,7 +2,7 @@
 # See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-multi-platform.yml
 name: ci-win
 
-on: [push]
+on: [push, workflow_dispatch]
 
 permissions:
   contents: read
@@ -29,12 +29,16 @@ jobs:
           CMAKE_PREFIX_PATH: ${{env.WX_INSTALL_DIR}}
         run: cmake --workflow --preset ${{matrix.build_type}}
 
-      - name: Upload build artifact if failed
+      # The upload names the directory which holds the collected cases, so the
+      # archive keeps the directory of every case instead of flattening it into
+      # its content, whatever the number of the collected directories is.
+      - name: Upload the failed test cases
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: fail_artifact_${{matrix.build_type}}
-          path: ./build/*
+          name: failed_cases_${{matrix.build_type}}
+          path: ./build/${{matrix.build_type}}/test/Test-*
+          if-no-files-found: ignore
 
       - name: Upload release artifacts
         if: success() && matrix.build_type == 'Release'
