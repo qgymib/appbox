@@ -562,6 +562,19 @@ void FilesystemPanel::ListPresetImports(const TreeNode& node)
         rows_.push_back(std::move(row));
     }
 
+    /* The files which were imported into the layer root follow the imports. */
+    for (const auto& file : model_.FilesOf(node.preset_id, L""))
+    {
+        RowInfo row;
+        row.kind = RowInfo::Kind::ImportedFile;
+        row.preset_id = node.preset_id;
+        row.file_name = file.file_name;
+        row.source_path = file.source_path;
+        row.is_startup_file = appbox::IsStartableFile(row.file_name) &&
+                              model_.IsStartupFile(row.preset_id, std::wstring(), StartupRelativePath(row));
+        rows_.push_back(std::move(row));
+    }
+
     /* The folders the user created come after the content which was imported. */
     ListVirtualFolders(node.preset_id, L"");
 
@@ -674,9 +687,9 @@ void FilesystemPanel::ListVirtualFolderContent(const TreeNode& node)
 
     /*
      * The folder has no host counterpart, so it only holds the folders the
-     * user created inside it and the files which were imported into it. An
-     * imported file always extends an imported folder, so the first component
-     * of the path names the import root the file belongs to.
+     * user created inside it and the files which were imported into it. The
+     * first component of the path of such a file is the root of the layer it
+     * extends, which is what a startup file of the file is stored relative to.
      */
     for (const auto& file : model_.FilesOf(node.preset_id, target_dir))
     {
@@ -1044,32 +1057,22 @@ bool FilesystemPanel::SelectedTarget(std::string& preset_id, std::wstring& targe
         return false;
     }
 
-    if (!node->import_name.empty())
-    {
-        preset_id = node->preset_id;
-        import_name = node->import_name;
-        target_dir = NodeDirectoryPath(*node);
-        return true;
-    }
-
     /*
-     * An imported file extends an imported folder, so a folder the user
-     * created is a target only while it hangs below an import: the first
-     * component of its path names the import root the file belongs to.
+     * A file is imported into a folder of the view: the layer root of the
+     * preset directory, an imported folder, a folder below an import and a
+     * folder the user created are all of them, which is the rule the model
+     * applies as well.
      */
-    if (!node->virtual_dir.empty())
+    const auto directory = NodeDirectoryPath(*node);
+    if (!model_.IsDirectoryOfView(node->preset_id, directory))
     {
-        appbox::ImportedFolder imported;
-        if (model_.GetImport(node->preset_id, RootSegment(node->virtual_dir), imported))
-        {
-            preset_id = node->preset_id;
-            import_name = imported.import_name;
-            target_dir = node->virtual_dir;
-            return true;
-        }
+        return false;
     }
 
-    return false;
+    preset_id = node->preset_id;
+    target_dir = directory;
+    import_name = RootSegment(directory);
+    return true;
 }
 
 int FilesystemPanel::RowIndex(const wxDataViewItem& item) const
@@ -1252,7 +1255,7 @@ void FilesystemPanel::UpdateToolBarState()
     /*
      * The command which imports files works on the folder of the tree, so the
      * rule which decides whether it is offered is the one the command applies:
-     * the folder has to be part of an import, see SelectedTarget().
+     * the folder has to be a folder of the view, see SelectedTarget().
      */
     std::string  target_preset;
     std::wstring target_dir;
@@ -1725,8 +1728,20 @@ void FilesystemPanel::OnAddFiles(wxCommandEvent&)
         return;
     }
 
-    wxFileDialog dialog(this, "Select the files to import into '" + wxString(import_name) + "'", wxEmptyString,
-                        wxEmptyString, "All files (*.*)|*.*", wxFD_OPEN | wxFD_MULTIPLE | wxFD_FILE_MUST_EXIST);
+    /*
+     * The folder is named the way the tree shows it: by the lower layer a file
+     * which is imported into it extends, and by the preset directory itself
+     * when the folder is the layer root of that preset.
+     */
+    appbox::PresetDirectory preset;
+    wxString                folder = wxString(import_name);
+    if (folder.empty())
+    {
+        folder = appbox::FindPresetDirectory(preset_id, preset) ? wxString(preset.display_name) : wxString(target_dir);
+    }
+
+    wxFileDialog dialog(this, "Select the files to import into '" + folder + "'", wxEmptyString, wxEmptyString,
+                        "All files (*.*)|*.*", wxFD_OPEN | wxFD_MULTIPLE | wxFD_FILE_MUST_EXIST);
     if (dialog.ShowModal() != wxID_OK)
     {
         return;

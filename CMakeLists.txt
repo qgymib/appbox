@@ -177,10 +177,12 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/ApplicationIcon.cpp"
     "${APPBOX_SOURCE_DIR}/core/ApplicationMetadata.cpp"
     "${APPBOX_SOURCE_DIR}/core/BuildReport.cpp"
+    "${APPBOX_SOURCE_DIR}/core/CaptureWizardModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/CompressionLevel.cpp"
     "${APPBOX_SOURCE_DIR}/core/EmbeddedResource.cpp"
     "${APPBOX_SOURCE_DIR}/core/EnvironmentIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/EnvironmentModel.cpp"
+    "${APPBOX_SOURCE_DIR}/core/EtwEventDecoder.cpp"
     "${APPBOX_SOURCE_DIR}/core/FilesystemIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/FilesystemIsolationModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/KnownFolderReference.cpp"
@@ -192,6 +194,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/ProjectDocument.cpp"
     "${APPBOX_SOURCE_DIR}/core/ProjectFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/ProjectType.cpp"
+    "${APPBOX_SOURCE_DIR}/core/RealtimeCapture.cpp"
     "${APPBOX_SOURCE_DIR}/core/RegFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/RegistryHive.cpp"
     "${APPBOX_SOURCE_DIR}/core/RegistryIsolationFile.cpp"
@@ -217,13 +220,14 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/tracer/TracedModules.cpp"
     "${APPBOX_SOURCE_DIR}/widget/AboutDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/ActionDialog.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/CaptureWizard.cpp"
     "${APPBOX_SOURCE_DIR}/widget/DataViewTooltip.cpp"
     "${APPBOX_SOURCE_DIR}/widget/DebugPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/EnvironmentPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/FilesystemIsolationDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/FilesystemIsolationRenderer.cpp"
     "${APPBOX_SOURCE_DIR}/widget/FilesystemPanel.cpp"
-    "${APPBOX_SOURCE_DIR}/widget/IsolationModeGroup.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/ModeChoiceGroup.cpp"
     "${APPBOX_SOURCE_DIR}/widget/MainFrame.cpp"
     "${APPBOX_SOURCE_DIR}/widget/MetadataDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/NetworkPanel.cpp"
@@ -232,6 +236,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/widget/RegistryKeyDialog.cpp"
     "${APPBOX_SOURCE_DIR}/widget/RegistryPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/RegistryValueDialog.cpp"
+    "${APPBOX_SOURCE_DIR}/widget/ReportTreeCtrl.cpp"
     "${APPBOX_SOURCE_DIR}/widget/SettingsPanel.cpp"
     "${APPBOX_SOURCE_DIR}/widget/SideNav.cpp"
     "${APPBOX_SOURCE_DIR}/widget/StartupCheckRenderer.cpp"
@@ -304,6 +309,10 @@ target_link_libraries(AppBox PRIVATE advapi32)
 # launcher payload inherits from the main program of the packaged application
 # (GetFileVersionInfoW and VerQueryValueW).
 target_link_libraries(AppBox PRIVATE version)
+
+# Trace data helper of Windows, which decodes the payload of the events the
+# realtime capture consumes (TdhGetEventInformation and TdhFormatProperty).
+target_link_libraries(AppBox PRIVATE tdh)
 
 # zlib must be configured before libzip: the libzip build performs its own
 # find_package(ZLIB 1.1.2 REQUIRED) which reuses the already built target.

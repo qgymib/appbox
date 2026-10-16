@@ -9,7 +9,7 @@
 #include <wx/wx.h>
 #include "core/RegistryModel.hpp"
 
-class IsolationModeGroup;
+class ModeChoiceGroup;
 class wxCheckBox;
 
 /**
@@ -17,7 +17,7 @@ class wxCheckBox;
  *
  * The dialog is opened from the context menu of the registry tree. It offers
  * the isolation modes of a key, every mode with the explanation of what it does
- * below its name (see `IsolationModeGroup`), and one option which decides how
+ * below its name (see `ModeChoiceGroup`), and one option which decides how
  * far the chosen mode reaches: without the recursion the mode reaches the key
  * alone, with it the whole subtree of the key follows the mode, the values of
  * the subtree included (see `RegistryModel::ApplyIsolationToSubtree`).
@@ -62,7 +62,7 @@ private:
     /**
      * @brief Field holding the isolation modes.
      */
-    IsolationModeGroup* isolation_ = nullptr;
+    ModeChoiceGroup* isolation_ = nullptr;
 
     /**
      * @brief Option which overwrites the subtree of the key.

@@ -5,16 +5,19 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
 #include "core/ApplicationMetadata.hpp"
 #include "core/BuildReport.hpp"
+#include "core/CaptureWizardModel.hpp"
 #include "core/EnvironmentModel.hpp"
 #include "core/FilesystemIsolationModel.hpp"
 #include "core/NetworkModel.hpp"
 #include "core/PackModel.hpp"
 #include "core/ProjectType.hpp"
+#include "core/RealtimeCapture.hpp"
 #include "core/RegistryModel.hpp"
 #include "core/SnapshotApply.hpp"
 #include "core/SnapshotCapture.hpp"
@@ -22,6 +25,7 @@
 #include "core/StartupScreen.hpp"
 
 class ActionDialog;
+class CaptureWizard;
 class DebugPanel;
 class EnvironmentPanel;
 class FilesystemPanel;
@@ -36,6 +40,11 @@ wxDECLARE_EVENT(APPBOX_PACK_PROGRESS, wxThreadEvent);
 wxDECLARE_EVENT(APPBOX_PACK_FINISHED, wxThreadEvent);
 wxDECLARE_EVENT(APPBOX_CAPTURE_PROGRESS, wxThreadEvent);
 wxDECLARE_EVENT(APPBOX_CAPTURE_FINISHED, wxThreadEvent);
+wxDECLARE_EVENT(APPBOX_REALTIME_CAPTURE_PROGRESS, wxThreadEvent);
+wxDECLARE_EVENT(APPBOX_REALTIME_CAPTURE_STAGE, wxThreadEvent);
+wxDECLARE_EVENT(APPBOX_REALTIME_CAPTURE_FINISHED, wxThreadEvent);
+wxDECLARE_EVENT(APPBOX_CAPTURE_FILL_PROGRESS, wxThreadEvent);
+wxDECLARE_EVENT(APPBOX_CAPTURE_FILL_FINISHED, wxThreadEvent);
 
 /**
  * @brief Result of one background pack run.
@@ -67,15 +76,16 @@ struct PackOutcome
 };
 
 /**
- * @brief Result of one background capture run.
+ * @brief Result of one phase of a snapshot capture.
  *
- * The run reads the state of the machine into one phase of a snapshot file,
- * and a run which compares the state with the baseline of the session applies
- * the difference to copies of the models, which the window adopts when the run
- * is over. The copies keep the background thread from reading or writing the
- * models the workspace shows.
+ * The phase which reads the baseline writes the state of the machine into a new
+ * snapshot file and reports the counts of that file; the phase which compares
+ * reads the state again, writes it into the same file and compares the two
+ * states. Nothing is written into the workspaces here: the difference travels
+ * with the result and the window fills it into the workspaces on the last step
+ * of the wizard.
  */
-struct CaptureOutcome
+struct SnapshotCaptureOutcome
 {
     /**
      * @brief Error description, empty when the run succeeded.
@@ -83,36 +93,73 @@ struct CaptureOutcome
     std::string error;
 
     /**
-     * @brief Whether the difference was applied to the models below.
-     */
-    bool applied = false;
-
-    /**
-     * @brief The pack model with the difference applied, see applied.
-     */
-    appbox::PackModel model;
-
-    /**
-     * @brief The registry with the difference applied, see applied.
-     */
-    appbox::RegistryModel registry;
-
-    /**
-     * @brief The environment with the difference applied, see applied.
-     */
-    appbox::EnvironmentModel environment;
-
-    /**
      * @brief Number of the entries the run wrote into the phase, all zero for
-     *        a run which failed.
+     *        a run which failed or which compared.
      */
     appbox::SnapshotPhaseCounts counts;
 
     /**
-     * @brief Summary of the difference and of what it did, empty for a
-     *        baseline run.
+     * @brief The difference of the two states, null when the run failed.
      */
-    std::wstring summary;
+    std::shared_ptr<const appbox::SnapshotDiff> diff;
+};
+
+/**
+ * @brief Result of one realtime capture recording.
+ *
+ * The recording itself changes nothing: the analysis of the recorded events
+ * produces the difference of the machine, which the window fills into the
+ * workspaces on the last step of the wizard. The changes the recording saw
+ * which belong to no preset directory travel with the result as well, so the
+ * dialog lists them next to the entries the fill leaves out.
+ */
+struct RealtimeCaptureOutcome
+{
+    /**
+     * @brief Error description, empty when the recording was analyzed.
+     */
+    std::string error;
+
+    /**
+     * @brief The difference of the recording, null when the run failed.
+     */
+    std::shared_ptr<const appbox::SnapshotDiff> diff;
+
+    /**
+     * @brief The changes of the recording which the workspaces cannot carry.
+     */
+    appbox::CaptureFillReport report;
+};
+
+/**
+ * @brief Result of the fill which writes a difference into the workspaces.
+ *
+ * The fill runs on a thread of its own, because it reads the host for every
+ * entry it writes and because the dialog reports the entry it works on while it
+ * runs. The models travel with the result, so the window which owns them swaps
+ * them in when the run is over instead of letting the thread write the state
+ * the workspaces show.
+ */
+struct CaptureFillOutcome
+{
+    /**
+     * @brief Error description, empty when the difference was written.
+     */
+    std::string error;
+
+    /**
+     * @brief What the fill did and what it left out.
+     */
+    appbox::CaptureFillReport report;
+
+    /**
+     * @brief Whether the models below hold the state the fill produced.
+     */
+    bool applied = false;
+
+    appbox::PackModel        model;
+    appbox::RegistryModel    registry;
+    appbox::EnvironmentModel environment;
 };
 
 /**
@@ -299,58 +346,6 @@ private:
     void OnExportConfiguration(wxCommandEvent& event);
 
     /**
-     * @brief Keep the state of the machine as the baseline of the session.
-     *
-     * The command asks for the snapshot file to write first and reads the
-     * folders of the preset directories, the registry and the environment of
-     * the machine into it, which is the state the next comparison uses, see
-     * OnCaptureAndDiff().
-     *
-     * @param[in] event Command event.
-     */
-    void OnCaptureBefore(wxCommandEvent& event);
-
-    /**
-     * @brief Compare the state of the machine with the baseline of the session.
-     *
-     * The state the machine is in now is written into the phase after the
-     * change of the snapshot file which holds the baseline, and the difference
-     * of the two phases is applied to the filesystem, the registry and the
-     * environment workspace, so the session describes the change the machine
-     * went through and the archive carries it.
-     *
-     * The comparison does not become the baseline of the next one: the file
-     * holds a state which the machine has already left behind, so a new
-     * `Capture Before` is required.
-     *
-     * @param[in] event Command event.
-     */
-    void OnCaptureAndDiff(wxCommandEvent& event);
-
-    /**
-     * @brief Save the baseline of the session into another snapshot file.
-     *
-     * The command writes the state before the change of the file the session
-     * uses into a file the user picks, so a baseline can be kept and loaded
-     * later on; the session keeps working with its own file.
-     *
-     * @param[in] event Command event.
-     */
-    void OnSaveSnapshotAs(wxCommandEvent& event);
-
-    /**
-     * @brief Load a snapshot file and use it as the baseline.
-     *
-     * Only the path of the file is kept: the state before the change of the
-     * file is the baseline and the comparison writes the state after the
-     * change into the same file, which is what lets a session compare the
-     * machine with a state an earlier run captured.
-     *
-     * @param[in] event Command event.
-     */
-    void OnLoadSnapshot(wxCommandEvent& event);
-
-    /**
      * @brief Merge a `.reg` file into the registry workspace.
      *
      * The file is parsed first and only applied when it is valid as a whole,
@@ -426,45 +421,232 @@ private:
     void OnPackFinished(wxThreadEvent& event);
 
     /**
-     * @brief Start the background capture run.
+     * @brief The phase of a snapshot capture which runs on the capture thread.
+     */
+    enum class CapturePhase
+    {
+        /**
+         * @brief The state of the machine is read into a new snapshot file,
+         *        which is the baseline of the comparison.
+         */
+        Baseline,
+
+        /**
+         * @brief The state of the machine is read again, compared with the
+         *        baseline and turned into the plan of the difference.
+         */
+        Comparison,
+    };
+
+    /**
+     * @brief Ask for the file the baseline of a snapshot capture is kept in.
      *
-     * @param[in] diff Whether the run compares the state with the baseline of
-     *                 the session and writes the difference into the
-     *                 workspaces; a run without it writes the baseline.
+     * The call is what the wizard asks for when the user presses the button
+     * which browses for the file: a new source asks for a file which does not
+     * have to exist, an existing one for a file an earlier run wrote. The
+     * dialog only names the file, the state of the machine is not read here.
+     *
+     * @param[in] source Source of the baseline the user picked.
+     * @param[out] path Path of the file the user picked, unchanged when the
+     *                  dialog was dismissed.
+     * @return true when the user picked a file.
+     */
+    bool OnSnapshotPathBrowse(appbox::SnapshotBaselineSource source, std::wstring& path);
+
+    /**
+     * @brief Read the baseline of a snapshot capture.
+     *
+     * The call is what the wizard asks for when it enters the step of the
+     * baseline: the path is checked first, and a new source then reads the
+     * state of the machine into that file while an existing one opens the file
+     * and uses the state before the change it holds. The wizard is told how the
+     * request ended through CaptureWizard::SetBaselineReady(), whatever the
+     * answer is, so the step which names the file is shown again when the run
+     * produced no baseline.
+     *
+     * @param[in] source Source of the baseline the user picked.
+     * @param[in] path Path of the file the baseline is kept in.
+     */
+    void OnSnapshotBaselineRequested(appbox::SnapshotBaselineSource source, const std::wstring& path);
+
+    /**
+     * @brief Read the state of the machine again and compare it with the
+     *        baseline.
+     *
+     * The call is what the wizard asks for when it enters the step of the
+     * comparison, and it is repeated when the user asks for it again after a
+     * run which failed.
+     */
+    void StartSnapshotComparison();
+
+    /**
+     * @brief Start the background run of one phase of a snapshot capture.
+     *
+     * The run reports its progress into the wizard and its result through
+     * APPBOX_CAPTURE_FINISHED. The state is written while it is read, so a
+     * capture of a whole machine never travels through the memory of the
+     * packer.
+     *
+     * @param[in] phase The phase to run.
      * @param[in] path Path of the snapshot file the run works with: the file
      *                 which is written as the baseline, or the file which
      *                 holds the baseline and receives the state after the
      *                 change.
      */
-    void StartCapture(bool diff, const std::wstring& path);
+    void StartSnapshotCapture(CapturePhase phase, const std::wstring& path);
 
     /**
-     * @brief Forward capture progress into the action dialog.
+     * @brief Forward capture progress into the wizard.
      * @param[in] event Thread event carrying the progress report.
      */
     void OnCaptureProgress(wxThreadEvent& event);
 
     /**
-     * @brief Show the last capture report in the action dialog.
+     * @brief Show the last capture report in the wizard.
      *
-     * The dialog keeps the elapsed time and the cycle of its bar on its own
+     * The wizard keeps the elapsed time and the cycle of its bar on its own
      * clock, so a report only updates the action, the object and the entry
-     * counter.
+     * counter of the step which is running.
      */
     void ApplyCaptureProgress();
 
     /**
-     * @brief Finish the capture run and present the result.
+     * @brief Finish a phase of the snapshot capture and present its result.
      *
-     * The result of a baseline run is the file which was written and the
-     * counts of the state it holds, the result of a comparison is the summary
-     * of the difference which was written into the workspaces. The window
-     * keeps the file of a baseline as the baseline of the session and drops
-     * the one of a comparison, which the user takes again before the next one.
+     * The result of the baseline phase is the file which was written and the
+     * counts of the state it holds, which opens the step of the installation;
+     * the result of the comparison is the plan of the difference, which the
+     * review of the wizard presents. A run which failed leaves the step it
+     * belongs to open, so the user can ask for it again.
      *
      * @param[in] event Thread event carrying the capture outcome.
      */
     void OnCaptureFinished(wxThreadEvent& event);
+
+    /**
+     * @brief Start a capture of the machine.
+     *
+     * The command opens the wizard of the capture, which asks for the mode:
+     * the realtime capture follows a recording while the user installs a
+     * program outside the packer, the snapshot capture reads the state of the
+     * machine before and after the installation and compares the two reads.
+     * Both modes end in the step which analyzes the changes and writes them into
+     * the workspaces of the session, see OnCaptureStageChanged() for the steps
+     * of the wizard, OnCaptureFinished() for the phases of the snapshot capture
+     * and OnRealtimeCaptureFinished() for the end of a recording.
+     *
+     * The prerequisites of the recording are shown by the first step of the
+     * wizard: a machine which cannot record is told to pick the snapshot
+     * capture, and a process which is not elevated is offered the restart as
+     * an administrator.
+     *
+     * @param[in] event Command event.
+     */
+    void OnCapture(wxCommandEvent& event);
+
+    /**
+     * @brief Start the recording of the realtime capture.
+     *
+     * The call opens the kernel session of the machine on the capture thread:
+     * the thread reads the baseline of the persisted environment, starts the
+     * recorder and waits for the user to end the recording, after which it
+     * stops the session, merges the recorded events into the difference of the
+     * machine and builds the plan of that difference.
+     */
+    void StartRealtimeCaptureRecording();
+
+    /**
+     * @brief Follow the wizard of the capture into another step.
+     *
+     * The wizard tells the window that a step was entered: the recording is
+     * started when the user leaves the choice of the mode, the comparison of a
+     * snapshot capture is started when the wizard enters its step, and the
+     * recording is ended when the user leaves it, which hands the capture
+     * thread over to the analysis. The fill of the workspaces is started when
+     * the last step is entered with the difference of a snapshot capture
+     * already there; the difference of a recording is filled once the analysis
+     * of the recording is over, see OnRealtimeCaptureFinished().
+     *
+     * @param[in] from The step the wizard was on.
+     * @param[in] to The step the wizard entered.
+     */
+    void OnCaptureStageChanged(appbox::CaptureWizardStage from, appbox::CaptureWizardStage to);
+
+    /**
+     * @brief Write the difference of the capture into the workspaces.
+     *
+     * The call is the last phase of both capture modes: the difference is
+     * written into copies of the models of the session on a thread of its own,
+     * because every entry reads the host and because the dialog reports the
+     * entry which is being written while the run goes on. The window swaps the
+     * models in once the run is over, which is what keeps a workspace from
+     * reading a model another thread writes.
+     */
+    void StartFill();
+
+    /**
+     * @brief Forward the work of the fill into the wizard.
+     * @param[in] event Thread event carrying the report of one entry.
+     */
+    void OnFillProgress(wxThreadEvent& event);
+
+    /**
+     * @brief Write the models the fill produced into the session.
+     *
+     * The run wrote copies of the models, so the call is what makes the change
+     * visible: the models are swapped in, the three workspaces are refreshed
+     * and the wizard is told that the whole work of the capture is over, which
+     * is what enables the button that ends it.
+     *
+     * @param[in] event Thread event carrying the fill outcome.
+     */
+    void OnFillFinished(wxThreadEvent& event);
+
+    /**
+     * @brief Destroy the wizard of the capture.
+     *
+     * The wizard is destroyed once its work is over: it is the owner which
+     * destroys it and never the wizard itself, so a dialog is never destroyed
+     * inside one of its own event handlers.
+     */
+    void CloseCaptureWizard();
+
+    /**
+     * @brief Poll the wizard of the capture while a capture runs.
+     *
+     * The recording of a quiet machine reports no progress, so the wizard is
+     * polled on a timer of its own: a wizard the user dismissed stops the run
+     * like the `Cancel` button does, and a wizard whose work is over is
+     * destroyed.
+     *
+     * @param[in] event Timer event.
+     */
+    void OnCaptureWizardTick(wxTimerEvent& event);
+
+    /**
+     * @brief Forward the progress of the recording into the wizard.
+     * @param[in] event Thread event carrying the progress report.
+     */
+    void OnRealtimeCaptureProgress(wxThreadEvent& event);
+
+    /**
+     * @brief Show the work the capture thread entered.
+     * @param[in] event Thread event carrying the stage code.
+     */
+    void OnRealtimeCaptureStage(wxThreadEvent& event);
+
+    /**
+     * @brief Present the analysis of the recording in the wizard.
+     *
+     * The result of the analysis is the difference of the machine and the plan
+     * of that difference, which the wizard shows on its third step. Nothing is
+     * written into the workspaces here: the user confirms the plan first. A
+     * cancelled recording closes the wizard and an error is reported to the
+     * user, which closes it as well.
+     *
+     * @param[in] event Thread event carrying the capture outcome.
+     */
+    void OnRealtimeCaptureFinished(wxThreadEvent& event);
 
     appbox::PackModel model_;
 
@@ -551,29 +733,23 @@ private:
     SettingsPanel*    settings_panel_ = nullptr;
 
     /**
-     * @brief Snapshot file which holds the baseline of the session.
+     * @brief Snapshot file the running snapshot capture works with.
      *
-     * The file is the baseline: `Capture and Diff` writes the state of the
-     * machine after the change into its phase after the change and compares
-     * the two phases of the file. An empty path means that the session holds
-     * no baseline, which is what the commands report when a comparison is
-     * asked for before a state was captured.
+     * The file is the baseline of the capture: the phase which reads the
+     * baseline writes the state of the machine into it and the phase which
+     * compares reads the state again into its phase after the change and
+     * compares the two phases of the file.
      *
-     * The path belongs to the session alone: it names a file of the machine
+     * The path belongs to the capture alone: it names a file of the machine
      * the packer runs on and not a setting of the configuration, so it never
      * travels with the project file.
      */
-    std::wstring snapshot_path_;
+    std::wstring capture_snapshot_path_;
 
     /**
-     * @brief Snapshot file the running capture works with.
-     *
-     * The path is kept while the run is in flight, because the result of the
-     * run decides what the session does with it: a baseline which was read as
-     * a whole becomes the baseline of the session, while a comparison leaves
-     * the session without one.
+     * @brief The phase of the snapshot capture which is running.
      */
-    std::wstring capture_path_;
+    CapturePhase capture_phase_ = CapturePhase::Baseline;
 
     bool output_path_edited_ = false;
 
@@ -610,11 +786,11 @@ private:
     bool pack_finished_ = false;
 
     std::thread       capture_thread_;
-    ActionDialog*     capture_dialog_ = nullptr;
     std::atomic<bool> capture_cancelled_{ false };
 
     /**
-     * @brief Whether the capture finished and its dialog was dismissed.
+     * @brief Whether a phase of the snapshot capture finished and its result
+     *        was presented.
      */
     bool capture_finished_ = false;
 
@@ -622,6 +798,77 @@ private:
      * @brief Last progress report of the running capture.
      */
     appbox::CaptureProgress last_capture_progress_;
+
+    /**
+     * @brief Recorder of the realtime capture of the window.
+     *
+     * The recorder owns the kernel session of the machine while a capture
+     * runs, and it is stopped by its own destructor when the window goes away
+     * with a recording in flight.
+     */
+    appbox::RealtimeCaptureRecorder realtime_recorder_;
+
+    /**
+     * @brief Noise tables the running realtime capture works with.
+     */
+    appbox::RealtimeCaptureOptions realtime_capture_options_;
+
+    std::thread realtime_capture_thread_;
+
+    /**
+     * @brief Wizard of the running capture.
+     *
+     * The wizard serves both capture modes: the mode is picked on its first
+     * step and the work of the mode is done by the window, see OnCapture().
+     */
+    CaptureWizard* capture_wizard_ = nullptr;
+
+    /**
+     * @brief Difference of the capture which is filled into the workspaces.
+     *
+     * The difference is kept from the end of the analysis until the fill of the
+     * workspaces is over: it is what the fill writes and what the report names.
+     */
+    std::shared_ptr<const appbox::SnapshotDiff> capture_diff_;
+
+    /**
+     * @brief Timer which polls the wizard while the capture runs.
+     */
+    wxTimer* capture_wizard_timer_ = nullptr;
+
+    /**
+     * @brief Thread which writes the difference of the capture into the models.
+     */
+    std::thread fill_thread_;
+
+    /**
+     * @brief The changes the capture cannot write.
+     *
+     * The report is the one channel of the last step of the wizard: the analysis
+     * of a recording reports the changes which belong to no preset directory
+     * into it and the fill adds the entries it could not write, so the dialog
+     * lists both of them.
+     */
+    appbox::CaptureFillReport capture_report_;
+
+    std::atomic<bool> realtime_capture_cancelled_{ false };
+
+    /**
+     * @brief Whether the user ended the recording and the capture thread is
+     *        analyzing it.
+     */
+    std::atomic<bool> realtime_capture_finishing_{ false };
+
+    /**
+     * @brief Whether the realtime capture finished and the wizard presents
+     *        the analysis.
+     */
+    bool realtime_capture_finished_ = false;
+
+    /**
+     * @brief Last progress report of the running realtime capture.
+     */
+    appbox::RealtimeCaptureProgress last_realtime_progress_;
 };
 
 #endif // APPBOX_PACKER_WIDGET_MAIN_FRAME_HPP

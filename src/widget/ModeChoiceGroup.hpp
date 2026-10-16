@@ -1,5 +1,5 @@
-#ifndef APPBOX_PACKER_WIDGET_ISOLATION_MODE_GROUP_HPP
-#define APPBOX_PACKER_WIDGET_ISOLATION_MODE_GROUP_HPP
+#ifndef APPBOX_PACKER_WIDGET_MODE_CHOICE_GROUP_HPP
+#define APPBOX_PACKER_WIDGET_MODE_CHOICE_GROUP_HPP
 
 /*
  * wx/wx.h comes first on purpose: including the wxWidgets headers in another
@@ -12,9 +12,9 @@
 class wxRadioButton;
 
 /**
- * @brief One option of an isolation mode group.
+ * @brief One option of a mode choice group.
  */
-struct IsolationModeChoice
+struct ModeChoice
 {
     /**
      * @brief Display name of the mode, for example `Merge`.
@@ -25,32 +25,47 @@ struct IsolationModeChoice
      * @brief Explanation of the mode, shown below the option.
      */
     wxString description;
+
+    /**
+     * @brief Whether the option can be picked.
+     *
+     * A mode the machine cannot run is drawn greyed out instead of being
+     * offered, which keeps a choice the caller would refuse from looking like
+     * one the user made.
+     */
+    bool enabled = true;
 };
 
 /**
- * @brief Group of radio buttons which pick an isolation mode.
+ * @brief Group of radio buttons which pick a mode.
  *
- * The group replaces the `wxRadioBox` the isolation dialogs used to offer: a
- * radio box draws the name of an option alone, while the group draws the name
- * and, below it, an indented grey text which explains the mode. The
- * explanation of every mode is visible at once, so the meaning of a mode does
- * not have to be looked up in a tooltip.
+ * The group replaces the `wxRadioBox` the dialogs used to offer: a radio box
+ * draws the name of an option alone, while the group draws the name and, below
+ * it, an indented grey text which explains the mode. The explanation of every
+ * mode is visible at once, so the meaning of a mode does not have to be looked
+ * up in a tooltip.
  *
- * The text of an option is provided by the caller, which takes it from the
- * model of the domain (see RegistryKeyIsolationChoices(),
- * RegistryValueIsolationChoices() and FilesystemIsolationChoices()), so the
- * explanation of a mode lives in one place and the group itself knows nothing
- * about the modes.
+ * The group knows nothing about the modes it offers: the title of the group and
+ * the text of every option are provided by the caller, which takes them from
+ * the model of the domain (see `RegistryKeyIsolationChoices()`,
+ * `RegistryValueIsolationChoices()`, `FilesystemIsolationChoices()` and
+ * `appbox::CaptureModeDescription()`), so the explanation of a mode lives in
+ * one place.
+ *
+ * A radio button raises `wxEVT_RADIOBUTTON`, which is a command event and
+ * therefore reaches the parent of the group: a caller which has to act on the
+ * choice as soon as it is made binds that event and reads Selection().
  */
-class IsolationModeGroup : public wxPanel
+class ModeChoiceGroup : public wxPanel
 {
 public:
     /**
      * @brief Create the group.
      * @param[in] parent Parent window.
+     * @param[in] title Title of the box which frames the options.
      * @param[in] choices Options of the group, in the order they are shown.
      */
-    IsolationModeGroup(wxWindow* parent, const std::vector<IsolationModeChoice>& choices);
+    ModeChoiceGroup(wxWindow* parent, const wxString& title, const std::vector<ModeChoice>& choices);
 
     /**
      * @brief Get the index of the selected option.
@@ -84,7 +99,7 @@ private:
  *
  * @return The four key modes with the explanation of each one.
  */
-std::vector<IsolationModeChoice> RegistryKeyIsolationChoices();
+std::vector<ModeChoice> RegistryKeyIsolationChoices();
 
 /**
  * @brief Build the options of the isolation modes of a value.
@@ -95,7 +110,7 @@ std::vector<IsolationModeChoice> RegistryKeyIsolationChoices();
  *
  * @return The two value modes with the explanation of each one.
  */
-std::vector<IsolationModeChoice> RegistryValueIsolationChoices();
+std::vector<ModeChoice> RegistryValueIsolationChoices();
 
 /**
  * @brief Build the options of the isolation modes of a folder of the filesystem view.
@@ -109,6 +124,6 @@ std::vector<IsolationModeChoice> RegistryValueIsolationChoices();
  *
  * @return The four folder modes with the explanation of each one.
  */
-std::vector<IsolationModeChoice> FilesystemIsolationChoices();
+std::vector<ModeChoice> FilesystemIsolationChoices();
 
-#endif // APPBOX_PACKER_WIDGET_ISOLATION_MODE_GROUP_HPP
+#endif // APPBOX_PACKER_WIDGET_MODE_CHOICE_GROUP_HPP

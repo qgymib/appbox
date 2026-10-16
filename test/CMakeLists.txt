@@ -25,12 +25,14 @@ add_executable(AppBoxTests
     "unit/ApplicationIcon.cpp"
     "unit/ApplicationMetadata.cpp"
     "unit/BuildReport.cpp"
+    "unit/CaptureWizardModel.cpp"
     "unit/CompressionLevel.cpp"
     "unit/EnvironmentIsolation.cpp"
     "unit/EnvironmentIsolationFile.cpp"
     "unit/EnvironmentModel.cpp"
     "unit/EmbeddedResource.cpp"
     "unit/EnvironmentTable.cpp"
+    "unit/EtwEventDecoder.cpp"
     "unit/ExpandKnownFolder.cpp"
     "unit/FilesystemIsolation.cpp"
     "unit/FilesystemMarker.cpp"
@@ -54,6 +56,7 @@ add_executable(AppBoxTests
     "unit/ProjectFile.cpp"
     "unit/ProjectType.cpp"
     "unit/ProxyConfig.cpp"
+    "unit/RealtimeCapture.cpp"
     "unit/RegFile.cpp"
     "unit/RegistryHive.cpp"
     "unit/RegistryModel.cpp"
@@ -74,6 +77,7 @@ add_executable(AppBoxTests
     "unit/StartupTree.cpp"
     "unit/VersionInfo.cpp"
     "unit/StaticRuntime.cpp"
+    "unit/TestLog.cpp"
     "unit/TestTimeout.cpp"
     "unit/TracerArmPlan.cpp"
     "unit/TracerCdbLocator.cpp"
@@ -211,6 +215,7 @@ add_executable(AppBoxTests
     "e2e/Patch_RegistryIsolationModeOfTheLastLayerWins.cpp"
     "e2e/Patch_RegistryStateBelowThePatchIsKept.cpp"
     "e2e/Patch_RegistryWithoutResourcesKeepsTheApp.cpp"
+    "e2e/RealtimeCapture_RecordsTheChangesOfARecording.cpp"
     "e2e/Reg_CompressKey_HiveHandle.cpp"
     "e2e/Reg_CompressKey_ReadHandle.cpp"
     "e2e/Reg_DeleteKey_NonEmpty.cpp"
@@ -265,6 +270,7 @@ add_executable(AppBoxTests
     "e2e/Reg_WriteCopy_WriteOpen_CopyUp.cpp"
     "e2e/Reg_WriteValue_NewKey.cpp"
     "e2e/Snapshot_CapturedFolderIsVisible.cpp"
+    "e2e/Snapshot_StrictCaptureFillsOnlyTheCapturedEntries.cpp"
     "e2e/Snapshot_WhiteoutHidesAHostEntry.cpp"
 
     # The operations which are executed inside the sandbox. The launcher starts
@@ -364,10 +370,12 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationIcon.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ApplicationMetadata.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/CaptureWizardModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/CompressionLevel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EmbeddedResource.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EtwEventDecoder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/KnownFolderReference.cpp
@@ -379,6 +387,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ProjectDocument.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ProjectFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ProjectType.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RealtimeCapture.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryHive.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryIsolationFile.cpp
@@ -500,6 +509,10 @@ target_link_libraries(AppBoxTests PRIVATE windowscodecs msimg32)
 # launcher payload inherits from the main program of the packaged application
 # (GetFileVersionInfoW and VerQueryValueW).
 target_link_libraries(AppBoxTests PRIVATE version)
+
+# Trace data helper of Windows, which decodes the payload of the events the
+# realtime capture consumes (TdhGetEventInformation and TdhFormatProperty).
+target_link_libraries(AppBoxTests PRIVATE tdh)
 
 # Digest of a patch package (BCryptOpenAlgorithmProvider and friends).
 target_link_libraries(AppBoxTests PRIVATE bcrypt)

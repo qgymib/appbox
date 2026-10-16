@@ -1,6 +1,7 @@
 #include "MainFrame.hpp"
 #include "AboutDialog.hpp"
 #include "ActionDialog.hpp"
+#include "CaptureWizard.hpp"
 #include "EnvironmentPanel.hpp"
 #include "FilesystemPanel.hpp"
 #include "StartupFilesDialog.hpp"
@@ -10,6 +11,7 @@
 #include "SideNav.hpp"
 #include "Toolbar.hpp"
 #include "DebugPanel.hpp"
+#include "core/ActionThrottle.hpp"
 #include "core/BuildReport.hpp"
 #include "core/EmbeddedResource.hpp"
 #include "core/EmbeddedResourceIds.h"
@@ -27,6 +29,8 @@
 #include <wx/simplebook.h>
 #include <wx/strconv.h>
 #include <wx/utils.h>
+#include <windows.h>
+#include <shellapi.h>
 #include <spdlog/spdlog.h>
 #include <algorithm>
 #include <chrono>
@@ -40,9 +44,23 @@ wxDEFINE_EVENT(APPBOX_PACK_PROGRESS, wxThreadEvent);
 wxDEFINE_EVENT(APPBOX_PACK_FINISHED, wxThreadEvent);
 wxDEFINE_EVENT(APPBOX_CAPTURE_PROGRESS, wxThreadEvent);
 wxDEFINE_EVENT(APPBOX_CAPTURE_FINISHED, wxThreadEvent);
+wxDEFINE_EVENT(APPBOX_REALTIME_CAPTURE_PROGRESS, wxThreadEvent);
+wxDEFINE_EVENT(APPBOX_REALTIME_CAPTURE_STAGE, wxThreadEvent);
+wxDEFINE_EVENT(APPBOX_REALTIME_CAPTURE_FINISHED, wxThreadEvent);
+wxDEFINE_EVENT(APPBOX_CAPTURE_FILL_PROGRESS, wxThreadEvent);
+wxDEFINE_EVENT(APPBOX_CAPTURE_FILL_FINISHED, wxThreadEvent);
 
 namespace
 {
+
+/**
+ * @brief Time between two reports of the fill which reach the dialog.
+ *
+ * The fill reports every entry twice and a capture of a whole machine walks
+ * through thousands of them, so the dialog is updated with the rate a user can
+ * read instead of once per entry.
+ */
+constexpr int kFillReportInterval = 50;
 
 /**
  * @brief Build a unique folder name for the extracted archive.
@@ -80,18 +98,16 @@ constexpr const char* kProjectFileFilter = "JSON configuration (*.json)|*.json";
 const int kMenuImportConfiguration = wxNewId();
 const int kMenuExportConfiguration = wxNewId();
 const int kMenuImportRegistry = wxNewId();
-const int kMenuSaveSnapshotAs = wxNewId();
-const int kMenuLoadSnapshot = wxNewId();
 
 /**
- * @brief Index of the entries field of the capture dialog.
+ * @brief Stage code of the realtime capture which records the machine.
  */
-constexpr std::size_t kCaptureFieldEntries = 0;
+constexpr int kRealtimeStageRecording = 0;
 
 /**
- * @brief Index of the status field of the capture dialog.
+ * @brief Stage code of the realtime capture which analyzes the recording.
  */
-constexpr std::size_t kCaptureFieldStatus = 1;
+constexpr int kRealtimeStageAnalyzing = 1;
 
 /**
  * @brief Index of the files field of the build dialog.
@@ -333,6 +349,95 @@ bool WriteCapturePhase(const appbox::CaptureOptions& options, const std::wstring
     return true;
 }
 
+/**
+ * @brief Whether a snapshot file holds the state a comparison can read.
+ *
+ * Only the state before the change is checked: the comparison writes the state
+ * after the change into the same file, so a file which an earlier run left with
+ * a state after the change is usable as well.
+ *
+ * @param[in] path Path of the snapshot file.
+ * @param[out] counts Counts of the state before the change.
+ * @param[out] error Error description when the file is not usable.
+ * @return true when the file holds the state.
+ */
+bool ReadSnapshotBaseline(const std::wstring& path, appbox::SnapshotPhaseCounts& counts, std::string& error)
+{
+    const auto reader = appbox::SnapshotReader::Open(path, error);
+    if (reader == nullptr)
+    {
+        return false;
+    }
+
+    bool present = false;
+    if (!reader->HasPhase(appbox::SnapshotPhase::Before, present, error))
+    {
+        return false;
+    }
+    if (!present)
+    {
+        error = "the snapshot file does not hold the state before the change: " + appbox::WideToUTF8(path);
+        return false;
+    }
+
+    return reader->Counts(appbox::SnapshotPhase::Before, counts, error);
+}
+
+/**
+ * @brief Whether the baseline can be written into a file.
+ *
+ * The path is the one the user typed or picked, so it is checked before the
+ * machine is read: a folder which is not there and a file which is not allowed
+ * to be replaced would otherwise fail the walk after it did its work.
+ *
+ * @param[in] path Path of the snapshot file.
+ * @param[in] owner Window the questions of the check belong to.
+ * @return true when the walk can write the file.
+ */
+bool CanWriteSnapshotFile(const std::wstring& path, wxWindow* owner)
+{
+    const std::filesystem::path file(path);
+    std::error_code             ec;
+
+    if (file.filename().empty())
+    {
+        wxMessageBox("The path of the snapshot file names no file.", "Capture", wxOK | wxICON_ERROR, owner);
+        return false;
+    }
+
+    if (std::filesystem::is_directory(file, ec))
+    {
+        wxMessageBox("The path of the snapshot file names a folder:\n\n" + wxString(path), "Capture",
+                     wxOK | wxICON_ERROR, owner);
+        return false;
+    }
+
+    const auto folder = file.parent_path();
+    if (!folder.empty() && !std::filesystem::is_directory(folder, ec))
+    {
+        wxMessageBox("The folder the snapshot file is written into does not exist:\n\n" + wxString(folder.wstring()),
+                     "Capture", wxOK | wxICON_ERROR, owner);
+        return false;
+    }
+
+    /*
+     * The dialog of the button asks the same question, but the path can be
+     * typed: a file which is there is only replaced when the user says so.
+     */
+    if (std::filesystem::exists(file, ec) && !ec)
+    {
+        const auto answer = wxMessageBox("The file exists already:\n\n" + wxString(path) +
+                                             "\n\nReplace it? The state of the machine is written into it.",
+                                         "Capture", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, owner);
+        if (answer != wxYES)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 } // namespace
 
 MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox", wxDefaultPosition, wxSize(1180, 720))
@@ -358,16 +463,18 @@ MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox", wxDefaultPosition,
     Bind(wxEVT_MENU, &MainFrame::OnImportConfiguration, this, kMenuImportConfiguration);
     Bind(wxEVT_MENU, &MainFrame::OnExportConfiguration, this, kMenuExportConfiguration);
     Bind(wxEVT_MENU, &MainFrame::OnImportRegistry, this, kMenuImportRegistry);
-    Bind(wxEVT_MENU, &MainFrame::OnSaveSnapshotAs, this, kMenuSaveSnapshotAs);
-    Bind(wxEVT_MENU, &MainFrame::OnLoadSnapshot, this, kMenuLoadSnapshot);
     Bind(APPBOX_SIDE_NAV, &MainFrame::OnSideNavChanged, this);
     Bind(wxEVT_TOOL, &MainFrame::OnStartupFiles, this, kToolbarStartupFiles);
-    Bind(wxEVT_TOOL, &MainFrame::OnCaptureBefore, this, kToolbarCaptureBefore);
-    Bind(wxEVT_TOOL, &MainFrame::OnCaptureAndDiff, this, kToolbarCaptureAndDiff);
+    Bind(wxEVT_TOOL, &MainFrame::OnCapture, this, kToolbarCapture);
     Bind(wxEVT_TOOL, &MainFrame::OnBuild, this, kToolbarBuild);
     Bind(wxEVT_TOOL, &MainFrame::OnBuildAndRun, this, kToolbarBuildAndRun);
     Bind(APPBOX_CAPTURE_PROGRESS, &MainFrame::OnCaptureProgress, this);
     Bind(APPBOX_CAPTURE_FINISHED, &MainFrame::OnCaptureFinished, this);
+    Bind(APPBOX_CAPTURE_FILL_PROGRESS, &MainFrame::OnFillProgress, this);
+    Bind(APPBOX_CAPTURE_FILL_FINISHED, &MainFrame::OnFillFinished, this);
+    Bind(APPBOX_REALTIME_CAPTURE_PROGRESS, &MainFrame::OnRealtimeCaptureProgress, this);
+    Bind(APPBOX_REALTIME_CAPTURE_STAGE, &MainFrame::OnRealtimeCaptureStage, this);
+    Bind(APPBOX_REALTIME_CAPTURE_FINISHED, &MainFrame::OnRealtimeCaptureFinished, this);
     Bind(wxEVT_BUTTON, &MainFrame::OnBrowseOutput, this, kSettingsBrowseOutput);
     Bind(wxEVT_TEXT, &MainFrame::OnOutputPathEdited, this, kSettingsOutputPath);
     Bind(wxEVT_COMBOBOX, &MainFrame::OnProjectTypeChanged, this, kSettingsProjectType);
@@ -393,6 +500,34 @@ MainFrame::~MainFrame()
         capture_thread_.join();
     }
 
+    /*
+     * The fill of the workspaces is the phase which cannot be stopped: a window
+     * which goes away while it runs waits for it, so the models it produced are
+     * not lost half way.
+     */
+    if (fill_thread_.joinable())
+    {
+        fill_thread_.join();
+    }
+
+    /*
+     * The recording is stopped before its thread is joined: the recorder owns
+     * the session of the capture and gives it back when it is asked to.
+     */
+    if (realtime_capture_thread_.joinable())
+    {
+        realtime_capture_cancelled_ = true;
+        realtime_recorder_.RequestStop();
+        realtime_capture_thread_.join();
+    }
+
+    if (capture_wizard_timer_ != nullptr)
+    {
+        capture_wizard_timer_->Stop();
+        delete capture_wizard_timer_;
+        capture_wizard_timer_ = nullptr;
+    }
+
     if (progress_dialog_ != nullptr)
     {
         progress_dialog_->Destroy();
@@ -405,9 +540,6 @@ void MainFrame::CreateMenuBar()
     auto menu_file = new wxMenu();
     menu_file->Append(kMenuImportConfiguration, "&Import Configuration...");
     menu_file->Append(kMenuExportConfiguration, "&Export Configuration...");
-    menu_file->AppendSeparator();
-    menu_file->Append(kMenuSaveSnapshotAs, "&Save Snapshot As...");
-    menu_file->Append(kMenuLoadSnapshot, "&Load Snapshot...");
     menu_file->AppendSeparator();
     menu_file->Append(kMenuImportRegistry, "&Import Registry...");
     menu_file->AppendSeparator();
@@ -1309,55 +1441,120 @@ void MainFrame::OnPackFinished(wxThreadEvent& event)
     progress_dialog_ = nullptr;
 }
 
-void MainFrame::OnCaptureBefore(wxCommandEvent&)
+bool MainFrame::OnSnapshotPathBrowse(appbox::SnapshotBaselineSource source, std::wstring& path)
 {
     /*
-     * The baseline is a file and not a state in memory, so the user picks
-     * where it is kept before the machine is read: the file is what a later
-     * comparison opens again, and it can be loaded by another session as well.
+     * The baseline is a file and not a state in memory, so the user picks where
+     * it is kept: the file is what the comparison opens again after the
+     * installation, and it can be used by another capture as well.
      */
-    const auto   suggested = wxString("snapshot.") + appbox::kSnapshotFileExtension;
-    wxFileDialog dialog(this, "Capture Before", wxEmptyString, suggested, SnapshotFileFilter(),
-                        wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+    const bool existing = source == appbox::SnapshotBaselineSource::Existing;
+
+    const auto   suggested = existing ? wxString() : wxString("snapshot.") + appbox::kSnapshotFileExtension;
+    wxFileDialog dialog(this, existing ? "Use Snapshot" : "Create Snapshot", wxEmptyString, suggested,
+                        SnapshotFileFilter(),
+                        existing ? (wxFD_OPEN | wxFD_FILE_MUST_EXIST) : (wxFD_SAVE | wxFD_OVERWRITE_PROMPT));
     if (dialog.ShowModal() != wxID_OK)
+    {
+        /* The path the user set is left as it is, so a dismissed dialog is no dead end. */
+        return false;
+    }
+
+    path = dialog.GetPath().ToStdWstring();
+    return true;
+}
+
+void MainFrame::OnSnapshotBaselineRequested(appbox::SnapshotBaselineSource source, const std::wstring& path)
+{
+    if (capture_wizard_ == nullptr || capture_thread_.joinable() || pack_thread_.joinable() ||
+        realtime_capture_thread_.joinable())
     {
         return;
     }
 
-    StartCapture(false, dialog.GetPath().ToStdWstring());
+    if (source == appbox::SnapshotBaselineSource::Existing)
+    {
+        /*
+         * The file the user named is the baseline, so only its path is kept:
+         * the state the file holds is never read into the memory of the
+         * packer, and the comparison writes the state after the change into
+         * the same file.
+         */
+        appbox::SnapshotPhaseCounts counts;
+        std::string                 error;
+        if (!ReadSnapshotBaseline(path, counts, error))
+        {
+            spdlog::error("the snapshot could not be used: {}", error);
+            wxMessageBox("The snapshot could not be used:\n\n" + wxString::FromUTF8(error), "Capture",
+                         wxOK | wxICON_ERROR, this);
+            capture_wizard_->SetBaselineReady(false);
+            return;
+        }
+
+        capture_snapshot_path_ = path;
+        capture_wizard_->SetBaselineReady(true);
+        capture_wizard_->SetProgressStatus(
+            appbox::CaptureWizardStage::Baseline, "The baseline was loaded", wxString(path),
+            wxString::Format("%llu entries", static_cast<unsigned long long>(counts.files)));
+        SetStatusText(wxString::Format("Snapshot loaded from %s (%llu filesystem entries)", wxString(path).c_str(),
+                                       static_cast<unsigned long long>(counts.files)));
+        return;
+    }
+
+    /*
+     * The file the state is read into is the one the user named, so it is
+     * checked before the walk starts: the machine is read into it afterwards
+     * and the comparison opens the same file again after the installation.
+     */
+    if (!CanWriteSnapshotFile(path, this))
+    {
+        capture_wizard_->SetBaselineReady(false);
+        return;
+    }
+
+    StartSnapshotCapture(CapturePhase::Baseline, path);
 }
 
-void MainFrame::OnCaptureAndDiff(wxCommandEvent&)
+void MainFrame::StartSnapshotComparison()
 {
-    if (snapshot_path_.empty())
+    if (capture_wizard_ == nullptr || capture_thread_.joinable())
     {
-        wxMessageBox("There is no baseline to compare the machine with.\n\n"
-                     "Use 'Capture Before' to keep the state of the machine in a snapshot file first, or load a "
-                     "snapshot with 'File -> Load Snapshot...'.",
-                     "Capture and Diff", wxOK | wxICON_INFORMATION, this);
         return;
     }
 
     std::error_code ec;
-    if (!std::filesystem::is_regular_file(std::filesystem::path(snapshot_path_), ec) || ec)
+    if (capture_snapshot_path_.empty() ||
+        !std::filesystem::is_regular_file(std::filesystem::path(capture_snapshot_path_), ec) || ec)
     {
-        const auto missing = snapshot_path_;
-        snapshot_path_.clear();
-
+        const auto missing = capture_snapshot_path_;
         wxMessageBox("The snapshot file which holds the baseline does not exist anymore:\n\n" + wxString(missing) +
-                         "\n\nUse 'Capture Before' to keep the state of the machine in a snapshot file first, or load "
-                         "a snapshot with 'File -> Load Snapshot...'.",
-                     "Capture and Diff", wxOK | wxICON_ERROR, this);
+                         "\n\nThe capture cannot compare the machine with it. Ask for the comparison again, or cancel "
+                         "the capture and start a new one.",
+                     "Capture", wxOK | wxICON_ERROR, this);
+        capture_wizard_->SetComparisonFailed();
         return;
     }
 
-    StartCapture(true, snapshot_path_);
+    StartSnapshotCapture(CapturePhase::Comparison, capture_snapshot_path_);
 }
 
-void MainFrame::StartCapture(bool diff, const std::wstring& path)
+void MainFrame::StartSnapshotCapture(CapturePhase phase, const std::wstring& path)
 {
-    if (capture_thread_.joinable() || pack_thread_.joinable())
+    if (capture_thread_.joinable() || pack_thread_.joinable() || realtime_capture_thread_.joinable())
     {
+        /*
+         * The request of the step which asked for the run has to be answered
+         * whatever happens, because the step waits for the answer before it can
+         * be left: a run which never starts reports a failure of its own.
+         */
+        if (phase == CapturePhase::Baseline)
+        {
+            capture_wizard_->SetBaselineReady(false);
+        }
+        else
+        {
+            capture_wizard_->SetComparisonFailed();
+        }
         return;
     }
 
@@ -1376,44 +1573,37 @@ void MainFrame::StartCapture(bool diff, const std::wstring& path)
     {
         wxMessageBox("None of the preset directories of the filesystem view is available on this machine.", "Capture",
                      wxOK | wxICON_ERROR, this);
+
+        if (phase == CapturePhase::Baseline)
+        {
+            capture_wizard_->SetBaselineReady(false);
+        }
+        else
+        {
+            capture_wizard_->SetComparisonFailed();
+        }
         return;
     }
 
-    capture_path_ = path;
+    const bool comparison = phase == CapturePhase::Comparison;
+
+    capture_phase_ = phase;
+    capture_snapshot_path_ = path;
     last_capture_progress_ = appbox::CaptureProgress{};
     capture_cancelled_ = false;
     capture_finished_ = false;
 
     /*
-     * The total number of the entries of a capture is not known before the
-     * walk is over, so the bar advances in a cycle instead of a fraction. The
-     * dialog keeps the elapsed time and the cycle of its bar on its own clock.
+     * The total number of the entries of a capture is not known before the walk
+     * is over, so the bar of the step advances in a cycle instead of a
+     * fraction, and the wizard keeps the elapsed time on its own clock.
      */
-    ActionDialog::Options dialog_options;
-    dialog_options.description = diff
-                                     ? "The state of the machine is read and compared with the baseline of the session."
-                                     : "The state of the machine is read and written into the snapshot file.";
-    dialog_options.mode = ActionDialog::ProgressMode::Indeterminate;
-    dialog_options.field_labels = { "Entries:", "Status:" };
-    dialog_options.buttons = ActionDialog::Buttons_Cancel;
+    capture_wizard_->SetProgressStatus(
+        comparison ? appbox::CaptureWizardStage::Comparison : appbox::CaptureWizardStage::Baseline,
+        comparison ? "Reading the state of the machine again" : "Reading the state of the machine", wxEmptyString,
+        wxEmptyString);
 
-    capture_dialog_ =
-        new ActionDialog(this, diff ? "Capturing and Comparing" : "Capturing the System State", dialog_options);
-    capture_dialog_->Show();
-
-    ApplyCaptureProgress();
-    capture_dialog_->SetField(kCaptureFieldStatus, "Running");
-
-    /*
-     * The models are copied, so the worker thread never reads or writes the
-     * state the workspace shows: a comparison is applied to the copies, which
-     * the window adopts once the run is over.
-     */
-    const auto model = model_;
-    const auto registry = registry_model_;
-    const auto environment = environment_;
-
-    capture_thread_ = std::thread([this, options, diff, path, model, registry, environment]() {
+    capture_thread_ = std::thread([this, options, phase, path]() {
         const auto report_progress = [this](const appbox::CaptureProgress& report) {
             auto* event = new wxThreadEvent(APPBOX_CAPTURE_PROGRESS);
             event->SetPayload(report);
@@ -1421,17 +1611,15 @@ void MainFrame::StartCapture(bool diff, const std::wstring& path)
             return !this->capture_cancelled_.load();
         };
 
-        CaptureOutcome outcome;
-        outcome.model = model;
-        outcome.registry = registry;
-        outcome.environment = environment;
+        const bool comparison = phase == CapturePhase::Comparison;
 
-        std::string error;
-        if (!WriteCapturePhase(options, path, diff, report_progress, error))
+        SnapshotCaptureOutcome outcome;
+        std::string            error;
+        if (!WriteCapturePhase(options, path, comparison, report_progress, error))
         {
             outcome.error = error;
         }
-        else if (diff)
+        else if (comparison)
         {
             appbox::SnapshotDiff difference;
             if (!appbox::DiffSnapshotPhases(path, difference, error))
@@ -1440,28 +1628,16 @@ void MainFrame::StartCapture(bool diff, const std::wstring& path)
             }
             else
             {
-                appbox::SnapshotApplyReport report;
-                std::string                 apply_error;
-                if (!appbox::ApplySnapshotDiff(difference, outcome.model, outcome.registry, outcome.environment, report,
-                                               apply_error))
-                {
-                    outcome.error = apply_error;
-                }
-                else
-                {
-                    outcome.applied = true;
-                    outcome.summary = appbox::SnapshotApplySummary(difference, report);
-                }
+                outcome.diff = std::make_shared<const appbox::SnapshotDiff>(std::move(difference));
             }
         }
-
-        /*
-         * The counts belong to the result of a baseline run. They are read
-         * from the file instead of being counted while the state is written,
-         * because the file is what the state is.
-         */
-        if (outcome.error.empty() && !diff)
+        else
         {
+            /*
+             * The counts belong to the result of a baseline run. They are read
+             * from the file instead of being counted while the state is
+             * written, because the file is what the state is.
+             */
             const auto reader = appbox::SnapshotReader::Open(path, error);
             if (reader == nullptr || !reader->Counts(appbox::SnapshotPhase::Before, outcome.counts, error))
             {
@@ -1477,15 +1653,15 @@ void MainFrame::StartCapture(bool diff, const std::wstring& path)
 
 void MainFrame::OnCaptureProgress(wxThreadEvent& event)
 {
-    if (capture_dialog_ == nullptr || capture_finished_)
+    if (capture_wizard_ == nullptr || capture_finished_)
     {
         return;
     }
 
     last_capture_progress_ = event.GetPayload<appbox::CaptureProgress>();
 
-    /* The user dismissed the dialog, so the run has to be aborted. */
-    if (capture_dialog_->WasCancelled())
+    /* The user dismissed the wizard, so the run has to be aborted. */
+    if (capture_wizard_->WasCancelled())
     {
         capture_cancelled_ = true;
         return;
@@ -1496,14 +1672,16 @@ void MainFrame::OnCaptureProgress(wxThreadEvent& event)
 
 void MainFrame::ApplyCaptureProgress()
 {
-    if (capture_dialog_ == nullptr || capture_finished_)
+    if (capture_wizard_ == nullptr || capture_finished_)
     {
         return;
     }
 
-    capture_dialog_->SetAction(CaptureStageAction(last_capture_progress_.stage));
-    capture_dialog_->SetObject(wxString(last_capture_progress_.current));
-    capture_dialog_->SetField(kCaptureFieldEntries, CaptureEntriesField(last_capture_progress_));
+    capture_wizard_->SetProgressStatus(
+        capture_phase_ == CapturePhase::Baseline ? appbox::CaptureWizardStage::Baseline
+                                                 : appbox::CaptureWizardStage::Comparison,
+        CaptureStageAction(last_capture_progress_.stage), wxString(last_capture_progress_.current),
+        CaptureEntriesField(last_capture_progress_));
 }
 
 void MainFrame::OnCaptureFinished(wxThreadEvent& event)
@@ -1513,160 +1691,512 @@ void MainFrame::OnCaptureFinished(wxThreadEvent& event)
         capture_thread_.join();
     }
 
-    /* A late progress report must not touch the dialog anymore. */
+    /* A late progress report must not touch the wizard anymore. */
     capture_finished_ = true;
 
-    if (capture_dialog_ != nullptr)
+    if (capture_wizard_ == nullptr)
     {
-        capture_dialog_->Destroy();
-        capture_dialog_ = nullptr;
+        return;
     }
 
-    const auto path = capture_path_;
-    capture_path_.clear();
+    if (capture_wizard_->WasCancelled())
+    {
+        /* The user dropped the capture, so the result of the run is not used. */
+        capture_cancelled_ = true;
+        CloseCaptureWizard();
+        SetStatusText("Snapshot capture cancelled");
+        return;
+    }
 
-    const auto outcome = event.GetPayload<CaptureOutcome>();
+    const auto outcome = event.GetPayload<SnapshotCaptureOutcome>();
+    const bool baseline = capture_phase_ == CapturePhase::Baseline;
 
     if (outcome.error == appbox::kCaptureCancelledError)
     {
         SetStatusText("Capture cancelled");
+
+        /* The step offers its work again, so a run which was aborted is no dead end. */
+        if (baseline)
+        {
+            capture_wizard_->SetBaselineReady(false);
+        }
+        else
+        {
+            capture_wizard_->SetComparisonFailed();
+        }
         return;
     }
+
     if (!outcome.error.empty())
     {
         spdlog::error("the capture failed: {}", outcome.error);
         wxMessageBox("The state of the machine could not be read:\n\n" + wxString::FromUTF8(outcome.error), "Capture",
                      wxOK | wxICON_ERROR, this);
+
+        if (baseline)
+        {
+            capture_wizard_->SetBaselineReady(false);
+        }
+        else
+        {
+            capture_wizard_->SetComparisonFailed();
+        }
         return;
     }
 
-    if (!outcome.applied)
+    if (baseline)
     {
-        /* The file which was written is the baseline the next comparison opens. */
-        snapshot_path_ = path;
-        SetStatusText("Baseline captured into " + wxString(path));
-
-        wxMessageBox(wxString::Format("The state of the machine was written into\n\n  %s\n\n"
-                                      "and kept as the baseline of the next comparison:\n\n"
-                                      "  filesystem entries: %llu\n"
-                                      "  registry keys: %llu\n"
-                                      "  registry values: %llu\n"
-                                      "  environment variables: %llu",
-                                      path.c_str(), static_cast<unsigned long long>(outcome.counts.files),
-                                      static_cast<unsigned long long>(outcome.counts.registry_keys),
-                                      static_cast<unsigned long long>(outcome.counts.registry_values),
-                                      static_cast<unsigned long long>(outcome.counts.environment)),
-                     "Capture Before", wxOK | wxICON_INFORMATION, this);
+        /* The file which was written is the baseline the comparison opens. */
+        capture_wizard_->SetBaselineReady(true);
+        capture_wizard_->SetProgressStatus(
+            appbox::CaptureWizardStage::Baseline, "The baseline is ready", wxString(capture_snapshot_path_),
+            wxString::Format("%llu entries", static_cast<unsigned long long>(outcome.counts.files)));
+        SetStatusText("Baseline captured into " + wxString(capture_snapshot_path_));
         return;
     }
-
-    model_ = outcome.model;
-    registry_model_ = outcome.registry;
-    environment_ = outcome.environment;
-    filesystem_panel_->RefreshModel();
-    registry_panel_->RefreshModel();
-    environment_panel_->RefreshModel();
 
     /*
-     * The comparison does not become the baseline of the next one: the file
-     * holds a state the machine has already left behind, so the user takes a
-     * new baseline before the next comparison.
+     * The comparison changes nothing on its own: the difference is what the
+     * last step of the wizard writes into the workspaces, so it is kept until
+     * the fill is over.
      */
-    snapshot_path_.clear();
-    SetStatusText("The difference of the capture was written into the workspaces");
-    wxMessageBox(wxString(outcome.summary) +
-                     wxString::Format("\n\nThe state after the change was written into\n\n  %s\n\n"
-                                      "Take a new 'Capture Before' before the next comparison.",
-                                      path.c_str()),
-                 "Capture and Diff", wxOK | wxICON_INFORMATION, this);
+    capture_diff_ = outcome.diff;
+    capture_wizard_->SetAnalysisReady();
 }
 
-void MainFrame::OnSaveSnapshotAs(wxCommandEvent&)
+void MainFrame::OnCapture(wxCommandEvent&)
 {
-    if (snapshot_path_.empty())
-    {
-        wxMessageBox("There is no snapshot to save.\n\n"
-                     "Use 'Capture Before' to keep the state of the machine in a snapshot file first.",
-                     "Save Snapshot As", wxOK | wxICON_INFORMATION, this);
-        return;
-    }
-
-    const auto   suggested = wxString("snapshot.") + appbox::kSnapshotFileExtension;
-    wxFileDialog dialog(this, "Save Snapshot As", wxEmptyString, suggested, SnapshotFileFilter(),
-                        wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
-    if (dialog.ShowModal() != wxID_OK)
+    if (capture_thread_.joinable() || pack_thread_.joinable() || realtime_capture_thread_.joinable() ||
+        fill_thread_.joinable() || capture_wizard_ != nullptr)
     {
         return;
     }
 
     /*
-     * Only the state before the change is written: the copy is the baseline
-     * alone, and the session keeps working with the file of its own.
+     * The prerequisites are shown by the first step of the wizard instead of
+     * being checked before it opens: a machine which cannot record explains
+     * itself, and a process which is not elevated is offered the restart.
      */
-    std::string error;
-    if (!appbox::CopySnapshotPhase(snapshot_path_, appbox::SnapshotPhase::Before, dialog.GetPath().ToStdWstring(),
-                                   error))
-    {
-        spdlog::error("saving the snapshot failed: {}", error);
-        wxMessageBox("The snapshot could not be saved:\n\n" + wxString::FromUTF8(error), "Save Snapshot As",
-                     wxOK | wxICON_ERROR, this);
-        return;
-    }
+    appbox::CaptureRequirements requirements;
+    requirements.supported = appbox::RealtimeCaptureSupported();
+    requirements.elevated = appbox::IsProcessElevated();
 
-    SetStatusText("Snapshot saved to " + dialog.GetPath());
+    realtime_capture_options_ = appbox::DefaultRealtimeCaptureOptions();
+    realtime_capture_cancelled_ = false;
+    realtime_capture_finishing_ = false;
+    realtime_capture_finished_ = false;
+    capture_cancelled_ = false;
+    capture_finished_ = false;
+    capture_diff_.reset();
+    capture_report_ = {};
+    capture_snapshot_path_.clear();
+
+    capture_wizard_ = new CaptureWizard(this, "Capture", requirements);
+    capture_wizard_->SetStageHandler(
+        [this](appbox::CaptureWizardStage from, appbox::CaptureWizardStage to) { OnCaptureStageChanged(from, to); });
+    capture_wizard_->SetBaselineHandler([this](appbox::SnapshotBaselineSource source, const std::wstring& path) {
+        OnSnapshotBaselineRequested(source, path);
+    });
+    capture_wizard_->SetBrowseHandler([this](appbox::SnapshotBaselineSource source, std::wstring& path) {
+        return OnSnapshotPathBrowse(source, path);
+    });
+    capture_wizard_->Show();
+
+    /*
+     * A quiet machine reports no progress, so the wizard is polled on a timer
+     * of its own: a wizard the user dismissed ends the run in flight, and one
+     * whose work is over is destroyed.
+     */
+    capture_wizard_timer_ = new wxTimer(this);
+    Bind(wxEVT_TIMER, &MainFrame::OnCaptureWizardTick, this, capture_wizard_timer_->GetId());
+    capture_wizard_timer_->Start(250 /* milliseconds */);
 }
 
-void MainFrame::OnLoadSnapshot(wxCommandEvent&)
+void MainFrame::StartRealtimeCaptureRecording()
 {
-    wxFileDialog dialog(this, "Load Snapshot", wxEmptyString, wxEmptyString, SnapshotFileFilter(),
-                        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
-    if (dialog.ShowModal() != wxID_OK)
+    capture_wizard_->SetProgressStatus(appbox::CaptureWizardStage::Recording, "Preparing the recording", wxEmptyString,
+                                       wxEmptyString);
+
+    realtime_capture_thread_ = std::thread([this]() {
+        RealtimeCaptureOutcome outcome;
+
+        /*
+         * The baseline of the environment is read before the session starts,
+         * so nothing the recording itself does can slip into the difference.
+         */
+        std::vector<appbox::SnapshotEnvironmentEntry> environment_before;
+        std::string                                   error;
+        if (!appbox::ReadPersistedEnvironment(environment_before, error))
+        {
+            outcome.error = error;
+        }
+        else if (!realtime_recorder_.Start(
+                     realtime_capture_options_,
+                     [this](const appbox::RealtimeCaptureProgress& report) {
+                         auto* event = new wxThreadEvent(APPBOX_REALTIME_CAPTURE_PROGRESS);
+                         event->SetPayload(report);
+                         this->GetEventHandler()->QueueEvent(event);
+                         return !this->realtime_capture_cancelled_.load();
+                     },
+                     error))
+        {
+            outcome.error = error;
+        }
+        else
+        {
+            auto* stage = new wxThreadEvent(APPBOX_REALTIME_CAPTURE_STAGE);
+            stage->SetPayload(kRealtimeStageRecording);
+            this->GetEventHandler()->QueueEvent(stage);
+
+            /*
+             * The recording ends when the user left the step of the recording
+             * or dismissed the wizard: the session is stopped, which ends the
+             * consumer of the recorder on its own.
+             */
+            while (!realtime_capture_finishing_.load() && !realtime_capture_cancelled_.load())
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
+            realtime_recorder_.RequestStop();
+            realtime_recorder_.Join(60000 /* milliseconds */);
+
+            if (!realtime_capture_cancelled_.load())
+            {
+                auto* analyzing = new wxThreadEvent(APPBOX_REALTIME_CAPTURE_STAGE);
+                analyzing->SetPayload(kRealtimeStageAnalyzing);
+                this->GetEventHandler()->QueueEvent(analyzing);
+
+                /*
+                 * The analysis follows the semantics of the snapshot capture:
+                 * the recorded changes become the difference of the machine,
+                 * which the last step of the wizard writes into the workspaces.
+                 * The changes which belong to no preset directory are reported
+                 * with it, so the dialog lists them as well.
+                 */
+                const auto events = realtime_recorder_.TakeEvents();
+
+                appbox::SnapshotDiff difference;
+                std::string          harvest_error;
+                if (!appbox::HarvestRealtimeEvents(events, environment_before, realtime_capture_options_, difference,
+                                                   outcome.report, harvest_error))
+                {
+                    outcome.error = harvest_error;
+                }
+                else
+                {
+                    outcome.diff = std::make_shared<const appbox::SnapshotDiff>(std::move(difference));
+                }
+            }
+        }
+
+        auto* event = new wxThreadEvent(APPBOX_REALTIME_CAPTURE_FINISHED);
+        event->SetPayload(outcome);
+        this->GetEventHandler()->QueueEvent(event);
+    });
+}
+
+void MainFrame::OnCaptureStageChanged(appbox::CaptureWizardStage from, appbox::CaptureWizardStage to)
+{
+    if (capture_wizard_ == nullptr)
     {
         return;
     }
 
-    const auto fail = [this](const std::string& reason) {
-        spdlog::error("loading the snapshot failed: {}", reason);
-        wxMessageBox("The snapshot could not be loaded:\n\n" + wxString::FromUTF8(reason), "Load Snapshot",
-                     wxOK | wxICON_ERROR, this);
-    };
+    if (to == appbox::CaptureWizardStage::Recording)
+    {
+        StartRealtimeCaptureRecording();
+        return;
+    }
+
+    if (to == appbox::CaptureWizardStage::Comparison)
+    {
+        StartSnapshotComparison();
+        return;
+    }
+
+    if (to == appbox::CaptureWizardStage::Review && from == appbox::CaptureWizardStage::Recording)
+    {
+        /*
+         * The recording ends on the decision of the user: the flag hands the
+         * capture thread over to the analysis of the recorded changes, which
+         * the wizard follows on its last step. The difference of a snapshot
+         * capture is already there when its last step is entered, so only the
+         * recording is stopped here.
+         */
+        realtime_capture_finishing_ = true;
+        capture_wizard_->SetAnalysisStatus("Stopping the session of the capture");
+        return;
+    }
+
+    if (to == appbox::CaptureWizardStage::Review)
+    {
+        /* The difference of the snapshot capture is there, so the last phase of the capture runs. */
+        StartFill();
+    }
+}
+
+void MainFrame::StartFill()
+{
+    if (capture_diff_ == nullptr || capture_wizard_ == nullptr || fill_thread_.joinable())
+    {
+        return;
+    }
 
     /*
-     * Only the path is kept: the file itself is the baseline, so the entries
-     * of the state are never read into the memory of the packer. The state
-     * after the change of the file is not used either, because the comparison
-     * writes it again.
+     * The models are copied, so the run reads and writes a state of its own
+     * while the workspaces keep showing the state the user has: the copies are
+     * swapped in once the run is over.
      */
-    const auto path = dialog.GetPath().ToStdWstring();
+    auto diff = capture_diff_;
+    auto model = model_;
+    auto registry = registry_model_;
+    auto environment = environment_;
+    auto report = capture_report_;
 
-    std::string error;
-    const auto  reader = appbox::SnapshotReader::Open(path, error);
-    if (reader == nullptr)
+    capture_wizard_->SetAnalysisStatus("Writing the changes of the capture into the workspaces");
+    capture_wizard_->SetFillRunning(true);
+
+    fill_thread_ = std::thread([this, diff, model, registry, environment, report]() mutable {
+        CaptureFillOutcome outcome;
+
+        /*
+         * The dialog shows the entry which is being written, so the reports are
+         * throttled: the fill reports every entry twice and a capture of a whole
+         * machine walks through thousands of them.
+         */
+        appbox::ActionThrottle      throttle{ std::chrono::milliseconds(kFillReportInterval) };
+        appbox::CaptureFillProgress last;
+
+        const auto progress = [this, &throttle, &last](const appbox::CaptureFillProgress& current) {
+            last = current;
+            if (!throttle.TryAcquire())
+            {
+                return;
+            }
+
+            auto* event = new wxThreadEvent(APPBOX_CAPTURE_FILL_PROGRESS);
+            event->SetPayload(current);
+            this->GetEventHandler()->QueueEvent(event);
+        };
+
+        std::string error;
+        if (!appbox::ApplySnapshotDiff(*diff, model, registry, environment, report, progress, error))
+        {
+            outcome.error = error;
+        }
+        else
+        {
+            outcome.applied = true;
+            outcome.model = std::move(model);
+            outcome.registry = std::move(registry);
+            outcome.environment = std::move(environment);
+        }
+
+        outcome.report = std::move(report);
+
+        /*
+         * The state of the entry which was written last is shown whatever the
+         * throttle decided, so the row never names an entry the run left behind.
+         */
+        auto* state = new wxThreadEvent(APPBOX_CAPTURE_FILL_PROGRESS);
+        state->SetPayload(last);
+        this->GetEventHandler()->QueueEvent(state);
+
+        auto* finished = new wxThreadEvent(APPBOX_CAPTURE_FILL_FINISHED);
+        finished->SetPayload(std::move(outcome));
+        this->GetEventHandler()->QueueEvent(finished);
+    });
+}
+
+void MainFrame::OnFillProgress(wxThreadEvent& event)
+{
+    if (capture_wizard_ == nullptr)
     {
-        fail(error);
         return;
     }
 
-    bool present = false;
-    if (!reader->HasPhase(appbox::SnapshotPhase::Before, present, error))
+    capture_wizard_->SetFillProgress(event.GetPayload<appbox::CaptureFillProgress>());
+}
+
+void MainFrame::OnFillFinished(wxThreadEvent& event)
+{
+    if (fill_thread_.joinable())
     {
-        fail(error);
-        return;
+        fill_thread_.join();
     }
-    if (!present)
+
+    if (capture_wizard_ == nullptr)
     {
-        fail("the snapshot file does not hold the state before the change: " + appbox::WideToUTF8(path));
         return;
     }
 
-    appbox::SnapshotPhaseCounts counts;
-    if (!reader->Counts(appbox::SnapshotPhase::Before, counts, error))
+    auto outcome = event.GetPayload<CaptureFillOutcome>();
+
+    if (outcome.applied)
     {
-        fail(error);
+        /*
+         * The run wrote copies of the models, so the session receives them here:
+         * the workspaces show the state of the capture from now on.
+         */
+        model_ = std::move(outcome.model);
+        registry_model_ = std::move(outcome.registry);
+        environment_ = std::move(outcome.environment);
+
+        filesystem_panel_->RefreshModel();
+        registry_panel_->RefreshModel();
+        environment_panel_->RefreshModel();
+
+        SetStatusText("The changes of the capture were written into the workspaces");
+    }
+    else
+    {
+        spdlog::error("the changes of the capture could not be written: {}", outcome.error);
+        appbox::AddErrorNotice(outcome.report, appbox::CaptureFillDomain::Filesystem,
+                               L"the changes of the capture could not be written: " +
+                                   appbox::UTF8ToWide(outcome.error));
+    }
+
+    /*
+     * The whole work of the last step is over, whatever the run did: the entries
+     * which were not written are listed and the button which ends the capture is
+     * offered.
+     */
+    capture_report_ = std::move(outcome.report);
+    capture_wizard_->SetFillReport(capture_report_);
+    capture_wizard_->MarkFillComplete();
+}
+
+void MainFrame::CloseCaptureWizard()
+{
+    if (capture_wizard_timer_ != nullptr)
+    {
+        capture_wizard_timer_->Stop();
+        delete capture_wizard_timer_;
+        capture_wizard_timer_ = nullptr;
+    }
+
+    if (capture_wizard_ != nullptr)
+    {
+        capture_wizard_->Destroy();
+        capture_wizard_ = nullptr;
+    }
+
+    capture_diff_.reset();
+    capture_report_ = {};
+}
+
+void MainFrame::OnCaptureWizardTick(wxTimerEvent&)
+{
+    if (capture_wizard_ == nullptr)
+    {
         return;
     }
 
-    snapshot_path_ = path;
-    SetStatusText(wxString::Format("Snapshot loaded from %s (%llu filesystem entries)", dialog.GetPath().c_str(),
-                                   static_cast<unsigned long long>(counts.files)));
+    /* A quiet machine reports no progress, so the state of the wizard is
+     * polled instead. */
+    if (capture_wizard_->WasCancelled())
+    {
+        capture_cancelled_ = true;
+        realtime_capture_cancelled_ = true;
+
+        /* A run in flight reports its end on its own. */
+        if (!capture_thread_.joinable() && !realtime_capture_thread_.joinable() && !fill_thread_.joinable())
+        {
+            CloseCaptureWizard();
+            SetStatusText("Capture cancelled");
+        }
+        return;
+    }
+
+    /*
+     * The work of the last step is over when the button which confirms the
+     * capture is offered, so the wizard is only destroyed here: the runs are
+     * over by then, because the difference it was built from came from one of
+     * them.
+     */
+    if (capture_wizard_->WasConfirmed() && !capture_thread_.joinable() && !realtime_capture_thread_.joinable() &&
+        !fill_thread_.joinable())
+    {
+        CloseCaptureWizard();
+    }
+}
+
+void MainFrame::OnRealtimeCaptureProgress(wxThreadEvent& event)
+{
+    if (capture_wizard_ == nullptr || realtime_capture_finished_)
+    {
+        return;
+    }
+
+    last_realtime_progress_ = event.GetPayload<appbox::RealtimeCaptureProgress>();
+
+    /* The user dismissed the wizard, so the recording has to be aborted. */
+    if (capture_wizard_->WasCancelled())
+    {
+        realtime_capture_cancelled_ = true;
+        return;
+    }
+
+    capture_wizard_->SetProgressStatus(
+        appbox::CaptureWizardStage::Recording, "Recording the changes of the machine",
+        wxString(last_realtime_progress_.process) + "  " + wxString(last_realtime_progress_.current),
+        wxString::Format("%llu entries", static_cast<unsigned long long>(last_realtime_progress_.events)));
+}
+
+void MainFrame::OnRealtimeCaptureStage(wxThreadEvent& event)
+{
+    if (capture_wizard_ == nullptr || realtime_capture_finished_)
+    {
+        return;
+    }
+
+    if (event.GetPayload<int>() == kRealtimeStageRecording)
+    {
+        capture_wizard_->SetProgressStatus(appbox::CaptureWizardStage::Recording,
+                                           "Recording the changes of the machine", wxEmptyString, "0 entries");
+    }
+    else
+    {
+        capture_wizard_->SetAnalysisStatus("Analyzing the recorded changes of the capture");
+    }
+}
+
+void MainFrame::OnRealtimeCaptureFinished(wxThreadEvent& event)
+{
+    if (realtime_capture_thread_.joinable())
+    {
+        realtime_capture_thread_.join();
+    }
+
+    /* A late progress report must not touch the wizard anymore. */
+    realtime_capture_finished_ = true;
+
+    const auto outcome = event.GetPayload<RealtimeCaptureOutcome>();
+
+    if (realtime_capture_cancelled_.load())
+    {
+        CloseCaptureWizard();
+        SetStatusText("Realtime capture cancelled");
+        return;
+    }
+
+    if (!outcome.error.empty() || capture_wizard_ == nullptr)
+    {
+        spdlog::error("the realtime capture failed: {}", outcome.error);
+        wxMessageBox("The changes of the machine could not be recorded:\n\n" + wxString::FromUTF8(outcome.error),
+                     "Capture", wxOK | wxICON_ERROR, this);
+        CloseCaptureWizard();
+        return;
+    }
+
+    /*
+     * The recording changes nothing on its own: the difference is what the last
+     * step of the wizard writes into the workspaces, and the changes which
+     * belong to no preset directory are listed next to the entries the fill
+     * leaves out.
+     */
+    capture_diff_ = outcome.diff;
+    capture_report_ = outcome.report;
+    capture_wizard_->SetFillReport(capture_report_);
+    StartFill();
 }

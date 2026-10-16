@@ -429,33 +429,20 @@ bool PackModel::ImportFiles(const std::string& preset_id, const std::wstring& ta
         return false;
     }
 
+    /*
+     * The target directory is a folder of the view and may be the layer root of
+     * the preset directory, and the first segment is stored in the spelling the
+     * model carries it in, so a file which was imported below an imported
+     * folder keeps the name of that import.
+     */
     const auto directory = NormalizeRelativeDir(target_dir);
-    if (directory.empty())
+    if (!target_dir.empty() && directory.empty())
     {
         error = "the target directory is not a valid relative path";
         return false;
     }
 
-    /*
-     * The first segment has to be an imported folder: the file extends an
-     * existing lower layer instead of creating a new one.
-     */
-    const auto     segments = Split(directory, L"\\");
-    ImportedFolder imported;
-    if (!GetImport(preset_id, segments.front(), imported))
-    {
-        error = "'" + WideToUTF8(segments.front()) + "' is not an imported folder";
-        return false;
-    }
-
-    /* Store the canonical spelling of the imported folder. */
-    std::wstring canonical_dir = imported.import_name;
-    const auto   remainder = JoinSegments(segments, 1);
-    if (!remainder.empty())
-    {
-        canonical_dir.push_back(L'\\');
-        canonical_dir += remainder;
-    }
+    const auto canonical_dir = CanonicalDirectoryPath(preset_id, directory);
 
     if (source_paths.empty())
     {
@@ -483,32 +470,28 @@ bool PackModel::ImportFiles(const std::string& preset_id, const std::wstring& ta
             return false;
         }
 
-        const auto duplicated = [&](const std::vector<ImportedFile>& files) {
-            return std::any_of(files.begin(), files.end(), [&](const ImportedFile& file) {
-                return file.preset_id == preset_id && EqualsIgnoreCase(file.target_dir, canonical_dir) &&
-                       EqualsIgnoreCase(file.file_name, name);
-            });
-        };
-
-        if (duplicated(pending) || duplicated(imported_files_))
+        error = CheckImportedFilePlacement(preset_id, canonical_dir, name);
+        if (!error.empty())
         {
-            error = "'" + WideToUTF8(name) + "' was already imported into " + WideToUTF8(canonical_dir);
             return false;
         }
 
-        /* A file below a folder the user created would collide in the archive. */
-        if (HasVirtualDirectory(preset_id, canonical_dir + L"\\" + name))
+        const auto duplicated = std::any_of(pending.begin(), pending.end(), [&](const ImportedFile& file) {
+            return file.preset_id == preset_id && EqualsIgnoreCase(file.target_dir, canonical_dir) &&
+                   EqualsIgnoreCase(file.file_name, name);
+        });
+        if (duplicated)
         {
-            error = "'" + WideToUTF8(name) + "' is a folder of the view";
+            error = "'" + WideToUTF8(name) + "' was selected twice";
             return false;
         }
 
         /*
-         * A name which already exists in the imported folder would produce a
-         * duplicate entry inside the archive.
+         * A name which the host content of an imported folder holds already
+         * would produce a duplicate entry inside the archive.
          */
-        const auto host_path = std::filesystem::path(imported.source_path) / remainder / std::filesystem::path(name);
-        if (std::filesystem::exists(host_path, ec))
+        const auto path = canonical_dir.empty() ? name : canonical_dir + L"\\" + name;
+        if (HostImportCarries(preset_id, path))
         {
             error = "'" + WideToUTF8(name) + "' already exists in the imported folder";
             return false;
@@ -989,17 +972,10 @@ bool PackModel::ResolveStartupFile(const std::string& preset_id, const std::wstr
         return false;
     }
 
-    ImportedFolder imported;
-    if (!GetImport(preset_id, import_name, imported))
-    {
-        error = "the imported folder no longer exists";
-        return false;
-    }
-
     const auto relative = NormalizeRelativeFile(relative_path);
     if (relative.empty())
     {
-        error = "the startup file path is empty or leaves the imported folder";
+        error = "the startup file path is empty or leaves its preset directory";
         return false;
     }
 
@@ -1015,42 +991,66 @@ bool PackModel::ResolveStartupFile(const std::string& preset_id, const std::wstr
         return false;
     }
 
+    /*
+     * The file is named by the path it carries inside the layer of its preset
+     * directory: the first segment names the lower layer it extends, which is
+     * an imported folder or a folder the user created, and a file which lives
+     * in the layer root is named by its own name alone.
+     */
+    const auto segments = Split(import_name, L"\\");
+    const auto root = segments.empty() ? std::wstring() : CanonicalDirectoryPath(preset_id, segments.front());
+    const auto view_path = root.empty() ? relative : root + L"\\" + relative;
+
+    const auto directory = ParentDirectory(view_path);
+    const auto name = LeafName(view_path);
+    if (name.empty() || !IsDirectoryOfView(preset_id, directory))
+    {
+        error = "the startup file '" + WideToUTF8(view_path) + "' is not a file of the view";
+        return false;
+    }
+
     if (require_host)
     {
-        const auto      full = std::filesystem::path(imported.source_path) / relative;
-        std::error_code ec;
-        if (!std::filesystem::is_regular_file(full, ec))
+        /*
+         * A file which was imported on its own lives in the sandbox view and
+         * not in the host folder of its directory, so it counts as it is; every
+         * other file is looked up in the host folder of the view path.
+         */
+        bool exists = HasImportedFileAt(preset_id, view_path);
+        if (!exists)
         {
-            /*
-             * A file which was imported on its own lives in the sandbox view
-             * of the import, not in the host folder of the import, so the
-             * imported files of the target directory are checked as well.
-             */
-            const auto parent = std::filesystem::path(relative).parent_path().wstring();
-            const auto name = std::filesystem::path(relative).filename().wstring();
-
-            std::wstring target_dir = imported.import_name;
-            if (!parent.empty())
+            std::wstring host;
+            if (HostFolderOf(preset_id, directory, host) && !host.empty())
             {
-                target_dir.push_back(L'\\');
-                target_dir += parent;
+                std::error_code ec;
+                exists = std::filesystem::is_regular_file(std::filesystem::path(host) / name, ec) && !ec;
             }
+        }
 
-            const auto imported_files = FilesOf(preset_id, target_dir);
-            const auto found = std::any_of(imported_files.begin(), imported_files.end(), [&](const ImportedFile& file) {
-                return EqualsIgnoreCase(file.file_name, name);
-            });
-            if (!found)
-            {
-                error = "the startup file does not exist: " + WideToUTF8(relative);
-                return false;
-            }
+        if (!exists)
+        {
+            error = "the startup file does not exist: " + WideToUTF8(view_path);
+            return false;
         }
     }
 
+    /*
+     * The file is stored the way the launcher reads it: the first segment of
+     * the path inside the layer and the rest of that path.
+     */
+    const auto parts = Split(view_path, L"\\");
+    if (parts.size() > 1)
+    {
+        out.import_name = parts.front();
+        out.relative_path = JoinSegments(parts, 1);
+    }
+    else
+    {
+        out.import_name.clear();
+        out.relative_path = view_path;
+    }
+
     out.preset_id = preset_id;
-    out.import_name = imported.import_name;
-    out.relative_path = relative;
     return true;
 }
 
@@ -1207,31 +1207,16 @@ bool PackModel::RestoreImportedFile(const std::string& preset_id, const std::wst
     }
 
     const auto directory = NormalizeRelativeDir(target_dir);
-    if (directory.empty())
+    if (!target_dir.empty() && directory.empty())
     {
         error = "the target directory is not a valid relative path";
         return false;
     }
 
-    /*
-     * The first segment has to be an imported folder: the file extends an
-     * existing lower layer instead of creating a new one.
-     */
-    const auto     segments = Split(directory, L"\\");
-    ImportedFolder imported;
-    if (!GetImport(preset_id, segments.front(), imported))
+    error = CheckImportedFilePlacement(preset_id, directory, file_name);
+    if (!error.empty())
     {
-        error = "'" + WideToUTF8(segments.front()) + "' is not an imported folder";
         return false;
-    }
-
-    /* Store the canonical spelling of the imported folder. */
-    std::wstring canonical_dir = imported.import_name;
-    const auto   remainder = JoinSegments(segments, 1);
-    if (!remainder.empty())
-    {
-        canonical_dir.push_back(L'\\');
-        canonical_dir += remainder;
     }
 
     if (source_path.empty())
@@ -1240,26 +1225,9 @@ bool PackModel::RestoreImportedFile(const std::string& preset_id, const std::wst
         return false;
     }
 
-    for (const auto& file : imported_files_)
-    {
-        if (file.preset_id == preset_id && EqualsIgnoreCase(file.target_dir, canonical_dir) &&
-            EqualsIgnoreCase(file.file_name, file_name))
-        {
-            error = "'" + WideToUTF8(file_name) + "' was already imported into " + WideToUTF8(canonical_dir);
-            return false;
-        }
-    }
-
-    /* A file below a folder the user created would collide in the archive. */
-    if (HasVirtualDirectory(preset_id, canonical_dir + L"\\" + file_name))
-    {
-        error = "'" + WideToUTF8(file_name) + "' is a folder of the view";
-        return false;
-    }
-
     ImportedFile file;
     file.preset_id = preset_id;
-    file.target_dir = canonical_dir;
+    file.target_dir = CanonicalDirectoryPath(preset_id, directory);
     file.file_name = file_name;
     file.source_path = source_path;
     imported_files_.push_back(std::move(file));
@@ -1334,13 +1302,32 @@ bool PackModel::GetImport(const std::string& preset_id, const std::wstring& impo
 
 bool PackModel::StartupFilePath(const StartupFile& file, std::wstring& path) const
 {
-    ImportedFolder imported;
-    if (!GetImport(file.preset_id, file.import_name, imported))
+    const auto view_path =
+        file.import_name.empty() ? file.relative_path : file.import_name + L"\\" + file.relative_path;
+    const auto directory = ParentDirectory(view_path);
+    const auto name = LeafName(view_path);
+
+    /*
+     * A file which was imported on its own names the host file it was imported
+     * from, which is the file the run reads and the one a caller asks for.
+     */
+    for (const auto& imported : imported_files_)
+    {
+        if (imported.preset_id == file.preset_id && EqualsIgnoreCase(imported.target_dir, directory) &&
+            EqualsIgnoreCase(imported.file_name, name))
+        {
+            path = imported.source_path;
+            return true;
+        }
+    }
+
+    std::wstring host;
+    if (!HostFolderOf(file.preset_id, directory, host) || host.empty())
     {
         return false;
     }
 
-    path = (std::filesystem::path(imported.source_path) / file.relative_path).wstring();
+    path = (std::filesystem::path(host) / name).wstring();
     return true;
 }
 
@@ -1505,6 +1492,69 @@ bool PackModel::HasImportedFileAt(const std::string& preset_id, const std::wstri
         return file.preset_id == preset_id && EqualsIgnoreCase(file.target_dir, directory) &&
                EqualsIgnoreCase(file.file_name, name);
     });
+}
+
+std::string PackModel::CheckImportedFilePlacement(const std::string& preset_id, const std::wstring& directory,
+                                                  const std::wstring& file_name) const
+{
+    PresetDirectory preset;
+    if (!FindPresetDirectory(preset_id, preset))
+    {
+        return "unknown preset directory: " + preset_id;
+    }
+
+    if (!IsPlainName(file_name))
+    {
+        return "'" + WideToUTF8(file_name) + "' is not a usable file name";
+    }
+
+    /*
+     * The file is placed in a folder of the view, and the layer root of the
+     * preset directory is one of them: a capture fills its entries at the very
+     * paths the host holds them at, and a file of the root of a preset
+     * directory has no folder of its own to live in.
+     */
+    if (!IsDirectoryOfView(preset_id, directory))
+    {
+        return "'" + WideToUTF8(directory) + "' is not a folder of the view";
+    }
+
+    const auto path = directory.empty() ? file_name : directory + L"\\" + file_name;
+
+    if (HasVirtualDirectory(preset_id, path))
+    {
+        return "'" + WideToUTF8(file_name) + "' is a folder of the view";
+    }
+
+    if (HasImportedFileAt(preset_id, path))
+    {
+        return "'" + WideToUTF8(file_name) + "' was already imported into " + WideToUTF8(directory);
+    }
+
+    return {};
+}
+
+bool PackModel::HostImportCarries(const std::string& preset_id, const std::wstring& path) const
+{
+    const auto normalized = NormalizeRelativeDir(path);
+    const auto directory = ParentDirectory(normalized);
+    if (directory.empty())
+    {
+        /*
+         * The layer root of a preset directory is not an imported folder: the
+         * content of the preset folder itself does not travel into the archive.
+         */
+        return false;
+    }
+
+    std::wstring host;
+    if (!HostFolderOf(preset_id, directory, host) || host.empty())
+    {
+        return false;
+    }
+
+    std::error_code ec;
+    return std::filesystem::exists(std::filesystem::path(host) / LeafName(normalized), ec) && !ec;
 }
 
 std::wstring PackModel::CanonicalDirectoryPath(const std::string& preset_id, const std::wstring& path) const

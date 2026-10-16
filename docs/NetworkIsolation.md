@@ -186,7 +186,7 @@ packages are:
   carries a malformed network document is skipped, so the layers below and above
   it stay in place.
 
-## Known gaps
+## Known gaps and limitations
 
 - An application which sends a DNS question itself, without the name resolution
   of winsock or of the DNS client, is not redirected.

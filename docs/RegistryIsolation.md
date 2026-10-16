@@ -180,7 +180,7 @@ which gives the entry another mode makes it visible again, see
 `Hide` is also what the capture of the packer writes for an entry a snapshot
 found missing: the entry is added with the data of the older snapshot and the
 mode `Hide`, which keeps the entry of the host invisible for the packaged
-application without deleting anything (see [Snapshot Capture](Snapshot.md)). A
+application without deleting anything (see [Capture](Capture.md)). A
 key which is gone hides its whole subtree with one entry, so the packer writes
 the shallowest key of such a subtree and the values below it are covered by it.
 

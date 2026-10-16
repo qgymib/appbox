@@ -499,6 +499,67 @@ TEST(Unit_StartupTree, KeepsThePathOfAFileWhichIsNotInstalled)
 }
 
 /**
+ * @brief A file a capture placed below a folder of the view is offered, and a
+ *        startup file of it is stored the way the launcher reads the path.
+ */
+TEST(Unit_StartupTree, OffersAFileBelowAFolderOfTheView)
+{
+    TempDir    temp;
+    const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"", L"AppBoxVirtualFolder", error)) << error;
+    ASSERT_TRUE(model.ImportFiles("program_files", L"AppBoxVirtualFolder", { tool.wstring() }, error)) << error;
+
+    appbox::StartupTree tree(model);
+
+    appbox::StartupNode* const folder = FindLabel(*Container(tree), L"AppBoxVirtualFolder");
+    ASSERT_NE(folder, nullptr);
+    EXPECT_EQ(folder->kind, appbox::StartupNodeKind::VirtualDirectory);
+    EXPECT_EQ(folder->virtual_dir, L"AppBoxVirtualFolder");
+
+    appbox::StartupNode* const row = FindLabel(*folder, L"tool.exe");
+    ASSERT_NE(row, nullptr);
+    EXPECT_EQ(row->kind, appbox::StartupNodeKind::Executable);
+    EXPECT_EQ(row->import_name, L"AppBoxVirtualFolder");
+    EXPECT_EQ(row->relative_path, L"tool.exe");
+    EXPECT_EQ(row->host_path, tool.wstring());
+
+    /* The row is a startup file the model accepts. */
+    ASSERT_TRUE(tree.SetAutoStart(*row, true));
+    ASSERT_EQ(tree.Files().size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(tree.Files()[0].import_name, L"AppBoxVirtualFolder");
+    EXPECT_EQ(tree.Files()[0].relative_path, L"tool.exe");
+}
+
+/**
+ * @brief A file a capture placed in the layer root hangs below the row of its
+ *        preset directory and is named by its own name alone.
+ */
+TEST(Unit_StartupTree, OffersAFileOfTheLayerRoot)
+{
+    TempDir    temp;
+    const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFiles("program_files", L"", { tool.wstring() }, error)) << error;
+
+    appbox::StartupTree tree(model);
+
+    appbox::StartupNode* const preset = FindLabel(*Container(tree), L"Program Files");
+    ASSERT_NE(preset, nullptr);
+    ASSERT_EQ(ChildLabels(*preset), std::vector<std::wstring>({ L"tool.exe" }));
+
+    const appbox::StartupNode& row = *preset->children.front();
+    EXPECT_EQ(row.kind, appbox::StartupNodeKind::Executable);
+    EXPECT_TRUE(row.import_name.empty());
+    EXPECT_EQ(row.relative_path, L"tool.exe");
+    EXPECT_TRUE(appbox::StartupTree::IsCheckable(row));
+}
+
+/**
  * @brief A tree of a model without an import holds the container only.
  */
 TEST(Unit_StartupTree, TheEmptyModelShowsTheContainerOnly)

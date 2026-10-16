@@ -138,6 +138,26 @@ std::vector<CaptureFilesystemRoot> DefaultCaptureFilesystemRoots();
 std::vector<std::wstring> DefaultCaptureRegistryRoots();
 
 /**
+ * @brief Read the persisted environment of the machine.
+ *
+ * The variables of the machine are read first and the variables of the current
+ * user follow, so a name both keys list keeps the value of the user, which is
+ * the value the operating system hands to a process of that user. The values
+ * are stored with every `%NAME%` reference already resolved, see
+ * `src/core/SnapshotCapture.cpp`.
+ *
+ * The read is shared by the snapshot capture and the realtime capture: the
+ * realtime capture reads the environment when a recording starts and again
+ * when the analysis runs, and the difference of the two reads is the part of
+ * the environment the recording observed.
+ *
+ * @param[out] entries The variables of the persisted environment.
+ * @param[out] error Error description on failure.
+ * @return true when the environment was read.
+ */
+bool ReadPersistedEnvironment(std::vector<SnapshotEnvironmentEntry>& entries, std::string& error);
+
+/**
  * @brief Read the state of the machine into one phase of a snapshot file.
  *
  * The filesystem is walked folder by folder, the registry key by key and the

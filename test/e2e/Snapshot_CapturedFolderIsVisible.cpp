@@ -12,6 +12,7 @@
 #include "src/core/SnapshotStore.hpp"
 #include "src/core/ZipReader.hpp"
 #include "WString.hpp"
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -53,22 +54,25 @@ std::vector<char> ReadFileBytes(const std::wstring& path)
 /**
  * Condition:
  * 1. The baseline of the case is the state of the machine before the
- *    installation, which is a snapshot file whose phase before the change is
- *    empty: the folder of the installation does not exist yet.
+ *    installation, which is a snapshot file whose phase before the change holds
+ *    the folder of the installation alone: the content it receives is what the
+ *    capture has to report.
  * 2. A folder below `#USERPROFILE#` is created and a file is written into it,
  *    which is the installation the capture reports.
  * 3. The state after the installation is written into the phase after the
  *    change of the same snapshot file, the two phases are compared and the
- *    difference is written into the models, exactly like the `Capture and
- *    Diff` command of the packer does it.
+ *    difference is filled into the models, which is the whole work of the last
+ *    step of the wizard of the capture.
  * 4. The session is packed, the archive is extracted into the directory of the
  *    case and the folder of the host is removed afterwards.
  * 5. The packaged application reads the file the capture imported.
  *
  * Expected:
- * 1. The folder of the installation was imported below its preset directory.
- * 2. The archive carries the content of the folder, so the file is readable
- *    although the folder of the host does not exist anymore.
+ * 1. The folder which existed before the capture becomes a folder of the view
+ *    and the file the installation wrote is imported at its own path, so the
+ *    entries of the difference travel without the rest of the folder.
+ * 2. The archive carries the file, so it is readable although the folder of the
+ *    host does not exist anymore.
  */
 TEST_F(E2E_Snapshot, CapturedFolderTravelsIntoTheArchive)
 {
@@ -97,13 +101,13 @@ TEST_F(E2E_Snapshot, CapturedFolderTravelsIntoTheArchive)
 
     /*
      * The state before the installation is the baseline of the comparison: the
-     * folder of the installation is not part of it. The case writes that state
-     * as an empty phase, because the state of the machine which runs the case
-     * is not reproducible.
+     * folder of the installation is part of it, its content is not. The case
+     * writes that state itself, because the state of the machine which runs the
+     * case is not reproducible.
      */
-    ASSERT_TRUE(appbox::test::WriteSnapshotPhase(snapshot_path, appbox::SnapshotPhase::Before,
-                                                 appbox::test::SnapshotPhaseContent{}, error))
-        << error;
+    appbox::test::SnapshotPhaseContent before;
+    before.files.push_back(appbox::SnapshotFileEntry{ "user_profile", name, true, 0, 0 });
+    ASSERT_TRUE(appbox::test::WriteSnapshotPhase(snapshot_path, appbox::SnapshotPhase::Before, before, error)) << error;
 
     /* The installation writes a file into the folder, which is the change. */
     ASSERT_TRUE(folder.WriteFile(L"bin\\app.exe", "PACKED-BY-THE-CAPTURE"));
@@ -120,15 +124,32 @@ TEST_F(E2E_Snapshot, CapturedFolderTravelsIntoTheArchive)
     ASSERT_TRUE(appbox::DiffSnapshotPhases(snapshot_path, diff, error)) << error;
     ASSERT_FALSE(diff.added_files.empty());
 
-    appbox::PackModel           model;
-    appbox::RegistryModel       registry;
-    appbox::EnvironmentModel    environment;
-    appbox::SnapshotApplyReport report;
-    ASSERT_TRUE(appbox::ApplySnapshotDiff(diff, model, registry, environment, report, error)) << error;
-    ASSERT_EQ(report.imported_folders, 1u);
+    appbox::PackModel         model;
+    appbox::RegistryModel     registry;
+    appbox::EnvironmentModel  environment;
+    appbox::CaptureFillReport report;
 
-    appbox::ImportedFolder imported;
-    ASSERT_TRUE(model.GetImport("user_profile", name, imported));
+    /*
+     * The difference is what the last step of the wizard fills into the models:
+     * the folder which existed before the capture becomes a folder of the view
+     * and the file the installation wrote is imported at its own path, so the
+     * entries of the difference travel without the rest of the folder.
+     */
+    ASSERT_TRUE(appbox::ApplySnapshotDiff(diff, model, registry, environment, report, {}, error)) << error;
+    EXPECT_TRUE(report.errors.empty());
+    EXPECT_TRUE(report.ignored.empty());
+
+    /*
+     * The difference holds the changes of the machine and not the entries of the
+     * case alone, because the baseline of the case describes the folder of the
+     * case only: the two entries of the case were written, and the case checks
+     * them on the models below.
+     */
+    EXPECT_GE(report.applied, 2u);
+
+    /* The folder is an entry of the view and not an import of the host folder. */
+    EXPECT_FALSE(model.HasImportedFileAt("user_profile", name));
+    ASSERT_TRUE(model.HasImportedFileAt("user_profile", name + L"\\bin\\app.exe"));
     ASSERT_TRUE(model.AddStartupFile("user_profile", name, L"bin\\app.exe", true, error)) << error;
 
     /* The session is packed and extracted into the directory of the case. */
@@ -151,6 +172,15 @@ TEST_F(E2E_Snapshot, CapturedFolderTravelsIntoTheArchive)
                            appbox::CompressionLevel::Normal, zip_path.wstring(), nullptr),
               "");
     ASSERT_EQ(appbox::ExtractArchive(zip_path.wstring(), GetCWDString()), "");
+
+    /*
+     * The layer of the archive carries the file the installation wrote at the
+     * path of the view the capture filled, so the entry is part of the archive
+     * although its folder is a folder of the view and not an import.
+     */
+    const auto layer = GetCWD() / L"app" / L"filesystem" / L"#USERPROFILE#" / name;
+    EXPECT_TRUE(std::filesystem::exists(layer / L"bin" / L"app.exe"));
+    EXPECT_TRUE(std::filesystem::exists(layer / L"bin"));
 
     /*
      * The folder of the host is removed, so only the layer of the archive can

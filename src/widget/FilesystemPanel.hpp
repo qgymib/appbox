@@ -422,8 +422,9 @@ private:
      * @brief Get the directory of the current selection inside the sandbox view.
      * @param[out] preset_id Identifier of the owning preset directory.
      * @param[out] target_dir Directory relative to the preset directory.
-     * @param[out] import_name Name of the owning imported folder.
-     * @return true when the selection is inside an imported folder.
+     * @param[out] import_name First segment of the directory, empty when the
+     *             directory is the layer root of its preset directory.
+     * @return true when the selection names a folder of the view.
      */
     bool SelectedTarget(std::string& preset_id, std::wstring& target_dir, std::wstring& import_name) const;
 

@@ -1,5 +1,5 @@
 #include "RegistryIsolationDialog.hpp"
-#include "IsolationModeGroup.hpp"
+#include "ModeChoiceGroup.hpp"
 #include <wx/checkbox.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
@@ -34,9 +34,9 @@ RegistryIsolationDialog::RegistryIsolationDialog(wxWindow* parent, const wxStrin
     /*
      * The options are ordered like the enumeration of the modes, so the
      * selection of the field is the mode itself, and every option carries the
-     * explanation of its mode below its name, see IsolationModeGroup.
+     * explanation of its mode below its name, see ModeChoiceGroup.
      */
-    isolation_ = new IsolationModeGroup(this, RegistryKeyIsolationChoices());
+    isolation_ = new ModeChoiceGroup(this, "Isolation", RegistryKeyIsolationChoices());
     isolation_->SetSelection(static_cast<int>(initial));
     sizer->Add(isolation_, 0, wxLEFT | wxRIGHT, kBorder);
 

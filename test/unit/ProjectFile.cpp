@@ -901,7 +901,7 @@ TEST(Unit_ProjectFile, ApplyRejectsDuplicateImports)
     EXPECT_TRUE(model.IsEmpty());
 }
 
-TEST(Unit_ProjectFile, ApplyRejectsAFileOutsideAnImportedFolder)
+TEST(Unit_ProjectFile, ApplyRejectsAFileOutsideTheView)
 {
     TempDir    temp;
     const auto file = temp.File(L"target.json");
@@ -920,7 +920,7 @@ TEST(Unit_ProjectFile, ApplyRejectsAFileOutsideAnImportedFolder)
     std::wstring                     output;
     EXPECT_FALSE(ApplyDocument(document, model, registry, isolation, output, error));
     EXPECT_NE(error.find("files[0]"), std::string::npos);
-    EXPECT_NE(error.find("not an imported folder"), std::string::npos);
+    EXPECT_NE(error.find("not a folder of the view"), std::string::npos);
     EXPECT_TRUE(model.IsEmpty());
 }
 

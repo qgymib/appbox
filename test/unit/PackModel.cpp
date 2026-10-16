@@ -555,12 +555,12 @@ TEST(Unit_PackModel, AddStartupFileRejectsEscapingPath)
     EXPECT_FALSE(error.empty());
 }
 
-TEST(Unit_PackModel, AddStartupFileRejectsUnknownImport)
+TEST(Unit_PackModel, AddStartupFileRejectsAFileOutsideTheView)
 {
     appbox::PackModel model;
     std::string       error;
     EXPECT_FALSE(model.AddStartupFile("program_files", L"Missing", L"app.exe", true, error));
-    EXPECT_FALSE(error.empty());
+    EXPECT_NE(error.find("not a file of the view"), std::string::npos);
     EXPECT_FALSE(model.HasStartupFiles());
 }
 
@@ -669,6 +669,61 @@ TEST(Unit_PackModel, StartupFilePathResolvesHostFile)
     std::wstring path;
     EXPECT_TRUE(model.StartupFilePath(model.StartupFiles().front(), path));
     EXPECT_EQ(std::filesystem::path(path).lexically_normal(), exe.lexically_normal());
+}
+
+/**
+ * @brief A file a capture placed below a folder of the view can be started.
+ *
+ * The capture fills the entries an installation created at the very paths the
+ * host holds them at, so a file of a folder which was never imported has to be
+ * startable like a file of an import.
+ */
+TEST(Unit_PackModel, AddStartupFileAcceptsAFileBelowAFolderOfTheView)
+{
+    TempDir    temp;
+    const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"", L"AppBoxVirtualFolder", error)) << error;
+    ASSERT_TRUE(model.ImportFiles("program_files", L"AppBoxVirtualFolder", { tool.wstring() }, error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"AppBoxVirtualFolder", L"tool.exe", true, error)) << error;
+
+    const auto& files = model.StartupFiles();
+    ASSERT_EQ(files.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(files[0].import_name, L"AppBoxVirtualFolder");
+    EXPECT_EQ(files[0].relative_path, L"tool.exe");
+    EXPECT_EQ(files[0].trigger, L"tool");
+
+    std::wstring path;
+    EXPECT_TRUE(model.StartupFilePath(files[0], path));
+    EXPECT_EQ(std::filesystem::path(path).lexically_normal(), tool.lexically_normal());
+}
+
+/**
+ * @brief A file the capture placed in the layer root can be started.
+ *
+ * A file of the layer root is named by its own name alone: the launcher reads
+ * the path of the file inside the layer, which carries no root segment.
+ */
+TEST(Unit_PackModel, AddStartupFileAcceptsAFileInTheLayerRoot)
+{
+    TempDir    temp;
+    const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFiles("program_files", L"", { tool.wstring() }, error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"", L"tool.exe", true, error)) << error;
+
+    const auto& files = model.StartupFiles();
+    ASSERT_EQ(files.size(), static_cast<std::size_t>(1));
+    EXPECT_TRUE(files[0].import_name.empty());
+    EXPECT_EQ(files[0].relative_path, L"tool.exe");
+
+    std::wstring path;
+    EXPECT_TRUE(model.StartupFilePath(files[0], path));
+    EXPECT_EQ(std::filesystem::path(path).lexically_normal(), tool.lexically_normal());
 }
 
 TEST(Unit_PackModel, SetStartupFilesReplacesTheList)
@@ -837,6 +892,53 @@ TEST(Unit_PackModel, ImportFilesKeepsSelectionOrder)
     EXPECT_EQ(files[1].file_name, L"first.dll");
 }
 
+TEST(Unit_PackModel, ImportFilesAcceptsAFileInTheLayerRoot)
+{
+    TempDir    temp;
+    const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFiles("program_files", L"", { tool.wstring() }, error)) << error;
+
+    const auto files = model.FilesOf("program_files", L"");
+    ASSERT_EQ(files.size(), static_cast<std::size_t>(1));
+    EXPECT_TRUE(files[0].target_dir.empty());
+    EXPECT_EQ(files[0].file_name, L"tool.exe");
+    EXPECT_EQ(files[0].source_path, tool.wstring());
+}
+
+TEST(Unit_PackModel, ImportFilesAcceptsAFileBelowAFolderOfTheView)
+{
+    TempDir    temp;
+    const auto tool = MakeFile(temp.Get(), L"tool.exe", "TOOL");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.CreateVirtualDirectory("program_files", L"", L"AppBoxVirtualFolder", error)) << error;
+    ASSERT_TRUE(model.ImportFiles("program_files", L"AppBoxVirtualFolder", { tool.wstring() }, error)) << error;
+
+    const auto files = model.FilesOf("program_files", L"AppBoxVirtualFolder");
+    ASSERT_EQ(files.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(files[0].file_name, L"tool.exe");
+}
+
+TEST(Unit_PackModel, ImportFilesRejectsAFileTheImportedFolderCarries)
+{
+    TempDir    temp;
+    const auto app = MakeFolder(temp.Get(), L"MyApp");
+    const auto tool = MakeFile(app, L"tool.exe", "TOOL");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
+
+    /* The import carries the whole host folder, so the file is in the archive already. */
+    EXPECT_FALSE(model.ImportFiles("program_files", L"MyApp", { tool.wstring() }, error));
+    EXPECT_NE(error.find("already exists in the imported folder"), std::string::npos);
+    EXPECT_EQ(model.AllImportedFiles().size(), static_cast<std::size_t>(0));
+}
+
 TEST(Unit_PackModel, ImportFilesRejectsUnknownPreset)
 {
     TempDir    temp;
@@ -848,7 +950,7 @@ TEST(Unit_PackModel, ImportFilesRejectsUnknownPreset)
     EXPECT_FALSE(error.empty());
 }
 
-TEST(Unit_PackModel, ImportFilesRejectsTargetOutsideAnImportedFolder)
+TEST(Unit_PackModel, ImportFilesRejectsTargetOutsideTheView)
 {
     TempDir    temp;
     const auto app = MakeFolder(temp.Get(), L"MyApp");
@@ -858,8 +960,9 @@ TEST(Unit_PackModel, ImportFilesRejectsTargetOutsideAnImportedFolder)
     std::string       error;
     ASSERT_TRUE(model.ImportFolder("program_files", app.wstring(), error)) << error;
 
+    /* The folder is neither an import nor a folder the user created. */
     EXPECT_FALSE(model.ImportFiles("program_files", L"Other", { tool.wstring() }, error));
-    EXPECT_NE(error.find("not an imported folder"), std::string::npos);
+    EXPECT_NE(error.find("not a folder of the view"), std::string::npos);
     EXPECT_EQ(model.AllImportedFiles().size(), static_cast<std::size_t>(0));
 }
 
@@ -1080,16 +1183,29 @@ TEST(Unit_PackModel, RestoreImportedFileAcceptsMissingSourceFile)
     EXPECT_EQ(files[0].source_path, L"C:\\tmp\\tool.exe");
 }
 
-TEST(Unit_PackModel, RestoreImportedFileRejectsTargetOutsideAnImportedFolder)
+TEST(Unit_PackModel, RestoreImportedFileRejectsTargetOutsideTheView)
 {
     appbox::PackModel model;
     std::string       error;
     ASSERT_TRUE(model.RestoreImportedFolder("program_files", L"MyApp", L"C:\\MyApp", error)) << error;
 
     EXPECT_FALSE(model.RestoreImportedFile("program_files", L"Other", L"tool.exe", L"C:\\tool.exe", error));
-    EXPECT_NE(error.find("not an imported folder"), std::string::npos);
+    EXPECT_NE(error.find("not a folder of the view"), std::string::npos);
     EXPECT_FALSE(model.RestoreImportedFile("program_files", L"MyApp\\..", L"tool.exe", L"C:\\tool.exe", error));
     EXPECT_EQ(model.AllImportedFiles().size(), static_cast<std::size_t>(0));
+}
+
+TEST(Unit_PackModel, RestoreImportedFileAcceptsAFileInTheLayerRoot)
+{
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.RestoreImportedFile("program_files", L"", L"tool.exe", L"C:\\tool.exe", error)) << error;
+
+    const auto files = model.AllImportedFiles();
+    ASSERT_EQ(files.size(), static_cast<std::size_t>(1));
+    EXPECT_TRUE(files[0].target_dir.empty());
+    EXPECT_EQ(files[0].file_name, L"tool.exe");
+    EXPECT_EQ(files[0].source_path, L"C:\\tool.exe");
 }
 
 TEST(Unit_PackModel, RestoreImportedFileRejectsDuplicateEntry)

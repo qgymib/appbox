@@ -6,7 +6,7 @@
 #include <functional>
 #include <string>
 
-class IsolationModeGroup;
+class ModeChoiceGroup;
 class wxTextCtrl;
 
 /**
@@ -20,7 +20,7 @@ class wxTextCtrl;
  * reason.
  *
  * The isolation mode is picked in the dialog as well. Every mode carries the
- * explanation of what it does below its name, see `IsolationModeGroup`, so the
+ * explanation of what it does below its name, see `ModeChoiceGroup`, so the
  * meaning of a mode is readable while it is chosen. The dialog only reports the
  * chosen mode, the caller stores it through the model, so the modes of a key
  * are offered by one source: the names of the field are the ones the
@@ -88,7 +88,7 @@ private:
     /**
      * @brief Field holding the isolation modes of a key.
      */
-    IsolationModeGroup* isolation_ = nullptr;
+    ModeChoiceGroup* isolation_ = nullptr;
 };
 
 #endif // APPBOX_PACKER_WIDGET_REGISTRY_KEY_DIALOG_HPP

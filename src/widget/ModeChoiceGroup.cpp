@@ -1,4 +1,4 @@
-#include "IsolationModeGroup.hpp"
+#include "ModeChoiceGroup.hpp"
 #include "core/FilesystemIsolationModel.hpp"
 #include "core/RegistryModel.hpp"
 #include <wx/radiobut.h>
@@ -43,10 +43,10 @@ wxStaticText* CreateDescription(wxWindow* parent, const wxString& description)
 
 } // namespace
 
-IsolationModeGroup::IsolationModeGroup(wxWindow* parent, const std::vector<IsolationModeChoice>& choices)
+ModeChoiceGroup::ModeChoiceGroup(wxWindow* parent, const wxString& title, const std::vector<ModeChoice>& choices)
     : wxPanel(parent, wxID_ANY)
 {
-    auto* box = new wxStaticBoxSizer(wxVERTICAL, this, "Isolation");
+    auto* box = new wxStaticBoxSizer(wxVERTICAL, this, title);
 
     /*
      * The controls hang below the static box, which is what makes the label of
@@ -61,6 +61,7 @@ IsolationModeGroup::IsolationModeGroup(wxWindow* parent, const std::vector<Isola
 
         const long style = index == 0 ? wxRB_GROUP : 0;
         auto*      button = new wxRadioButton(holder, wxID_ANY, choice.label, wxDefaultPosition, wxDefaultSize, style);
+        button->Enable(choice.enabled);
         buttons_.push_back(button);
 
         /* The explanation hangs below its name and is indented to the name. */
@@ -68,13 +69,25 @@ IsolationModeGroup::IsolationModeGroup(wxWindow* parent, const std::vector<Isola
         option->Add(button, 0, wxLEFT | wxRIGHT | wxBOTTOM, kLabelGap);
         option->Add(CreateDescription(holder, choice.description), 0, wxLEFT | wxRIGHT, kDescriptionIndent);
 
-        box->Add(option, 0, wxLEFT | wxRIGHT | wxTOP, index == 0 ? 0 : kChoiceGap);
+        /*
+         * The gap which separates two options is vertical: a border is applied
+         * to every side it names, so an option which carried the gap as a
+         * border would also be moved to the right of the one above it, and the
+         * options of a group would not line up. The option itself therefore
+         * carries no border, and the gap is a spacer of its own.
+         */
+        if (index != 0)
+        {
+            box->AddSpacer(kChoiceGap);
+        }
+
+        box->Add(option, 0);
     }
 
     SetSizer(box);
 }
 
-int IsolationModeGroup::Selection() const
+int ModeChoiceGroup::Selection() const
 {
     for (std::size_t index = 0; index < buttons_.size(); ++index)
     {
@@ -87,7 +100,7 @@ int IsolationModeGroup::Selection() const
     return wxNOT_FOUND;
 }
 
-void IsolationModeGroup::SetSelection(int index)
+void ModeChoiceGroup::SetSelection(int index)
 {
     for (std::size_t position = 0; position < buttons_.size(); ++position)
     {
@@ -95,11 +108,11 @@ void IsolationModeGroup::SetSelection(int index)
     }
 }
 
-std::vector<IsolationModeChoice> RegistryKeyIsolationChoices()
+std::vector<ModeChoice> RegistryKeyIsolationChoices()
 {
     const auto& modes = appbox::RegistryKeyIsolationNames();
 
-    std::vector<IsolationModeChoice> choices;
+    std::vector<ModeChoice> choices;
     choices.reserve(modes.size());
 
     for (const auto& mode : modes)
@@ -111,11 +124,11 @@ std::vector<IsolationModeChoice> RegistryKeyIsolationChoices()
     return choices;
 }
 
-std::vector<IsolationModeChoice> RegistryValueIsolationChoices()
+std::vector<ModeChoice> RegistryValueIsolationChoices()
 {
     const auto& modes = appbox::RegistryValueIsolationNames();
 
-    std::vector<IsolationModeChoice> choices;
+    std::vector<ModeChoice> choices;
     choices.reserve(modes.size());
 
     for (const auto& mode : modes)
@@ -127,11 +140,11 @@ std::vector<IsolationModeChoice> RegistryValueIsolationChoices()
     return choices;
 }
 
-std::vector<IsolationModeChoice> FilesystemIsolationChoices()
+std::vector<ModeChoice> FilesystemIsolationChoices()
 {
     const auto& modes = appbox::FilesystemIsolationNamesFor(appbox::FilesystemEntryKind::Directory);
 
-    std::vector<IsolationModeChoice> choices;
+    std::vector<ModeChoice> choices;
     choices.reserve(modes.size());
 
     for (const auto& mode : modes)

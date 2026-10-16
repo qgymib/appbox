@@ -31,9 +31,9 @@ enum class StartupNodeKind
  * tree is destroyed as a whole.
  *
  * A row which names a folder of the sandbox view carries the path of the folder
- * relative to the import root in `relative_path`, the only exception being a
- * folder the user created: it has no import root of its own and carries its path
- * relative to the preset directory in `virtual_dir`.
+ * relative to its preset directory in `virtual_dir`; a row which names a file
+ * carries the path of that file inside the layer in `import_name` and
+ * `relative_path`, which is the way a startup file of the model is stored.
  */
 struct StartupNode
 {
@@ -61,7 +61,11 @@ struct StartupNode
     std::string preset_id;
 
     /**
-     * @brief Name of the owning imported folder (imports and below).
+     * @brief First segment of the path of the row inside the layer.
+     *
+     * The segment is the name of the imported folder or of the folder of the
+     * view which holds the row; it is empty for a row which names the layer
+     * root of its preset directory or a file which lives in that root.
      */
     std::wstring import_name;
 
@@ -311,13 +315,14 @@ private:
     /**
      * @brief Find or create the row of one startup file of the model.
      *
-     * The folders of the way to the file are created as well, so a startup file
-     * whose host file is gone keeps its place in the tree and the user can see
-     * and drop it. A file which is not part of an imported folder has no place
-     * in the view and is skipped.
+     * The file is placed below the folders of the path it carries inside the
+     * layer of its preset directory, and the folders of the way to the file are
+     * created as folders of the view when the tree does not hold them yet: that
+     * is what keeps a startup file whose host file is gone in the tree, so the
+     * user can see it and drop it.
      *
      * @param[in] file The startup file to place.
-     * @return The row of the file, null when it has no place in the view.
+     * @return The row of the file, null when its path names no file.
      */
     StartupNode* EnsureChoice(const StartupFile& file);
 
@@ -348,10 +353,11 @@ private:
     static std::wstring TargetDirOf(const StartupNode& node);
 
     /**
-     * @brief Build the path of a file relative to the import root.
+     * @brief Build the path of a file relative to the first segment of its path.
      * @param[in] target_dir Directory of the file relative to the preset directory.
      * @param[in] file_name Name of the file inside the directory.
-     * @return The path relative to the import root.
+     * @return The path of the file relative to the root of its layer, which is
+     *         the name of the file alone when the directory is the layer root.
      */
     static std::wstring ImportRelativePath(const std::wstring& target_dir, const std::wstring& file_name);
 

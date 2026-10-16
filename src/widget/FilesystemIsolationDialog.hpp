@@ -9,7 +9,7 @@
 #include <wx/wx.h>
 #include "core/FilesystemIsolationModel.hpp"
 
-class IsolationModeGroup;
+class ModeChoiceGroup;
 class wxCheckBox;
 
 /**
@@ -19,7 +19,7 @@ class wxCheckBox;
  * reaches every node of the view: a preset directory, an imported folder, a
  * folder below an import and the `Sandbox Filesystem` container, which is the
  * root of the view. It offers the modes a folder accepts, every mode with the
- * explanation of what it does below its name (see `IsolationModeGroup`), and
+ * explanation of what it does below its name (see `ModeChoiceGroup`), and
  * one option which decides how far the chosen mode reaches: `Apply to all
  * subfolders` overwrites the folders below the node as well and is off by
  * default, so a mode which the user picks reaches the node itself only.
@@ -55,7 +55,7 @@ private:
     /**
      * @brief Field holding the isolation modes.
      */
-    IsolationModeGroup* isolation_ = nullptr;
+    ModeChoiceGroup* isolation_ = nullptr;
 
     /**
      * @brief Option which overwrites the folders below the node.

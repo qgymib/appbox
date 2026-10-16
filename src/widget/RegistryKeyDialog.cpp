@@ -1,5 +1,5 @@
 #include "RegistryKeyDialog.hpp"
-#include "IsolationModeGroup.hpp"
+#include "ModeChoiceGroup.hpp"
 #include "core/RegistryModel.hpp"
 #include <wx/button.h>
 #include <wx/msgdlg.h>
@@ -25,9 +25,9 @@ RegistryKeyDialog::RegistryKeyDialog(wxWindow* parent, const wxString& title, co
     /*
      * The options are ordered like the enumeration of the modes, so the
      * selection of the field is the mode itself, and every option carries the
-     * explanation of its mode below its name, see IsolationModeGroup.
+     * explanation of its mode below its name, see ModeChoiceGroup.
      */
-    isolation_ = new IsolationModeGroup(this, RegistryKeyIsolationChoices());
+    isolation_ = new ModeChoiceGroup(this, "Isolation", RegistryKeyIsolationChoices());
     isolation_->SetSelection(static_cast<int>(initial_isolation));
 
     auto* grid = new wxFlexGridSizer(2, 8, 8);

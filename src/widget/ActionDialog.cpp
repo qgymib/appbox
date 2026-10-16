@@ -127,6 +127,7 @@ ActionDialog::ActionDialog(wxWindow* parent, const wxString& title, const Option
         if (auto* buttons = CreateButtonSizer(MapButtonFlags(options.buttons)))
         {
             sizer->Add(buttons, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, kBorder);
+
             Bind(wxEVT_BUTTON, &ActionDialog::OnButton, this);
         }
     }

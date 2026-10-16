@@ -784,19 +784,18 @@ bool WalkRegistry(const std::vector<std::wstring>& roots, CaptureContext& contex
 }
 
 /**
- * @brief Read the persisted environment of the machine.
+ * @brief Read the persisted environment of the machine into entries.
  *
  * The variables of the machine are read first and the variables of the current
  * user follow, so a name both keys list keeps the value of the user, which is
- * the value the operating system hands to a process of that user. The writer
- * applies that precedence on its own: an entry of the environment replaces the
- * entry of the same name, which is why the run which reads the user key writes
- * last.
+ * the value the operating system hands to a process of that user. The user
+ * entry replaces the machine entry of the same name, which is what the writer
+ * and the caller of the standalone read expect alike.
  *
- * @param[in,out] context The state of the capture.
- * @return false when the progress callback aborted the capture.
+ * @param[out] entries The variables, machine first and user last.
+ * @return Number of keys which could not be read.
  */
-bool ReadEnvironment(CaptureContext& context)
+std::size_t ReadEnvironmentEntries(std::vector<appbox::SnapshotEnvironmentEntry>& entries)
 {
     struct EnvironmentKey
     {
@@ -809,19 +808,20 @@ bool ReadEnvironment(CaptureContext& context)
         { HKEY_CURRENT_USER,  kUserEnvironmentKey    },
     };
 
+    std::size_t skipped = 0;
     for (const auto& source : keys)
     {
         KeyHandle key;
         if (::RegOpenKeyExW(source.root, source.sub_key, 0, KEY_READ, &key.handle) != ERROR_SUCCESS)
         {
-            ++context.skipped;
+            ++skipped;
             continue;
         }
 
         std::vector<ValueEntry> values;
         if (!ReadValues(key.handle, values))
         {
-            ++context.skipped;
+            ++skipped;
             continue;
         }
 
@@ -831,15 +831,11 @@ bool ReadEnvironment(CaptureContext& context)
             {
                 continue;
             }
-            if (!context.Report(value.name))
-            {
-                return false;
-            }
 
             std::wstring text;
             if (!ValueText(value, text))
             {
-                ++context.skipped;
+                ++skipped;
                 continue;
             }
 
@@ -847,12 +843,59 @@ bool ReadEnvironment(CaptureContext& context)
             entry.name = value.name;
             entry.value = ExpandText(text);
 
-            if (!context.WriteEnvironment(entry))
+            /*
+             * The user value replaces the machine value of the same name: the
+             * environment the operating system builds hands the user value to
+             * a process, and the writer of a snapshot applies the same
+             * precedence when it stores the entries.
+             */
+            const auto name = appbox::snapshot::FoldText(entry.name);
+            auto       existing = entries.end();
+            for (auto candidate = entries.begin(); candidate != entries.end(); ++candidate)
             {
-                return false;
+                if (appbox::snapshot::FoldText(candidate->name) == name)
+                {
+                    existing = candidate;
+                    break;
+                }
             }
-            ++context.done;
+            if (existing != entries.end())
+            {
+                *existing = std::move(entry);
+            }
+            else
+            {
+                entries.push_back(std::move(entry));
+            }
         }
+    }
+
+    return skipped;
+}
+
+/**
+ * @brief Report the persisted environment to the writer of the phase.
+ *
+ * @param[in,out] context The state of the capture.
+ * @return false when the progress callback aborted the capture.
+ */
+bool ReadEnvironment(CaptureContext& context)
+{
+    std::vector<appbox::SnapshotEnvironmentEntry> entries;
+    context.skipped += ReadEnvironmentEntries(entries);
+
+    for (const auto& entry : entries)
+    {
+        if (!context.Report(entry.name))
+        {
+            return false;
+        }
+
+        if (!context.WriteEnvironment(entry))
+        {
+            return false;
+        }
+        ++context.done;
     }
 
     return true;
@@ -880,6 +923,19 @@ std::vector<CaptureFilesystemRoot> DefaultCaptureFilesystemRoots()
 std::vector<std::wstring> DefaultCaptureRegistryRoots()
 {
     return RegistryRootKeyNames();
+}
+
+bool ReadPersistedEnvironment(std::vector<SnapshotEnvironmentEntry>& entries, std::string& error)
+{
+    entries.clear();
+    const auto skipped = ReadEnvironmentEntries(entries);
+    if (!entries.empty() || skipped == 0)
+    {
+        return true;
+    }
+
+    error = "the persisted environment of the machine could not be read";
+    return false;
 }
 
 bool CaptureSnapshot(const CaptureOptions& options, SnapshotWriter& writer, const CaptureProgressCallback& progress,

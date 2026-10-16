@@ -52,8 +52,8 @@ appbox::CaptureOptions OptionsFor(const std::wstring& folder)
  * @brief Read the state of the machine into the phase before the change of a
  *        new snapshot file.
  *
- * The call is what the `Capture Before` command of the packer does: a file is
- * created, the state is written into it entry by entry and the phase is
+ * The call is what the step of the baseline of the capture wizard does: a file
+ * is created, the state is written into it entry by entry and the phase is
  * committed once the walk is over.
  *
  * @param[in] options The roots to walk through.

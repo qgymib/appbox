@@ -185,7 +185,7 @@ of its preset directory and not a mode of a path.
 
 Such a row is written by the capture of the packer, which reports the entries a
 snapshot found missing after an installation (see
-[Snapshot Capture](Snapshot.md)); `Remove` drops the row and with it the marker.
+[Capture](Capture.md)); `Remove` drops the row and with it the marker.
 A row whose parent directory is not a folder of the view — a folder nothing was
 imported from — is listed by the preset directory itself, so every hidden entry
 stays visible.
@@ -339,6 +339,9 @@ carries:
 ```
 <startup file name>                    embedded launcher payload
 <startup file name>.json               startup configuration
+app/sandbox32.dll                      injected sandbox module (32 bit)
+app/sandbox64.dll                      injected sandbox module (64 bit)
+app/startup/splash.<extension>         startup image of the session (optional)
 app/filesystem/isolation.json          isolation modes of the filesystem workspace
 app/filesystem/<layer key>/<import>/... imported folder content
 app/filesystem/<layer key>/<folder>/   folder created in the workspace
@@ -346,6 +349,7 @@ app/filesystem/<layer key>/<name>.$APPBOX_DELETE$  whiteout marker of a hidden e
 app/registry/user.hiv                  virtual registry of the workspace
 app/registry/isolation.json            isolation modes of the registry
 app/network/isolation.json             network configuration of the workspace
+app/environment/isolation.json         environment variables of the workspace
 ```
 
 A folder which was created in the workspace travels as a directory entry of the

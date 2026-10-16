@@ -36,10 +36,12 @@ struct ImportedFolder
  * @brief A single host file imported below one preset directory.
  *
  * At sandbox runtime the file is visible as
- * `<preset>\<target_dir>\<file_name>` inside the sandbox view. The first
- * segment of the target directory is always the name of an imported folder,
- * so an imported file extends an existing lower layer instead of creating a
- * new one.
+ * `<preset>\<target_dir>\<file_name>` inside the sandbox view. The target
+ * directory is a folder of the view, which the layer root of the preset
+ * directory is as well, so a file can be placed at the very path the host
+ * holds it at without carrying the rest of the folder around it: that is what
+ * a capture fills, which records the entries an installation created and not
+ * the folders which hold them.
  */
 struct ImportedFile
 {
@@ -125,27 +127,40 @@ struct WhiteoutEntry
 /**
  * @brief One file the sandboxed application starts.
  *
- * A startup file is a startable file of an imported folder: a program
- * (`.exe`), a batch file (`.bat`), a command script (`.cmd`) or a PowerShell
- * script (`.ps1`), see `common/StartupFileType.hpp`. The sandbox starts every
- * startup file whose `auto_start` flag is set; a startup file which is not
- * marked for auto start can be started by naming its `trigger` on the
- * `--X-AppBox-Startup` command line of the packaged launcher.
+ * A startup file is a startable file of the view: a program (`.exe`), a batch
+ * file (`.bat`), a command script (`.cmd`) or a PowerShell script (`.ps1`),
+ * see `common/StartupFileType.hpp`. The sandbox starts every startup file
+ * whose `auto_start` flag is set; a startup file which is not marked for auto
+ * start can be started by naming its `trigger` on the `--X-AppBox-Startup`
+ * command line of the packaged launcher.
+ *
+ * The file is named by the path it carries inside the layer of its preset
+ * directory, which is the path the launcher reads, see `PackService`: the
+ * first segment and the rest of the path are stored apart because the first
+ * segment names the lower layer the file extends.
  */
 struct StartupFile
 {
     /**
-     * @brief Identifier of the preset directory owning the imported folder.
+     * @brief Identifier of the preset directory owning the file.
      */
     std::string preset_id;
 
     /**
-     * @brief Imported folder containing the file.
+     * @brief First segment of the path of the file inside the layer.
+     *
+     * The segment is the name of the imported folder or of the folder the user
+     * created which holds the file; it is empty when the file lives in the
+     * layer root of its preset directory itself.
      */
     std::wstring import_name;
 
     /**
-     * @brief Path of the file relative to the imported folder root.
+     * @brief Rest of the path of the file inside the layer.
+     *
+     * The path is relative to `import_name` and carries the name of the file
+     * as its last segment; a file in the layer root is named by its own name
+     * alone.
      */
     std::wstring relative_path;
 
@@ -263,16 +278,18 @@ public:
     /**
      * @brief Import individual host files into a folder of the sandbox view.
      *
-     * The target directory is relative to the preset directory and its first
-     * segment must be an already imported folder. Forward and backslashes are
-     * accepted; the stored directory is normalized to backslashes. The
-     * operation is atomic: either every selected file is imported or the model
-     * stays unchanged.
+     * The target directory is relative to the preset directory and has to be a
+     * folder of the view: the layer root of the preset directory, an imported
+     * folder, a folder below an import and a folder the user created are all
+     * accepted. Forward and backslashes are accepted; the stored directory is
+     * normalized to backslashes. The operation is atomic: either every selected
+     * file is imported or the model stays unchanged.
      *
      * The call fails when the preset is unknown, the target directory is not a
-     * valid relative path below an imported folder, a source file is missing,
-     * a file with the same name already exists in the imported folder, or the
-     * name collides with an earlier import.
+     * folder of the view, a source file is missing, the path is carried by a
+     * folder the user created or by an imported file already, or the host
+     * content of an imported folder holds an entry of the name already, see
+     * HostImportCarries().
      *
      * @param[in] preset_id Identifier of the preset directory.
      * @param[in] target_dir Directory relative to the preset directory.
@@ -537,6 +554,19 @@ public:
     const std::vector<ImportedFile>& AllImportedFiles() const;
 
     /**
+     * @brief Whether an imported file lives at a path of the view.
+     *
+     * The path is relative to the preset directory and carries the name of the
+     * file as its last component. The question is the one a caller asks before
+     * it places a file of its own, see CheckImportedFilePlacement().
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] path Path relative to the preset directory.
+     * @return true when an imported file of the path exists.
+     */
+    bool HasImportedFileAt(const std::string& preset_id, const std::wstring& path) const;
+
+    /**
      * @brief Get the startup files of the sandboxed application.
      * @return The startup files in startup order.
      */
@@ -629,12 +659,12 @@ public:
     /**
      * @brief Restore an individually imported file without touching the host filesystem.
      *
-     * Unlike ImportFiles(), the source file does not have to exist and the
-     * target directory does not have to be free of a host file of the same
+     * Unlike ImportFiles(), the source file does not have to exist and the host
+     * content of an imported folder does not have to be free of an entry of the
      * name; the entry is restored as the project file records it. The target
-     * directory is normalized like in ImportFiles() and its first segment must
-     * be an imported folder of the same preset directory, because an imported
-     * file always extends an existing lower layer.
+     * directory is normalized and validated like in ImportFiles(), so the layer
+     * root of the preset directory is accepted as well: a project written by a
+     * capture holds its entries at the very paths the host holds them at.
      *
      * @param[in] preset_id Identifier of the preset directory.
      * @param[in] target_dir Directory relative to the preset directory.
@@ -683,9 +713,15 @@ public:
 
     /**
      * @brief Get the full host path of one startup file.
+     *
+     * An imported file names the host file it was imported from; every other
+     * file of the view lives in the host folder of its directory, so the path
+     * is composed from that folder. The lookup reads the model alone, so a file
+     * which is not on this machine still maps to the path it would live at.
+     *
      * @param[in] file The startup file to resolve.
      * @param[out] path The resolved host path when found.
-     * @return true when the imported folder of the file still exists.
+     * @return true when the file maps to a host path.
      */
     bool StartupFilePath(const StartupFile& file, std::wstring& path) const;
 
@@ -714,18 +750,41 @@ public:
     bool HostFolderPath(const std::string& preset_id, const std::wstring& import_name, const std::wstring& relative_dir,
                         std::wstring& path) const;
 
+    /**
+     * @brief Whether the host content of an imported folder carries a path of the view.
+     *
+     * An imported folder travels into the archive as the whole folder the host
+     * holds, so an entry which lives in that folder is part of the archive
+     * already and a second entry of the name would be written twice. The
+     * question is asked before an entry is placed: by the command which imports
+     * files by hand, which refuses such an entry, and by the capture, which
+     * leaves it out because the imported folder carries it.
+     *
+     * The lookup reads the host filesystem, because the content of an imported
+     * folder is what the host holds and not what the model stores.
+     *
+     * @param[in] preset_id Identifier of the preset directory.
+     * @param[in] path Path of the entry relative to the preset directory.
+     * @return true when an imported folder of the path holds an entry of the
+     *         name of that path.
+     */
+    bool HostImportCarries(const std::string& preset_id, const std::wstring& path) const;
+
 private:
     /**
      * @brief Resolve and validate one startup file reference.
      *
-     * The preset directory and the imported folder have to exist, the path has
-     * to stay inside the imported folder and has to name a startable file. When
-     * `require_host` is set the file also has to exist on the host.
+     * The preset directory has to exist, the folder which holds the file has to
+     * be a folder of the view and the path has to name a startable file. When
+     * `require_host` is set the file also has to exist: an imported file counts
+     * as it is and every other file is looked up in the host folder of its
+     * directory.
      *
      * @param[in] preset_id Identifier of the preset directory.
-     * @param[in] import_name Name of the imported folder.
-     * @param[in] relative_path Path of the file relative to the import root.
-     * @param[in] require_host Whether the executable must exist on the host.
+     * @param[in] import_name First segment of the path of the file inside the
+     *            layer, empty for a file in the layer root.
+     * @param[in] relative_path Rest of the path of the file inside the layer.
+     * @param[in] require_host Whether the file must exist.
      * @param[out] out The resolved startup file without its trigger.
      * @param[out] error Error description on failure.
      * @return true when the reference is usable.
@@ -788,12 +847,23 @@ private:
                                           const std::wstring& name) const;
 
     /**
-     * @brief Whether an imported file lives at a path of the view.
+     * @brief Check whether a file may be placed in a folder of the view.
+     *
+     * The rule is the one ImportFiles() and RestoreImportedFile() share: the
+     * preset directory has to be known, the name has to be usable, the target
+     * directory has to be a folder of the view and the path must not be carried
+     * already, by a folder the user created or by an imported file. The host is
+     * not read, so the check of the host content of an imported folder stays
+     * with the caller, see HostImportCarries().
+     *
      * @param[in] preset_id Identifier of the preset directory.
-     * @param[in] path Path relative to the preset directory.
-     * @return true when an imported file of the path exists.
+     * @param[in] directory Directory relative to the preset directory, empty
+     *            for the layer root.
+     * @param[in] file_name Name of the file inside the directory.
+     * @return An empty text when the file may be placed, otherwise the reason.
      */
-    bool HasImportedFileAt(const std::string& preset_id, const std::wstring& path) const;
+    std::string CheckImportedFilePlacement(const std::string& preset_id, const std::wstring& directory,
+                                           const std::wstring& file_name) const;
 
     /**
      * @brief Store the canonical spelling of the imported folder a path starts with.

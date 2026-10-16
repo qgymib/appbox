@@ -28,9 +28,9 @@ inline constexpr const char* kSnapshotFileExtension = "db";
  * @brief One of the two states a snapshot file describes.
  *
  * A snapshot file holds the state of the machine before a change and the state
- * after it: the two are the sides of the comparison the `Capture and Diff`
- * command of the packer performs. A phase counts as a state only once it was
- * written as a whole, which is what the marker of the phase records (see
+ * after it: the two are the sides of the comparison the snapshot capture of the
+ * packer performs. A phase counts as a state only once it was written as a
+ * whole, which is what the marker of the phase records (see
  * `SnapshotWriter::CommitPhase`).
  */
 enum class SnapshotPhase

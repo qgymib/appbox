@@ -2,6 +2,7 @@
 #define APPBOX_TEST_UTILS_TESTLOG_HPP
 
 #include <cstddef>
+#include <filesystem>
 
 namespace appbox::test
 {
@@ -34,8 +35,25 @@ void InstallTestLog();
  * A case which failed is dumped by the listener of `InstallTestLog`. This
  * entry point exists for the watchdog of a timed out case, which takes the run
  * down without a GoogleTest `OnTestEnd` event.
+ *
+ * The dump is written into the working directory of the case as well, when the
+ * fixture of the case named one, see SetCaseLogDirectory(): a directory which
+ * holds a file is part of the artifact of a run, while the directory of a case
+ * which started no launcher and wrote nothing would be left out of it.
  */
 void DumpTestLog();
+
+/**
+ * @brief Name the working directory of the running test case.
+ *
+ * The dump of a case is written into the working directory of that case, so the
+ * log of the run of a case which failed survives with the directory. The
+ * fixture of the cases names the directory it created, so every case which
+ * inherits `CommonFixture` is covered.
+ *
+ * @param[in] directory The working directory of the case.
+ */
+void SetCaseLogDirectory(const std::filesystem::path& directory);
 
 } // namespace appbox::test
 

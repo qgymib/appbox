@@ -40,7 +40,7 @@ class wxButton;
  *
  * The meaning of the modes is not explained by the table: the column and its
  * popup name the mode of a row alone, and every dialog which picks a mode spells
- * the modes out below their names (see `IsolationModeGroup`).
+ * the modes out below their names (see `ModeChoiceGroup`).
  */
 class RegistryPanel : public wxPanel
 {

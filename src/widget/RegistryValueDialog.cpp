@@ -1,5 +1,5 @@
 #include "RegistryValueDialog.hpp"
-#include "IsolationModeGroup.hpp"
+#include "ModeChoiceGroup.hpp"
 #include <wx/button.h>
 #include <wx/choice.h>
 #include <wx/msgdlg.h>
@@ -92,9 +92,9 @@ RegistryValueDialog::RegistryValueDialog(wxWindow* parent, const wxString& title
     /*
      * The options are ordered like the enumeration of the modes, so the
      * selection of the field is the mode itself, and every option carries the
-     * explanation of its mode below its name, see IsolationModeGroup.
+     * explanation of its mode below its name, see ModeChoiceGroup.
      */
-    isolation_ = new IsolationModeGroup(this, RegistryValueIsolationChoices());
+    isolation_ = new ModeChoiceGroup(this, "Isolation", RegistryValueIsolationChoices());
     isolation_->SetSelection(static_cast<int>(initial_isolation));
 
     auto* value_label = new wxStaticText(this, wxID_ANY, "Value:");

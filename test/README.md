@@ -194,6 +194,7 @@ launcher itself leaves an option out or changes its value
 | --- | --- | --- |
 | `<program>.<time utc>.<pid>.log` | the launcher itself | The messages of the launcher: the configuration it loaded, the layers it mapped, the processes it started and their exit codes. |
 | `<program>.<time utc>.<pid>.log` | one sandboxed process | The messages of one process the sandbox is injected into, in the order that process produced them. |
+| `<program>.<time utc>.<pid>.log` | the test executable itself | The program log of the run of the case: the messages of the harness and of the code under test, which the case held in its backtrace until it failed. |
 
 The launcher does not carry the messages of the sandbox: every process the sandbox
 is injected into writes a log file of its own, named after the program, the UTC
@@ -211,6 +212,14 @@ AppBoxLauncher.20260930T021157Z.76712.log
 AppBoxTests.20260930T021157Z.77784.log
 ```
 
+The file of the test executable is written when a case failed and only then: the
+messages of the case are held in the backtrace of the run, and the dump of a case
+which failed is written into the `log` directory of the working directory of that
+case (`appbox::test::SetCaseLogDirectory`). The file is also what keeps the
+directory of a case which started no launcher and wrote nothing — a case of the
+realtime capture, for example — part of the artifact of a run, because an empty
+directory is not carried by the upload of the artifact.
+
 The level of the messages is the level of the run (`--log-level`), and it is the
 level of the launcher and of every sandboxed process at once. `trace` reports
 every kernel call the sandbox intercepts, so a run which is started with
@@ -227,7 +236,9 @@ works. They are held in a backtrace of `spdlog` (`test/utils/TestLog.*`) whose
 buffer is reset when a case starts, and the buffer is written out only when a
 case fails, or when a case times out and the watchdog ends the run. A passing
 run therefore shows the GoogleTest lines and nothing else, and the program log
-of the case which failed appears between them.
+of the case which failed appears between them. The dump is written into the
+`log` directory of the case as well, so the working directory of a case which
+failed carries the log of the run, see [Logs of a case](#logs-of-a-case).
 
 `--log-level` is the level of the log files of a case, not of the test
 executable: see [Logs of a case](#logs-of-a-case).
@@ -304,8 +315,8 @@ process of the test executable and the tracer. The end-to-end suite reaches the
 packer through two helpers — `test/utils/PatchBuilder.*`, which builds a patch
 package with the `ZipWriter` the packer writes its archives with, and
 `test/e2e/Snapshot_CapturedFolderIsVisible.cpp`, which drives the capture, the
-comparison and the packing of a session itself — while the rules of the packer
-stay covered by the unit tests.
+comparison, the fill and the packing of a session itself — while the rules of
+the packer stay covered by the unit tests.
 
 A module whose execution path an end-to-end case already drives keeps no unit
 test of its own. The suites which were dropped for that reason are the
@@ -503,19 +514,78 @@ The unit tests of the packer:
   its write time, the modification of a registry value by its type and by its
   data, the raw data of an added value, the independence of the order of the
   entries of a state and the refusal of a file which does not hold both states.
+* `test/unit/CaptureWizardModel.cpp` — the steps of the wizard of a capture: the
+  step a fresh wizard shows, the mode which a machine without the kernel events
+  cannot pick, the first step which waits for the elevation of the process, the
+  walk through the steps of a realtime capture, the recording which waits for
+  the confirmation of the user that the installation is over and which closes
+  again when the confirmation is taken back, the last step which waits for the
+  workspaces and which cannot be dropped while they are written and the
+  prerequisites which name what the user can
+  do about a missing one. The snapshot capture is covered as well: the mode
+  which is offered on every machine, the steps of its own walk, the step of the
+  file of the baseline which waits for a path, the step of the baseline which
+  waits for the run of the source and which shows the step of the file again
+  when the run produced none, the path which is set anew and drops the baseline,
+  the source which is picked anew and drops the file as well, the installation
+  which waits for the confirmation, the comparison which waits for the analysis
+  and the names and the descriptions of both modes.
 * `test/unit/SnapshotApply.cpp` — the rules which write a difference into the
-  models: the import of a folder which is new below a preset directory and the
-  folder which is part of the archive already, the report of a folder which
-  existed before the capture and of a file which was added directly below a
-  preset directory, the summary of the messages which were left out, the entries
-  which are hidden, the registry keys and values which are created with the type
-  and the bytes of the newer snapshot, a removed registry key which hides its
-  whole subtree with one entry, a removed registry value which is written with
-  the data of the older snapshot and hidden, the environment keys of the machine
-  which the registry part leaves out, the environment variables which are written
-  with the default modes and the value of which is rewritten, a removed variable
-  which is only reported and the refusal of a difference which cannot be
-  interpreted.
+  models: the file which is placed below a folder that existed before the
+  capture, the folders of the way to a file which are created as folders of the
+  view, the file of the layer root, the folder which is created on its own, the
+  entry which the view carries already, the file which is not on the host
+  anymore, the entries which are hidden, the folder which is gone with the
+  entries below it left out, the entry which is hidden already, the registry keys
+  and values which are created with the type and the bytes of the newer snapshot,
+  a removed registry key which hides its whole subtree with one entry, a removed
+  registry value which is written with the data of the older snapshot and hidden,
+  the registry value of a type the workspace cannot store, the environment keys
+  of the machine which the registry part leaves out, the environment variables
+  which are written with the default modes and the value of which is rewritten, a
+  removed variable which is only reported, the difference which cannot be
+  interpreted and which leaves every model untouched, the cap of the two lists of
+  the report with the count of the entries they do not name, the work of the fill
+  which is reported for every entry and the error a caller reports itself.
+* `test/unit/EtwEventDecoder.cpp` — the decoder of the realtime capture, which
+  reads the properties of an ETW event by their name through the trace data
+  helper of Windows: one event of a provider which declares two versions whose
+  payloads lay the same values out differently, which is what an offset into a
+  payload cannot read and a name can, a classic event whose event type its
+  opcode names and whose object is not the first pointer of its payload, the
+  file object and the file key of a write, the path of the event which reports
+  that a file came into being, the key handle and the value name of a classic
+  registry event, a walk which resolves the length of a property the event names
+  and reads the properties behind it, the property a walk of a short payload
+  stopped at, an event of a provider no machine knows and the flag which marks a
+  WPP message.
+* `test/unit/RealtimeCapture.cpp` — the analysis of a realtime capture recording,
+  which the cases feed with the events of a synthetic recording: the translation
+  of the NT registry paths into the paths of the view and of the NT file paths
+  into Win32 paths, which canonicalizes the separators the kernel reported, the
+  noise the options leave out, the built-in tables the capture starts with,
+  which name the state the shell keeps for itself while they leave the changes
+  of the shell in, the
+  folder a recording created which is reported on its own and not with the
+  content of the host folder it names, the folder and the file inside it which
+  are two entries, a change which was made and undone within the recording
+  which leaves no entry behind, a rename which is the removal of the old path
+  and the addition of the new one, a written file which is reported as modified,
+  an alternate data stream which the view cannot name and which is left out, the
+  registry values the recording wrote which are read from the host with the
+  data it holds, the entries it deleted and the last change of a value which
+  wins, the difference of the persisted environment between the start of a
+  recording and its analysis and the change which belongs to no preset directory
+  and which is reported as an ignored entry instead of being dropped. The enable
+  of the file provider is covered as
+  well: the keywords of every event a manifest declares are joined, because the
+  identifier of an event belongs to the version of that manifest, and the events
+  the capture reads which the manifest does not declare are named.
+* `test/unit/TestLog.cpp` — the log of the run of a case (`test/utils/TestLog.*`):
+  the dump of a case which failed is written into the `log` directory of the
+  working directory of that case, which is what keeps the directory of a case
+  which started no launcher and wrote nothing else part of the artifact of the
+  run.
 * `test/unit/KnownFolderReference.cpp` — the rewrite of an absolute path to the
   reference of its preset directory: the path of a preset directory, of the
   folder itself and of a path below it, the case, the boundary before and behind
@@ -557,6 +627,25 @@ The unit tests of the packer:
 * `test/unit/NetworkIsolationFile.cpp` — the isolation file the packer
   writes for the network workspace: the schema of an empty model, the order and
   the content of the entries and the hostname as UTF-8 bytes.
+* `test/unit/ProxyConfig.cpp` — the `proxy` member of the isolation file of the
+  network domain (`sandbox/network/ProxyConfig.*`), which the sandbox reads
+  leniently: a proxy which cannot be used leaves a run without a proxy instead
+  of failing the document, so a member which is missing, which is not an
+  object, which names another protocol, whose server is empty, whose port the
+  packer would refuse or whose flag is of another type leaves the configuration
+  disabled, while a document of another schema version and a document which is
+  not an object are refused as a whole. The two flags, the credentials, a proxy
+  without them and the description of a configuration, which names the
+  protocols and the server and not the credentials, are pinned as well.
+* `test/unit/Socks5.cpp` — the messages of the protocol
+  (`sandbox/network/Socks5.*`): the greeting with and without the credentials,
+  the method the server selected and the one it refuses, the request of the
+  credentials and its reply, the request of an IPv4 address, of an IPv6 address
+  and of a domain name, the address of a reply, the rendering of an endpoint
+  the way the protocol carries it, the datagram of an association with and
+  without a payload, the refusal of a message which does not fit the message or
+  which belongs to another protocol, of a fragmented datagram, and the
+  comparison of two endpoints by their address and their port.
 * `test/unit/EnvironmentModel.cpp` — the model of the environment workspace:
   the insertion order of the variables, the rejection of an empty name, of a
   name which carries an equals sign and of a name which is listed twice
@@ -1444,17 +1533,58 @@ header comment.
 The capture cases (`test/e2e/Snapshot_*.cpp`) run the chain of the capture of the
 packer: the state of a folder of the host is written into the phase before the
 change of a snapshot file, the state after the change is written into the same
-file, the two phases are compared, the difference is written into the models of
-the session and packed into an archive, which is what the two commands of the
-toolbar do (see [Snapshot Capture](../docs/Snapshot.md)). The rules of the
-capture themselves live in `src/core` and are covered by the unit tests; these
-cases are what pins the runtime side and the whole chain. Each case is
-documented in its own header comment.
+file, the two phases are compared, the difference is filled into the models of
+the session, and the models are packed into an archive, which is what the
+`Snapshot capture` mode of the `Capture` command does (see
+[Capture](../docs/Capture.md)). The rules of the capture themselves
+live in `src/core` and are covered by the unit tests; these cases are what pins
+the runtime side and the whole chain. Each case is documented in its own header
+comment.
 
 | Case | Steps | Expected |
 | --- | --- | --- |
 | `WhiteoutHidesAHostEntry` | the host holds `old.dll` and `keep.dll`; the layer `#USERPROFILE#` of the archive carries `packed.txt` and the whiteout marker of `old.dll` | the listing of the folder reports `keep.dll` and `packed.txt` and not `old.dll`, so the marker of a layer of the archive hides the entry of the host, and the folder of the host is untouched |
-| `CapturedFolderTravelsIntoTheArchive` | the state before the change is written into the phase before the change of a snapshot file (the folder of the installation is not part of it), the installation writes a file into the folder below `#USERPROFILE#`, the state after it is written into the same file, the two phases are compared and the difference is written into the models and packed; the archive is extracted into the directory of the case and the folder of the host is removed | the folder was imported below its preset directory and the packaged application reads the file of the folder although the folder of the host does not exist anymore, so the content of the capture reached the archive |
+| `CapturedFolderTravelsIntoTheArchive` | the state before the change is written into the phase before the change of a snapshot file (the folder of the installation is part of it and its content is not), the installation writes a file into the folder below `#USERPROFILE#`, the state after it is written into the same file, the two phases are compared, the difference is filled (which makes the folder a folder of the view and imports the file at its own path) and the models are packed; the archive is extracted into the directory of the case and the folder of the host is removed | the layer of the archive carries the file at the path of the view the fill wrote, the folder is an entry of the view and not an import, and the packaged application reads the file of the folder although the folder of the host does not exist anymore, so the entry of the capture reached the archive |
+| `StrictCaptureFillsOnlyTheCapturedEntries` | both states are read from the machine into the two phases of a snapshot file (a folder below `#USERPROFILE#` holds a file which was there before and a folder which the installation removes), the installation writes a file into the folder and removes the other folder, the difference is filled and the models are packed; the archive is extracted into the directory of the case and the folder of the host is removed | the archive carries the file the installation wrote and the single marker of the folder which is gone and neither the file which was there before nor a marker of the entries inside the hidden folder, and the packaged application reads the captured file and does not find the file which was never captured, so a capture carries the entries of the difference and not the folders which hold them |
+
+### Realtime capture cases
+
+The realtime capture cases (`test/e2e/RealtimeCapture_RecordsTheChangesOfARecording.cpp`)
+run the chain of the realtime capture of the packer: the session of the capture
+is started, the cases themselves play the installation by writing a folder with
+a file below `#USERPROFILE#` and a registry value below the current user, the
+recording is stopped and the analysis turns the recorded events into a snapshot
+difference, which is filled into the models of a session, which is what the
+`Realtime capture` mode of the `Capture` command does (see
+[Capture](../docs/Capture.md)). The recordings
+which follow each other are part of the cases as well: the recorder of the
+window is the one recorder of every capture, so a recording which was cancelled
+and one whose events were taken are given up before the next recording starts,
+while a recording which still runs is refused. The start of a recording is part
+of the cases as well: the events of a change a caller makes right after it are
+carried by the buffers of the session until the consumer of the recording drains
+them, and a case asserts the counters of the recording, which report the events
+the kernel dropped instead of leaving the loss to the log. One case plays what
+the user does with the shell while a capture runs: it creates a file of no byte
+through a process which carries the name of `explorer.exe`, a file of no byte of
+its own and a folder which holds nothing, all of them in the root of
+`#USERPROFILE#`, because the shell is the process a user works with and the
+capture has to carry the entries it makes. The cases need the elevation of
+the test process, because the session of the capture is a system logger session
+of the machine, and they are skipped without it or when the machine does not
+carry the kernel events. The rules of the analysis live in `src/core` and are
+covered by the unit tests; the cases pin the runtime side and the whole chain.
+They are documented in their own header comments.
+
+| Case | Steps | Expected |
+| --- | --- | --- |
+| `RecordsTheChangesOfARecording` | a realtime capture recording is started, the case writes a folder below `#USERPROFILE#` with a file in it and a registry key below the current user with a value while the recording runs, the recording is stopped and analyzed, the entries of the case are filled into the models of a session and the folder of the case becomes a folder of the view | the events of the recording name the folder which was created, the file inside it, the write of that file and the registry value which was written, the difference reports the folder with its file below the preset directory of the user profile and the registry value with the data the host holds while no entry is described twice, and the fill makes the folder an entry of the view and imports the file inside it and writes the registry value into the workspaces |
+| `StartsANewRecordingAfterACancelledOne` | a recording is started and stopped without its events being taken, which is what the `Cancel` button of the wizard does, and a second recording is started on the same recorder, which the case plays by writing a folder with a file in it | the second recording starts, so a capture which follows a cancelled one works again, and its events name the folder of the case, so the new recording runs on a session of its own |
+| `StartsANewRecordingAfterAFinishedOne` | a recording is started and played by the case, then stopped and taken, which is how a confirmed capture ends, and a second recording is started on the same recorder, which the case plays with another folder | the events of the first recording name the folder of the case, the second recording starts, its events name the second folder and the events of the first recording are not handed out twice |
+| `RefusesASecondRecordingWhileOneRuns` | a recording is started and a second recording is started on the same recorder while the first one still runs, after which the case plays one step of an installation | the second recording is refused with `a recording is already running`, and the refusal leaves the running recording alone: the events of the first recording name the folder of the case |
+| `RecordsTheRenameAndTheDeletionOfAnEntry` | a folder below `#USERPROFILE#` holds two files before the recording, a recording is started, the case renames one file, deletes the other one and creates a registry key with a value in it which is deleted together with the key, and the recording is stopped and analyzed | the events name the rename with the path the file was renamed to, the deletion of the other file and the write and the deletion of the value and of its key, and the difference reports the file which was renamed away and the file which was deleted as removed, the path the file was renamed to as added and the value with its key as removed |
+| `RecordsTheChangeWhichFollowsTheStart` | a recording is started and the case makes its change right away: a registry key below the current user with a value in it and a folder below `#USERPROFILE#` with a file in it, which is the change an installation makes from the moment the capture runs | the events name the value which was written, the folder and the file which were created right after the start, so the recording carries the change which follows it, and the counters of the recording report that the session dropped no event |
+| `CapturesTheEntriesTheShellCreated` | a recording is started and the case creates three entries in the root of `#USERPROFILE#`: a file of no byte through a process which carries the name of the shell (a copy of `cmd.exe` named `explorer.exe`, which creates the file of a redirection the way the shell creates a blank document), a file of no byte of its own and a folder which holds nothing, after which the recording is stopped and analyzed and the entries of the case are filled into the models of a session | the events name the file the shell created, the file of the case and the folder, the difference reports the three entries as added entries of the preset directory of the user profile at the root of it with the folder marked as a folder, and the fill imports both files into the layer root and creates the folder as a folder of the view, so the list of the preset directory holds the two files |
 
 ## Test helpers
 
@@ -1675,7 +1805,7 @@ documented in its own header comment.
   row of the view and that exactly those rows are marked. The suite skips itself
   when `cdb.exe` is not installed.
 
-## Known gaps
+## Known gaps and limitations
 
 * **The `...BypassAccessCheck` classes have no case.** A rename and a link are
   redirected for the eight classes of the two families, but
@@ -1699,19 +1829,20 @@ documented in its own header comment.
   forward unchanged. The registry cases of the patch suite pin the supported
   path, in which the hive holds the key (see the known gaps of
   [RegistryIsolation.md](../docs/RegistryIsolation.md)).
-* **The capture commands of the packer are verified by hand.** The rules of the
-  capture live in `src/core` and are covered by the unit tests and by
-  `E2E_Snapshot.CapturedFolderTravelsIntoTheArchive`, which drives the same
-  chain; the two commands of the toolbar (which ask for the snapshot file and
-  which drop the baseline once a comparison wrote its result), the snapshot
-  commands of the `File` menu and the progress dialog and the summary around
-  them belong to `src/widget`, which no test executable links (see
-  [Snapshot Capture](../docs/Snapshot.md)).
-* **The entries a capture leaves out are not driven end to end.** A difference
-  which names a file of the layer root or an entry below a folder which existed
-  before the capture is reported instead of being applied; the report is covered
-  by `test/unit/SnapshotApply.cpp`, and a case which drives it would have to
-  build a state of the host which is not reproducible on every machine.
+* **The capture of the packer is verified by hand.** The rules of the capture
+  live in `src/core` and are covered by the unit tests and by the two cases of
+  `test/e2e/Snapshot_*.cpp` which drive the chain of a snapshot capture; the
+  `Capture` command of the toolbar and the wizard it opens, with the pages of its
+  steps, the progress of a run and the two lists of the last step, belong to
+  `src/widget`, which no test executable links (see
+  [Capture](../docs/Capture.md)).
+* **The entries a capture leaves out are not driven end to end.** An entry the
+  workspaces cannot express, a change which belongs to no preset directory and a
+  file which the capture could not write are listed in the report of the last
+  step of the wizard instead of reaching the models; the report is covered by
+  `test/unit/SnapshotApply.cpp` and `test/unit/RealtimeCapture.cpp`, and a case
+  which drove it would have to make the host or the model refuse a write, which
+  is not reproducible on every machine.
 * **The snapshot file of a run is not stored below a preset directory end to
   end.** The rule which keeps a run from recording the file it writes is covered
   by `test/unit/SnapshotCapture.cpp`; a case which drove it would have to store
@@ -1721,7 +1852,8 @@ documented in its own header comment.
 ## Related documentation
 
 * [README.md](../README.md) — build, components and artifacts.
-* [Snapshot.md](../docs/Snapshot.md) — snapshot capture: commands, scope, the
+* [Capture.md](../docs/Capture.md) — the capture of the packer: the command and
+  the steps of the wizard, the realtime capture, the snapshot capture, the
   snapshot file, the rules which apply a difference and the runtime side.
 * [FilesystemIsolation.md](../docs/FilesystemIsolation.md) — filesystem
   isolation architecture.

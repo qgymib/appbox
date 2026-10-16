@@ -1,9 +1,8 @@
 #include "Toolbar.hpp"
 #include <wx/artprov.h>
 
+extern const int kToolbarCapture = wxNewId();
 extern const int kToolbarStartupFiles = wxNewId();
-extern const int kToolbarCaptureBefore = wxNewId();
-extern const int kToolbarCaptureAndDiff = wxNewId();
 extern const int kToolbarBuild = wxNewId();
 extern const int kToolbarBuildAndRun = wxNewId();
 
@@ -44,14 +43,14 @@ Toolbar::Toolbar(wxWindow* parent, wxWindowID id)
     SetToolBitmapSize(kIconSize);
 
     /*
-     * The capture commands open the bar: they read the machine instead of the
-     * session, so they are grouped on their own and kept apart from the
-     * commands which select, edit and build the session.
+     * The capture stands on its own: it reads the machine instead of the
+     * session, and the wizard it opens offers both ways to do so. It is the
+     * first command of the bar and kept apart from the commands which select,
+     * edit and build the session.
      */
-    AddTool(kToolbarCaptureBefore, "Capture Before", LoadIcon(wxART_NEW, kIconSize),
-            "Scan the machine into a snapshot file and keep its state as the baseline of a capture");
-    AddTool(kToolbarCaptureAndDiff, "Capture and Diff", LoadIcon(wxART_FIND, kIconSize),
-            "Scan the machine again and write the difference of the baseline into the workspaces");
+    AddTool(kToolbarCapture, "Capture", LoadIcon(wxART_CDROM, kIconSize),
+            "Record the changes of an installation while it runs, or read the state of the machine before and after it "
+            "and compare the two reads");
     AddSeparator();
 
     AddTool(kToolbarStartupFiles, "Startup Files", LoadIcon(wxART_FILE_OPEN, kIconSize),

@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-class IsolationModeGroup;
+class ModeChoiceGroup;
 class wxChoice;
 class wxStaticText;
 class wxTextCtrl;
@@ -33,7 +33,7 @@ class wxTextCtrl;
  * rejected input keeps the dialog open and shows the reason.
  *
  * The isolation mode is picked in the dialog as well. Every mode carries the
- * explanation of what it does below its name, see `IsolationModeGroup`, so the
+ * explanation of what it does below its name, see `ModeChoiceGroup`, so the
  * meaning of a mode is readable while it is chosen. The dialog only reports the
  * chosen mode, the caller stores it through the model, so the modes of a value
  * are offered by one source: the names of the field are the ones the
@@ -146,7 +146,7 @@ private:
     /**
      * @brief Field holding the isolation modes of a value.
      */
-    IsolationModeGroup* isolation_ = nullptr;
+    ModeChoiceGroup* isolation_ = nullptr;
 
     /**
      * @brief Editor of the single line types.

@@ -58,6 +58,30 @@ std::wstring LeafName(const std::wstring& path)
 }
 
 /**
+ * @brief Join the segments of a path from one index on.
+ * @param[in] segments Segments to join.
+ * @param[in] first Index of the first segment to include.
+ * @return The joined path, empty when no segment remains.
+ */
+std::wstring JoinFrom(const std::vector<std::wstring>& segments, std::size_t first)
+{
+    std::wstring result;
+    for (auto index = first; index < segments.size(); ++index)
+    {
+        if (segments[index].empty())
+        {
+            continue;
+        }
+        if (!result.empty())
+        {
+            result.push_back(L'\\');
+        }
+        result += segments[index];
+    }
+    return result;
+}
+
+/**
  * @brief Order the rows of one folder.
  *
  * Folders come first so the tree keeps the shape of the sandbox view, then the
@@ -166,12 +190,16 @@ void StartupTree::AppendPreset(StartupNode& parent, const PresetDirectory& prese
     /*
      * The children of a preset are its imported folders: the host content of
      * the preset folder itself is never listed, because a preset directory is
-     * the layer root of the sandbox view and not a folder inside it.
+     * the layer root of the sandbox view and not a folder inside it. The files
+     * which were imported into that root are listed, because they are entries
+     * of the layer which can be started like any other one.
      */
     for (const auto& imported : model_->ImportsOf(preset.id))
     {
         AppendImport(*preset_node, imported);
     }
+
+    AppendImportedFiles(*preset_node);
 
     /* The folders the user created come after the content which was imported. */
     for (const auto& directory : model_->VirtualDirectoriesOf(preset.id, L""))
@@ -283,17 +311,20 @@ void StartupTree::AppendImportedFiles(StartupNode& node)
         }
 
         /*
-         * An imported file extends an imported folder, so the first segment of
-         * the target directory names the import root the file is stored
-         * relative to.
+         * The first segment of the path of the file inside the layer names the
+         * lower layer it extends, which is the root a startup file is stored
+         * relative to; a file which lives in the layer root has no such
+         * segment, so it is named by its own name alone.
          */
+        const auto segments = Split(target_dir, L"\\");
+
         auto child = std::make_unique<StartupNode>();
         child->kind = StartupNodeKind::Executable;
         child->label = file.file_name;
         child->host_path = file.source_path;
         child->preset_id = node.preset_id;
-        child->import_name = Split(file.target_dir, L"\\").front();
-        child->relative_path = ImportRelativePath(file.target_dir, file.file_name);
+        child->import_name = segments.empty() ? std::wstring() : segments.front();
+        child->relative_path = ImportRelativePath(target_dir, file.file_name);
         child->parent = &node;
 
         node.children.push_back(std::move(child));
@@ -381,44 +412,23 @@ StartupNode* StartupTree::EnsureChoice(const StartupFile& file)
         return nullptr;
     }
 
-    ImportedFolder imported;
-    if (!model_->GetImport(file.preset_id, file.import_name, imported))
+    /*
+     * The file is named by the path it carries inside the layer of its preset
+     * directory, so the folders of the way to the file are the folders of that
+     * path. A folder which the tree does not hold yet is created as a folder of
+     * the view which maps to no host folder, which is what keeps a startup file
+     * whose file is gone visible in the tree and lets the user drop it.
+     */
+    const auto view_path =
+        file.import_name.empty() ? file.relative_path : file.import_name + L"\\" + file.relative_path;
+    const auto segments = Split(view_path, L"\\");
+    if (segments.empty())
     {
-        /* The import is gone, so the file is no folder of the view. */
         return nullptr;
     }
 
-    StartupNode* import = nullptr;
-    for (const auto& child : preset->children)
-    {
-        if (child->kind == StartupNodeKind::Import && EqualsIgnoreCase(child->label, file.import_name))
-        {
-            import = child.get();
-            break;
-        }
-    }
-
-    if (import == nullptr)
-    {
-        auto node = std::make_unique<StartupNode>();
-        node->kind = StartupNodeKind::Import;
-        node->label = imported.import_name;
-        node->host_path = imported.source_path;
-        node->preset_id = imported.preset_id;
-        node->import_name = imported.import_name;
-        node->parent = preset;
-
-        import = node.get();
-        preset->children.push_back(std::move(node));
-    }
-
-    /*
-     * The folders of the way to the file. A missing folder can only be a folder
-     * of the host: a file inside a folder the user created is always imported,
-     * so its row was built from the model already.
-     */
-    const auto   segments = Split(file.relative_path, L"\\");
-    StartupNode* current = import;
+    StartupNode* current = preset;
+    std::wstring reached;
     for (std::size_t index = 0; index + 1 < segments.size(); ++index)
     {
         const auto& segment = segments[index];
@@ -426,6 +436,8 @@ StartupNode* StartupTree::EnsureChoice(const StartupFile& file)
         {
             continue;
         }
+
+        reached = reached.empty() ? segment : reached + L"\\" + segment;
 
         StartupNode* next = nullptr;
         for (const auto& child : current->children)
@@ -439,15 +451,34 @@ StartupNode* StartupTree::EnsureChoice(const StartupFile& file)
 
         if (next == nullptr)
         {
+            /*
+             * The first segment names the lower layer the file extends, so an
+             * imported folder of that name is offered as an import even while
+             * its host folder is gone; every other missing folder is a folder
+             * of the view which carries the path of the row and maps to no host
+             * folder of its own.
+             */
+            ImportedFolder imported;
+            const bool     is_import = current == preset && model_->GetImport(current->preset_id, segment, imported);
+
             auto node = std::make_unique<StartupNode>();
-            node->kind = StartupNodeKind::Directory;
-            node->label = segment;
-            node->host_path = current->host_path.empty()
-                                  ? std::wstring()
-                                  : (std::filesystem::path(current->host_path) / segment).wstring();
+            node->kind = is_import ? StartupNodeKind::Import : StartupNodeKind::Directory;
+            node->label = is_import ? imported.import_name : segment;
             node->preset_id = current->preset_id;
-            node->import_name = current->import_name;
-            node->relative_path = current->relative_path.empty() ? segment : current->relative_path + L"\\" + segment;
+            node->host_path = is_import ? imported.source_path
+                                        : (current->host_path.empty()
+                                               ? std::wstring()
+                                               : (std::filesystem::path(current->host_path) / segment).wstring());
+            if (is_import)
+            {
+                node->import_name = imported.import_name;
+            }
+            else
+            {
+                const auto parts = Split(reached, L"\\");
+                node->import_name = parts.empty() ? std::wstring() : parts.front();
+                node->relative_path = JoinFrom(parts, 1);
+            }
             node->parent = current;
 
             next = node.get();
@@ -457,7 +488,7 @@ StartupNode* StartupTree::EnsureChoice(const StartupFile& file)
         current = next;
     }
 
-    const std::wstring file_name = segments.empty() ? std::wstring() : segments.back();
+    const std::wstring file_name = segments.back();
     if (file_name.empty())
     {
         return nullptr;
@@ -471,12 +502,20 @@ StartupNode* StartupTree::EnsureChoice(const StartupFile& file)
         }
     }
 
+    /*
+     * The file is not on this machine, so the row carries the path it would
+     * live at; a file which was imported on its own names the host file it was
+     * imported from.
+     */
+    std::wstring host_path;
+    model_->StartupFilePath(file, host_path);
+
     auto node = std::make_unique<StartupNode>();
     node->kind = StartupNodeKind::Executable;
     node->label = file_name;
-    node->host_path = (std::filesystem::path(imported.source_path) / file.relative_path).wstring();
+    node->host_path = host_path;
     node->preset_id = current->preset_id;
-    node->import_name = current->import_name;
+    node->import_name = file.import_name;
     node->relative_path = file.relative_path;
     node->parent = current;
 
@@ -546,23 +585,12 @@ std::wstring StartupTree::TargetDirOf(const StartupNode& node)
 std::wstring StartupTree::ImportRelativePath(const std::wstring& target_dir, const std::wstring& file_name)
 {
     /*
-     * The first segment of the target directory is the name of the imported
-     * folder, which is the root a startup file is stored relative to.
+     * The first segment of the path of the file inside the layer is the root a
+     * startup file is stored relative to, so it is dropped; a file of the layer
+     * root keeps its own name alone.
      */
     const auto   segments = Split(target_dir, L"\\");
-    std::wstring relative;
-    for (std::size_t index = 1; index < segments.size(); ++index)
-    {
-        if (segments[index].empty())
-        {
-            continue;
-        }
-        if (!relative.empty())
-        {
-            relative.push_back(L'\\');
-        }
-        relative += segments[index];
-    }
+    std::wstring relative = JoinFrom(segments, 1);
 
     if (!relative.empty())
     {
@@ -612,9 +640,19 @@ StartupNode* StartupTree::FindChoice(const StartupFile& file) const
             continue;
         }
 
+        /* A file of the layer root hangs below the row of its preset directory. */
+        if (file.import_name.empty())
+        {
+            return FindNode(*preset, file.relative_path);
+        }
+
+        /*
+         * The first segment of the path of the file is the row which holds it:
+         * an imported folder or a folder of the view below the preset.
+         */
         for (const auto& child : preset->children)
         {
-            if (child->kind == StartupNodeKind::Import && EqualsIgnoreCase(child->label, file.import_name))
+            if (child->kind != StartupNodeKind::Executable && EqualsIgnoreCase(child->label, file.import_name))
             {
                 return FindNode(*child, file.relative_path);
             }

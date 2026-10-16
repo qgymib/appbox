@@ -250,7 +250,7 @@ cost before the run starts.
 | `cmd.exe /c cmd.exe /c echo child` | about 1 s | 2 processes, both armed with 94 breakpoints, 40 functions |
 | `ping.exe -n 1 localhost` | about 1.3 s | 1 process, 120 breakpoints (10 of them armed when the DNS client was loaded), 46 functions |
 
-## Known limitations
+## Known gaps and limitations
 
 1. **The process start is not traced.** The debugger stops the program at its
    initial breakpoint, which is reached after the loader mapped the images of
