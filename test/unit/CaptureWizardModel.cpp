@@ -372,8 +372,8 @@ TEST(Unit_CaptureWizardModel, WaitsForTheBaselineOfTheSnapshotCapture)
 }
 
 /**
- * @brief The prerequisites are described the way the first step shows them,
- *        and a missing one names what the user can do about it.
+ * @brief The prerequisites are described the way the wizard shows them: the
+ *        name of each one and whether the machine meets it.
  */
 TEST(Unit_CaptureWizardModel, DescribesTheRequirements)
 {
@@ -390,10 +390,10 @@ TEST(Unit_CaptureWizardModel, DescribesTheRequirements)
 
     const auto blocked = appbox::DescribeRequirements(missing);
     ASSERT_EQ(blocked.size(), 2u);
+    EXPECT_EQ(blocked[0].name, L"Windows 10 or newer");
     EXPECT_FALSE(blocked[0].met);
-    EXPECT_NE(blocked[0].detail.find(L"snapshot capture"), std::wstring::npos);
+    EXPECT_EQ(blocked[1].name, L"Elevated process");
     EXPECT_FALSE(blocked[1].met);
-    EXPECT_NE(blocked[1].detail.find(L"administrator"), std::wstring::npos);
 }
 
 /**

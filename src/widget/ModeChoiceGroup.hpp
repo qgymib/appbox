@@ -7,6 +7,7 @@
  * which the project builds as an error.
  */
 #include <wx/wx.h>
+#include <functional>
 #include <vector>
 
 class wxRadioButton;
@@ -60,12 +61,29 @@ class ModeChoiceGroup : public wxPanel
 {
 public:
     /**
+     * @brief Build the extra controls of one option.
+     *
+     * The factory is called once for every option while the group is built,
+     * with the window the controls of the group hang below as the parent and
+     * the index of the option. It returns the window to place below the
+     * explanation of that option, or nullptr when the option needs none.
+     *
+     * The hook lets a caller hang controls which belong to one option of the
+     * group below that option alone, so they sit between it and the option
+     * which follows and not below the whole group.
+     */
+    using OptionExtraFactory = std::function<wxWindow*(wxWindow* parent, int index)>;
+
+    /**
      * @brief Create the group.
      * @param[in] parent Parent window.
      * @param[in] title Title of the box which frames the options.
      * @param[in] choices Options of the group, in the order they are shown.
+     * @param[in] extra Factory of the extra controls of an option, may be
+     *            empty when no option carries any.
      */
-    ModeChoiceGroup(wxWindow* parent, const wxString& title, const std::vector<ModeChoice>& choices);
+    ModeChoiceGroup(wxWindow* parent, const wxString& title, const std::vector<ModeChoice>& choices,
+                    const OptionExtraFactory& extra = OptionExtraFactory());
 
     /**
      * @brief Get the index of the selected option.

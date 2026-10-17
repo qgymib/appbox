@@ -536,9 +536,9 @@ private:
      * and OnRealtimeCaptureFinished() for the end of a recording.
      *
      * The prerequisites of the recording are shown by the first step of the
-     * wizard: a machine which cannot record is told to pick the snapshot
-     * capture, and a process which is not elevated is offered the restart as
-     * an administrator.
+     * wizard below the realtime option: a machine which cannot record lists the
+     * missing prerequisite, and a process which is not elevated is offered the
+     * restart as an administrator.
      *
      * @param[in] event Command event.
      */

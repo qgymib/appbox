@@ -52,9 +52,9 @@ class wxWindowDisabler;
  * The steps a mode walks are the ones `appbox::CaptureStages()` names for it, so
  * the tree, the pages and the buttons follow the mode alone:
  *
- *  1. the choice of the mode, which explains both captures and lists the
- *     prerequisites of the realtime capture, with the restart as an
- *     administrator offered when the process is not elevated;
+ *  1. the choice of the mode, which explains both captures below the option of
+ *     each one and lists the prerequisites of the realtime capture, with the
+ *     restart as an administrator, below the realtime option alone;
  *  2. the steps of the realtime capture: the recording, which shows the process
  *     and the entry the capture saw last and the number of the changes it
  *     recorded and which waits for the user to confirm that the installation is
@@ -338,6 +338,19 @@ private:
     wxPanel* CreateModePage(wxSimplebook& book);
 
     /**
+     * @brief Build the prerequisites of the realtime capture and the button
+     *        which restarts the packer as an administrator.
+     *
+     * The block is the extra of the realtime option of the group of the modes,
+     * so it hangs below that option alone and stays visible while either mode
+     * is picked.
+     *
+     * @param[in] parent Window the block hangs below, the box of the modes.
+     * @return The panel which holds the block.
+     */
+    wxWindow* CreateModeRequirements(wxWindow* parent);
+
+    /**
      * @brief Build the page which picks the source of the baseline of a
      *        snapshot capture.
      * @param[in] book Book the page belongs to.
@@ -445,7 +458,13 @@ private:
     void RefreshTree();
 
     /**
-     * @brief Show the prerequisites of the picked mode on its page.
+     * @brief Show the prerequisites of the realtime capture below its option.
+     *
+     * The block belongs to the realtime option and stays on the page while
+     * either mode is picked, so switching to the snapshot capture keeps what
+     * the realtime capture asks for in sight. Only the button beside the list
+     * follows the machine: it is greyed when the process already holds the
+     * elevation or when the realtime capture cannot run at all.
      */
     void RefreshModePage();
 
@@ -613,32 +632,10 @@ private:
     ModeChoiceGroup* mode_group_ = nullptr;
 
     /**
-     * @brief The prerequisites of the realtime capture, which the first step
-     *        lists while that mode is picked.
-     */
-    wxPanel* requirements_panel_ = nullptr;
-
-    /**
-     * @brief What the picked mode asks the machine for.
-     *
-     * The snapshot capture reads the machine instead of observing it, so it
-     * asks for nothing and the line explains that instead of listing
-     * prerequisites.
-     */
-    wxStaticText* prerequisites_text_ = nullptr;
-
-    /**
-     * @brief The text the line of the prerequisites was filled with, before it
-     *        was wrapped.
-     *
-     * The label of the control carries the line breaks the wrap inserted, so
-     * the text it was built from is kept as well: only a text which changed is
-     * set and wrapped again.
-     */
-    wxString prerequisites_text_value_;
-
-    /**
      * @brief Button which restarts the packer as an administrator.
+     *
+     * The button is greyed when the process already holds the elevation or when
+     * the machine cannot run the realtime capture at all.
      */
     wxButton* restart_button_ = nullptr;
 

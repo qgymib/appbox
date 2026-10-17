@@ -28,6 +28,12 @@ constexpr int kLabelGap = 2;
 constexpr int kChoiceGap = 8;
 
 /**
+ * @brief Gap between the explanation of an option and the extra controls which
+ *        belong to it.
+ */
+constexpr int kExtraGap = 6;
+
+/**
  * @brief Create the grey text which explains one mode.
  * @param[in] parent Parent window.
  * @param[in] description Text of the explanation.
@@ -43,7 +49,8 @@ wxStaticText* CreateDescription(wxWindow* parent, const wxString& description)
 
 } // namespace
 
-ModeChoiceGroup::ModeChoiceGroup(wxWindow* parent, const wxString& title, const std::vector<ModeChoice>& choices)
+ModeChoiceGroup::ModeChoiceGroup(wxWindow* parent, const wxString& title, const std::vector<ModeChoice>& choices,
+                                 const OptionExtraFactory& extra)
     : wxPanel(parent, wxID_ANY)
 {
     auto* box = new wxStaticBoxSizer(wxVERTICAL, this, title);
@@ -68,6 +75,20 @@ ModeChoiceGroup::ModeChoiceGroup(wxWindow* parent, const wxString& title, const 
         auto* option = new wxBoxSizer(wxVERTICAL);
         option->Add(button, 0, wxLEFT | wxRIGHT | wxBOTTOM, kLabelGap);
         option->Add(CreateDescription(holder, choice.description), 0, wxLEFT | wxRIGHT, kDescriptionIndent);
+
+        /*
+         * The extra controls belong to one option alone, so they hang below its
+         * explanation and above the option which follows it.
+         */
+        if (extra)
+        {
+            auto* extra_window = extra(holder, static_cast<int>(index));
+            if (extra_window != nullptr)
+            {
+                option->AddSpacer(kExtraGap);
+                option->Add(extra_window, 0, wxEXPAND | wxLEFT | wxRIGHT, kDescriptionIndent);
+            }
+        }
 
         /*
          * The gap which separates two options is vertical: a border is applied

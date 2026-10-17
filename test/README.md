@@ -521,8 +521,8 @@ The unit tests of the packer:
   the confirmation of the user that the installation is over and which closes
   again when the confirmation is taken back, the last step which waits for the
   workspaces and which cannot be dropped while they are written and the
-  prerequisites which name what the user can
-  do about a missing one. The snapshot capture is covered as well: the mode
+  prerequisites with the name of each one and whether the machine meets it. The
+  snapshot capture is covered as well: the mode
   which is offered on every machine, the steps of its own walk, the step of the
   file of the baseline which waits for a path, the step of the baseline which
   waits for the run of the source and which shows the step of the file again

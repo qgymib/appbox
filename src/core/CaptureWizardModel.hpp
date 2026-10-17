@@ -162,11 +162,6 @@ struct CaptureRequirement
     std::wstring name;
 
     /**
-     * @brief What the prerequisite means and what to do when it is not met.
-     */
-    std::wstring detail;
-
-    /**
      * @brief Whether the machine meets the prerequisite.
      */
     bool met = false;
@@ -175,9 +170,8 @@ struct CaptureRequirement
 /**
  * @brief Describe the prerequisites of a realtime capture.
  *
- * The list is what the first step of the wizard shows while the realtime
- * capture is picked, so the rules of the capture and the text which explains
- * them stay together and testable.
+ * The list is what the wizard shows below the realtime option, so the rules of
+ * the capture and the names the check list asserts stay together and testable.
  *
  * @param[in] requirements The prerequisites to describe.
  * @return One entry per prerequisite, in the order they are shown.

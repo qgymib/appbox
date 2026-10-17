@@ -6,28 +6,10 @@ namespace appbox
 
 std::vector<CaptureRequirement> DescribeRequirements(const CaptureRequirements& requirements)
 {
-    std::vector<CaptureRequirement> entries;
-
-    CaptureRequirement supported;
-    supported.name = L"Windows 10 or newer";
-    supported.detail = requirements.supported
-                           ? L"The kernel events of the file system and of the registry are available."
-                           : L"The machine does not carry the kernel events of the capture. Pick the snapshot capture "
-                             L"mode instead: it reads the state of the machine twice and compares the two reads.";
-    supported.met = requirements.supported;
-    entries.push_back(std::move(supported));
-
-    CaptureRequirement elevated;
-    elevated.name = L"Elevated process";
-    elevated.detail = requirements.elevated
-                          ? L"The process holds the privilege the kernel session answers to."
-                          : L"The kernel session of the machine answers only to an elevated process. Restart AppBox "
-                            L"as an administrator to record the changes, or pick the snapshot capture mode, which "
-                            L"needs no elevation.";
-    elevated.met = requirements.elevated;
-    entries.push_back(std::move(elevated));
-
-    return entries;
+    return {
+        { L"Windows 10 or newer", requirements.supported },
+        { L"Elevated process",    requirements.elevated  }
+    };
 }
 
 const std::vector<std::wstring>& CaptureModeNames()

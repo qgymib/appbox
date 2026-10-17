@@ -43,7 +43,7 @@ constexpr int kBookWidth = 560;
  *
  * The height fits the tallest page, which is the one which picks the mode: it
  * explains both captures and lists the prerequisites of the realtime capture
- * below them.
+ * below the realtime option.
  */
 constexpr int kBookHeight = 430;
 
@@ -100,6 +100,15 @@ void SetLabelIfChanged(wxStaticText* text, const wxString& label)
 wxString DoneMark()
 {
     return wxString::FromUTF8("\xE2\x9C\x93");
+}
+
+/**
+ * @brief The mark which names a prerequisite the machine does not meet.
+ * @return The cross mark.
+ */
+wxString MissingMark()
+{
+    return wxString::FromUTF8("\xE2\x9C\x97");
 }
 
 /**
@@ -462,46 +471,54 @@ wxPanel* CaptureWizard::CreateModePage(wxSimplebook& book)
     /*
      * The options are ordered like the enumeration of the modes, so the
      * selection of the group is the mode itself, and every option carries the
-     * explanation of its mode below its name, see ModeChoiceGroup.
+     * explanation of its mode below its name, see ModeChoiceGroup. The
+     * prerequisites and the restart hang below the realtime option alone, so
+     * they are the extra of that option and not a block of the page.
      */
-    mode_group_ = new ModeChoiceGroup(page, "Capture mode", CaptureModeChoices(model_));
+    mode_group_ = new ModeChoiceGroup(
+        page, "Capture mode", CaptureModeChoices(model_), [this](wxWindow* parent, int index) -> wxWindow* {
+            return index == static_cast<int>(appbox::CaptureMode::Realtime) ? CreateModeRequirements(parent) : nullptr;
+        });
     mode_group_->SetSelection(static_cast<int>(model_.Mode()));
     mode_group_->Bind(wxEVT_RADIOBUTTON, &CaptureWizard::OnModePicked, this);
     sizer->Add(mode_group_, 0, wxEXPAND | wxALL, kBorder);
 
+    page->SetSizer(sizer);
+    return page;
+}
+
+wxWindow* CaptureWizard::CreateModeRequirements(wxWindow* parent)
+{
     /*
      * The prerequisites of the realtime capture are listed with the state of
      * the machine, so the step explains itself instead of reporting a failure
-     * after the user pressed the button which leaves it.
+     * after the user pressed the button which leaves it. The detail of a
+     * prerequisite is not written down: the mark which names the state and the
+     * name of the prerequisite are what the user reads.
      */
-    requirements_panel_ = new wxPanel(page);
+    auto* panel = new wxPanel(parent);
+    auto* content = new wxBoxSizer(wxVERTICAL);
+
     auto* grid = new wxFlexGridSizer(2, kRowGap, kColumnGap);
     grid->AddGrowableCol(1, 1);
     for (const auto& requirement : appbox::DescribeRequirements(model_.Requirements()))
     {
-        auto* name = new wxStaticText(requirements_panel_, wxID_ANY, wxString(requirement.name));
-        auto* detail = new wxStaticText(requirements_panel_, wxID_ANY, wxString(requirement.detail));
-        detail->Wrap(kTextWidth - 140);
+        auto* mark = new wxStaticText(panel, wxID_ANY, requirement.met ? DoneMark() : MissingMark());
+        auto* name = new wxStaticText(panel, wxID_ANY, wxString(requirement.name));
 
-        grid->Add(name, 0, wxALIGN_RIGHT | wxALIGN_TOP);
-        grid->Add(detail, 1, wxEXPAND | wxALIGN_TOP);
+        grid->Add(mark, 0, wxALIGN_RIGHT | wxALIGN_TOP);
+        grid->Add(name, 1, wxEXPAND | wxALIGN_TOP);
     }
-    requirements_panel_->SetSizer(grid);
-    sizer->Add(requirements_panel_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, kBorder);
 
-    /*
-     * The mode which asks for nothing explains that instead of listing
-     * prerequisites, so the page never looks like it forgot them.
-     */
-    prerequisites_text_ = new wxStaticText(page, wxID_ANY, wxEmptyString);
-    sizer->Add(prerequisites_text_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, kBorder);
+    content->Add(grid, 0, wxEXPAND);
 
-    restart_button_ = new wxButton(page, wxID_ANY, "Restart as administrator");
-    sizer->Add(restart_button_, 0, wxLEFT | wxRIGHT | wxBOTTOM, kBorder);
+    restart_button_ = new wxButton(panel, wxID_ANY, "Restart as administrator");
+    content->Add(restart_button_, 0, wxTOP, kRowGap);
     Bind(wxEVT_BUTTON, &CaptureWizard::OnRestartAsAdministrator, this, restart_button_->GetId());
 
-    page->SetSizer(sizer);
-    return page;
+    panel->SetSizer(content);
+
+    return panel;
 }
 
 wxPanel* CaptureWizard::CreateBaselineSourcePage(wxSimplebook& book)
@@ -1007,34 +1024,16 @@ void CaptureWizard::RefreshTree()
 
 void CaptureWizard::RefreshModePage()
 {
-    const bool  realtime = model_.Mode() == appbox::CaptureMode::Realtime;
     const auto& requirements = model_.Requirements();
 
-    requirements_panel_->Show(realtime);
-    prerequisites_text_->Show(!realtime);
-    if (!realtime)
-    {
-        /*
-         * The text is longer than the page is wide, so it is wrapped: a text
-         * which is set without a wrap is drawn in one line and the part which
-         * does not fit is cut off at the border of the page.
-         */
-        SetWrappedLabel(prerequisites_text_,
-                        "The snapshot capture reads the state of the machine instead of observing it, so it "
-                        "needs neither the kernel events nor an elevation.",
-                        prerequisites_text_value_);
-    }
-
-    restart_button_->Show(realtime && requirements.supported && !requirements.elevated);
-
     /*
-     * The line and the button of the page appear and disappear with the mode,
-     * and a sizer lays a page out when the size of the page changes and not
-     * when the visibility of one of its rows does: without the pass a control
-     * which was created hidden stays at the corner of the page, over the
-     * options of the mode.
+     * The button is offered with the realtime option and is greyed when the
+     * process already holds the elevation or when the machine cannot run the
+     * realtime capture at all. The prerequisites beside it stay visible while
+     * either mode is picked, so picking the snapshot capture does not hide what
+     * the realtime capture asks for.
      */
-    prerequisites_text_->GetParent()->Layout();
+    restart_button_->Enable(requirements.supported && !requirements.elevated);
 }
 
 void CaptureWizard::RefreshSnapshotFilePage()

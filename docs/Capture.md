@@ -74,10 +74,15 @@ reached that point cannot be taken back.
 1. **The mode.** The capture modes are listed, each with the explanation of how
    it reads the changes, and the branch of the mode which is picked carries the
    steps of that mode. A mode the machine cannot run is an option which cannot
-   be picked. The prerequisites of the machine are listed below the modes while
-   the realtime capture is picked, so the step explains itself instead of
-   reporting a failure after the user pressed the button which leaves it; the
-   snapshot capture asks for nothing and says so.
+   be picked. The prerequisites of the realtime capture are listed below the
+   realtime option, each with a check when the machine meets it and a cross when
+   it does not, so the step explains itself instead of reporting a failure after
+   the user pressed the button which leaves it; the `Restart as administrator`
+   button follows the list and is greyed when the process already holds the
+   elevation or when the machine cannot run the realtime capture at all. The
+   snapshot capture asks for nothing and carries no list of its own, and picking
+   it leaves the list of the realtime option and its button on the step, so what
+   the realtime capture asks for stays in sight.
 2. **The recording.** The packer observes the machine while the user works
    outside of it: the installation is started and run as usual, and the page
    counts the changes as they arrive and names the process and the entry the
@@ -602,7 +607,7 @@ The cases of the realtime capture:
   the recording which waits for the confirmation of the user and closes again
   when the confirmation is taken back, the last step which waits for the
   workspaces and which cannot be dropped while they are written and the
-  prerequisites which name what the user can do about a missing one.
+  prerequisites with the name of each one and whether the machine meets it.
   The snapshot capture is covered as well: the mode which is offered on every
   machine, the steps of its own walk, the step of the file of the baseline which
   waits for a path, the step of the baseline which waits for the run of the
