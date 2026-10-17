@@ -28,7 +28,9 @@ class wxButton;
  * other column is edited by double clicking the row, which opens the key or value
  * dialog, and both dialogs pick the isolation mode of the entry as well. The
  * context menu of the tree offers `Isolation Mode...`, which applies a key mode
- * to the key alone or to its whole subtree, as the dialog asks for. The
+ * to the key alone or to its whole subtree, as the dialog asks for, and the
+ * `Delete Key` command, which removes a key and everything below it and is greyed
+ * out for the fixed entries of the view. The
  * container carries no mode of its own, so the command is offered for it as
  * well and its mode reaches the five preset root keys, or the whole tree when
  * the dialog asks for the subtree.
@@ -249,6 +251,18 @@ private:
      * @param[in] path Path of the key, empty for the container.
      */
     void EditIsolation(const std::wstring& path);
+
+    /**
+     * @brief Remove a key and everything below it after confirmation.
+     *
+     * The command is offered by the context menu of the tree and is refused for
+     * the container and for the five root keys, which are the fixed entries of
+     * the view and report themselves as not removable. The table shows the
+     * parent of the removed key afterwards, which still exists.
+     *
+     * @param[in] path Path of the key, empty for the container.
+     */
+    void DeleteKey(const std::wstring& path);
 
     /**
      * @brief Open the key dialog of a sub key row.

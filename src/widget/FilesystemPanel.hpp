@@ -53,6 +53,13 @@ class wxSearchCtrl;
  * decides every path no other entry covers, including the locations outside
  * the virtual filesystem.
  *
+ * The same context menu carries the `Delete` command, which is offered for
+ * every node but reaches only the two kinds the view may remove: the imported
+ * folders and the folders the user created. The container, the fixed preset
+ * directories and the host subfolders below an import - which belong to the
+ * import holding them - grey the item out, so the command is visible without
+ * being offered where the model would refuse it.
+ *
  * The `Up Dir` command moves the tree selection to the node above the selected
  * one. The container is the root of the tree and the only node without a
  * parent, so the command is offered for every node but the container: a top
@@ -609,9 +616,9 @@ private:
      * @brief Show the context menu of a tree item.
      *
      * Every item offers the isolation dialog, which reaches the container as
-     * well. The commands which import a folder or remove an import are offered
-     * for the items which carry the preset directory or the import they work
-     * on.
+     * well, and the delete command, which is greyed out for the nodes the view
+     * may not remove. The command which imports a folder is offered for the
+     * items which carry the preset directory it works on.
      *
      * @param[in] event Tree context menu event.
      */
@@ -649,10 +656,15 @@ private:
     void OnRemove(wxCommandEvent& event);
 
     /**
-     * @brief Remove the imported folder of the tree context menu.
+     * @brief Remove the folder behind the tree node of the context menu.
+     *
+     * Only the folders the view may remove are passed here: an imported folder
+     * and a folder the user created. The command is refused for every other
+     * node, which the context menu greys its item out for.
+     *
      * @param[in] event Command event.
      */
-    void OnRemoveImportFromTree(wxCommandEvent& event);
+    void OnTreeDeleteNode(wxCommandEvent& event);
 
     /**
      * @brief Set the isolation mode of the selected tree node.

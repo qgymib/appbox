@@ -143,6 +143,20 @@ int IsolationMenuId()
     return id;
 }
 
+/**
+ * @brief Get the command id of the delete menu item.
+ *
+ * The id is created once, so every popup of the tree shares it without
+ * colliding with the ids of the standard commands.
+ *
+ * @return The command id of the menu item.
+ */
+int DeleteMenuId()
+{
+    static const int id = wxNewId();
+    return id;
+}
+
 } // namespace
 
 RegistryPanel::RegistryPanel(wxWindow* parent, appbox::RegistryModel& model) : wxPanel(parent, wxID_ANY), model_(model)
@@ -688,6 +702,17 @@ void RegistryPanel::OnTreeRightClick(wxTreeEvent& event)
     wxMenu menu;
     menu.Append(IsolationMenuId(), "Isolation Mode...");
     menu.Bind(wxEVT_MENU, [this, path](wxCommandEvent&) { EditIsolation(path); }, IsolationMenuId());
+
+    /*
+     * The delete command is offered for every key as well, but only a key the
+     * view may remove carries it: the container and the five root keys are the
+     * fixed entries of the tree, so the item is greyed out for them.
+     */
+    menu.AppendSeparator();
+    const auto* key = model_.FindKey(path);
+    menu.Append(DeleteMenuId(), "Delete Key")->Enable(key != nullptr && key->removable);
+    menu.Bind(wxEVT_MENU, [this, path](wxCommandEvent&) { DeleteKey(path); }, DeleteMenuId());
+
     PopupMenu(&menu);
 }
 
@@ -741,6 +766,45 @@ void RegistryPanel::EditIsolation(const std::wstring& path)
 
     BuildTree();
     SelectTreePath(path);
+    RefreshList();
+}
+
+void RegistryPanel::DeleteKey(const std::wstring& path)
+{
+    const auto* key = model_.FindKey(path);
+    if (key == nullptr || !key->removable)
+    {
+        /*
+         * The container and the five root keys are the fixed entries of the
+         * view, which the context menu greys its item out for. The guard keeps
+         * the rule enforced even when the command is reached without the menu.
+         */
+        return;
+    }
+
+    const auto question =
+        wxString::Format("Remove the key '%s' and everything below it?", wxString(appbox::RegistryLeafName(path)));
+    wxMessageDialog confirm(this, question, "Delete Key", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
+    if (confirm.ShowModal() != wxID_YES)
+    {
+        return;
+    }
+
+    std::string error;
+    if (!model_.RemoveKey(path, error))
+    {
+        wxMessageBox(wxString::FromUTF8(error), "Delete Key", wxOK | wxICON_ERROR, this);
+        return;
+    }
+
+    /*
+     * The key is gone, so the tree shows the parent of the removed key, which
+     * still exists; a root key cannot be removed, so the parent is never the
+     * container of a removed key.
+     */
+    const auto parent = appbox::RegistryParentPath(path);
+    BuildTree();
+    SelectTreePath(parent);
     RefreshList();
 }
 

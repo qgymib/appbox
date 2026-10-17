@@ -25,8 +25,8 @@ namespace
 /** Context menu command: import a host folder below a preset directory. */
 const int kMenuImportFolder = wxNewId();
 
-/** Context menu command: remove an imported folder. */
-const int kMenuRemoveImport = wxNewId();
+/** Context menu command: remove the folder of the tree node. */
+const int kMenuDelete = wxNewId();
 
 /** Context menu command: add a row as an auto start startup file. */
 const int kMenuSetStartupFile = wxNewId();
@@ -220,7 +220,7 @@ FilesystemPanel::FilesystemPanel(wxWindow* parent, appbox::PackModel& model,
     tree_->Bind(wxEVT_MOTION, &FilesystemPanel::OnTreeMouseMove, this);
     tree_->Bind(wxEVT_TREE_ITEM_RIGHT_CLICK, &FilesystemPanel::OnTreeItemContextMenu, this);
     Bind(wxEVT_MENU, &FilesystemPanel::OnAddFolder, this, kMenuImportFolder);
-    Bind(wxEVT_MENU, &FilesystemPanel::OnRemoveImportFromTree, this, kMenuRemoveImport);
+    Bind(wxEVT_MENU, &FilesystemPanel::OnTreeDeleteNode, this, kMenuDelete);
     Bind(wxEVT_MENU, &FilesystemPanel::OnTreeIsolation, this, kMenuIsolation);
     Bind(wxEVT_MENU, &FilesystemPanel::OnSetStartupFile, this, kMenuSetStartupFile);
     Bind(wxEVT_MENU, &FilesystemPanel::OnAddToStartupFileList, this, kMenuAddStartupFile);
@@ -1592,18 +1592,22 @@ void FilesystemPanel::OnTreeItemContextMenu(wxTreeEvent& event)
     wxMenu menu;
     menu.Append(kMenuIsolation, "Isolation Mode...");
 
-    if (!node->preset_id.empty())
+    if (!node->preset_id.empty() && node->import_name.empty())
     {
         menu.AppendSeparator();
-        if (node->import_name.empty())
-        {
-            menu.Append(kMenuImportFolder, "Import Folder...");
-        }
-        else
-        {
-            menu.Append(kMenuRemoveImport, "Remove Import");
-        }
+        menu.Append(kMenuImportFolder, "Import Folder...");
     }
+
+    /*
+     * The delete command is offered for every node, but only the two kinds the
+     * view may remove can carry it: an imported folder and a folder the user
+     * created. The container, the fixed preset directories and the host
+     * subfolders below an import grey the item out.
+     */
+    menu.AppendSeparator();
+    const bool deletable = !node->virtual_dir.empty() || (!node->import_name.empty() && node->relative_dir.empty());
+    menu.Append(kMenuDelete, "Delete")->Enable(deletable);
+
     PopupMenu(&menu);
 }
 
@@ -1621,6 +1625,17 @@ bool FilesystemPanel::NodeViewPath(const TreeNode& node, std::wstring& view_path
     if (!appbox::FindPresetDirectory(node.preset_id, preset))
     {
         return false;
+    }
+
+    /*
+     * A folder the user created is stored relative to the preset directory and
+     * names the folder itself, so it resolves to the layer path without an
+     * import in front of it.
+     */
+    if (!node.virtual_dir.empty())
+    {
+        view_path = VirtualPath(preset, node.virtual_dir, L"");
+        return true;
     }
 
     /*
@@ -1919,18 +1934,51 @@ void FilesystemPanel::OnRemove(wxCommandEvent&)
     RefreshList();
 }
 
-void FilesystemPanel::OnRemoveImportFromTree(wxCommandEvent&)
+void FilesystemPanel::OnTreeDeleteNode(wxCommandEvent&)
 {
     const auto selection = tree_->GetSelection();
     auto*      node = selection.IsOk() ? static_cast<TreeNode*>(tree_->GetItemData(selection)) : nullptr;
-    if (node == nullptr || node->import_name.empty())
+    if (node == nullptr)
+    {
+        return;
+    }
+
+    /*
+     * A folder the user created is an entry of the layer of its preset
+     * directory, so both the pack model and the isolation model drop it: the
+     * modes picked below the folder have no path of the view anymore.
+     */
+    if (!node->virtual_dir.empty())
+    {
+        const auto question =
+            "Remove the folder '" + wxString(LeafName(node->virtual_dir)) + "' and everything below it?";
+        wxMessageDialog dialog(this, question, "Delete", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
+        if (dialog.ShowModal() != wxID_YES)
+        {
+            return;
+        }
+
+        std::wstring view_path;
+        if (NodeViewPath(*node, view_path))
+        {
+            isolation_.RemoveSubtree(view_path);
+        }
+        model_.RemoveVirtualDirectory(node->preset_id, node->virtual_dir);
+
+        /* The tree loses the folder as well, so it is rebuilt with the selection kept. */
+        RefreshModel();
+        return;
+    }
+
+    /* The other removable node is the root of an imported folder. */
+    if (node->import_name.empty() || !node->relative_dir.empty())
     {
         return;
     }
 
     const auto question =
         wxString::Format("Remove the imported folder '%s' and everything below it?", node->import_name);
-    wxMessageDialog dialog(this, question, "Remove Import", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
+    wxMessageDialog dialog(this, question, "Delete", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION);
     if (dialog.ShowModal() != wxID_YES)
     {
         return;
