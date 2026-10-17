@@ -10,6 +10,7 @@
 #include <vector>
 
 class wxButton;
+class wxSearchCtrl;
 
 /**
  * @brief Registry workspace of the packer.
@@ -17,8 +18,14 @@ class wxButton;
  * Left side: the tree of the virtual registry. Its top item is the
  * `Sandbox Registry` container with the five root keys, which are always
  * shown even when no `.reg` file was imported. Right side: a toolbar row
- * (Add key, Add value, Remove, Up Dir) above the table of the child view of
- * the selected key.
+ * (Add key, Add value, Remove, Up Dir and a search box) above the table of the
+ * child view of the selected key.
+ *
+ * The search box filters the table by the name it shows: a key and a value
+ * stay visible while the name column contains the typed text, ignoring the
+ * case, and the default value of a key is found through the label the column
+ * shows for it. The filter also reaches the container, whose rows are the five
+ * root keys.
  *
  * The table shows the sub keys and the values of the selected key with the
  * columns Name, Isolation, Type and Value. The isolation mode of a row is picked
@@ -189,6 +196,11 @@ private:
     void RefreshList();
 
     /**
+     * @brief Rebuild the table from the rows matching the search box.
+     */
+    void ApplyFilter();
+
+    /**
      * @brief Append one row to the table.
      * @param[in] row Row description.
      * @param[in] index Index of the row inside the row vector.
@@ -318,10 +330,17 @@ private:
      */
     void OnUpDir(wxCommandEvent& event);
 
+    /**
+     * @brief Apply the search box content to the table.
+     * @param[in] event Command event.
+     */
+    void OnSearch(wxCommandEvent& event);
+
     appbox::RegistryModel& model_;
 
     wxTreeCtrl*         tree_ = nullptr;
     wxDataViewListCtrl* list_ = nullptr;
+    wxSearchCtrl*       search_ = nullptr;
     wxButton*           add_key_ = nullptr;
     wxButton*           add_value_ = nullptr;
     wxButton*           remove_ = nullptr;

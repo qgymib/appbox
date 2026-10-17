@@ -9,6 +9,7 @@
 #include <wx/msgdlg.h>
 #include <wx/sizer.h>
 #include <wx/splitter.h>
+#include <wx/srchctrl.h>
 #include <utility>
 
 namespace
@@ -262,12 +263,19 @@ wxWindow* RegistryPanel::CreateToolBarRow(wxWindow* parent)
     up_dir_->SetToolTip("Move the tree selection to the parent key");
     up_dir_->Bind(wxEVT_BUTTON, &RegistryPanel::OnUpDir, this);
 
+    search_ = new wxSearchCtrl(row, wxID_ANY, wxEmptyString, wxDefaultPosition, wxSize(180, -1));
+    search_->ShowCancelButton(true);
+    search_->SetDescriptiveText("Search");
+    search_->Bind(wxEVT_TEXT, &RegistryPanel::OnSearch, this);
+    search_->Bind(wxEVT_SEARCH_CANCEL, &RegistryPanel::OnSearch, this);
+
     auto* sizer = new wxBoxSizer(wxHORIZONTAL);
     sizer->Add(add_key_, 0, wxALL, 4);
     sizer->Add(add_value_, 0, wxTOP | wxBOTTOM | wxRIGHT, 4);
     sizer->Add(remove_, 0, wxTOP | wxBOTTOM | wxRIGHT, 4);
     sizer->Add(up_dir_, 0, wxTOP | wxBOTTOM | wxRIGHT, 4);
     sizer->AddStretchSpacer();
+    sizer->Add(search_, 0, wxALIGN_CENTER_VERTICAL | wxALL, 4);
 
     row->SetSizer(sizer);
     return row;
@@ -386,15 +394,39 @@ void RegistryPanel::RefreshList()
         rows_.push_back(std::move(info));
     }
 
+    ApplyFilter();
+    UpdateToolBarState();
+}
+
+void RegistryPanel::ApplyFilter()
+{
+    const auto filter = search_ != nullptr ? search_->GetValue().Lower() : wxString();
+
+    /*
+     * Rebuilding the table changes the values of its cells, which the control
+     * reports like an edit of the user. The flag tells the handlers of those
+     * events that they belong to a rebuild and not to a click of the user.
+     */
     updating_ = true;
     list_->DeleteAllItems();
     for (std::size_t index = 0; index < rows_.size(); ++index)
     {
-        AppendRow(rows_[index], index);
+        const auto& row = rows_[index];
+
+        /*
+         * The filter matches the name the column shows, so the default value of
+         * a key is found through its label as well. The item data of a row stays
+         * the index inside the row vector, which keeps the edit and the popup
+         * of a filtered row on the row it describes.
+         */
+        const auto label = RowLabel(row.name, row.kind == RowInfo::Kind::Value);
+        if (!filter.empty() && label.Lower().Find(filter) == wxNOT_FOUND)
+        {
+            continue;
+        }
+        AppendRow(row, index);
     }
     updating_ = false;
-
-    UpdateToolBarState();
 }
 
 void RegistryPanel::AppendRow(const RowInfo& row, std::size_t index)
@@ -983,4 +1015,10 @@ void RegistryPanel::OnUpDir(wxCommandEvent&)
     }
 
     SelectTreePath(appbox::RegistryParentPath(current_path_));
+}
+
+void RegistryPanel::OnSearch(wxCommandEvent& event)
+{
+    ApplyFilter();
+    event.Skip();
 }
