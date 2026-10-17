@@ -330,6 +330,7 @@ add_executable(AppBoxTests
     "utils/HiveBuilder.cpp"
     "utils/NameResolutionProbe.cpp"
     "utils/NetworkIsolationBuilder.cpp"
+    "utils/NtDirectoryQuery.cpp"
     "utils/PatchBuilder.cpp"
     "utils/ProbeCall.cpp"
     "utils/ReadFileFull.cpp"

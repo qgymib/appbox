@@ -515,9 +515,15 @@ These rules constrain every hooked API; the implementation lives in
   with. A class which reports no name of an entry is refused as well (see the
   rule below).
   `NtQueryDirectoryFile` and `NtQueryDirectoryFileEx` share the merge, so
-  both entry points answer the same view. A hook which runs inside a kernel call
-  must never read more than the caller declared and never throw: a failure
-  inside a hook is a failure of the application.
+  both entry points answer the same view. The view keeps the smaller feature set
+  of its layers: the layers of a view may live on file systems which do not
+  support the same information classes, and a class a layer refuses is refused by
+  the whole view as well. Only `STATUS_NO_MORE_FILES` moves the enumeration to
+  the next layer, and every other status of a layer is the status of the view, so
+  a caller never loses the folder to a class one layer of the machine cannot
+  answer. A hook which runs inside a kernel call must never read more than the
+  caller declared and never throw: a failure inside a hook is a failure of the
+  application.
 * **A class which reports no name of an entry is refused.** The merge reads and
   rewrites the entry list, so it understands every class which reports the name
   of an entry: `FileDirectoryInformation`, `FileFullDirectoryInformation`,

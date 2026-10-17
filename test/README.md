@@ -870,7 +870,7 @@ comment.
 | `DeleteOnClose_WhiteoutInUpper` | `data.txt.$APPBOX_DELETE$` | `data.txt` | create `data.txt` again (`CREATE_NEW`) the same way | success, file of the state deleted, the whiteout is written again, the view reports `File Not Found` |
 | `ListDir_CreateFileHandle` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder with a handle of `CreateFileW` and with a handle of `NtOpenFile`, through both NT entry points and with two information classes | both handles report the same merged view: the file of the lower layer and the file of the host, while the file the whiteout hides and the marker are not listed |
 | `ListDir_DuplicatedHandle` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder through a handle the probe duplicated and closed the original of, through both NT entry points and with both ways a directory handle reaches the sandbox | every enumeration reports the same merged view as a handle the sandbox opened: the file of the lower layer and the file of the host, while the file the whiteout hides and the marker are not listed |
-| `ListDir_InformationClasses` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder with both NT entry points and with every information class which carries a name | every class reports the same merged view: the file of the lower layer and the file of the host, while the file the whiteout hides and the marker are not listed |
+| `ListDir_InformationClasses` | folder with a whiteout marker for `hidden.txt` | folder with `visible.txt`, `hidden.txt` | enumerate the folder with both NT entry points and with every information class which carries a name | every class reports the same merged view: the file of the lower layer and the file of the host, while the file the whiteout hides and the marker are not listed; a class the view refuses is refused by at least one layer of the view as well, because the view keeps the smaller feature set of its layers |
 | `ListDir_EmptyFolderOfTheLayer` | – | folder `logs` without content | list `#USERPROFILE#`, list `logs` and create `created.txt` inside it | `logs` is listed as a folder of the view, its own listing is empty, the new file is created in the state, resources unchanged |
 | `ListDir_LowerLayer` | – | `F.txt` | list `#USERPROFILE#` | `F.txt` appears exactly once, host entries also listed |
 | `ListDir_UnregisteredNotInView` | folder which is removed while its handle stays open | a file, the character device `NUL` | enumerate a duplicated handle of a file, of the device and of the removed folder | the calls of the file and of the device are forwarded to the file system, the call of the removed folder is refused by the view, and no call reports an entry of a layer |
@@ -1712,6 +1712,19 @@ They are documented in their own header comments.
   run.
 * `test/utils/LauncherPath.hpp` — the launcher path of a run, which the tests of
   the real launcher payload read from the configuration.
+* `test/utils/NtDirectoryQuery.*` — one enumeration of a directory with one
+  information class through the NT entry points, which is the operation the
+  `ListDirNt` probe performs and which a case may call itself. The function runs
+  in the process which calls it: a call of the probe reaches the merged view of
+  the sandbox, while a call of a case runs in the process of the test executable,
+  which the sandbox is not injected into, and reads the answer of the file system
+  for the path itself. That is what a case which checks the feature set of a
+  layer needs, because the answer of the view cannot separate the class a layer
+  refuses from the class the merge reads. The function opens the directory with
+  `NtOpenFile` or with `CreateFileW`, enumerates it with `NtQueryDirectoryFile`
+  or `NtQueryDirectoryFileEx`, may enumerate a duplicate of the handle it opened
+  and may remove the entry before the query, and it reads the name of an entry
+  with its own table of the classes.
 * `test/utils/ReadFileFull.*` / `test/utils/WriteFileFull.*` — file I/O
   helpers.
 * `test/utils/Semaphore.*` — synchronization between the test process and the
@@ -1722,8 +1735,10 @@ They are documented in their own header comments.
   cases (`LaunchProcess`, `QueryAttributes`, `QueryFullAttributes`,
   `QueryInformationByName`, `QueryInformationFile`, `SetInformationFile`,
   `ConsoleWindow`).
-  `ListDirNt` opens a directory with `NtOpenFile` or, when the request asks for
-  it, with `CreateFileW`, and enumerates it with `NtQueryDirectoryFile` or
+  `ListDirNt` is a thin adapter over `test/utils/NtDirectoryQuery.*`, the shared
+  enumeration of a directory: the probe opens a directory with `NtOpenFile` or,
+  when the request asks for it, with `CreateFileW`, and enumerates it with
+  `NtQueryDirectoryFile` or
   `NtQueryDirectoryFileEx`, so it pins both entry points of the merged view and
   both ways a directory handle reaches the sandbox, while the user mode wrappers
   may use either of them. A request may also name the information class of the

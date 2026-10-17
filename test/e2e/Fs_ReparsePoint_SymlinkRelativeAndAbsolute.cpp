@@ -30,6 +30,15 @@ constexpr wchar_t kFolderName[] = L"AppBoxTest_ReparseSymlink";
  *    target which is relative to the link names the same entry in the view.
  * 3. The data of the absolute link carries the path of the view.
  * 4. The resources of the application are untouched.
+ *
+ * A symbolic link carries a target which is relative to the link, which a
+ * junction cannot express, so the case creates one instead of using the
+ * junction a helper of the host provides. The kernel asks the caller for
+ * `SeCreateSymbolicLinkPrivilege` to create one, which an unelevated process
+ * holds only while the machine runs in developer mode: a machine which grants
+ * neither refuses the creation with `ERROR_PRIVILEGE_NOT_HELD`, and the case
+ * skips itself instead of reporting the refusal of the machine as an answer of
+ * the view.
  */
 TEST_F(E2E_Fs, ReparsePoint_SymlinkRelativeAndAbsolute)
 {
@@ -96,6 +105,21 @@ TEST_F(E2E_Fs, ReparsePoint_SymlinkRelativeAndAbsolute)
 
     const auto rsp = ProbeReparsePoint.Call(req, GetCWD(), config).get<ProtocolReparsePoint::Rsp>();
     ASSERT_EQ(rsp.items.size(), static_cast<size_t>(6));
+
+    /*
+     * The first item creates the symbolic link, which the kernel serves only for
+     * a caller whose token holds `SeCreateSymbolicLinkPrivilege` (or while the
+     * machine runs in developer mode). A process which holds neither reaches
+     * `ERROR_PRIVILEGE_NOT_HELD` here, and the machine refuses every symbolic
+     * link the same way: the case skips itself instead of reporting the refusal
+     * of the machine as an answer of the view. A junction would not depend on
+     * the privilege, but it cannot carry a target which is relative to the link.
+     */
+    if (rsp.items[0].code == ERROR_PRIVILEGE_NOT_HELD)
+    {
+        GTEST_SKIP() << "the case needs a symbolic link, which this process may not create: run the suite from an "
+                        "elevated shell or turn on developer mode";
+    }
 
     EXPECT_EQ(rsp.items[0].code, static_cast<DWORD>(ERROR_SUCCESS));
     EXPECT_EQ(rsp.items[1].status, static_cast<long>(STATUS_SUCCESS));
