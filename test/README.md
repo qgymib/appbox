@@ -886,7 +886,7 @@ comment.
 | `QueryInformationByName_LowerLayer` | – | `data.txt` | query the information of `data.txt` with `NtQueryInformationByName` and `FileStatInformation` | success, a regular file with the size of the packed content is reported |
 | `QueryInformationByName_NonExists` | – | `other.txt` | query the information of a missing file and of a file below a missing folder | failure with `File Not Found` and `Path Not Found` |
 
-Four cases are not part of the matrices above:
+Five cases are not part of the matrices above:
 `test/e2e/Fs_LaunchProcess_FromLower.cpp` starts an executable which only a
 lower layer holds, `test/e2e/Fs_ListDir_UserPresetLayers.cpp` mounts one layer
 per folder below `Current User Directory` (`#Documents#`, `#Desktop#`,
@@ -895,11 +895,15 @@ per folder below `Current User Directory` (`#Documents#`, `#Desktop#`,
 `#Startup#`) and checks that each of
 them is mapped to the real folder its layer key names,
 `test/e2e/Fs_QueryAttributes_SystemPresetLayers.cpp` does the same for the
-system folders (`#Windows#`, `#System32#`), and
+system folders (`#Windows#`, `#System32#`),
 `test/e2e/Fs_QueryAttributes_ProgramPresetLayers.cpp` for the `Program Data`
 folder of the system and the `Common` folder below `Program Files`
-(`#ProgramData#`, `#ProgramFilesCommon#`). The last three cases include that the
-file of one layer is not visible in the folder of the other one.
+(`#ProgramData#`, `#ProgramFilesCommon#`), and
+`test/e2e/Fs_QueryAttributes_ProgramFilesX86PresetLayers.cpp` for the 32 bit
+program files folders (`#ProgramFiles#`, `#ProgramFilesX86#`,
+`#ProgramFilesCommonX86#`), where the 32 bit folder is a sibling of the 64 bit
+one. The last four cases include that the file of one layer is not visible in
+the folder of the other one.
 
 The cases which exercise the isolation modes of the workspace write the
 isolation file of the case into the filesystem domain of the resources

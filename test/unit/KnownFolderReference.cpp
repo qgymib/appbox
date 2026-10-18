@@ -135,6 +135,40 @@ TEST(Unit_KnownFolderReference, PrefersTheLongestPath)
     EXPECT_TRUE(changed);
 }
 
+/**
+ * @brief The 32 bit folders of the program files share their name with the 64
+ *        bit ones, so the longest path and the boundary rule tell them apart.
+ *
+ * `C:\Program Files (x86)` starts with the path of `#ProgramFiles#`, but the
+ * character behind it is not a separator, which keeps the 32 bit folder a
+ * sibling of the 64 bit one instead of a folder below it.
+ */
+TEST(Unit_KnownFolderReference, DistinguishesThe32BitProgramFolders)
+{
+    const auto programs_x86 = PresetPath("program_files_x86");
+    const auto common_x86 = PresetPath("program_files_common_x86");
+    const auto common = PresetPath("program_files_common");
+    ASSERT_FALSE(programs_x86.empty());
+    ASSERT_FALSE(common_x86.empty());
+    ASSERT_FALSE(common.empty());
+
+    /* The 32 bit folder names its own preset directory, not the one it shares a
+     * prefix with. */
+    bool changed = false;
+    EXPECT_EQ(Rewrite(programs_x86 + L"\\Foo", changed), L"%APPBOX:ProgramFilesX86%\\Foo");
+    EXPECT_TRUE(changed);
+
+    /* The `Common` folder of the 32 bit folder names its own preset directory. */
+    changed = false;
+    EXPECT_EQ(Rewrite(common_x86 + L"\\Foo", changed), L"%APPBOX:ProgramFilesCommonX86%\\Foo");
+    EXPECT_TRUE(changed);
+
+    /* The `Common` folder of the 64 bit folder keeps its own reference. */
+    changed = false;
+    EXPECT_EQ(Rewrite(common + L"\\Foo", changed), L"%APPBOX:ProgramFilesCommon%\\Foo");
+    EXPECT_TRUE(changed);
+}
+
 TEST(Unit_KnownFolderReference, ReplacesEveryPathOfAText)
 {
     const auto files = PresetPath("program_files");

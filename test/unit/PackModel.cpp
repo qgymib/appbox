@@ -99,25 +99,27 @@ TEST(Unit_PresetDirectory, ProvidesExpectedPresets)
         const wchar_t* layer_key;
     };
     const ExpectedPreset expected[] = {
-        { "program_files",              "",              L"Program Files",              L"#ProgramFiles#"       },
-        { "program_files_common",       "program_files", L"Common",                     L"#ProgramFilesCommon#" },
-        { "user_profile",               "",              L"Current User Directory",     L"#USERPROFILE#"        },
-        { "documents",                  "user_profile",  L"Documents",                  L"#Documents#"          },
-        { "desktop",                    "user_profile",  L"Desktop",                    L"#Desktop#"            },
-        { "application_data",           "user_profile",  L"Application Data",           L"#AppData#"            },
-        { "local_application_data",     "user_profile",  L"Local Application Data",     L"#LocalAppData#"       },
-        { "local_application_data_low", "user_profile",  L"Local Application Data Low", L"#LocalAppDataLow#"    },
-        { "downloads",                  "user_profile",  L"Downloads",                  L"#Downloads#"          },
-        { "favorites",                  "user_profile",  L"Favorites",                  L"#Favorites#"          },
-        { "music",                      "user_profile",  L"Music",                      L"#Music#"              },
-        { "pictures",                   "user_profile",  L"Pictures",                   L"#Pictures#"           },
-        { "start_menu",                 "user_profile",  L"Start Menu",                 L"#StartMenu#"          },
-        { "programs",                   "start_menu",    L"Programs",                   L"#Programs#"           },
-        { "startup",                    "programs",      L"Startup",                    L"#Startup#"            },
-        { "program_data",               "",              L"Program Data",               L"#ProgramData#"        },
-        { "windows",                    "",              L"Windows",                    L"#Windows#"            },
-        { "system32",                   "windows",       L"System32",                   L"#System32#"           },
-        { "fonts",                      "windows",       L"Fonts",                      L"#Fonts#"              },
+        { "program_files",              "",                  L"Program Files",              L"#ProgramFiles#"          },
+        { "program_files_common",       "program_files",     L"Common",                     L"#ProgramFilesCommon#"    },
+        { "program_files_x86",          "",                  L"Program Files (x86)",        L"#ProgramFilesX86#"       },
+        { "program_files_common_x86",   "program_files_x86", L"Common",                     L"#ProgramFilesCommonX86#" },
+        { "user_profile",               "",                  L"Current User Directory",     L"#USERPROFILE#"           },
+        { "documents",                  "user_profile",      L"Documents",                  L"#Documents#"             },
+        { "desktop",                    "user_profile",      L"Desktop",                    L"#Desktop#"               },
+        { "application_data",           "user_profile",      L"Application Data",           L"#AppData#"               },
+        { "local_application_data",     "user_profile",      L"Local Application Data",     L"#LocalAppData#"          },
+        { "local_application_data_low", "user_profile",      L"Local Application Data Low", L"#LocalAppDataLow#"       },
+        { "downloads",                  "user_profile",      L"Downloads",                  L"#Downloads#"             },
+        { "favorites",                  "user_profile",      L"Favorites",                  L"#Favorites#"             },
+        { "music",                      "user_profile",      L"Music",                      L"#Music#"                 },
+        { "pictures",                   "user_profile",      L"Pictures",                   L"#Pictures#"              },
+        { "start_menu",                 "user_profile",      L"Start Menu",                 L"#StartMenu#"             },
+        { "programs",                   "start_menu",        L"Programs",                   L"#Programs#"              },
+        { "startup",                    "programs",          L"Startup",                    L"#Startup#"               },
+        { "program_data",               "",                  L"Program Data",               L"#ProgramData#"           },
+        { "windows",                    "",                  L"Windows",                    L"#Windows#"               },
+        { "system32",                   "windows",           L"System32",                   L"#System32#"              },
+        { "fonts",                      "windows",           L"Fonts",                      L"#Fonts#"                 },
     };
 
     const auto& presets = appbox::PresetDirectories();
@@ -164,15 +166,17 @@ TEST(Unit_PresetDirectory, ChildPresetsNestThePresetTree)
 {
     /* The siblings of every group are ordered by their label. */
     const auto top = appbox::ChildPresets("");
-    ASSERT_EQ(top.size(), static_cast<std::size_t>(4));
+    ASSERT_EQ(top.size(), static_cast<std::size_t>(5));
     EXPECT_EQ(top[0].id, "user_profile");
     EXPECT_EQ(top[0].display_name, L"Current User Directory");
     EXPECT_EQ(top[1].id, "program_data");
     EXPECT_EQ(top[1].display_name, L"Program Data");
     EXPECT_EQ(top[2].id, "program_files");
     EXPECT_EQ(top[2].display_name, L"Program Files");
-    EXPECT_EQ(top[3].id, "windows");
-    EXPECT_EQ(top[3].display_name, L"Windows");
+    EXPECT_EQ(top[3].id, "program_files_x86");
+    EXPECT_EQ(top[3].display_name, L"Program Files (x86)");
+    EXPECT_EQ(top[4].id, "windows");
+    EXPECT_EQ(top[4].display_name, L"Windows");
 
     const auto profile = appbox::ChildPresets("user_profile");
     ASSERT_EQ(profile.size(), static_cast<std::size_t>(10));
@@ -212,6 +216,11 @@ TEST(Unit_PresetDirectory, ChildPresetsNestThePresetTree)
     EXPECT_EQ(program_files[0].id, "program_files_common");
     EXPECT_EQ(program_files[0].layer_key, L"#ProgramFilesCommon#");
 
+    const auto program_files_x86 = appbox::ChildPresets("program_files_x86");
+    ASSERT_EQ(program_files_x86.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(program_files_x86[0].id, "program_files_common_x86");
+    EXPECT_EQ(program_files_x86[0].layer_key, L"#ProgramFilesCommonX86#");
+
     const auto system = appbox::ChildPresets("windows");
     ASSERT_EQ(system.size(), static_cast<std::size_t>(2));
     EXPECT_EQ(system[0].id, "fonts");
@@ -232,6 +241,7 @@ TEST(Unit_PresetDirectory, ChildPresetsNestThePresetTree)
                                   "pictures",
                                   "program_data",
                                   "program_files_common",
+                                  "program_files_common_x86",
                                   "startup",
                                   "system32",
                                   "does_not_exist" };
@@ -301,6 +311,12 @@ TEST(Unit_PresetDirectory, FindsKnownAndRejectsUnknownIds)
     EXPECT_TRUE(appbox::FindPresetDirectory("program_files_common", preset));
     EXPECT_EQ(preset.layer_key, L"#ProgramFilesCommon#");
     EXPECT_EQ(preset.parent_id, "program_files");
+    EXPECT_TRUE(appbox::FindPresetDirectory("program_files_x86", preset));
+    EXPECT_EQ(preset.layer_key, L"#ProgramFilesX86#");
+    EXPECT_EQ(preset.parent_id, "");
+    EXPECT_TRUE(appbox::FindPresetDirectory("program_files_common_x86", preset));
+    EXPECT_EQ(preset.layer_key, L"#ProgramFilesCommonX86#");
+    EXPECT_EQ(preset.parent_id, "program_files_x86");
     EXPECT_TRUE(appbox::FindPresetDirectory("windows", preset));
     EXPECT_EQ(preset.layer_key, L"#Windows#");
     EXPECT_TRUE(appbox::FindPresetDirectory("system32", preset));
@@ -347,8 +363,19 @@ TEST(Unit_PresetDirectory, FilesystemNodeHasParentExcludesTheContainer)
      * A top level preset directory hangs below the container, a nested one
      * below the preset it belongs to; both are offered by the tree.
      */
-    const char* const nodes[] = { "program_files", "program_data", "user_profile", "windows",  "documents", "music",
-                                  "pictures",      "programs",     "startup",      "system32", "fonts" };
+    const char* const nodes[] = { "program_files",
+                                  "program_data",
+                                  "user_profile",
+                                  "windows",
+                                  "documents",
+                                  "music",
+                                  "pictures",
+                                  "programs",
+                                  "startup",
+                                  "system32",
+                                  "fonts",
+                                  "program_files_x86",
+                                  "program_files_common_x86" };
     for (const char* id : nodes)
     {
         ASSERT_TRUE(appbox::FindPresetDirectory(id, preset)) << id;

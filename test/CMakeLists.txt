@@ -148,6 +148,7 @@ add_executable(AppBoxTests
     "e2e/Fs_NewFile_WhiteoutInLower.cpp"
     "e2e/Fs_NewFile_WhiteoutInUpper.cpp"
     "e2e/Fs_QueryAttributes_LowerLayer.cpp"
+    "e2e/Fs_QueryAttributes_ProgramFilesX86PresetLayers.cpp"
     "e2e/Fs_QueryAttributes_ProgramPresetLayers.cpp"
     "e2e/Fs_QueryAttributes_SystemPresetLayers.cpp"
     "e2e/Fs_QueryFullAttributes.cpp"

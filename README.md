@@ -103,6 +103,8 @@ compared ignoring the case, so `%appbox:documents%` names the same folder as
 | `%APPBOX:ProgramData%` | `C:\ProgramData` |
 | `%APPBOX:ProgramFiles%` | `C:\Program Files` |
 | `%APPBOX:ProgramFilesCommon%` | `C:\Program Files\Common Files` |
+| `%APPBOX:ProgramFilesCommonX86%` | `C:\Program Files (x86)\Common Files` |
+| `%APPBOX:ProgramFilesX86%` | `C:\Program Files (x86)` |
 | `%APPBOX:Programs%` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu\Programs` |
 | `%APPBOX:StartMenu%` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu` |
 | `%APPBOX:Startup%` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup` |

@@ -27,25 +27,27 @@ struct FolderMapping
  */
 static const FolderMapping s_known_folders[] = {
     /* Known FolderID */
-    { L"#ProgramFiles#",       FOLDERID_ProgramFiles       }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
-    { L"#ProgramFilesCommon#", FOLDERID_ProgramFilesCommon }, /* %ProgramFilesCommon% (%ProgramFiles%\Common Files) */
-    { L"#USERPROFILE#",        FOLDERID_Profile            }, /* %USERPROFILE% (%SystemDrive%\Users\%USERNAME%) */
-    { L"#Documents#",          FOLDERID_Documents          }, /* the Documents folder of the user (may be redirected) */
-    { L"#Desktop#",            FOLDERID_Desktop            }, /* the Desktop folder of the user (may be redirected) */
-    { L"#AppData#",            FOLDERID_RoamingAppData     }, /* %AppData% (%USERPROFILE%\AppData\Roaming) */
-    { L"#LocalAppData#",       FOLDERID_LocalAppData       }, /* %LocalAppData% (%USERPROFILE%\AppData\Local) */
-    { L"#LocalAppDataLow#",    FOLDERID_LocalAppDataLow    }, /* %LocalAppDataLow% (%USERPROFILE%\AppData\LocalLow) */
-    { L"#Downloads#",          FOLDERID_Downloads          }, /* the Downloads folder of the user (may be redirected) */
-    { L"#Favorites#",          FOLDERID_Favorites          }, /* the Favorites folder of the user (may be redirected) */
-    { L"#Music#",              FOLDERID_Music              }, /* the Music folder of the user (may be redirected) */
-    { L"#Pictures#",           FOLDERID_Pictures           }, /* the Pictures folder of the user (may be redirected) */
-    { L"#StartMenu#",          FOLDERID_StartMenu          }, /* the Start Menu folder of the user (may be redirected) */
-    { L"#Programs#",           FOLDERID_Programs           }, /* the Programs folder inside the Start Menu of the user */
-    { L"#Startup#",            FOLDERID_Startup            }, /* the Startup folder inside the Programs folder of the user */
-    { L"#ProgramData#",        FOLDERID_ProgramData        }, /* %ProgramData% (%SystemDrive%\ProgramData) */
-    { L"#Windows#",            FOLDERID_Windows            }, /* the system directory, %SystemRoot% */
-    { L"#System32#",           FOLDERID_System             }, /* the 32 bit system directory, %SystemRoot%\system32 */
-    { L"#Fonts#",              FOLDERID_Fonts              }, /* the font directory of the system, %SystemRoot%\Fonts */
+    { L"#ProgramFiles#",          FOLDERID_ProgramFiles          }, /* %ProgramFiles% (%SystemDrive%\Program Files) */
+    { L"#ProgramFilesCommon#",    FOLDERID_ProgramFilesCommon    }, /* %ProgramFilesCommon% (%ProgramFiles%\Common Files) */
+    { L"#ProgramFilesX86#",       FOLDERID_ProgramFilesX86       }, /* %ProgramFiles(x86)% (%SystemDrive%\Program Files (x86)) */
+    { L"#ProgramFilesCommonX86#", FOLDERID_ProgramFilesCommonX86 }, /* %ProgramFiles(x86)%\Common Files */
+    { L"#USERPROFILE#",           FOLDERID_Profile               }, /* %USERPROFILE% (%SystemDrive%\Users\%USERNAME%) */
+    { L"#Documents#",             FOLDERID_Documents             }, /* the Documents folder of the user (may be redirected) */
+    { L"#Desktop#",               FOLDERID_Desktop               }, /* the Desktop folder of the user (may be redirected) */
+    { L"#AppData#",               FOLDERID_RoamingAppData        }, /* %AppData% (%USERPROFILE%\AppData\Roaming) */
+    { L"#LocalAppData#",          FOLDERID_LocalAppData          }, /* %LocalAppData% (%USERPROFILE%\AppData\Local) */
+    { L"#LocalAppDataLow#",       FOLDERID_LocalAppDataLow       }, /* %LocalAppDataLow% (%USERPROFILE%\AppData\LocalLow) */
+    { L"#Downloads#",             FOLDERID_Downloads             }, /* the Downloads folder of the user (may be redirected) */
+    { L"#Favorites#",             FOLDERID_Favorites             }, /* the Favorites folder of the user (may be redirected) */
+    { L"#Music#",                 FOLDERID_Music                 }, /* the Music folder of the user (may be redirected) */
+    { L"#Pictures#",              FOLDERID_Pictures              }, /* the Pictures folder of the user (may be redirected) */
+    { L"#StartMenu#",             FOLDERID_StartMenu             }, /* the Start Menu folder of the user (may be redirected) */
+    { L"#Programs#",              FOLDERID_Programs              }, /* the Programs folder inside the Start Menu of the user */
+    { L"#Startup#",               FOLDERID_Startup               }, /* the Startup folder inside the Programs folder of the user */
+    { L"#ProgramData#",           FOLDERID_ProgramData           }, /* %ProgramData% (%SystemDrive%\ProgramData) */
+    { L"#Windows#",               FOLDERID_Windows               }, /* the system directory, %SystemRoot% */
+    { L"#System32#",              FOLDERID_System                }, /* the 32 bit system directory, %SystemRoot%\system32 */
+    { L"#Fonts#",                 FOLDERID_Fonts                 }, /* the font directory of the system, %SystemRoot%\Fonts */
 };
 
 static std::wstring GetFolderPath(const GUID& guid)
