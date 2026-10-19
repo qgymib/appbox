@@ -40,10 +40,11 @@ std::vector<BYTE> StringData(const std::wstring& text)
  * 3. The second run reads both values.
  *
  * Expected:
- * 1. `Value` is the value of the package in both runs, because the hives of
- *    the packages are applied to the hive of the sandbox at every start.
- * 2. `Runtime` survives the second run, because an entry no package names
- *    keeps the state of the sandbox.
+ * 1. `Value` is the value of the package in both runs, because the image of the
+ *    run is rebuilt from the resources and the packages at every start, and the
+ *    state of the sandbox never wrote the value.
+ * 2. `Runtime` survives the second run, because an entry the state of the
+ *    sandbox wrote wins over the image.
  */
 TEST_F(E2E_Patch, RegistryStateBelowThePatchIsKept)
 {

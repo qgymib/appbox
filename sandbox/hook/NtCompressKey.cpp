@@ -18,12 +18,13 @@ static appbox::LoggerF logger("NtCompressKey", NtCompressKeyLogParam);
  * @brief Detour of NtCompressKey().
  *
  * The compress acts on the hive file which holds the key, so the layer of the
- * handle decides the answer: the hive is the state of the sandbox, so a
- * compress of a key of the hive acts on a file of the sandbox and the call is
+ * handle decides the answer: the state hive is the state of the sandbox, so a
+ * compress of a key of that layer acts on a file of the sandbox and the call is
  * forwarded (the kernel asks for a privilege the caller may not hold, which is
- * its own answer), while the hive of the host is not the state of the sandbox,
- * so the call is refused. A handle outside the root keys of the view belongs to
- * no layer of the view and is forwarded unchanged.
+ * its own answer). The image is read-only and the hive of the host is not the
+ * state of the sandbox, so the call is refused for both. A handle outside the
+ * root keys of the view belongs to no layer of the view and is forwarded
+ * unchanged.
  */
 static NTSTATUS NTAPI Hook_NtCompressKey(HANDLE Key)
 {
@@ -31,7 +32,7 @@ static NTSTATUS NTAPI Hook_NtCompressKey(HANDLE Key)
 
     std::wstring                       view_path;
     const appbox::registry::HandleView view = appbox::registry::Hive::MapHandleView(Key, view_path);
-    if (view == appbox::registry::HandleView::RealHandle)
+    if (view == appbox::registry::HandleView::RealHandle || view == appbox::registry::HandleView::ImageHandle)
     {
         return STATUS_ACCESS_DENIED;
     }

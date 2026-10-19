@@ -49,11 +49,22 @@ namespace appbox
  *
  * ```
  * data/filesystem/...                  upper layer of the sandbox
- * data/registry/user.hiv               hive the sandbox mounts, seeded from
- *                                      `app/registry/user.hiv` on first run
+ * data/registry/user.hiv               hive of the sandbox, it holds the
+ *                                      modifications of the runs
+ * data/registry/image/user.hiv         read-only image of the registry: the
+ *                                      content of `app` merged with the patch
+ *                                      packages, rebuilt at every start
  * data/environment/state.json          environment variables the packaged
  *                                      application changed inside the sandbox
  * ```
+ *
+ * The registry of a run is a view of two sandbox hives and the real registry:
+ * the state hive of the sandbox wins over the image, which wins over the host
+ * registry. The image carries the read-only layers of the run, which are the
+ * resources of the archive and the packages in the order the packages take
+ * effect in, so the state of the sandbox is never overwritten by the content of a layer
+ * below it, and a rebuilt archive or a replaced package reaches the next run
+ * all the same.
  *
  * A patch package is consumed next to those directories: the user creates
  * `patch` and drops the packages into it, the launcher extracts a package into
@@ -331,13 +342,32 @@ inline constexpr const char* kEnvironmentIsolationRelative = "app/environment/is
 inline constexpr const char* kEnvironmentIsolationAppRelative = "environment/isolation.json";
 
 /**
- * @brief Hive the sandbox mounts, relative to the directory of the launcher.
+ * @brief Hive of the state of the sandbox, relative to the directory of the
+ *        launcher.
  *
- * The file does not travel in the archive: the launcher seeds it from
- * `kRegistryHiveRelative` on the first run and keeps every modification the
- * sandboxed process makes afterwards.
+ * The file does not travel in the archive: it holds the modifications the
+ * sandboxed process makes, and it is the highest layer of the registry view of
+ * a run. The sandbox creates it when it mounts it, so deleting the state
+ * directory resets the registry to the state of the archive and of the patch
+ * packages.
  */
 inline constexpr const char* kStateRegistryHiveRelative = "data/registry/user.hiv";
+
+/**
+ * @brief Read-only image of the registry of the run, relative to the directory
+ *        of the launcher.
+ *
+ * The image is the content of the registry of `app` merged with the hive of
+ * every patch package in the order the packages take effect in, and the
+ * launcher rebuilds it at every start: the content of the archive and of the
+ * packages is therefore applied again while the state of the sandbox stays the
+ * highest layer of the view.
+ *
+ * The file lives in a directory of its own because mounting a hive writes log
+ * files next to it, and the whole directory is replaced when the image is
+ * rebuilt.
+ */
+inline constexpr const char* kStateRegistryImageRelative = "data/registry/image/user.hiv";
 
 /**
  * @brief Environment variables the packaged application changed, relative to

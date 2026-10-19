@@ -1013,6 +1013,14 @@ sandboxed process creates.
   the merged sub key view (real `RealA`/`RealB` plus sandbox `SandboxC`),
   `RegQueryInfoKeyW` reports the merged count, and the real registry still
   holds only the real sub keys.
+* `test/e2e/Reg_EnumerateKey_MergedWithImage.cpp` — the sub keys of the image
+  and of the state hive are merged: the parent key of the archive reports its two
+  packed sub keys plus the one the sandbox created, and `RegQueryInfoKeyW`
+  reports the merged count as well.
+* `test/e2e/Reg_EnumerateValue_MergedWithImage.cpp` — the values of the image and
+  of the state hive are merged: the enumeration reports the packed value which
+  the sandbox overwrote once, with the data of the state hive, next to the packed
+  value the sandbox did not name and the value it added, and the count agrees.
 * `test/e2e/Reg_EnumerateValue_Merged.cpp` — the sandboxed probe enumerates
   the merged value view and reads every enumerated value back (enumeration and
   query stay consistent); the real registry does not gain the sandbox value.
@@ -1032,6 +1040,11 @@ sandboxed process creates.
   the sandbox reads a value which only exists in the real key, the create
   reports `REG_OPENED_EXISTING_KEY` (the merged view of `WriteCopy` holds the
   key), and the real value is unchanged.
+* `test/e2e/Reg_ShadowKey_ImageValueStaysVisible.cpp` — a write of a value of
+  a key the image holds copies the key up into the state hive, and the merged
+  view of the copied up key keeps every value of the image the write did not
+  name: the write reports `REG_OPENED_EXISTING_KEY`, the written value is the
+  value of the state hive, and the other value stays the value of the image.
 * `test/e2e/Reg_WriteCopy_CreateDisposition.cpp` — the disposition of an
   isolated create follows the merged view: a key which only the host holds and
   a key which the hive holds report `REG_OPENED_EXISTING_KEY`, while a key
@@ -1097,6 +1110,10 @@ sandboxed process creates.
 * `test/e2e/Reg_DeleteKey_ShadowKeyRemoved.cpp` — a delete removes the shadow
   key of the hive and the key stays gone, so the read through of the host key of
   the same name does not bring it back; the host key is unchanged.
+* `test/e2e/Reg_DeleteKey_ImageKeyWhiteout.cpp` — a key which only the image
+  holds is deleted inside the sandbox: the delete succeeds, the reopen reports
+  `File Not Found` although the image still carries the key, and the key stays
+  missing in the next run, which rebuilds the image from the resources.
 * `test/e2e/Reg_DeleteKey_NonEmpty.cpp` — a key which still holds a visible sub
   key is refused with `ERROR_ACCESS_DENIED` (the kernel status
   `STATUS_CANNOT_DELETE`), after the sub key was deleted inside the sandbox the
@@ -1112,6 +1129,11 @@ sandboxed process creates.
 * `test/e2e/Reg_DeleteValue_ShadowValue.cpp` — the value of the hive is
   removed and the value of the host of the same name does not reappear (the
   delete records it as deleted), while the host keeps its own value.
+* `test/e2e/Reg_DeleteValue_ImageValueWhiteout.cpp` — a value which only the
+  image holds is deleted inside the sandbox: the delete succeeds and records the
+  whiteout, the read and the merged enumeration report the value as missing
+  while the value next to it stays visible, and the value stays missing in the
+  next run, which rebuilds the image from the resources.
 * `test/e2e/Reg_RenameKey_ShadowKeyWhiteout.cpp` — a rename of a key which the
   hive and the host both hold leaves the new name with the content of the
   sandbox, removes the old name from the view (the rename records the visible
@@ -1120,6 +1142,11 @@ sandboxed process creates.
 * `test/e2e/Reg_RenameKey_HiveOnlyKey.cpp` — a key which only the hive holds is
   renamed: the view reports the new name alone and the real registry holds
   neither name.
+* `test/e2e/Reg_RenameKey_ImageKeyCopyUp.cpp` — a rename of a key which only the
+  image holds copies the content of the image up first: the new name reports the
+  packed value instead of an empty key, the old name is gone from the view
+  although the image still carries it, and the parent key reports the new name
+  alone.
 * `test/e2e/Reg_RenameKey_ReadHandle.cpp` — a rename through a read through
   handle of the host layer is refused with `STATUS_ACCESS_DENIED`, the key keeps
   its name and its value in the view and the host registry is unchanged.
@@ -1496,20 +1523,22 @@ is not visible.
 
 ### Launcher registry state cases
 
-The registry state cases (`test/e2e/Launcher_RegistryState*.cpp`) pin what the
-launcher does with the hive of the resources. The packed hive is a read-only
-resource, while the sandbox mounts a hive which it modifies (copy-up, whiteouts
-and the transaction log files), so the launcher seeds a copy into the state
-directory of the sandbox on the first run and mounts that copy. Every case
-builds the resources with `test/utils/HiveBuilder.*` and reads the value inside
-the sandbox with the probe `RegReadValue`, which is the only way to tell which
-hive the sandbox mounted.
+The registry state cases (`test/e2e/Launcher_RegistryState*.cpp` and
+`test/e2e/Launcher_RegistryImageFollowsTheApp.cpp`) pin what the launcher does
+with the hives of the resources. The packed hives are read-only resources, while
+mounting a hive writes to the file, so the launcher rebuilds the read-only image
+of the run (`data/registry/image/user.hiv`) at every start and the sandbox mounts
+that image below the state hive it creates itself (`data/registry/user.hiv`).
+Every case builds the resources with `test/utils/HiveBuilder.*` and reads the
+value inside the sandbox with the probe `RegReadValue`, which is the only way to
+tell which hive the sandbox mounted.
 
 | Case | Steps | Expected |
 | --- | --- | --- |
-| `RegistryStateIsSeeded` | the resources carry the value `packed`, the state directory does not exist at all | the read returns `packed`, the state directory carries the hive the sandbox mounted, and the hive of the resources is byte identical to the one the case built |
+| `RegistryStateIsSeeded` | the resources carry the value `packed`, the state directory does not exist at all | the read returns `packed`, the state directory carries the state hive and the image, and the hive of the resources is byte identical to the one the case built |
 | `RegistryStateIsKept` | the resources carry `packed`, the first run writes `sandbox` into the key | the second run returns `sandbox`, so the state of the first run survives the next one |
 | `RegistryStateIsReset` | the resources carry `packed`, the first run writes `sandbox`, then the state directory is deleted | the second run returns `packed`, so deleting the state directory resets the sandbox to the registry of the archive |
+| `RegistryImageFollowsTheApp` | the resources carry `v1`, the first run writes `kept` into another value, then the resources are packed again with `v2` | the second run returns `v2` for the packed value, because the image is rebuilt at every start, and `kept` for the value of the first run, because the state hive wins over the image |
 
 ### Launcher sandbox module cases
 
@@ -1575,7 +1604,8 @@ header comment.
 | `RegistryIsolationModeOfTheLastLayerWins` | the hive of `app` holds the key with the values `Own` and `Packed` and hides `Packed`, so the content of the value lives in the hidden store of the hive; the real HKCU holds `HostA` and `HostB` of the same key; `01-bar.zip` marks the key `Full` and the value `Packed` `Full` | `HostA` and `HostB` do not exist, because the mode of the package hides the key of the host with everything below it, which is the mode of the last layer; `Own` is the value of the archive; `Packed` is the content of the archive which the package made visible again, which is the materialization the launcher runs for the package; the real key is untouched |
 | `RegistryWithoutResourcesKeepsTheApp` | `00-foo.zip` carries a file of the filesystem domain and no resource of the registry domain at all | the value and the mode of the archive stay the value and the mode of the run, and the hive of the resources is byte identical to the one the case built |
 | `BrokenRegistryResourcesAreSkipped` | `01-bar.zip` carries a file which is not a hive as `registry/user.hiv` and no isolation file at all | the run succeeds, the value of the archive stays the value of the run, and the mode of the archive keeps hiding the value of the host; a package which carries a document the sandbox cannot use fails the start instead, see `Reg_MalformedIsolationFile_FailsTheStart` |
-| `RegistryStateBelowThePatchIsKept` | `01-bar.zip` overrides `Value` of the key, the first run writes `Runtime` into the same key, which no package names | the second run returns `package` for `Value`, because the hives of the packages are applied at every start, and `written` for `Runtime`, because an entry no package names keeps the state of the sandbox |
+| `RegistryStateBelowThePatchIsKept` | `01-bar.zip` overrides `Value` of the key, the first run writes `Runtime` into the same key, which no package names | the second run returns `package` for `Value`, because the image of the run is rebuilt from the resources at every start and the state never wrote that value, and `written` for `Runtime`, because an entry the state wrote wins over the image |
+| `RegistryStateOverridesThePatch` | `01-bar.zip` overrides `Value` of the key, the first run writes `Value` itself | the second run returns `runtime`, because the state of the sandbox is the highest layer of the view: a package is never applied on top of a modification of the run |
 | `NetworkDnsOfTheLastLayerWins` | the archive redirects a shared hostname and a hostname of its own; `00-foo.zip` redirects the shared hostname and adds a hostname of its own, `01-bar.zip` redirects the shared hostname a third time | the shared hostname resolves to the address of `01-bar.zip`, the hostname only the archive redirects keeps the address of the archive, and the hostname only the first package redirects is answered as well |
 | `NetworkProxyOfTheLastLayerWins` | two SOCKS5 servers of the case are listening; `00-foo.zip` configures the first one as its proxy and `01-bar.zip` the second one | the connection is carried by the server of `01-bar.zip` and the server of `00-foo.zip` received no request at all, so the proxy of a package replaces the proxy below it |
 | `NetworkProxyBelowIsKept` | the archive configures a SOCKS5 server of the case as its proxy; `00-foo.zip` carries the network document of a workspace which lists nothing | the connection is carried by the proxy of the archive, so a layer which names no proxy keeps the proxy below it |

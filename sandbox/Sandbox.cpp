@@ -58,6 +58,7 @@ static void ParseInjectData(const std::string& data)
     }
 
     appbox::sandbox->wRegistryHiveDOSPath = appbox::UTF8ToWide(inject_data.registry_hive_dos_path);
+    appbox::sandbox->wRegistryImageHiveDOSPath = appbox::UTF8ToWide(inject_data.registry_image_hive_dos_path);
     for (const auto& path : inject_data.registry_isolation_dos_paths)
     {
         appbox::sandbox->wRegistryIsolationDOSPaths.push_back(appbox::UTF8ToWide(path));
@@ -305,6 +306,7 @@ void appbox::to_json(nlohmann::json& j, const Sandbox& r)
     j["sandbox32_dos_path"] = r.sandbox32_dos_path;
     j["sandbox64_dos_path"] = r.sandbox64_dos_path;
     j["registry_hive_dos_path"] = appbox::WideToUTF8(r.wRegistryHiveDOSPath);
+    j["registry_image_hive_dos_path"] = appbox::WideToUTF8(r.wRegistryImageHiveDOSPath);
     j["registry_isolation_dos_paths"] = r.wRegistryIsolationDOSPaths.size();
     j["filesystem_isolation_dos_paths"] = r.wFilesystemIsolationDOSPaths.size();
     j["fs_isolation_entries"] = r.fs_isolation.Count();

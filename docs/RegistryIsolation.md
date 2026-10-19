@@ -2,21 +2,44 @@
 
 appbox isolates the registry of a sandboxed process by hooking the key open /
 create / delete / save entry points of the NT registry API and redirecting them
-onto a private **hive** file inside the overlay. The method is known as *hive
+onto private **hive** files inside the overlay. The method is known as *hive
 redirection*: instead of replaying every registry operation on a copy of the
-real data, the sandbox mounts one real registry file and points every redirected
-key at it.
+real data, the sandbox mounts real registry files and points every redirected
+key at them.
 
 Most value level APIs operate on whatever key handle the open or the create
-returned, which is already a handle into the hive. Two of them are hooked on top
+returned, which is already a handle into a hive. Two of them are hooked on top
 of that, because the isolation mode of an entry decides the layer a call acts on
 and not the handle: `NtQueryValueKey` and `NtQueryMultipleValueKey` provide the
 read through, and `NtSetValueKey` and `NtDeleteValueKey` route a modification to
 the layer the mode of the value names — see
 [Isolation modes](#isolation-modes).
 
-The hive holds **one sub key per root key of the view**, so the path of an entry
-inside the hive equals its path in the registry workspace of the packer and in
+## Layer model
+
+The view of a sandboxed process is composed of three layers, and a layer below
+never overrides the layer above it. The order is the one of the filesystem and
+of the environment of a run:
+
+| Layer | Content | Writable |
+| --- | --- | --- |
+| **state** | The modifications the sandboxed processes made (`data/registry/user.hiv`). | yes |
+| **image** | The registry of `app` merged with the hive of every patch package, in the order the packages take effect in (`data/registry/image/user.hiv`). | no |
+| **host** | The real registry of the machine. | `Merge` only |
+
+The image is the read-only half of the sandbox: the launcher rebuilds it at
+every start, so the content of the archive and of the packages is applied again
+while the state of the sandbox keeps every modification. A key or a value the
+sandboxed process wrote or deleted therefore wins over the content of the
+archive, and a rebuilt archive or a replaced package reaches the next run all
+the same (see [Patch layers](#patch-layers)).
+
+A modification of an entry the image holds is copied up into the state hive
+first: the image is never written, so the copy-up is what keeps the view of the
+sandboxed process writable while the layers below it stay untouched.
+
+Each hive holds **one sub key per root key of the view**, so the path of an entry
+inside a hive equals its path in the registry workspace of the packer and in
 the isolation file:
 
 ```
@@ -36,8 +59,9 @@ out to the sandboxed process. The first one carries the packed content of the
 entries whose mode is `Hide`, the second one carries the deletions the sandbox
 recorded (see [Deletion and whiteouts](#deletion-and-whiteouts)).
 
-The **isolation modes** of the entries travel next to the hive as a JSON
-document (`isolation.json`). A **key** and a **value** carry a mode of their own,
+The **isolation modes** of the entries travel next to the hives as a JSON
+document (`isolation.json`), one document per layer of the run. A **key** and a
+**value** carry a mode of their own,
 because the two answer different questions: the mode of a key decides which host
 entries below it stay visible and where the modification of a sub key or of a
 value lands, while the mode of a value decides how the value itself is seen. The
@@ -92,31 +116,34 @@ profile are not answered by the machine root they live below, and the current
 user root wins over the `HKEY_USERS` prefix. Every other path (for example the
 private application hive mounts below `\REGISTRY\A`) is forwarded unchanged.
 
-The view of a sandboxed process is the hive layer merged with the entries of the
-real registry which the isolation mode of the key keeps visible. The rows below
-are written from the point of view of a key which the hive holds; the behaviour
-of a key which only the host holds is the one its mode decides:
+The view of a sandboxed process is the state hive merged with the image, which is
+merged with the entries of the real registry which the isolation mode of the key
+keeps visible. The rows below are written from the point of view of a key which a
+sandbox layer holds; the behaviour of a key which only the host holds is the one
+its mode decides. "The sandbox holds the key" means the state hive or the image
+holds it, and a handle of the image is a handle of a read-only layer, so a write
+access open of such a key copies it up into the state hive first:
 
-| Operation | Mode | The hive holds the key | The hive does not hold the key |
+| Operation | Mode | A sandbox layer holds the key | No sandbox layer holds the key |
 | --- | --- | --- | --- |
-| **open / read** (`NtOpenKey(Ex)`) | `Full`, `Hide` | redirected into the hive | the key does not exist |
-| | `Merge`, `Write Copy` | redirected into the hive | the key of the host is handed out (read through) |
-| **open / write** (`NtOpenKey(Ex)`) | `Full`, `Hide` | redirected into the hive | the key does not exist |
-| | `Merge` | redirected into the hive | the key of the host is handed out, because a modification of an entry the sandbox does not hold lands in the host |
-| | `Write Copy` | redirected into the hive | the key is copied up into the hive (a shadow key is created and handed out) |
-| **create** (`NtCreateKey`) | `Full`, `Hide`, `Write Copy` | redirected into the hive | the key is created inside the hive, intermediate keys included |
-| | `Merge` | redirected into the hive | the key is created in the real registry, the keys above it included |
-| **enumerate** (`NtEnumerateKey`, `NtEnumerateValueKey`) | every mode | merged view: hive entries first, then the non shadowed and visible real entries | visible real entries only |
-| **value query** (`NtQueryValueKey`) | every mode | answered from the hive | falls back to the real registry (read through), unless the mode of the value hides the host |
+| **open / read** (`NtOpenKey(Ex)`) | `Full`, `Hide` | redirected into the state hive or the image | the key does not exist |
+| | `Merge`, `Write Copy` | redirected into the state hive or the image | the key of the host is handed out (read through) |
+| **open / write** (`NtOpenKey(Ex)`) | `Full`, `Hide` | redirected into the state hive (a key of the image is copied up) | the key does not exist |
+| | `Merge` | redirected into the state hive (a key of the image is copied up) | the key of the host is handed out, because a modification of an entry the sandbox does not hold lands in the host |
+| | `Write Copy` | redirected into the state hive (a key of the image is copied up) | the key is copied up into the state hive (a shadow key is created and handed out) |
+| **create** (`NtCreateKey`) | `Full`, `Hide`, `Write Copy` | redirected into the state hive | the key is created inside the state hive, intermediate keys included |
+| | `Merge` | redirected into the state hive | the key is created in the real registry, the keys above it included |
+| **enumerate** (`NtEnumerateKey`, `NtEnumerateValueKey`) | every mode | merged view: state hive entries first, then the non shadowed image entries, then the non shadowed and visible real entries | visible real entries only |
+| **value query** (`NtQueryValueKey`) | every mode | answered by the highest sandbox layer which holds the value | falls back to the real registry (read through), unless the mode of the value hides the host |
 | **value batch query** (`NtQueryMultipleValueKey`) | every mode | merged view: every entry is answered by the layer which holds it | visible real entries only |
-| **value write** (`NtSetValueKey`) | `Full`, `Hide`, `Write Copy` | into the hive | into the hive (the key is created when it is missing) |
-| | `Merge` | into the hive, because the sandbox holds the value | into the **real registry** |
-| **delete key** (`NtDeleteKey`) | `Full`, `Hide`, `Write Copy` | the key of the hive is removed and the visible host key is recorded as deleted | the visible host key is recorded as deleted (a whiteout) |
-| | `Merge` | the key of the hive is removed and the visible host key is recorded as deleted | the key of the **real registry** is deleted |
-| **delete value** (`NtDeleteValueKey`) | `Full`, `Hide`, `Write Copy` | the value of the hive is removed and the visible host value is recorded as deleted | the visible host value is recorded as deleted (a whiteout) |
-| | `Merge` | the value of the hive is removed and the visible host value is recorded as deleted | the value of the **real registry** is deleted |
-| **rename** (`NtRenameKey`) | `Full`, `Hide`, `Write Copy` | the key of the hive is renamed and the visible host key of the old name is recorded as deleted | the rename is refused with `STATUS_ACCESS_DENIED`: a handle of the host layer never renames a key of the real registry |
-| | `Merge` | the key of the hive is renamed and the visible host key of the old name is recorded as deleted | the key of the **real registry** is renamed |
+| **value write** (`NtSetValueKey`) | `Full`, `Hide`, `Write Copy` | into the state hive (a key of the image is copied up) | into the state hive (the key is created when it is missing) |
+| | `Merge` | into the state hive, because the sandbox holds the value | into the **real registry** |
+| **delete key** (`NtDeleteKey`) | `Full`, `Hide`, `Write Copy` | the key of the state hive is removed and a visible key of the image or of the host is recorded as deleted | the visible host key is recorded as deleted (a whiteout) |
+| | `Merge` | the key of the state hive is removed and a visible key of the image or of the host is recorded as deleted | the key of the **real registry** is deleted |
+| **delete value** (`NtDeleteValueKey`) | `Full`, `Hide`, `Write Copy` | the value of the state hive is removed and a visible value of the image or of the host is recorded as deleted | the visible host value is recorded as deleted (a whiteout) |
+| | `Merge` | the value of the state hive is removed and a visible value of the image or of the host is recorded as deleted | the value of the **real registry** is deleted |
+| **rename** (`NtRenameKey`) | `Full`, `Hide`, `Write Copy` | the content of the key of the image is copied up, the key of the state hive is renamed and a visible key of the image or of the host of the old name is recorded as deleted | the rename is refused with `STATUS_ACCESS_DENIED`: a handle of the host layer never renames a key of the real registry |
+| | `Merge` | the content of the key of the image is copied up, the key of the state hive is renamed and a visible key of the image or of the host of the old name is recorded as deleted | the key of the **real registry** is renamed |
 | **save** (`NtSaveKey`, `NtSaveKeyEx`) | every mode | the merged view of the key is written into the caller file | the visible real entries are written into the caller file |
 
 `Merge` is the row which differs from the others: it is the write rule of the
@@ -125,13 +152,17 @@ registry untouched, while values which only exist in the real registry remain
 readable. A modification which runs on a handle of the host layer is refused with
 `STATUS_ACCESS_DENIED` for every mode but `Merge`, because a handle which the
 caller opened without the right to modify an entry must not become that right
-through the isolation. The entry points which the isolation does not hook at all
-are listed in [Known gaps and limitations](#known-gaps-and-limitations).
+through the isolation. A modification which runs on a handle of the image is
+refused the same way: the image is a read-only layer, and the copy-up of the open
+already gave the caller a handle of the state hive. The entry points which the
+isolation does not hook at all are listed in
+[Known gaps and limitations](#known-gaps-and-limitations).
 
 The transacted variants of the open (`NtOpenKeyTransacted`,
 `NtOpenKeyTransactedEx`) and of the create (`NtCreateKeyTransacted`) run the same
-table with one exception: a key which the hive does not hold is never read
-through for them, see [Hooked entry points](#hooked-entry-points).
+table with one exception: a key which no sandbox layer holds is never read
+through for them, and the image is never used either, see
+[Hooked entry points](#hooked-entry-points).
 
 The registry workspace of the packer, which describes the registry the packaged
 application will see, is documented in [README.md](../README.md).
@@ -141,7 +172,9 @@ application will see, is documented in [README.md](../README.md).
 ### Key modes
 
 The mode of a key decides which host entries below the key stay visible and where
-a modification of a sub key or of a value lands:
+a modification of a sub key or of a value lands. In this section "the hive" means
+the layers of the sandbox: the state hive first and the image below it, so a mode
+which keeps the hive visible keeps the image visible as well.
 
 | Mode | Visible for the sandbox | Writes |
 | --- | --- | --- |
@@ -222,9 +255,14 @@ about.
 ## On-disk layout
 
 ```
-app\registry\user.hiv                    the hive of the virtual registry
-app\registry\isolation.json              the isolation modes
-data\registry\user.hiv                   the hive the sandbox mounts
+app\registry\user.hiv                    the registry of the archive
+app\registry\isolation.json              the isolation modes of the archive
+data\registry\image\user.hiv             the read-only image of the run: the
+                                         registry of the archive merged with the
+                                         hives of the packages, rebuilt at
+                                         every start
+data\registry\user.hiv                   the state hive: the modifications the
+                                         sandboxed processes made
 ```
 
 The isolation file is read and written as the structure of its schema:
@@ -235,42 +273,50 @@ incomplete, which are of another type, or which names an unknown mode is
 therefore refused while the file is read, which is what keeps the packer and the
 sandbox in step.
 
-The hive holds the five root keys of the view, the hidden store of the entries
-whose mode is `Hide` and, below a reserved key which is not part of the view, the
-**whiteout store** of the entries the sandbox deleted:
+Every hive holds the five root keys of the view. The image carries the hidden
+store of the entries whose mode is `Hide`, and the state hive carries, below a
+reserved key which is not part of the view, the **whiteout store** of the entries
+the sandbox deleted:
 
 ```
-<root of the hive>
+<root of a hive>
 ├── HKEY_CLASSES_ROOT                  the five root keys of the view
 ├── HKEY_CURRENT_CONFIG
 ├── HKEY_CURRENT_USER
 ├── HKEY_LOCAL_MACHINE
 ├── HKEY_USERS
 ├── APPBOX_HIDDEN                      the content of the hidden entries, it
-│   └── HKEY_CURRENT_USER\...          mirrors the structure of the view
+│   └── HKEY_CURRENT_USER\...          mirrors the structure of the view (image)
 └── APPBOX_WHITEOUT                    the whiteout store, invisible for the view
-    ├── K\HKEY_CURRENT_USER\...        the key of that path was deleted
+    ├── K\HKEY_CURRENT_USER\...        the key of that path was deleted (state)
     └── V\HKEY_CURRENT_USER\...        one value per deleted value name, the
-                                       empty name for the default value
+                                       empty name for the default value (state)
 ```
 
 The hidden store is created by the packer and holds the content of the entries
 whose mode is `Hide`, which is what makes the entry invisible while its content
-is kept: the view of the hive does not carry it, so a read is answered by the
+is kept: the view of the image does not carry it, so a read is answered by the
 mode and a write lands in the view, and the packed content is still there for a
 layer which gives the entry another mode. The store is only created when the
 model holds a hidden entry, so an archive without one carries no store at all.
 
-The hive of the resources is a read-only resource: mounting a hive writes to the
-file, so the launcher copies it into the state directory of the sandbox on the
-first run and the sandbox mounts that copy. A patch package carries a hive of its
-own, which the launcher merges into that copy before the sandbox mounts it (see
-[Patch layers](#patch-layers)). The mounted hive is a real registry file: it
-grows as the sandboxed process writes keys and values and survives process
+The hives below `app` are read-only resources: mounting a hive writes to the
+file, so the launcher **rebuilds the image** in the state directory of the
+sandbox at every start — it copies the hive of the archive, merges the hive of
+every patch package in the order the packages take effect in and materializes
+their `Hide` modes — and the sandbox mounts the image together with the state
+hive it creates itself (see [Patch layers](#patch-layers)). The image therefore
+always follows the resources, while the state hive is a real registry file which
+grows as the sandboxed process writes keys and values: it survives process
 restarts, so a sandbox can be reused — a delete survives with it, because the
-marker lives in the same file. Deleting the state directory (or just these
+marker lives in the state hive. Deleting the state directory (or just these
 files) discards every registry modification the sandboxed process ever made and
-brings back the registry of the archive.
+brings back the registry of the archive and of the packages.
+
+A state hive of a layout which did not carry an image yet holds the content of
+the archive and of the packages merged with the modifications of the runs. The
+launcher drops it once when it finds such a directory, because keeping it would
+shadow the image and hide the content of a rebuilt archive.
 
 Every process of the sandbox mounts the file itself, and a file which another
 process already mounted is served by the hive of that mount: the second process
@@ -320,45 +366,54 @@ The `patch` directory next to the launcher of a standalone archive carries patch
 packages, and the registry domain of a package takes effect at every start (see
 [PatchLayer.md](PatchLayer.md)):
 
-* The hive of a package (`registry/user.hiv`) is **merged into the hive the
-  sandbox mounts**: the keys and the values of the package replace the entries of
-  the same name of the layers below it, and an entry no package names keeps the
-  content of the archive and of the earlier runs. The merge is per key and per
-  value, so a package which lists a single value keeps every other entry of the
-  layers below it. The hidden store of the package is merged like every other
-  sub key of the hive, so the content a package hides lands in the store of the
-  run.
+* The launcher **rebuilds the image of the run** at every start: it drops the
+  image directory of the earlier start, copies the hive of the archive and merges
+  the hive of every package (`registry/user.hiv`) in ascending name order, so the
+  keys and the values of the last package which names an entry are the ones the
+  image carries, while an entry no package names keeps the content of the archive.
+  The merge is per key and per value, so a package which lists a single value
+  keeps every other entry of the layers below it. The hidden store of a package is
+  merged like every other sub key of the hive, so the content a package hides
+  lands in the store of the image.
 * The isolation modes of a package (`registry/isolation.json`) are applied on top
   of the modes of the archive: the sandbox reads the isolation files of the run
   in layer order, so the mode of the last file which names a key or a value is
   the mode the sandboxed process observes, while an entry no later file names
   keeps the mode of the layers below it.
 * A package may name a mode which differs from the mode the layer below it packed
-  the content with. The launcher **materializes** that difference right after it
-  merged the hive of the package: an entry the package marks `Hide` is copied
-  into the hidden store and removed from the view, and an entry the package gives
-  another mode is copied out of the store into the view. The state of the sandbox
-  wins over the packed content in the second direction, because a write of the
-  run is the highest layer of the view.
+  the content with. The launcher **materializes** that difference in the image
+  right after it merged the hive of the package: an entry the package marks `Hide`
+  is copied into the hidden store and removed from the view, and an entry the
+  package gives another mode is copied out of the store into the view.
 * A package which carries no resource of the registry domain changes nothing
   here, and a hive which cannot be mounted is skipped with the registry of that
   package: a broken package never fails the run. An isolation file which cannot
   be used fails the start of the sandbox instead, because the modes of the run
   cannot be resolved without it.
+* A run whose image cannot be rebuilt — the image of the earlier start is still
+  mounted by a process of that start, for example — keeps the image which is
+  there and reports the failure in the log, so a broken image never blocks the
+  run.
 
-The merge writes into the hive of the state directory, so a modification or a
-deletion the sandboxed application made to an entry a package names is reset by
-the next start, while an entry no package names keeps the state of the sandbox.
+The merge writes into the image alone, and the image is the layer below the state
+of the sandbox: a modification or a deletion the sandboxed application made to an
+entry a package names survives the next start, because the state hive wins over
+the image, while an entry the state never wrote follows the packages and the
+archive again. That is the layer order of the whole sandbox — `data` over
+`patch` over `app` over the host — and it is why a rebuilt archive or a replaced
+package reaches the next run without discarding the state of the sandbox.
 
 ## Variable references
 
 A value of the workspace may reference a known folder of the machine which runs
 the sandbox with `%APPBOX:<NAME>%` instead of spelling its path out, so an
 archive stays correct on a machine whose folders are somewhere else. The
-references are replaced while the hive is mounted — which happens before the
+references are replaced while the hives are mounted — which happens before the
 hooks are attached — so every read path of the registry reports the expanded
 value without a hook which would have to resize a caller buffer: the value
-query, the enumeration, the batch query and the export of a key all see it.
+query, the enumeration, the batch query and the export of a key all see it. The
+walk runs over the image and over the state hive, so a value a package carries
+and a value the sandboxed process wrote are expanded alike.
 
 The walk covers the string types of the registry only: `REG_SZ`, `REG_EXPAND_SZ`
 and `REG_MULTI_SZ`, whose every item is expanded on its own. `REG_DWORD`,
@@ -376,7 +431,7 @@ The syntax, the supported names and the rules of the expansion are documented in
 
 ## Deletion and whiteouts
 
-The markers live in the whiteout store of the hive (see
+The markers live in the whiteout store of the state hive (see
 [On-disk layout](#on-disk-layout)), which the view never reaches: no path of the
 view maps onto the reserved key, and no handle of it is ever handed out. The
 store has two namespaces:
@@ -388,42 +443,46 @@ store has two namespaces:
   empty name for the default value. The name is stored as a value name and not as
   a path component, because a value name may contain a backslash.
 
-The store is consulted wherever the merged view decides whether a host entry
-stays visible — open, create, value query, merged enumeration and merged counts
-share one predicate, so the enumeration and the counts can never disagree. A
-failed marker write fails the whole delete call: reporting a success would let
-the host entry reappear in the view of the sandbox. A rename records the `K\`
-marker of the name it leaves behind, so the old name stays invisible for the same
-reason and the merged view reports the new name alone.
+The store is consulted wherever the merged view decides whether an entry of the
+image or of the host stays visible — open, create, value query, merged
+enumeration and merged counts share one predicate, so the enumeration and the
+counts can never disagree. The marker hides the entry of every layer below the
+state hive, which is what makes a delete of an entry the image carries survive
+the restart which rebuilds the image. A failed marker write fails the whole
+delete call: reporting a success would let the entry of the layer below reappear
+in the view of the sandbox. A rename records the `K\` marker of the name it
+leaves behind, so the old name stays invisible for the same reason and the
+merged view reports the new name alone.
 
-`Merge` is the exception of the rule: the delete of an entry the sandbox does not
-hold lands in the real registry and records no marker, because the entry is gone
-from the host as well. The marker of an entry the sandbox holds is recorded like
-it is for every other mode, which is what keeps the entry of the host invisible
-after the delete and what makes a later write of the entry land in the sandbox
-again.
+`Merge` is the exception of the rule: the delete of an entry no sandbox layer
+holds lands in the real registry and records no marker, because the entry is gone
+from the host as well. The marker of an entry a sandbox layer holds is recorded
+like it is for every other mode, which is what keeps the entry of the layers
+below invisible after the delete and what makes a later write of the entry land
+in the sandbox again.
 
 ## Hooked entry points
 
 | Hook | Responsibility |
 | --- | --- |
-| `NtOpenKey` / `NtOpenKeyEx` | Open policy: hive first, then the host per the isolation mode — read through, the host handle for a write of a merged key, or copy-up for `Write Copy`. |
-| `NtOpenKeyTransacted` / `NtOpenKeyTransactedEx` | The same open policy with the transaction of the caller: the hive layer is opened with it, the host layer is never used. |
-| `NtCreateKey` | Creates the key inside the hive, intermediate keys included; a merged key the sandbox does not hold is created in the real registry, the keys above it included. |
-| `NtCreateKeyTransacted` | Creates the key and its intermediate keys inside the hive with the transaction of the caller; never reaches the real registry. |
-| `NtSetValueKey` | Routes the write to the layer the mode of the value names: the sandbox for every mode but `Merge`, the real registry for a merged value the sandbox does not hold. |
-| `NtDeleteKey` / `NtDeleteValueKey` | Removes the hive entry and records the visible host entry as deleted (a whiteout), or deletes the entry of the real registry for `Merge` when the sandbox does not hold it. |
-| `NtRenameKey` | Renames the key of the hive and records the visible host key of the old name as deleted (a whiteout), or renames the key of the real registry for `Merge` when the sandbox does not hold it; a root key of the view and a destination which the merged view already holds are refused. |
-| `NtEnumerateKey` / `NtEnumerateValueKey` | Merged two layer enumeration: hive entries first, then the visible real entries. |
+| `NtOpenKey` / `NtOpenKeyEx` | Open policy: the state hive first, then the image, then the host per the isolation mode — read through, the host handle for a write of a merged key, or copy-up for `Write Copy`. A key of the image is handed out for a read and copied up for a write. |
+| `NtOpenKeyTransacted` / `NtOpenKeyTransactedEx` | The same open policy with the transaction of the caller: the state hive is opened with it, the image and the host layer are never used. |
+| `NtCreateKey` | Creates the key inside the state hive, intermediate keys included; a merged key no sandbox layer holds is created in the real registry, the keys above it included. |
+| `NtCreateKeyTransacted` | Creates the key and its intermediate keys inside the state hive with the transaction of the caller; never reaches the real registry. |
+| `NtSetValueKey` | Routes the write to the layer the mode of the value names: the sandbox for every mode but `Merge`, the real registry for a merged value no sandbox layer holds. A key of the image is copied up first. |
+| `NtDeleteKey` / `NtDeleteValueKey` | Removes the entry of the state hive and records a visible entry of the image or of the host as deleted (a whiteout), or deletes the entry of the real registry for `Merge` when no sandbox layer holds it. |
+| `NtRenameKey` | Copies the content of the image up, renames the key of the state hive and records a visible key of the image or of the host of the old name as deleted (a whiteout), or renames the key of the real registry for `Merge` when no sandbox layer holds it; a root key of the view and a destination which the merged view already holds are refused. |
+| `NtEnumerateKey` / `NtEnumerateValueKey` | Merged three layer enumeration: state hive entries first, then the image entries, then the visible real entries. |
 | `NtQueryKey` | Key name translated back into the view; `SubKeys` / `Values` counts of the merged view. |
-| `NtQueryValueKey` / `NtQueryMultipleValueKey` | Read through of a value / of a batch. |
+| `NtQueryValueKey` / `NtQueryMultipleValueKey` | Read through of a value / of a batch: the state hive wins over the image, which wins over the host. |
 | `NtSaveKey` / `NtSaveKeyEx` | Exports the merged view of a key. |
-| `NtSetInformationKey` / `NtFlushKey` / `NtCompressKey` / `NtLockRegistryKey` | A call which acts on the key or on the hive file of its handle: a handle of the host layer is refused with `STATUS_ACCESS_DENIED`, a handle of the hive is forwarded. |
-| `NtQueryObject` | Object names below the private hive mount are translated into the view path. |
+| `NtSetInformationKey` / `NtCompressKey` / `NtLockRegistryKey` | A call which acts on the key or on the hive file of its handle: a handle of the host layer or of the image is refused with `STATUS_ACCESS_DENIED`, a handle of the state hive is forwarded. |
+| `NtFlushKey` | A flush changes no entry of the view: a handle of the host layer is refused with `STATUS_ACCESS_DENIED`, a handle of either sandbox layer is forwarded. |
+| `NtQueryObject` | Object names below the private hive mounts are translated into the view path. |
 
-Handles below the private hive mount run the merged logic; a handle of the host
-layer is refused where the call would act on the key of the host or on the hive
-file which holds it (see the table), and every other handle (handles of other
+Handles below the private hive mounts run the merged logic; a handle of the host
+layer or of the image is refused where the call would act on the key or on the
+hive file of that layer (see the table), and every other handle (handles of other
 roots) is forwarded unchanged. A redirected handle is translated back into the
 view path wherever its name is queried, so it behaves exactly like the key it
 shadows.
@@ -452,27 +511,27 @@ key of the old name in the view, which is why the isolation never forwards one.
 
 The three transacted entry points run the open policy and the create policy of
 the isolation with one difference: the transaction of the caller is forwarded to
-the hive layer, so a handle the caller receives from them is bound to that
+the state hive, so a handle the caller receives from them is bound to that
 transaction and the changes the caller makes through it are committed or rolled
-back with it, inside the sandbox. The host layer is never opened with the
-transaction: a handle of the host layer would enlist the real hive into the
-transaction of the sandboxed process, which writes the transaction log of the
-real hive and lets the transaction of the caller collide with a transaction
-another process holds on that hive. A transacted call is never answered with a
-plain (non transacted) operation either, because the rollback of the caller would
-silently stop working. The rows of the transacted policy are therefore:
+back with it, inside the sandbox. Neither the image nor the host layer is ever
+opened with the transaction: a handle of one of them would enlist that hive into
+the transaction of the sandboxed process, which writes the transaction log of the
+hive and lets the transaction of the caller collide with a transaction another
+process holds on it. A transacted call is never answered with a plain (non
+transacted) operation either, because the rollback of the caller would silently
+stop working. The rows of the transacted policy are therefore:
 
-| Call | The hive layer answers | The hive layer does not answer |
+| Call | The state hive answers | The state hive does not answer |
 | --- | --- | --- |
-| open, read access | the key of the hive, bound to the transaction | `STATUS_NOT_SUPPORTED`: the answer would be a handle of the host layer |
-| open, write access | the key of the hive, bound to the transaction | the key is copied up into the hive with the transaction for `Write Copy`, `STATUS_NOT_SUPPORTED` for `Merge`, or the failure of the hive layer is reported |
-| create | the key of the hive, its intermediate keys included, bound to the transaction | a transacted create always lands in the hive |
+| open, read access | the key of the state hive, bound to the transaction | `STATUS_NOT_SUPPORTED`: the answer would be a handle of the image or of the host layer |
+| open, write access | the key of the state hive, bound to the transaction | the key is copied up into the state hive with the transaction for `Write Copy`, `STATUS_NOT_SUPPORTED` for `Merge`, or the failure of the state hive is reported |
+| create | the key of the state hive, its intermediate keys included, bound to the transaction | a transacted create always lands in the state hive |
 
-The hive of the sandbox is an application hive (`RegLoadAppKey`), and an
+A hive of the sandbox is an application hive (`RegLoadAppKey`), and an
 application hive does not support transactions: the kernel refuses every
 transacted operation on one with `STATUS_RM_NOT_ACTIVE`. A transacted call of a
 key of the view therefore fails — with `STATUS_RM_NOT_ACTIVE` for the create and
-for the write access open, which is the failure of the hive layer reported as it
+for the write access open, which is the failure of the state hive reported as it
 is, and with `STATUS_NOT_SUPPORTED` for the read access open, which the isolation
 refuses instead of reading it through. The call fails closed instead of being
 forwarded to the real registry, which is the layer a sandboxed process would
@@ -503,15 +562,15 @@ reaches the registry through them acts on the layer of the object of the call.
 1. **A delete of the sandbox is recorded, not replayed.** An entry the sandbox
    deletes below a mode other than `Merge` stays in the real registry; only the
    view of the sandbox hides it. Another process which reads the real registry
-   still sees the entry, and a second sandbox which mounts the same hive hides it
-   as well, because the marker lives in the hive. The marker is never removed
-   again, so the entry stays invisible for the whole life of the hive: a delete
-   the sandbox runs and the create which follows it inside the sandbox are
-   consistent, because the hive holds the key that create made, while an entry
-   which the host creates again after the delete is never reported, which the
-   real registry would report. `Merge` is the mode which deletes the entry of the
-   host itself when the sandbox does not hold it, so it has neither the marker
-   nor the gap.
+   still sees the entry, and a second sandbox which mounts the same state hive
+   hides it as well, because the marker lives in that hive. The marker is never
+   removed again, so the entry stays invisible for the whole life of the state
+   hive: a delete the sandbox runs and the create which follows it inside the
+   sandbox are consistent, because the state hive holds the key that create made,
+   while an entry which the host creates again after the delete is never
+   reported, which the real registry would report. `Merge` is the mode which
+   deletes the entry of the host itself when no sandbox layer holds it, so it has
+   neither the marker nor the gap.
 2. **A save exports a snapshot.** The file holds the merged view at the time of
    the call: a host value which the mode hides is not part of it, and a value
    which the sandbox writes after the call is not either. The save needs
@@ -528,16 +587,16 @@ reaches the registry through them acts on the layer of the object of the call.
    independent sub tree of the hive, and entries below
    `HKEY_CURRENT_USER\Software\Classes` are reached through the current user root
    only.
-5. **A value mode needs a key of the hive.** The value modes of an isolation file
-   are applied by the entry points which decide their layer themselves, and by
-   the merged view of a key the hive holds. A key which only the host holds is
-   answered by a handle of the host layer, which the read entry points forward
-   unchanged, so the read of a `Full` or `Hide` value of such a key still reports
-   the value of the host and its enumeration still lists the name. The write of
-   that value is redirected into the sandbox, because `NtSetValueKey` resolves
-   the layer itself. A key the archive holds — the normal case of a workspace
-   which lists modes for the values of its keys — is opened inside the hive, which
-   is what makes the modes apply to the reads as well.
+5. **A value mode needs a key of a sandbox layer.** The value modes of an
+   isolation file are applied by the entry points which decide their layer
+   themselves, and by the merged view of a key a sandbox layer holds. A key which
+   only the host holds is answered by a handle of the host layer, which the read
+   entry points forward unchanged, so the read of a `Full` or `Hide` value of
+   such a key still reports the value of the host and its enumeration still lists
+   the name. The write of that value is redirected into the sandbox, because
+   `NtSetValueKey` resolves the layer itself. A key the archive holds — the normal
+   case of a workspace which lists modes for the values of its keys — is opened
+   inside the image, which is what makes the modes apply to the reads as well.
 6. **A hidden entry needs a packer which places its content.** The content of a
    `Hide` entry lives in the hidden store of the hive, which the packer fills
    while it writes the artifacts of the workspace. An entry which the workspace
@@ -562,7 +621,8 @@ reaches the registry through them acts on the layer of the object of the call.
 8. **A key handle which enters the sandbox from outside is used unchanged.** The
    isolation decides at the open, at the create and at the value entry points, and
    it never hands out a handle which permits a modification of a key of the host
-   layer (an open which asks for a write right is copied up into the hive). A
+   layer or of the image (an open which asks for a write right is copied up into
+   the state hive). A
    handle which the sandbox receives from another process — a duplicated handle,
    an inherited handle, or a handle a host process passes over an IPC channel —
    was not opened by the hooks, so it addresses the key of the layer it was opened

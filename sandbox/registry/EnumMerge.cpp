@@ -49,54 +49,73 @@ bool ContainsName(const std::vector<std::wstring>& names, const std::wstring& na
     return false;
 }
 
-} // namespace
-
-size_t appbox::registry::CountMerged(const std::vector<std::wstring>& hive_names,
-                                     const std::vector<std::wstring>& real_names)
+/**
+ * @brief Append the names of one layer which no higher layer shadows.
+ * @param[in] names The names of the layer.
+ * @param[in,out] seen The names the layers above already reported.
+ */
+void AppendVisible(const std::vector<std::wstring>& names, std::vector<std::wstring>& seen)
 {
-    size_t count = hive_names.size();
-    for (const auto& name : real_names)
+    for (const auto& name : names)
     {
-        if (!ContainsName(hive_names, name))
+        if (!ContainsName(seen, name))
         {
-            ++count;
+            seen.push_back(name);
         }
     }
-    return count;
 }
 
-bool appbox::registry::MapMergedIndex(const std::vector<std::wstring>& hive_names,
+} // namespace
+
+size_t appbox::registry::CountMerged(const std::vector<std::wstring>& upper_names,
+                                     const std::vector<std::wstring>& image_names,
+                                     const std::vector<std::wstring>& real_names)
+{
+    std::vector<std::wstring> seen;
+    seen.reserve(upper_names.size() + image_names.size() + real_names.size());
+
+    AppendVisible(upper_names, seen);
+    AppendVisible(image_names, seen);
+    AppendVisible(real_names, seen);
+
+    return seen.size();
+}
+
+bool appbox::registry::MapMergedIndex(const std::vector<std::wstring>& upper_names,
+                                      const std::vector<std::wstring>& image_names,
                                       const std::vector<std::wstring>& real_names, size_t merged_index,
                                       EnumLayer& layer, size_t& layer_index)
 {
-    /* The hive layer occupies the first hive_names.size() merged indices. */
-    if (merged_index < hive_names.size())
-    {
-        layer = EnumLayer::Hive;
-        layer_index = merged_index;
-        return true;
-    }
+    size_t                    offset = merged_index;
+    std::vector<std::wstring> seen;
 
     /*
-     * Walk the real layer and skip every entry whose name is shadowed by the
-     * hive layer. The merged index runs out when the remaining real entries
-     * cannot fill it anymore.
+     * The state hive occupies the first indices of the merged view, the image
+     * follows with the names the state hive does not shadow, and the real layer
+     * closes the view with the names neither sandbox layer shadows.
      */
-    size_t offset = merged_index - hive_names.size();
-    for (size_t i = 0; i < real_names.size(); ++i)
+    const std::vector<std::wstring>* layers[] = { &upper_names, &image_names, &real_names };
+    const EnumLayer                  layer_of[] = { EnumLayer::Upper, EnumLayer::Image, EnumLayer::Real };
+    for (size_t current = 0; current < 3; ++current)
     {
-        if (ContainsName(hive_names, real_names[i]))
+        const auto& names = *layers[current];
+        for (size_t index = 0; index < names.size(); ++index)
         {
-            continue;
-        }
+            if (ContainsName(seen, names[index]))
+            {
+                continue;
+            }
 
-        if (offset == 0)
-        {
-            layer = EnumLayer::Real;
-            layer_index = i;
-            return true;
+            if (offset == 0)
+            {
+                layer = layer_of[current];
+                layer_index = index;
+                return true;
+            }
+
+            --offset;
+            seen.push_back(names[index]);
         }
-        --offset;
     }
 
     return false;

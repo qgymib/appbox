@@ -42,9 +42,9 @@ static NTSTATUS NTAPI Hook_NtSaveKeyEx(HANDLE KeyHandle, HANDLE FileHandle, ULON
         return sys_NtSaveKeyEx(KeyHandle, FileHandle, Format);
     }
 
-    return appbox::registry::Hive::SaveIsolatedKey(view == appbox::registry::HandleView::HiveHandle ? KeyHandle
-                                                                                                    : nullptr,
-                                                   view_path, relative, FileHandle, Format, true);
+    return appbox::registry::Hive::SaveIsolatedKey(
+        view, view == appbox::registry::HandleView::HiveHandle ? KeyHandle : nullptr, view_path, relative, FileHandle,
+        Format, true);
 }
 
 static void LoadNtSaveKeyEx()

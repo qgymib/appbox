@@ -18,12 +18,12 @@ static appbox::LoggerF logger("NtLockRegistryKey", NtLockRegistryKeyLogParam);
  * @brief Detour of NtLockRegistryKey().
  *
  * The call locks the hive which holds the key, so the layer of the handle
- * decides the answer: the hive is the state of the sandbox, so a lock of a key
- * of the hive acts on the hive of the sandbox and the call is forwarded (the
- * kernel asks for a privilege the caller may not hold, which is its own
- * answer), while the hive of the host is not the state of the sandbox, so the
- * call is refused. A handle outside the root keys of the view belongs to no
- * layer of the view and is forwarded unchanged.
+ * decides the answer: the state hive is the state of the sandbox, so a lock of
+ * a key of that layer acts on the hive of the sandbox and the call is forwarded
+ * (the kernel asks for a privilege the caller may not hold, which is its own
+ * answer). The image is read-only and the hive of the host is not the state of
+ * the sandbox, so the call is refused for both. A handle outside the root keys
+ * of the view belongs to no layer of the view and is forwarded unchanged.
  */
 static NTSTATUS NTAPI Hook_NtLockRegistryKey(HANDLE KeyHandle)
 {
@@ -31,7 +31,7 @@ static NTSTATUS NTAPI Hook_NtLockRegistryKey(HANDLE KeyHandle)
 
     std::wstring                       view_path;
     const appbox::registry::HandleView view = appbox::registry::Hive::MapHandleView(KeyHandle, view_path);
-    if (view == appbox::registry::HandleView::RealHandle)
+    if (view == appbox::registry::HandleView::RealHandle || view == appbox::registry::HandleView::ImageHandle)
     {
         return STATUS_ACCESS_DENIED;
     }

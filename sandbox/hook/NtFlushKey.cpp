@@ -18,11 +18,13 @@ static appbox::LoggerF logger("NtFlushKey", NtFlushKeyLogParam);
  * @brief Detour of NtFlushKey().
  *
  * The flush writes the hive which holds the key to disk, so the layer of the
- * handle decides the answer: the hive is the state of the sandbox, so a flush
- * of a key of the hive persists the sandbox and the call is forwarded, while
- * the hive of the host is not the state of the sandbox, so the call is refused
- * and never writes a file of the host. A handle outside the root keys of the
- * view belongs to no layer of the view and is forwarded unchanged.
+ * handle decides the answer: the state hive and the image are files of the
+ * sandbox, so a flush of a key of either layer persists a file of the sandbox
+ * and the call is forwarded — a flush changes no entry of the view, which is why
+ * the read-only image is forwarded as well — while the hive of the host is not
+ * the state of the sandbox, so the call is refused and never writes a file of
+ * the host. A handle outside the root keys of the view belongs to no layer of
+ * the view and is forwarded unchanged.
  */
 static NTSTATUS NTAPI Hook_NtFlushKey(HANDLE KeyHandle)
 {

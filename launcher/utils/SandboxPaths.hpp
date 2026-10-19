@@ -203,16 +203,43 @@ struct SandboxPaths
     }
 
     /**
-     * @brief Hive the sandbox mounts.
+     * @brief Hive which carries the state of the sandbox.
      *
      * The file lives in the state directory, because mounting a hive writes to
-     * it; the launcher seeds it from RegistryHiveFile() on the first run.
+     * it; the sandbox creates it when it mounts it, so it holds the
+     * modifications of the runs and nothing else.
      *
      * @return The path of the hive inside the state directory.
      */
     std::wstring StateRegistryHiveFile() const
     {
         return (std::filesystem::path(state) / layout::kRegistryDirNameW / layout::kRegistryHiveFileNameW).wstring();
+    }
+
+    /**
+     * @brief Directory which carries the read-only image of the registry.
+     *
+     * The image is the content of the registry of `app` merged with the hives
+     * of the patch packages, and it is rebuilt at every start. The directory
+     * holds the hive and the log files the mount keeps next to it, so the whole
+     * directory is replaced when the image is rebuilt.
+     *
+     * @return The path of the directory inside the state directory.
+     */
+    std::wstring StateRegistryImageDir() const
+    {
+        return (std::filesystem::path(StateRegistryImageHiveFile()).parent_path()).wstring();
+    }
+
+    /**
+     * @brief Read-only image of the registry of the run.
+     *
+     * @return The path of the image hive inside the state directory.
+     */
+    std::wstring StateRegistryImageHiveFile() const
+    {
+        /* The constant is relative to the directory of the launcher. */
+        return (std::filesystem::path(root) / layout::kStateRegistryImageRelative).wstring();
     }
 
     /**

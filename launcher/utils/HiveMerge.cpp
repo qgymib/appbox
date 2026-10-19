@@ -638,6 +638,37 @@ bool RevealValue(HKEY view, HKEY store, const std::wstring& name, std::string& e
 
 } // namespace
 
+bool appbox::EnsureHiveFile(const std::wstring& hive, std::string& error)
+{
+    error.clear();
+
+    std::error_code ec;
+    if (std::filesystem::is_regular_file(hive, ec))
+    {
+        return true;
+    }
+
+    try
+    {
+        HKEY       root = nullptr;
+        const LONG status = RegLoadAppKeyW(hive.c_str(), &root, KEY_ALL_ACCESS, 0, 0);
+        if (status != ERROR_SUCCESS)
+        {
+            error = fmt::format("failed to create '{}': error {}", appbox::WideToUTF8(hive), status);
+            return false;
+        }
+
+        /* Closing the root handle unmounts the hive and flushes its content. */
+        RegCloseKey(root);
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        error = e.what();
+        return false;
+    }
+}
+
 bool appbox::ApplyHiveIsolationModes(const std::wstring& hive, const std::vector<registry_isolation::KeyEntry>& keys,
                                      const std::vector<registry_isolation::ValueEntry>& values, std::string& error)
 {

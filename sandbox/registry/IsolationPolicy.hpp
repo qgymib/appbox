@@ -321,45 +321,57 @@ inline TransactedFallback FallbackForKeyTransacted(RegistryKeyIsolation mode, AC
 /**
  * @brief The disposition a create reports for the merged view.
  *
- * A create of the hive layer lands in the sandbox hive, so the disposition of
- * the kernel describes the hive layer alone. The view of the sandboxed process
- * is the hive layer merged with the visible entries of the host layer, so the
- * value the caller observes has to be derived from both layers:
+ * A create lands in the state hive of the sandbox, so the disposition of the
+ * kernel describes that layer alone. The view of the sandboxed process is the
+ * state hive merged with the image of the run, which is merged with the visible
+ * entries of the host layer, so the value the caller observes has to be derived
+ * from all of them:
  *
- * | Hive disposition | Mode | Host holds the key | Reported disposition |
- * | --- | --- | --- | --- |
- * | `REG_OPENED_EXISTING_KEY` | every mode | not consulted | `REG_OPENED_EXISTING_KEY` |
- * | `REG_CREATED_NEW_KEY` | `Full`, `Hide` | not consulted | `REG_CREATED_NEW_KEY` |
- * | `REG_CREATED_NEW_KEY` | `Merge`, `WriteCopy` | yes | `REG_OPENED_EXISTING_KEY` |
- * | `REG_CREATED_NEW_KEY` | `Merge`, `WriteCopy` | no | `REG_CREATED_NEW_KEY` |
+ * | Hive disposition | Image holds the key | Mode | Host holds the key | Reported disposition |
+ * | --- | --- | --- | --- | --- |
+ * | `REG_OPENED_EXISTING_KEY` | not consulted | every mode | not consulted | `REG_OPENED_EXISTING_KEY` |
+ * | `REG_CREATED_NEW_KEY` | yes | every mode | not consulted | `REG_OPENED_EXISTING_KEY` |
+ * | `REG_CREATED_NEW_KEY` | no | `Full`, `Hide` | not consulted | `REG_CREATED_NEW_KEY` |
+ * | `REG_CREATED_NEW_KEY` | no | `Merge`, `WriteCopy` | yes | `REG_OPENED_EXISTING_KEY` |
+ * | `REG_CREATED_NEW_KEY` | no | `Merge`, `WriteCopy` | no | `REG_CREATED_NEW_KEY` |
  *
- * A key which the hive already holds exists in the view of every mode, so the
- * hive disposition is reported unchanged: the hive wins the merged view. A key
- * which the hive just created does not exist in the view of `Full` and `Hide`,
- * because those modes keep the host entry invisible — reporting a creation is
- * exactly what the sandboxed process has to observe. `Merge` and `WriteCopy`
- * keep the host entry visible, so a key which only the host holds is an existing
- * key for the caller: reporting a creation would let a caller which initializes
- * a key it believes to be new write defaults into the shadow key, which the hive
- * wins against the real values of the host key.
+ * A key which the state hive already holds exists in the view of every mode, so
+ * its disposition is reported unchanged. A key the image holds exists in the
+ * view of every mode as well, because the image is a sandbox layer: `Full` and
+ * `Hide` keep the host registry invisible and never the layers of the sandbox.
+ * A key which only the host holds does not exist in the view of `Full` and
+ * `Hide`, while `Merge` and `WriteCopy` keep it visible, so the caller has to
+ * observe an existing key: reporting a creation would let a caller which
+ * initializes a key it believes to be new write defaults into the shadow key,
+ * which wins against the real values of the host key.
  *
  * The rule is the create counterpart of `KeyHidesHost()`, which the open path
  * and the merged enumeration use, so the disposition cannot drift away from the
  * merged view.
  *
  * @param[in] mode The isolation mode of the key.
- * @param[in] hive_disposition The disposition reported by the hive create.
+ * @param[in] hive_disposition The disposition reported by the create of the
+ *                             state hive.
+ * @param[in] image_holds_key Whether the image of the run holds the key.
  * @param[in] host_holds_key Whether the host layer holds the key. The value is
- *                           only consulted when the hive created the key and
+ *                           only consulted when the create made a new key and
  *                           the mode keeps the host entry visible.
  * @return `REG_CREATED_NEW_KEY` or `REG_OPENED_EXISTING_KEY` for the caller.
  */
-inline ULONG ViewCreateDisposition(RegistryKeyIsolation mode, ULONG hive_disposition, bool host_holds_key)
+inline ULONG ViewCreateDisposition(RegistryKeyIsolation mode, ULONG hive_disposition, bool image_holds_key,
+                                   bool host_holds_key)
 {
     if (hive_disposition != REG_CREATED_NEW_KEY)
     {
-        /* The hive holds the key, and the hive wins the merged view. */
+        /* The state hive holds the key, and it wins the merged view. */
         return hive_disposition;
+    }
+
+    if (image_holds_key)
+    {
+        /* The image is a sandbox layer: the key exists in the view of every
+         * mode, whatever the mode says about the host registry. */
+        return REG_OPENED_EXISTING_KEY;
     }
 
     if (KeyHidesHost(mode))
@@ -384,103 +396,108 @@ inline ULONG ViewCreateDisposition(RegistryKeyIsolation mode, ULONG hive_disposi
  *
  * The isolation modifies the real registry for `Merge` alone, so a delete which
  * the host layer would have received is either applied to the host entry (the
- * `Merge` rule) or turned into a **whiteout**: the entry of the hive is removed
- * (when the hive holds one) and the entry of the host is recorded as deleted, so
- * the merged view reports it as gone while the real registry stays untouched.
+ * `Merge` rule) or turned into a **whiteout**: the entry of the state hive is
+ * removed (when it holds one) and the entry of every layer below it is recorded
+ * as deleted, so the merged view reports it as gone while the read-only layers
+ * stay untouched.
  *
  * The decision table is shared by the delete of a key and the delete of a value;
  * the caller passes the effective mode of the entry, which is the listed value
  * mode for a value and the key mode for a key.
  *
- * | Hive holds the entry | Host holds the entry | Mode | Result |
- * | --- | --- | --- | --- |
- * | no | no | every mode | `ReportMissing` |
- * | no | yes | `Full`, `Hide` | `ReportMissing` |
- * | no | yes | `WriteCopy` | `WhiteoutOnly` |
- * | no | yes | `Merge` | `HostDelete` |
- * | yes | no | every mode | `HiveOnly` |
- * | yes | yes | `Full`, `Hide` | `HiveOnly` |
- * | yes | yes | `Merge`, `WriteCopy` | `HiveAndWhiteout` |
+ * | State hive holds | Image holds | Host holds | Mode | Result |
+ * | --- | --- | --- | --- | --- |
+ * | no | no | no | every mode | `ReportMissing` |
+ * | no | no | yes | `Full`, `Hide` | `ReportMissing` |
+ * | no | no | yes | `WriteCopy` | `WhiteoutOnly` |
+ * | no | no | yes | `Merge` | `HostDelete` |
+ * | no | yes | any | every mode | `SandboxAndWhiteout` |
+ * | yes | no | no | every mode | `SandboxOnly` |
+ * | yes | yes | any | every mode | `SandboxAndWhiteout` |
+ * | yes | no | yes | every mode | `SandboxAndWhiteout` |
  *
- * An entry which only the host holds does not exist for a mode which keeps the
- * host entry invisible, so the delete reports the failure of the hive layer —
- * the same answer the open of that entry gives. An entry which the hive holds is
- * deleted from the hive for every mode, because the hive wins the merged view;
- * the whiteout is recorded when the host entry would otherwise become visible
- * again, which is `Merge` and `WriteCopy`. `Merge` deletes the entry of the host
- * registry when the sandbox does not hold it, which is the write rule of the
- * mode.
+ * An entry which no sandbox layer holds and which the host does not hold either
+ * does not exist in the view, so the delete reports the failure of the state
+ * hive, which is the answer the open of that entry gives. An entry of the image
+ * is a sandbox entry: the state hive is modified (it holds a shadow key or it
+ * does not, which makes the removal a no-op) and a marker hides the image, so
+ * the entry stays invisible after the restart which rebuilds the image. An
+ * entry the state hive holds is deleted from it for every mode, because the
+ * state hive wins the merged view; the marker is recorded when a layer below
+ * still holds the entry and would otherwise become visible again.
+ *
+ * `Merge` deletes the entry of the host registry when no sandbox layer holds
+ * it, which is the write rule of the mode.
  *
  * A failed whiteout must fail the delete instead of reporting a success: the
- * host entry would otherwise reappear in the view.
+ * entry of the layer below would otherwise reappear in the view.
  */
 enum class DeleteTarget
 {
     /**
-     * @brief The entry does not exist in the view; the failure of the hive
-     *        layer is the result of the delete.
+     * @brief The entry does not exist in the view; the failure of the state
+     *        hive layer is the result of the delete.
      */
     ReportMissing,
 
     /**
-     * @brief Only the hive layer holds a visible entry: the entry is deleted
-     *        from the hive and nothing has to be recorded.
+     * @brief Only the state hive holds a visible entry: the entry is deleted
+     *        from it and nothing has to be recorded.
      */
-    HiveOnly,
+    SandboxOnly,
 
     /**
-     * @brief Only the host layer holds a visible entry: the entry is recorded
-     *        as deleted (a whiteout), which is what the caller observes as a
-     *        successful delete.
+     * @brief Only a layer below the state hive holds a visible entry: the entry
+     *        is recorded as deleted (a whiteout), which is what the caller
+     *        observes as a successful delete.
      */
     WhiteoutOnly,
 
     /**
-     * @brief Both layers hold a visible entry: the entry of the hive is
-     *        deleted and the entry of the host is recorded as deleted.
+     * @brief A layer below the state hive holds the entry: the state hive is
+     *        modified and the entry of the layers below is recorded as deleted.
      */
-    HiveAndWhiteout,
+    SandboxAndWhiteout,
 
     /**
-     * @brief The entry of the real registry is deleted (`Merge`): the sandbox
-     *        does not hold the entry, so the modification lands in the host.
+     * @brief The entry of the real registry is deleted (`Merge`): no sandbox
+     *        layer holds the entry, so the modification lands in the host.
      */
     HostDelete,
 };
 
 /**
- * @brief The delete route of a key in the merged view.
+ * @brief The delete route of a key or of a value in the merged view.
  *
  * The rows of the table are described by DeleteTarget. The rule agrees with
  * `KeyHidesHost()`: an entry whose host entry is invisible never reaches the
  * host registry, so the delete cannot succeed through it.
  *
  * @param[in] mode The isolation mode of the key.
- * @param[in] hive_holds Whether the sandbox hive holds the key.
- * @param[in] host_holds Whether the real registry holds the key.
+ * @param[in] sandbox_holds Whether the state hive holds the entry.
+ * @param[in] lower_holds Whether the image of the run holds the entry.
+ * @param[in] host_holds Whether the real registry holds the entry and the mode
+ *                       keeps it visible.
  * @return What the delete has to do.
  */
-inline DeleteTarget KeyDeleteOutcomeOf(RegistryKeyIsolation mode, bool hive_holds, bool host_holds)
+inline DeleteTarget KeyDeleteOutcomeOf(RegistryKeyIsolation mode, bool sandbox_holds, bool lower_holds, bool host_holds)
 {
-    if (!host_holds)
+    if (!sandbox_holds && !lower_holds)
     {
-        /* Without a host entry there is nothing which could reappear. */
-        return hive_holds ? DeleteTarget::HiveOnly : DeleteTarget::ReportMissing;
+        if (!host_holds)
+        {
+            return DeleteTarget::ReportMissing;
+        }
+
+        return mode == RegistryKeyIsolation::Merge ? DeleteTarget::HostDelete : DeleteTarget::WhiteoutOnly;
     }
 
-    if (KeyHidesHost(mode))
+    if (lower_holds || host_holds)
     {
-        /* The host entry is invisible for the sandbox, so the key does not
-         * exist in its view at all. */
-        return hive_holds ? DeleteTarget::HiveOnly : DeleteTarget::ReportMissing;
+        return DeleteTarget::SandboxAndWhiteout;
     }
 
-    if (hive_holds)
-    {
-        return DeleteTarget::HiveAndWhiteout;
-    }
-
-    return mode == RegistryKeyIsolation::Merge ? DeleteTarget::HostDelete : DeleteTarget::WhiteoutOnly;
+    return DeleteTarget::SandboxOnly;
 }
 
 /**
@@ -493,29 +510,32 @@ inline DeleteTarget KeyDeleteOutcomeOf(RegistryKeyIsolation mode, bool hive_hold
  * @param[in] value_mode The listed mode of the value, empty when the file does
  *                       not list the value.
  * @param[in] key_mode The effective mode of the key which holds the value.
- * @param[in] hive_holds Whether the sandbox hive holds the value.
- * @param[in] host_holds Whether the real registry holds the value.
+ * @param[in] sandbox_holds Whether the state hive holds the value.
+ * @param[in] lower_holds Whether the image of the run holds the value.
+ * @param[in] host_holds Whether the real registry holds the value and the mode
+ *                       keeps it visible.
  * @return What the delete has to do.
  */
 inline DeleteTarget ValueDeleteOutcomeOf(std::optional<RegistryValueIsolation> value_mode,
-                                         RegistryKeyIsolation key_mode, bool hive_holds, bool host_holds)
+                                         RegistryKeyIsolation key_mode, bool sandbox_holds, bool lower_holds,
+                                         bool host_holds)
 {
-    if (!host_holds)
+    if (!sandbox_holds && !lower_holds)
     {
-        return hive_holds ? DeleteTarget::HiveOnly : DeleteTarget::ReportMissing;
+        if (!host_holds)
+        {
+            return DeleteTarget::ReportMissing;
+        }
+
+        return ValueWritesToHost(value_mode, key_mode, false) ? DeleteTarget::HostDelete : DeleteTarget::WhiteoutOnly;
     }
 
-    if (ValueHidesHost(value_mode, key_mode))
+    if (lower_holds || host_holds)
     {
-        return hive_holds ? DeleteTarget::HiveOnly : DeleteTarget::ReportMissing;
+        return DeleteTarget::SandboxAndWhiteout;
     }
 
-    if (hive_holds)
-    {
-        return DeleteTarget::HiveAndWhiteout;
-    }
-
-    return ValueWritesToHost(value_mode, key_mode, false) ? DeleteTarget::HostDelete : DeleteTarget::WhiteoutOnly;
+    return DeleteTarget::SandboxOnly;
 }
 
 } // namespace registry

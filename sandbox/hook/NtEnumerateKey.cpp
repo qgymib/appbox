@@ -24,30 +24,37 @@ static appbox::LoggerF logger("NtEnumerateKey", NtEnumerateKeyLogParam);
 /**
  * @brief Detour of NtEnumerateKey().
  *
- * Enumeration below a hive handle presents the merged view of the two layers:
- * the sub keys of the hive layer first, followed by the sub keys of the real
- * key which the view path addresses and which are not shadowed by a hive key
- * of the same name. Sub key names are relative names, so the entries of the
- * real layer are returned unchanged.
+ * Enumeration below a handle of a sandbox layer presents the merged view of the
+ * three layers: the sub keys of the state hive first, then the sub keys of the
+ * image which no higher layer shadows, then the sub keys of the real key which
+ * the view path addresses and which no sandbox layer shadows. Sub key names are
+ * relative names, so the entries of every layer are returned unchanged.
  *
- * Handles which do not point into the hive are forwarded unchanged: a real
- * fallback handle only exposes the real layer anyway.
+ * Handles which do not point into a sandbox layer are forwarded unchanged: a
+ * host fallback handle only exposes the real layer anyway.
  */
 static NTSTATUS NTAPI Hook_NtEnumerateKey(HANDLE KeyHandle, ULONG Index, KEY_INFORMATION_CLASS KeyInformationClass,
                                           PVOID KeyInformation, ULONG Length, PULONG ResultLength)
 {
     logger.Log(KeyHandle, Index, KeyInformationClass, KeyInformation, Length, ResultLength);
 
-    std::wstring view_path;
-    if (appbox::registry::Hive::MapHandleView(KeyHandle, view_path) != appbox::registry::HandleView::HiveHandle)
+    std::wstring                       view_path;
+    const appbox::registry::HandleView view = appbox::registry::Hive::MapHandleView(KeyHandle, view_path);
+    if (!appbox::registry::IsSandboxHandle(view))
     {
         return sys_NtEnumerateKey(KeyHandle, Index, KeyInformationClass, KeyInformation, Length, ResultLength);
     }
 
-    HANDLE real = nullptr;
+    HANDLE layer_handle = nullptr;
+    bool   owned = false;
     ULONG  layer_index = 0;
-    auto   resolve = appbox::registry::Hive::ResolveMergedIndex(KeyHandle, view_path, false, Index, real, layer_index);
-    appbox::registry::KeyGuard real_guard(real);
+
+    /* The state hive handle of the caller answers its own layer; a handle of the
+     * image leaves it null, so the merge opens that layer itself. */
+    const auto resolve = appbox::registry::Hive::ResolveMergedIndex(
+        view == appbox::registry::HandleView::HiveHandle ? KeyHandle : nullptr, view_path, false, Index, layer_handle,
+        owned, layer_index);
+    appbox::registry::KeyGuard layer_guard(owned ? layer_handle : nullptr);
 
     switch (resolve)
     {
@@ -59,11 +66,9 @@ static NTSTATUS NTAPI Hook_NtEnumerateKey(HANDLE KeyHandle, ULONG Index, KEY_INF
         return sys_NtEnumerateKey(KeyHandle, Index, KeyInformationClass, KeyInformation, Length, ResultLength);
 
     case appbox::registry::MergedResolve::HiveLayer:
-        return sys_NtEnumerateKey(KeyHandle, layer_index, KeyInformationClass, KeyInformation, Length, ResultLength);
-
+    case appbox::registry::MergedResolve::ImageLayer:
     case appbox::registry::MergedResolve::RealLayer:
-        return sys_NtEnumerateKey(real_guard.get(), layer_index, KeyInformationClass, KeyInformation, Length,
-                                  ResultLength);
+        return sys_NtEnumerateKey(layer_handle, layer_index, KeyInformationClass, KeyInformation, Length, ResultLength);
 
     default:
         return sys_NtEnumerateKey(KeyHandle, Index, KeyInformationClass, KeyInformation, Length, ResultLength);

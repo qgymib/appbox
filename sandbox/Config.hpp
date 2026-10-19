@@ -77,7 +77,30 @@ struct SandboxConfig
     std::string                  fs_upper;  /* Overlay filesystem path, no trailing slash. Encoding in UTF-8. */
     std::vector<SandboxLowerFS>  fs_lower;  /* Sandbox read-only filesystem layers. */
     std::vector<SandboxVariable> variables; /* Variables the sandbox expands in the values of the workspace. */
-    std::string                  registry_hive_dos_path; /* Registry hive file path. Encoding in UTF-8. */
+
+    /**
+     * @brief Path of the hive which carries the state of the sandbox, in UTF-8.
+     *
+     * The file holds the modifications of the runs and is the highest layer of
+     * the registry view: a key or a value the sandboxed process wrote or
+     * deleted wins over the image and over the real registry.
+     */
+    std::string registry_hive_dos_path;
+
+    /**
+     * @brief Path of the read-only image of the registry, in UTF-8.
+     *
+     * The image carries the layers of the run which the sandboxed process never
+     * modifies: the registry of the archive and the hive of every patch
+     * package, applied in the order the packages take effect in. The sandbox
+     * merges it below its state hive, so the state of the sandbox wins over it
+     * and the image wins over the real registry.
+     *
+     * Empty when the run has no image, which is the state of a run whose image
+     * cannot be rebuilt: the sandbox then merges its state hive with the real
+     * registry alone.
+     */
+    std::string registry_image_hive_dos_path;
 
     /**
      * @brief Registry isolation file paths, in the order of the layers.
@@ -168,9 +191,9 @@ struct SandboxConfig
 
     NLOHMANN_DEFINE_TYPE_INTRUSIVE(SandboxConfig, environment_is_composed, pipe_path, sandbox32_dos_path,
                                    sandbox64_dos_path, fs_upper, fs_lower, variables, registry_hive_dos_path,
-                                   registry_isolation_dos_paths, filesystem_isolation_dos_paths,
-                                   network_isolation_dos_paths, environment_isolation_dos_paths,
-                                   environment_state_dos_path, log_dir, log_level)
+                                   registry_image_hive_dos_path, registry_isolation_dos_paths,
+                                   filesystem_isolation_dos_paths, network_isolation_dos_paths,
+                                   environment_isolation_dos_paths, environment_state_dos_path, log_dir, log_level)
 };
 
 } // namespace appbox

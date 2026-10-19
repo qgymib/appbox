@@ -22,16 +22,16 @@ static appbox::LoggerF logger("NtSetInformationKey", NtSetInformationKeyLogParam
  * @brief Detour of NtSetInformationKey().
  *
  * The call changes a property of the key its handle denotes, so the layer of
- * the handle decides the answer: the hive is the write layer of the sandbox, so
- * a property of a key of the hive is a property of the sandbox and the call is
- * forwarded, while the object of the host layer is not the object of the
- * sandbox, so the call is refused and never reaches the real registry. A handle
- * outside the root keys of the view belongs to no layer of the view and is
- * forwarded unchanged.
+ * the handle decides the answer: the state hive is the write layer of the
+ * sandbox, so a property of a key of that layer is a property of the sandbox and
+ * the call is forwarded. The image is read-only and the object of the host layer
+ * is not the object of the sandbox, so the call is refused for both and never
+ * writes a layer below the state hive. A handle outside the root keys of the
+ * view belongs to no layer of the view and is forwarded unchanged.
  *
  * The refusal matches the one of NtDeleteKey, which refuses a handle of the
  * host layer the same way: a handle which the isolation handed out for a read
- * access open must not become the right to change the key of the host.
+ * access open must not become the right to change a key of a layer below.
  */
 static NTSTATUS NTAPI Hook_NtSetInformationKey(HANDLE KeyHandle, KEY_SET_INFORMATION_CLASS KeySetInformationClass,
                                                PVOID KeySetInformation, ULONG KeySetInformationLength)
@@ -40,7 +40,7 @@ static NTSTATUS NTAPI Hook_NtSetInformationKey(HANDLE KeyHandle, KEY_SET_INFORMA
 
     std::wstring                       view_path;
     const appbox::registry::HandleView view = appbox::registry::Hive::MapHandleView(KeyHandle, view_path);
-    if (view == appbox::registry::HandleView::RealHandle)
+    if (view == appbox::registry::HandleView::RealHandle || view == appbox::registry::HandleView::ImageHandle)
     {
         return STATUS_ACCESS_DENIED;
     }

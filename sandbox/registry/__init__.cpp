@@ -109,11 +109,27 @@ static const wchar_t* s_app_hive_root_name = L"\\REGISTRY\\A";
  */
 struct appbox::registry::Hive::Data
 {
-    HANDLE         hive_root = nullptr; /* Root key handle of the private hive mount. */
+    HANDLE         hive_root = nullptr; /* Root key handle of the state hive mount. */
     std::wstring   hive_mount_name;     /* Object name of the mount, for example \REGISTRY\A\{GUID}. */
     std::wstring   hkcu_prefix;         /* NT path of the real HKCU root, \REGISTRY\USER\<SID>. */
-    std::wstring   hive_path;           /* DOS path of the hive file. */
+    std::wstring   hive_path;           /* DOS path of the state hive file. */
     IsolationTable isolation;           /* Isolation modes of the virtual registry. */
+
+    /**
+     * @brief Root key handle of the read-only image of the run.
+     *
+     * The image carries the registry of the archive merged with the hives of
+     * the patch packages, in the order the packages take effect in. It is the
+     * layer below the state hive and above the real registry, and it is never
+     * written by the sandbox: a modification of an entry the image holds is
+     * copied up into the state hive. Null when the run has no image.
+     */
+    HANDLE image_root = nullptr;
+
+    /**
+     * @brief Object name of the image mount, for example \REGISTRY\A\{GUID}.
+     */
+    std::wstring image_mount_name;
 
     /**
      * @brief Whether the whiteout store may hold a marker.
@@ -465,7 +481,7 @@ static NTSTATUS CreateHiveKey(const std::wstring& relative, ACCESS_MASK DesiredA
                               PULONG Disposition);
 
 /**
- * @brief Open a key of the sandbox hive when the hive holds it.
+ * @brief Open a key of the state hive when the hive holds it.
  *
  * @param[in] relative The key path relative to the hive root.
  * @param[in] access The requested access mask.
@@ -477,6 +493,47 @@ static bool TryOpenHiveKey(const std::wstring& relative, ACCESS_MASK access, HAN
     key = nullptr;
     return NT_SUCCESS(appbox::registry::Hive::OpenKey(relative, access, OBJ_CASE_INSENSITIVE, nullptr, nullptr, &key));
 }
+
+/**
+ * @brief Open a key of the read-only image when the image holds it.
+ *
+ * @param[in] relative The key path relative to the hive root.
+ * @param[in] access The requested access mask.
+ * @param[out] key The handle of the key, null when the image does not hold it.
+ * @return true when the key was opened.
+ */
+static bool TryOpenImageKey(const std::wstring& relative, ACCESS_MASK access, HANDLE& key)
+{
+    key = nullptr;
+    return NT_SUCCESS(appbox::registry::Hive::OpenImageKey(relative, access, &key));
+}
+
+/**
+ * @brief Whether a layer of the sandbox holds a key.
+ * @param[in] image true tests the image, false the state hive.
+ * @param[in] relative The key path relative to the hive root.
+ * @return true when the layer holds the key.
+ */
+static bool LayerHoldsKey(bool image, const std::wstring& relative)
+{
+    HANDLE key = nullptr;
+    if (!(image ? TryOpenImageKey(relative, KEY_QUERY_VALUE, key) : TryOpenHiveKey(relative, KEY_QUERY_VALUE, key)))
+    {
+        return false;
+    }
+
+    CloseHiveHandle(key);
+    return true;
+}
+
+/**
+ * @brief Whether a layer of the sandbox holds a value of a key.
+ * @param[in] image true tests the image, false the state hive.
+ * @param[in] relative The key path relative to the hive root.
+ * @param[in] value_name Name of the value, empty for the default value.
+ * @return true when the layer holds the value.
+ */
+static bool LayerHoldsValue(bool image, const std::wstring& relative, const std::wstring& value_name);
 
 /**
  * @brief Whether a key handle holds a value.
@@ -506,6 +563,18 @@ static bool HiveHoldsValue(HANDLE key, const std::wstring& value_name)
     return NT_SUCCESS(status) || status == STATUS_BUFFER_OVERFLOW || status == STATUS_BUFFER_TOO_SMALL;
 }
 
+static bool LayerHoldsValue(bool image, const std::wstring& relative, const std::wstring& value_name)
+{
+    HANDLE key = nullptr;
+    if (!(image ? TryOpenImageKey(relative, KEY_QUERY_VALUE, key) : TryOpenHiveKey(relative, KEY_QUERY_VALUE, key)))
+    {
+        return false;
+    }
+
+    appbox::registry::KeyGuard guard(key);
+    return HiveHoldsValue(key, value_name);
+}
+
 /**
  * @brief Whether the granted access of a key handle permits a value write.
  *
@@ -530,6 +599,31 @@ static bool HandlePermitsValueWrite(HANDLE KeyHandle)
 
     const auto* info = reinterpret_cast<const PUBLIC_OBJECT_BASIC_INFORMATION*>(buffer);
     return (info->GrantedAccess & (KEY_SET_VALUE | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED)) != 0;
+}
+
+/**
+ * @brief Whether the granted access of a key handle permits a delete.
+ *
+ * The counterpart of `HandlePermitsValueWrite()` for the calls which remove the
+ * key itself: the isolation re-routes a delete of a key of the read-only image
+ * to the state hive, so the rights of the handle of the caller have to be
+ * tested before the call runs against a handle the isolation opened.
+ *
+ * @param[in] KeyHandle The key handle of the caller.
+ * @return true when the handle permits the delete of the key.
+ */
+static bool HandlePermitsKeyDelete(HANDLE KeyHandle)
+{
+    BYTE  buffer[sizeof(PUBLIC_OBJECT_BASIC_INFORMATION)] = {};
+    ULONG result = 0;
+    if (sys_NtQueryObject == nullptr ||
+        !NT_SUCCESS(sys_NtQueryObject(KeyHandle, ObjectBasicInformation, buffer, sizeof(buffer), &result)))
+    {
+        return false;
+    }
+
+    const auto* info = reinterpret_cast<const PUBLIC_OBJECT_BASIC_INFORMATION*>(buffer);
+    return (info->GrantedAccess & (DELETE | GENERIC_WRITE | GENERIC_ALL | MAXIMUM_ALLOWED)) != 0;
 }
 
 /**
@@ -751,6 +845,68 @@ static bool IsHiddenRealEntry(const std::wstring& relative, bool values, const s
 }
 
 /**
+ * @brief Whether an entry of a sandbox layer below the state hive is hidden.
+ *
+ * The state of the sandbox is the highest layer of the view, so an entry it
+ * deleted stays invisible even when the image of the run still carries it. The
+ * isolation mode does not take part in the filter: `Full` and `Hide` keep the
+ * host registry invisible and never the sandbox layers, and the packer already
+ * moved the content of a `Hide` entry into the hidden store of its hive.
+ *
+ * @param[in] relative The hive relative path of the parent key.
+ * @param[in] values true tests a value name, false a sub key name.
+ * @param[in] name Name of the entry inside the layer.
+ * @return true when the entry must not be part of the merged view.
+ */
+static bool IsHiddenLowerEntry(const std::wstring& relative, bool values, const std::wstring& name)
+{
+    if (s_hive_data == nullptr)
+    {
+        return false;
+    }
+
+    if (appbox::registry::Hive::IsKeyWhitedOut(relative))
+    {
+        /* The key itself was deleted: its whole subtree is gone. */
+        return true;
+    }
+
+    if (values)
+    {
+        return appbox::registry::Hive::IsValueWhitedOut(relative, name);
+    }
+
+    return appbox::registry::Hive::IsKeyWhitedOut(appbox::registry::JoinKeyPath(relative, name));
+}
+
+/**
+ * @brief Drop the names of a sandbox layer below the state hive which a
+ *        whiteout hides.
+ *
+ * @param[in] relative The hive relative path of the parent key.
+ * @param[in] values true filters value names, false filters sub key names.
+ * @param[in,out] names The names of the layer, filtered in place.
+ */
+static void FilterHiddenLowerEntries(const std::wstring& relative, bool values, std::vector<std::wstring>& names)
+{
+    if (s_hive_data == nullptr || !s_hive_data->whiteout_possible)
+    {
+        return;
+    }
+
+    std::vector<std::wstring> visible;
+    visible.reserve(names.size());
+    for (const auto& name : names)
+    {
+        if (!IsHiddenLowerEntry(relative, values, name))
+        {
+            visible.push_back(name);
+        }
+    }
+    names.swap(visible);
+}
+
+/**
  * @brief Read the type and the raw data of a value.
  *
  * @param[in] key The key handle which holds the value.
@@ -848,9 +1004,10 @@ static std::wstring LastKeyComponent(const std::wstring& relative)
  */
 struct MergedEntry
 {
-    std::wstring name;             /* Name of the entry inside its layer. */
-    HANDLE       handle = nullptr; /* Handle which holds the entry. */
-    bool         real = false;     /* The entry comes from the real layer. */
+    std::wstring                    name;   /* Name of the entry inside its layer. */
+    HANDLE                          handle; /* Handle which holds the entry. */
+    bool                            owned;  /* The caller has to close the handle. */
+    appbox::registry::MergedResolve layer;  /* The layer which holds the entry. */
 };
 
 /**
@@ -860,22 +1017,23 @@ struct MergedEntry
  * `Hive::ResolveMergedIndex`), so the snapshot copies exactly the entries the
  * sandboxed process sees.
  *
- * @param[in] hive_key The hive layer handle of the key, may be null.
+ * @param[in] hive_key The state hive layer handle of the key, may be null.
  * @param[in] view_path The logical path of the key in the view.
  * @param[in] values true resolves a value, false a sub key.
  * @param[in] index The index inside the merged view.
- * @param[out] entry The resolved entry. A real entry owns its handle and the
- *                   caller has to close it.
+ * @param[out] entry The resolved entry. An entry of the image or of the real
+ *                   layer owns its handle and the caller has to close it.
  * @return Status code, STATUS_NO_MORE_ENTRIES past the end of the view.
  */
 static NTSTATUS ResolveMergedEntry(HANDLE hive_key, const std::wstring& view_path, bool values, ULONG index,
                                    MergedEntry& entry)
 {
-    HANDLE real = nullptr;
+    HANDLE layer_handle = nullptr;
+    bool   owned = false;
     ULONG  layer_index = 0;
 
-    const appbox::registry::MergedResolve resolve =
-        appbox::registry::Hive::ResolveMergedIndex(hive_key, view_path, values, index, real, layer_index);
+    const appbox::registry::MergedResolve resolve = appbox::registry::Hive::ResolveMergedIndex(
+        hive_key, view_path, values, index, layer_handle, owned, layer_index);
     if (resolve == appbox::registry::MergedResolve::NoMoreEntries)
     {
         return STATUS_NO_MORE_ENTRIES;
@@ -885,18 +1043,21 @@ static NTSTATUS ResolveMergedEntry(HANDLE hive_key, const std::wstring& view_pat
         return STATUS_UNSUCCESSFUL;
     }
 
-    entry.real = resolve == appbox::registry::MergedResolve::RealLayer;
-    entry.handle = entry.real ? real : hive_key;
+    entry.layer = resolve;
+    entry.handle = layer_handle;
+    entry.owned = owned;
 
     std::vector<std::wstring> names;
     const NTSTATUS            status = values ? appbox::registry::Hive::CollectValueNames(entry.handle, names)
                                               : appbox::registry::Hive::CollectSubKeyNames(entry.handle, names);
     if (!NT_SUCCESS(status) || layer_index >= names.size())
     {
-        if (entry.real)
+        if (entry.owned)
         {
-            sys_NtClose(real);
+            sys_NtClose(entry.handle);
         }
+        entry.handle = nullptr;
+        entry.owned = false;
         return NT_SUCCESS(status) ? STATUS_UNSUCCESSFUL : status;
     }
 
@@ -940,7 +1101,7 @@ static NTSTATUS CopyMergedKey(HANDLE hive_key, const std::wstring& view_path, co
         ULONG             type = REG_NONE;
         std::vector<BYTE> data;
         status = ReadValueFull(entry.handle, entry.name, type, data);
-        if (entry.real)
+        if (entry.owned)
         {
             sys_NtClose(entry.handle);
         }
@@ -974,24 +1135,26 @@ static NTSTATUS CopyMergedKey(HANDLE hive_key, const std::wstring& view_path, co
         const std::wstring child_view = appbox::registry::JoinKeyPath(view_path, entry.name);
         const std::wstring child_relative = appbox::registry::JoinKeyPath(relative, entry.name);
 
-        LOG_D("snapshot of {}: sub key {} (real {})", appbox::WideToUTF8(relative), appbox::WideToUTF8(entry.name),
-              entry.real);
+        LOG_D("snapshot of {}: sub key {} (layer {})", appbox::WideToUTF8(relative), appbox::WideToUTF8(entry.name),
+              static_cast<int>(entry.layer));
 
         /*
-         * A child of the hive layer is opened from the hive, a child which only
-         * the real layer holds has no hive key at all: the merge answered it
-         * from the real layer because the hive does not shadow the name.
+         * A child of the state hive is opened from that layer, a child which
+         * only the image or the real layer holds has no state hive key at all:
+         * the merge answered it from that layer because no layer above it
+         * shadows the name.
          */
         HANDLE child_hive = nullptr;
-        if (!entry.real)
+        if (entry.layer == appbox::registry::MergedResolve::HiveLayer)
         {
             if (!TryOpenHiveKey(child_relative, KEY_READ | KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS, child_hive))
             {
-                /* The hive holds the child, so the snapshot would be incomplete. */
+                /* The state hive holds the child, so the snapshot would be
+                 * incomplete. */
                 return STATUS_UNSUCCESSFUL;
             }
         }
-        else
+        else if (entry.owned)
         {
             sys_NtClose(entry.handle);
         }
@@ -1404,21 +1567,63 @@ NTSTATUS appbox::registry::Hive::Init()
         return STATUS_UNSUCCESSFUL;
     }
 
-    /* The five root keys of the view, so every root open lands in the hive. */
+    /*
+     * Mount the read-only image of the run: it carries the registry of the
+     * archive merged with the hives of the patch packages, and it is the layer
+     * between the state hive and the real registry. A run whose image cannot be
+     * mounted keeps the state hive and the real registry: the content of the
+     * archive is missing, which is reported, but the isolation keeps working.
+     */
+    if (!appbox::sandbox->wRegistryImageHiveDOSPath.empty())
+    {
+        HKEY image_root = nullptr;
+        err = fn_load_app_key(appbox::sandbox->wRegistryImageHiveDOSPath.c_str(), &image_root, KEY_ALL_ACCESS, 0, 0);
+        if (err != ERROR_SUCCESS)
+        {
+            LOG_W("RegLoadAppKeyW({}) failed: {}: the view carries the state of the sandbox alone",
+                  appbox::WideToUTF8(appbox::sandbox->wRegistryImageHiveDOSPath), err);
+        }
+        else
+        {
+            data->image_root = reinterpret_cast<HANDLE>(image_root);
+            if (!QueryObjectName(data->image_root, data->image_mount_name))
+            {
+                LOG_W("failed to query the object name of the image root: the image is not part of the view");
+                CloseLocal(data->image_root);
+                data->image_root = nullptr;
+                data->image_mount_name.clear();
+            }
+        }
+    }
+
+    /* The five root keys of the view, so every root open lands in a hive. */
     NTSTATUS status = CreateRootKeys(data->hive_root);
+    if (NT_SUCCESS(status) && data->image_root != nullptr)
+    {
+        status = CreateRootKeys(data->image_root);
+    }
     if (!NT_SUCCESS(status))
     {
+        if (data->image_root != nullptr)
+        {
+            CloseLocal(data->image_root);
+            data->image_root = nullptr;
+        }
         CloseLocal(data->hive_root);
         delete data;
         return status;
     }
 
     /*
-     * Replace the references of the values of the workspace while the hive is
+     * Replace the references of the values of the workspace while the hives are
      * mounted, so every read path of the registry reports the expanded value.
      * The walk runs before the hooks are attached and never fails the start.
      */
-    const std::size_t expanded = ExpandHiveVariableReferences(advapi32, data->hive_root);
+    std::size_t expanded = ExpandHiveVariableReferences(advapi32, data->hive_root);
+    if (data->image_root != nullptr)
+    {
+        expanded += ExpandHiveVariableReferences(advapi32, data->image_root);
+    }
 
     /*
      * The modes of the virtual registry, which decide which host entries stay
@@ -1429,6 +1634,10 @@ NTSTATUS appbox::registry::Hive::Init()
     if (!LoadIsolationTable(*data, isolation_error))
     {
         LOG_E("the registry isolation modes cannot be loaded: {}", isolation_error);
+        if (data->image_root != nullptr)
+        {
+            CloseLocal(data->image_root);
+        }
         CloseLocal(data->hive_root);
         delete data;
         return STATUS_INVALID_PARAMETER;
@@ -1443,8 +1652,9 @@ NTSTATUS appbox::registry::Hive::Init()
      */
     data->whiteout_possible = WhiteoutStoreExists();
 
-    LOG_I("registry hive mounted: {} (mount: {}, hkcu: {}, whiteout store: {}, expanded values: {})",
+    LOG_I("registry hive mounted: {} (mount: {}, image: {}, hkcu: {}, whiteout store: {}, expanded values: {})",
           appbox::WideToUTF8(data->hive_path), appbox::WideToUTF8(data->hive_mount_name),
+          data->image_root == nullptr ? std::string("none") : appbox::WideToUTF8(data->image_mount_name),
           appbox::WideToUTF8(data->hkcu_prefix), data->whiteout_possible, expanded);
     return STATUS_SUCCESS;
 }
@@ -1453,6 +1663,10 @@ void appbox::registry::Hive::Exit()
 {
     if (s_hive_data != nullptr)
     {
+        if (s_hive_data->image_root != nullptr)
+        {
+            CloseLocal(s_hive_data->image_root);
+        }
         if (s_hive_data->hive_root != nullptr)
         {
             CloseLocal(s_hive_data->hive_root);
@@ -1586,14 +1800,7 @@ bool appbox::registry::Hive::SandboxHoldsValue(const std::wstring& relative, con
         return true;
     }
 
-    HANDLE key = nullptr;
-    if (!TryOpenHiveKey(relative, KEY_QUERY_VALUE, key))
-    {
-        return false;
-    }
-
-    appbox::registry::KeyGuard guard(key);
-    return HiveHoldsValue(key, value_name);
+    return LayerHoldsValue(false, relative, value_name) || LayerHoldsValue(true, relative, value_name);
 }
 
 bool appbox::registry::Hive::SandboxHoldsKey(const std::wstring& relative)
@@ -1609,14 +1816,7 @@ bool appbox::registry::Hive::SandboxHoldsKey(const std::wstring& relative)
         return true;
     }
 
-    HANDLE key = nullptr;
-    if (!TryOpenHiveKey(relative, KEY_QUERY_VALUE, key))
-    {
-        return false;
-    }
-
-    CloseHiveHandle(key);
-    return true;
+    return LayerHoldsKey(false, relative) || LayerHoldsKey(true, relative);
 }
 
 bool appbox::registry::Hive::IsKeyWhitedOut(const std::wstring& relative)
@@ -1781,6 +1981,21 @@ NTSTATUS appbox::registry::Hive::OpenKeyEx(const std::wstring& relative, ACCESS_
 {
     return OpenHiveKeyEx(relative, DesiredAccess, Attributes, SecurityDescriptor, SecurityQualityOfService, OpenOptions,
                          nullptr, KeyHandle);
+}
+
+NTSTATUS appbox::registry::Hive::OpenImageKey(const std::wstring& relative, ACCESS_MASK DesiredAccess,
+                                              PHANDLE KeyHandle)
+{
+    if (s_hive_data == nullptr || s_hive_data->image_root == nullptr)
+    {
+        return STATUS_OBJECT_NAME_NOT_FOUND;
+    }
+
+    UNICODE_STRING    us;
+    OBJECT_ATTRIBUTES oa;
+    sys_RtlInitUnicodeString(&us, relative.c_str());
+    InitializeObjectAttributes(&oa, &us, OBJ_CASE_INSENSITIVE, s_hive_data->image_root, nullptr);
+    return sys_NtOpenKey(KeyHandle, DesiredAccess, &oa);
 }
 
 NTSTATUS appbox::registry::Hive::OpenRealKey(const std::wstring& view_path, ACCESS_MASK DesiredAccess, ULONG Attributes,
@@ -1958,6 +2173,47 @@ static NTSTATUS OpenIsolatedKeyEntry(const std::wstring& view_path, const std::w
     if (appbox::registry::Hive::IsKeyWhitedOut(relative))
     {
         return st_hive;
+    }
+
+    /*
+     * The image of the run is the layer below the state hive, and a key it holds
+     * is part of the view of every mode: `Full` and `Hide` keep the host
+     * registry invisible and never a layer of the sandbox. A read hands the
+     * handle of the image out, while a write copies the key up into the state
+     * hive, because the image is never written.
+     *
+     * A transacted call never uses the image: the handle of that layer is not
+     * bound to the transaction of the caller, which is the rule the host layer
+     * follows as well.
+     */
+    if (TransactionHandle == nullptr)
+    {
+        const bool        write_access = appbox::registry::RequestsWrite(DesiredAccess);
+        const ACCESS_MASK probe = write_access ? (KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS) : DesiredAccess;
+
+        HANDLE image = nullptr;
+        if (TryOpenImageKey(relative, probe, image))
+        {
+            if (!write_access)
+            {
+                *KeyHandle = image;
+                return STATUS_SUCCESS;
+            }
+
+            CloseHiveHandle(image);
+
+            const NTSTATUS st_copy =
+                CreateHiveKey(relative, DesiredAccess, Attributes, SecurityDescriptor, SecurityQualityOfService, 0,
+                              nullptr, REG_OPTION_NON_VOLATILE, nullptr, KeyHandle, nullptr);
+            if (!NT_SUCCESS(st_copy))
+            {
+                /* Failing closed: the caller asked for a write and the image
+                 * must never receive one. */
+                LOG_E("failed to copy the key {} of the image up into the state hive: {:#x}",
+                      appbox::WideToUTF8(relative), st_copy);
+            }
+            return st_copy;
+        }
     }
 
     /*
@@ -2314,11 +2570,13 @@ static NTSTATUS CreateIsolatedKeyEntry(const std::wstring& view_path, const std:
      * never enlisted into the transaction of the caller.
      */
     const appbox::RegistryKeyIsolation mode = appbox::registry::Hive::KeyIsolation(relative);
+    const bool image_holds_key = *Disposition == REG_CREATED_NEW_KEY &&
+                                 !appbox::registry::Hive::IsKeyWhitedOut(relative) && LayerHoldsKey(true, relative);
     const bool host_holds_key = *Disposition == REG_CREATED_NEW_KEY && !appbox::registry::KeyHidesHost(mode) &&
                                 !appbox::registry::Hive::IsKeyWhitedOut(relative) &&
                                 appbox::registry::Hive::HostHoldsKey(view_path);
 
-    *Disposition = appbox::registry::ViewCreateDisposition(mode, *Disposition, host_holds_key);
+    *Disposition = appbox::registry::ViewCreateDisposition(mode, *Disposition, image_holds_key, host_holds_key);
     return status;
 }
 
@@ -2370,6 +2628,19 @@ appbox::registry::HandleView appbox::registry::Hive::MapHandleView(HANDLE KeyHan
         return HandleView::HiveHandle;
     }
 
+    if (s_hive_data->image_root != nullptr &&
+        appbox::registry::StripKeyPrefix(path, s_hive_data->image_mount_name, relative))
+    {
+        std::wstring translated;
+        if (!appbox::registry::MapHivePathToView(relative, s_hive_data->hkcu_prefix, translated))
+        {
+            return HandleView::NotIsolated;
+        }
+
+        view_path = translated;
+        return HandleView::ImageHandle;
+    }
+
     std::wstring hive_relative;
     if (appbox::registry::MapViewPathToHive(path, s_hive_data->hkcu_prefix, hive_relative))
     {
@@ -2388,12 +2659,18 @@ bool appbox::registry::Hive::TranslateHiveObjectName(const std::wstring& object_
     }
 
     std::wstring relative;
-    if (!appbox::registry::StripKeyPrefix(object_name, s_hive_data->hive_mount_name, relative))
+    if (appbox::registry::StripKeyPrefix(object_name, s_hive_data->hive_mount_name, relative))
     {
-        return false;
+        return appbox::registry::MapHivePathToView(relative, s_hive_data->hkcu_prefix, view_name);
     }
 
-    return appbox::registry::MapHivePathToView(relative, s_hive_data->hkcu_prefix, view_name);
+    if (s_hive_data->image_root != nullptr &&
+        appbox::registry::StripKeyPrefix(object_name, s_hive_data->image_mount_name, relative))
+    {
+        return appbox::registry::MapHivePathToView(relative, s_hive_data->hkcu_prefix, view_name);
+    }
+
+    return false;
 }
 
 void appbox::registry::Hive::FilterHiddenEntries(const std::wstring& view_path, bool values,
@@ -2426,6 +2703,25 @@ void appbox::registry::Hive::FilterHiddenEntries(const std::wstring& view_path, 
         }
     }
     names.swap(visible);
+}
+
+void appbox::registry::Hive::FilterHiddenImageEntries(const std::wstring& view_path, bool values,
+                                                      std::vector<std::wstring>& names)
+{
+    if (s_hive_data == nullptr)
+    {
+        return;
+    }
+
+    std::wstring relative;
+    if (!HiveRelativePath(view_path, relative))
+    {
+        /* Without a hive relative path the whiteouts cannot be looked up, so the
+         * layer is presented unchanged. */
+        return;
+    }
+
+    FilterHiddenLowerEntries(relative, values, names);
 }
 
 NTSTATUS appbox::registry::Hive::CollectSubKeyNames(HANDLE KeyHandle, std::vector<std::wstring>& names)
@@ -2530,61 +2826,111 @@ NTSTATUS appbox::registry::Hive::CollectValueNames(HANDLE KeyHandle, std::vector
 
 appbox::registry::MergedResolve appbox::registry::Hive::ResolveMergedIndex(HANDLE              KeyHandle,
                                                                            const std::wstring& view_path, bool values,
-                                                                           ULONG Index, HANDLE& real_handle,
-                                                                           ULONG& layer_index)
+                                                                           ULONG Index, HANDLE& layer_handle,
+                                                                           bool& owned, ULONG& layer_index)
 {
-    real_handle = nullptr;
+    layer_handle = nullptr;
+    owned = false;
+
+    const ACCESS_MASK mask = values ? KEY_QUERY_VALUE : KEY_ENUMERATE_SUB_KEYS;
+
+    std::wstring relative;
+    const bool   mapped = HiveRelativePath(view_path, relative);
 
     /*
-     * The hive layer is optional as well: a key which the hive does not hold
-     * has no hive handle, and its merged view is the visible real layer alone.
-     * The snapshot of a save walks such subtrees.
+     * The state hive layer is optional: the caller passes its handle when it
+     * holds one, and a handle of the image or of the host leaves the handle
+     * null. The layer is opened here in that case, so the merged view reports
+     * its entries as well. A key which no layer of the state hive holds has no
+     * hive handle, and its merged view is the layers below it alone.
      */
-    std::vector<std::wstring> hive_names;
-    if (KeyHandle != nullptr)
+    HANDLE upper = KeyHandle;
+    HANDLE owned_upper = nullptr;
+    if (upper == nullptr && mapped && TryOpenHiveKey(relative, mask, owned_upper))
     {
-        const NTSTATUS st =
-            values ? CollectValueNames(KeyHandle, hive_names) : CollectSubKeyNames(KeyHandle, hive_names);
+        upper = owned_upper;
+    }
+
+    std::vector<std::wstring> upper_names;
+    if (upper != nullptr)
+    {
+        const NTSTATUS st = values ? CollectValueNames(upper, upper_names) : CollectSubKeyNames(upper, upper_names);
         if (!NT_SUCCESS(st))
         {
+            if (owned_upper != nullptr)
+            {
+                sys_NtClose(owned_upper);
+            }
             return MergedResolve::Error;
         }
     }
 
     /*
+     * The image layer: its entries are visible unless the state of the sandbox
+     * deleted them. The kernel index of an entry is kept next to its name,
+     * because the merge drops the hidden entries from the visible list while the
+     * enumeration of the layer addresses the entry by the index the kernel
+     * assigned to it. A layer which cannot be read contributes nothing, which
+     * keeps the view consistent with the layers which could be read.
+     */
+    std::vector<std::wstring> image_names;
+    std::vector<ULONG>        image_indices;
+    HANDLE                    image = nullptr;
+    if (mapped && TryOpenImageKey(relative, mask, image))
+    {
+        std::vector<std::wstring> image_layer_names;
+        const NTSTATUS            st =
+            values ? CollectValueNames(image, image_layer_names) : CollectSubKeyNames(image, image_layer_names);
+        if (NT_SUCCESS(st))
+        {
+            image_names.reserve(image_layer_names.size());
+            image_indices.reserve(image_layer_names.size());
+            for (ULONG index = 0; index < image_layer_names.size(); ++index)
+            {
+                if (IsHiddenLowerEntry(relative, values, image_layer_names[index]))
+                {
+                    continue;
+                }
+
+                image_names.push_back(image_layer_names[index]);
+                image_indices.push_back(index);
+            }
+        }
+        else
+        {
+            sys_NtClose(image);
+            image = nullptr;
+        }
+    }
+
+    /*
      * The real layer is optional: when the real key does not exist or cannot
-     * be read, the merged view degenerates to the hive layer alone, which is
-     * still a consistent view.
+     * be read, the merged view degenerates to the sandbox layers alone, which
+     * is still a consistent view.
      *
      * The names of the merged view are the entries which stay visible, while
      * the index of an entry inside the real key is the position it has in the
      * unfiltered enumeration of that key: the kernel is asked for the entry at
      * that position.
      *
-     * Both collectors report every enumerated entry — the default value of a
-     * key included, whose name is empty — so the position of an entry inside a
-     * collected list is the index the kernel assigned to it. That is why the
-     * merged index of a hive entry is forwarded as it is and why a visible
-     * real entry carries its collected position as its layer index.
+     * The collectors report every enumerated entry — the default value of a key
+     * included, whose name is empty — so the position of an entry inside a
+     * collected list is the index the kernel assigned to it.
      */
     std::vector<std::wstring> visible_names;
     std::vector<ULONG>        visible_indices;
     HANDLE                    real = nullptr;
-    ACCESS_MASK               mask = values ? KEY_QUERY_VALUE : KEY_ENUMERATE_SUB_KEYS;
     if (NT_SUCCESS(OpenRealKey(view_path, mask, OBJ_CASE_INSENSITIVE, nullptr, nullptr, &real)))
     {
         std::vector<std::wstring> real_names;
-        NTSTATUS st = values ? CollectValueNames(real, real_names) : CollectSubKeyNames(real, real_names);
+        const NTSTATUS st = values ? CollectValueNames(real, real_names) : CollectSubKeyNames(real, real_names);
         if (NT_SUCCESS(st))
         {
-            std::wstring relative;
-            const bool   filtered = HiveRelativePath(view_path, relative);
-
             visible_names.reserve(real_names.size());
             visible_indices.reserve(real_names.size());
             for (ULONG index = 0; index < real_names.size(); ++index)
             {
-                if (filtered && IsHiddenRealEntry(relative, values, real_names[index]))
+                if (mapped && IsHiddenRealEntry(relative, values, real_names[index]))
                 {
                     continue;
                 }
@@ -2592,44 +2938,85 @@ appbox::registry::MergedResolve appbox::registry::Hive::ResolveMergedIndex(HANDL
                 visible_names.push_back(real_names[index]);
                 visible_indices.push_back(index);
             }
-
-            real_handle = real;
         }
         else
         {
             sys_NtClose(real);
+            real = nullptr;
         }
     }
 
-    EnumLayer layer = EnumLayer::Hive;
+    EnumLayer layer = EnumLayer::Upper;
     size_t    idx = 0;
-    if (!appbox::registry::MapMergedIndex(hive_names, visible_names, Index, layer, idx))
+    if (!appbox::registry::MapMergedIndex(upper_names, image_names, visible_names, Index, layer, idx))
     {
-        if (real_handle != nullptr)
+        if (owned_upper != nullptr)
         {
-            sys_NtClose(real_handle);
-            real_handle = nullptr;
+            sys_NtClose(owned_upper);
+        }
+        if (image != nullptr)
+        {
+            sys_NtClose(image);
+        }
+        if (real != nullptr)
+        {
+            sys_NtClose(real);
         }
         return MergedResolve::NoMoreEntries;
     }
 
-    if (layer == EnumLayer::Real)
+    switch (layer)
     {
+    case EnumLayer::Upper:
+        /* The entry lives in the state hive: the handle of the caller answers
+         * it when it points at that layer, otherwise the handle opened here. */
+        layer_handle = upper;
+        owned = owned_upper != nullptr;
+        layer_index = (ULONG)idx;
+        if (image != nullptr)
+        {
+            sys_NtClose(image);
+        }
+        if (real != nullptr)
+        {
+            sys_NtClose(real);
+        }
+        return MergedResolve::HiveLayer;
+
+    case EnumLayer::Image:
+        layer_handle = image;
+        owned = true;
+        /* The index inside the image key, not the index inside the visible
+         * subset of its entries. */
+        layer_index = image_indices[idx];
+        if (owned_upper != nullptr)
+        {
+            sys_NtClose(owned_upper);
+        }
+        if (real != nullptr)
+        {
+            sys_NtClose(real);
+        }
+        return MergedResolve::ImageLayer;
+
+    case EnumLayer::Real:
         /* The index inside the real key, not the index inside the visible
          * subset of its entries. */
+        layer_handle = real;
+        owned = true;
         layer_index = visible_indices[idx];
+        if (owned_upper != nullptr)
+        {
+            sys_NtClose(owned_upper);
+        }
+        if (image != nullptr)
+        {
+            sys_NtClose(image);
+        }
         return MergedResolve::RealLayer;
     }
 
-    layer_index = (ULONG)idx;
-
-    /* The entry lives in the hive layer, the real handle is not needed. */
-    if (real_handle != nullptr)
-    {
-        sys_NtClose(real_handle);
-        real_handle = nullptr;
-    }
-    return MergedResolve::HiveLayer;
+    return MergedResolve::Error;
 }
 
 /**
@@ -2652,6 +3039,24 @@ static bool MergedViewHoldsSubKeys(HANDLE hive_key, const std::wstring& view_pat
         hive_names.clear();
     }
 
+    std::wstring relative;
+    const bool   mapped = appbox::registry::Hive::HiveRelativePath(view_path, relative);
+
+    std::vector<std::wstring> image_names;
+    HANDLE                    image = nullptr;
+    if (mapped && TryOpenImageKey(relative, KEY_ENUMERATE_SUB_KEYS, image))
+    {
+        appbox::registry::KeyGuard guard(image);
+        if (NT_SUCCESS(appbox::registry::Hive::CollectSubKeyNames(image, image_names)))
+        {
+            FilterHiddenLowerEntries(relative, false, image_names);
+        }
+        else
+        {
+            image_names.clear();
+        }
+    }
+
     std::vector<std::wstring> real_names;
     HANDLE                    real = nullptr;
     if (NT_SUCCESS(appbox::registry::Hive::OpenRealKey(view_path, KEY_ENUMERATE_SUB_KEYS, OBJ_CASE_INSENSITIVE, nullptr,
@@ -2668,7 +3073,7 @@ static bool MergedViewHoldsSubKeys(HANDLE hive_key, const std::wstring& view_pat
         }
     }
 
-    return appbox::registry::CountMerged(hive_names, real_names) > 0;
+    return appbox::registry::CountMerged(hive_names, image_names, real_names) > 0;
 }
 
 /**
@@ -2700,50 +3105,76 @@ NTSTATUS appbox::registry::Hive::SetIsolatedValue(appbox::registry::HandleView h
 
     /*
      * The layer of the write is the one the isolation mode of the value decides
-     * (`ValueWritesToHost`): a value the sandbox does not hold below a merged
-     * key is written into the real registry, every other value into the sandbox.
-     * The handle of the caller already points at that layer when the layers
-     * agree, which is the common case and costs no extra call.
+     * (`ValueWritesToHost`): a value no sandbox layer holds below a merged key
+     * is written into the real registry, every other value into the state hive
+     * of the sandbox.
      */
     const bool host_handle = handle_view == appbox::registry::HandleView::RealHandle;
     const bool to_host = ValueWritesToHost(relative, value_name);
-    if (to_host == host_handle)
+
+    if (to_host)
+    {
+        if (host_handle)
+        {
+            return sys_NtSetValueKey(KeyHandle, &us, TitleIndex, Type, Data, DataSize);
+        }
+
+        /*
+         * The granted access of the handle of the caller is tested first: a
+         * caller which opened the key without the right to write must not gain
+         * it through the isolation.
+         */
+        if (!HandlePermitsValueWrite(KeyHandle))
+        {
+            return STATUS_ACCESS_DENIED;
+        }
+
+        HANDLE   key = nullptr;
+        NTSTATUS status = CreateRealKey(view_path, KEY_SET_VALUE | KEY_QUERY_VALUE, key);
+        LOG_D("the value {} of {} is written in the real registry (merge): {:#x}", appbox::WideToUTF8(value_name),
+              appbox::WideToUTF8(relative), status);
+        if (!NT_SUCCESS(status))
+        {
+            return status;
+        }
+
+        appbox::registry::KeyGuard guard(key);
+        return sys_NtSetValueKey(key, &us, TitleIndex, Type, Data, DataSize);
+    }
+
+    /* The write lands in the sandbox, and the state hive is the layer of it. */
+    if (handle_view == appbox::registry::HandleView::HiveHandle)
     {
         return sys_NtSetValueKey(KeyHandle, &us, TitleIndex, Type, Data, DataSize);
     }
 
     /*
-     * The write has to land in the other layer, so the key of that layer is
-     * created (or opened) and the call runs against that handle. The granted
-     * access of the handle of the caller is tested first: a caller which opened
-     * the key without the right to write must not gain it through the isolation.
+     * A handle of the image cannot carry the write: the image is read-only, so
+     * the key is copied up into the state hive first. The values the image
+     * holds stay visible through the merged view of the copied up key.
      */
-    if (!HandlePermitsValueWrite(KeyHandle))
+    if (handle_view == appbox::registry::HandleView::ImageHandle)
     {
-        return STATUS_ACCESS_DENIED;
+        if (!HandlePermitsValueWrite(KeyHandle))
+        {
+            return STATUS_ACCESS_DENIED;
+        }
+
+        HANDLE   key = nullptr;
+        NTSTATUS status = CreateHiveKey(relative, KEY_SET_VALUE | KEY_QUERY_VALUE, OBJ_CASE_INSENSITIVE, nullptr,
+                                        nullptr, 0, nullptr, REG_OPTION_NON_VOLATILE, nullptr, &key, nullptr);
+        if (!NT_SUCCESS(status))
+        {
+            LOG_E("failed to copy the key {} of the image up for a value write: {:#x}", appbox::WideToUTF8(relative),
+                  status);
+            return status;
+        }
+
+        appbox::registry::KeyGuard guard(key);
+        return sys_NtSetValueKey(key, &us, TitleIndex, Type, Data, DataSize);
     }
 
-    HANDLE   key = nullptr;
-    NTSTATUS status = STATUS_UNSUCCESSFUL;
-    if (to_host)
-    {
-        status = CreateRealKey(view_path, KEY_SET_VALUE | KEY_QUERY_VALUE, key);
-        LOG_D("the value {} of {} is written in the real registry (merge): {:#x}", appbox::WideToUTF8(value_name),
-              appbox::WideToUTF8(relative), status);
-    }
-    else
-    {
-        status = CreateHiveKey(relative, KEY_SET_VALUE | KEY_QUERY_VALUE, OBJ_CASE_INSENSITIVE, nullptr, nullptr, 0,
-                               nullptr, REG_OPTION_NON_VOLATILE, nullptr, &key, nullptr);
-    }
-
-    if (!NT_SUCCESS(status))
-    {
-        return status;
-    }
-
-    appbox::registry::KeyGuard guard(key);
-    return sys_NtSetValueKey(key, &us, TitleIndex, Type, Data, DataSize);
+    return STATUS_ACCESS_DENIED;
 }
 
 NTSTATUS appbox::registry::Hive::DeleteIsolatedKey(appbox::registry::HandleView handle_view, HANDLE KeyHandle,
@@ -2755,10 +3186,11 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedKey(appbox::registry::HandleView 
     }
 
     const bool host_handle = handle_view == appbox::registry::HandleView::RealHandle;
+    const bool upper_handle = handle_view == appbox::registry::HandleView::HiveHandle;
 
     /*
      * `Merge` is the only mode whose delete reaches the real registry, and it
-     * does so when the sandbox does not hold the key: the handle of the caller is
+     * does so when no sandbox layer holds the key: the handle of the caller is
      * a handle of the host layer in that case, because the open of such a key is
      * answered by the host layer, so the kernel runs the real delete with the
      * rights of that handle.
@@ -2767,7 +3199,8 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedKey(appbox::registry::HandleView 
     {
         if (!host_handle)
         {
-            /* The key lives in the host, so a handle of the hive cannot name it. */
+            /* The key lives in the host, so a handle of a sandbox layer cannot
+             * name it. */
             return STATUS_ACCESS_DENIED;
         }
 
@@ -2784,39 +3217,66 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedKey(appbox::registry::HandleView 
 
     /*
      * A key which still holds sub keys cannot be deleted, and the caller sees
-     * the sub keys of both layers. Values do not block a delete. The check runs
+     * the sub keys of every layer. Values do not block a delete. The check runs
      * before the kernel is asked, because the kernel only knows the sub keys of
-     * the hive layer.
+     * the layer of its handle.
      */
-    if (MergedViewHoldsSubKeys(KeyHandle, view_path))
+    if (MergedViewHoldsSubKeys(upper_handle ? KeyHandle : nullptr, view_path))
     {
         return STATUS_CANNOT_DELETE;
     }
 
     /*
-     * The kernel removes the key of the hive and checks the rights of the
-     * handle of the caller, so a handle which does not permit a delete reports
-     * the failure the real call would report.
+     * The state hive layer is removed first: through the handle of the caller
+     * when it points at that layer, which also makes the kernel check its
+     * rights, and through a handle of the layer otherwise, because the handle
+     * of the image names the read-only layer.
      */
-    const NTSTATUS status = sys_NtDeleteKey(KeyHandle);
-    if (!NT_SUCCESS(status))
+    if (upper_handle)
     {
-        return status;
+        const NTSTATUS status = sys_NtDeleteKey(KeyHandle);
+        if (!NT_SUCCESS(status))
+        {
+            return status;
+        }
+    }
+    else
+    {
+        /*
+         * A write access open of a key of the image copies the key up, so a
+         * handle of the image never carries the right to delete in the normal
+         * path. A handle which was duplicated into the sandbox is tested here.
+         */
+        if (!HandlePermitsKeyDelete(KeyHandle))
+        {
+            return STATUS_ACCESS_DENIED;
+        }
+
+        HANDLE key = nullptr;
+        if (TryOpenHiveKey(relative, DELETE, key))
+        {
+            appbox::registry::KeyGuard guard(key);
+            const NTSTATUS             status = sys_NtDeleteKey(key);
+            if (!NT_SUCCESS(status))
+            {
+                return status;
+            }
+        }
     }
 
     /*
-     * The sandbox holds the key (the handle proves it), so the table reports
-     * `HiveOnly` or `HiveAndWhiteout`. The host layer is only probed when the
-     * mode keeps it visible, which is the only case the table consults it in.
+     * The state hive no longer holds the key, while the image and the host may.
+     * The host layer is only probed when the mode keeps it visible.
      */
+    const bool lower_holds = !IsKeyWhitedOut(relative) && LayerHoldsKey(true, relative);
     const bool host_holds = !appbox::registry::KeyHidesHost(KeyIsolation(relative)) && HostHoldsKey(view_path);
     const appbox::registry::DeleteTarget target =
-        appbox::registry::KeyDeleteOutcomeOf(KeyIsolation(relative), true, host_holds);
+        appbox::registry::KeyDeleteOutcomeOf(KeyIsolation(relative), true, lower_holds, host_holds);
 
-    if (target == appbox::registry::DeleteTarget::HiveAndWhiteout && !RecordKeyWhiteout(relative))
+    if (target == appbox::registry::DeleteTarget::SandboxAndWhiteout && !RecordKeyWhiteout(relative))
     {
-        /* Failing closed: reporting a success would let the key of the host
-         * reappear in the view of the sandbox. */
+        /* Failing closed: reporting a success would let the entry of the layer
+         * below reappear in the view of the sandbox. */
         return STATUS_UNSUCCESSFUL;
     }
 
@@ -2884,18 +3344,38 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedValue(appbox::registry::HandleVie
     const bool host_holds = !HidesHostValue(relative, value_name) && HostHoldsValue(view_path, value_name);
 
     /*
-     * The kernel removes the value of the hive and checks the rights of the
-     * handle of the caller. Only a missing value is a result of the isolation:
-     * every other failure is the answer of the real call.
+     * The value of the state hive is removed first: through the handle of the
+     * caller when it points at that layer, which also makes the kernel check its
+     * rights, and through a handle of the layer otherwise, because the handle of
+     * the image names the read-only layer. A value the state hive does not hold
+     * is not an error here: the image holds it and the marker hides it.
      */
-    const NTSTATUS status = DeleteHiveValue(KeyHandle, value_name);
-    if (!NT_SUCCESS(status) && status != STATUS_OBJECT_NAME_NOT_FOUND)
+    if (handle_view == appbox::registry::HandleView::HiveHandle)
     {
-        return status;
+        const NTSTATUS status = DeleteHiveValue(KeyHandle, value_name);
+        if (!NT_SUCCESS(status) && status != STATUS_OBJECT_NAME_NOT_FOUND)
+        {
+            return status;
+        }
+    }
+    else
+    {
+        if (!HandlePermitsValueWrite(KeyHandle))
+        {
+            return STATUS_ACCESS_DENIED;
+        }
+
+        HANDLE key = nullptr;
+        if (TryOpenHiveKey(relative, KEY_SET_VALUE | KEY_QUERY_VALUE, key))
+        {
+            appbox::registry::KeyGuard guard(key);
+            DeleteHiveValue(key, value_name);
+        }
     }
 
+    const bool lower_holds = !IsValueWhitedOut(relative, value_name) && LayerHoldsValue(true, relative, value_name);
     const appbox::registry::DeleteTarget target = appbox::registry::ValueDeleteOutcomeOf(
-        ListedValueIsolation(relative, value_name), KeyIsolation(relative), sandbox_holds, host_holds);
+        ListedValueIsolation(relative, value_name), KeyIsolation(relative), sandbox_holds, lower_holds, host_holds);
 
     switch (target)
     {
@@ -2903,15 +3383,15 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedValue(appbox::registry::HandleVie
         /* The value does not exist in the view of the sandbox. */
         return STATUS_OBJECT_NAME_NOT_FOUND;
 
-    case appbox::registry::DeleteTarget::HiveOnly:
-        /* The value of the hive is gone and the host entry stays invisible. */
+    case appbox::registry::DeleteTarget::SandboxOnly:
+        /* The value of the state hive is gone and no lower layer holds it. */
         return STATUS_SUCCESS;
 
     case appbox::registry::DeleteTarget::WhiteoutOnly:
-    case appbox::registry::DeleteTarget::HiveAndWhiteout:
+    case appbox::registry::DeleteTarget::SandboxAndWhiteout:
         if (!RecordValueWhiteout(relative, value_name))
         {
-            /* Failing closed: the value of the host would reappear otherwise. */
+            /* Failing closed: the value of the layer below would reappear. */
             return STATUS_UNSUCCESSFUL;
         }
         return STATUS_SUCCESS;
@@ -2923,7 +3403,98 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedValue(appbox::registry::HandleVie
         return STATUS_UNSUCCESSFUL;
     }
 
-    return status;
+    return STATUS_SUCCESS;
+}
+
+/**
+ * @brief Copy a key of the read-only image into the state hive.
+ *
+ * A rename moves the key of the state hive, so the content of a key the image
+ * holds has to travel into that layer first: the marker of the old name hides
+ * the image afterwards, which would leave the renamed key empty.
+ *
+ * The values the state hive already holds are kept, because the state of the
+ * sandbox is the highest layer of the view. The sub keys are created in the
+ * state hive and their content is copied the same way, so the whole subtree
+ * travels.
+ *
+ * @param[in] relative The key path relative to the hive root.
+ * @param[in] depth The recursion depth of the copy.
+ * @return Status code; `STATUS_SUCCESS` when the image does not hold the key.
+ */
+static NTSTATUS CopyUpImageKey(const std::wstring& relative, ULONG depth)
+{
+    /** Deepest key path the copy follows, a guard against a hostile hive. */
+    constexpr ULONG kMaxDepth = 256;
+    if (depth > kMaxDepth)
+    {
+        return STATUS_OBJECT_PATH_INVALID;
+    }
+
+    HANDLE image = nullptr;
+    if (!TryOpenImageKey(relative, KEY_READ | KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS, image))
+    {
+        return STATUS_SUCCESS;
+    }
+    appbox::registry::KeyGuard image_guard(image);
+
+    HANDLE   upper = nullptr;
+    NTSTATUS status = CreateHiveKey(relative, KEY_ALL_ACCESS, OBJ_CASE_INSENSITIVE, nullptr, nullptr, 0, nullptr,
+                                    REG_OPTION_NON_VOLATILE, nullptr, &upper, nullptr);
+    if (!NT_SUCCESS(status))
+    {
+        LOG_E("failed to copy the key {} of the image up: {:#x}", appbox::WideToUTF8(relative), status);
+        return status;
+    }
+    appbox::registry::KeyGuard upper_guard(upper);
+
+    std::vector<std::wstring> values;
+    status = appbox::registry::Hive::CollectValueNames(image, values);
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+
+    for (const auto& name : values)
+    {
+        if (HiveHoldsValue(upper, name))
+        {
+            /* The state of the sandbox wins over the content of the image. */
+            continue;
+        }
+
+        ULONG             type = REG_NONE;
+        std::vector<BYTE> data;
+        status = ReadValueFull(image, name, type, data);
+        if (!NT_SUCCESS(status))
+        {
+            return status;
+        }
+
+        status = WriteValue(upper, name, type, data);
+        if (!NT_SUCCESS(status))
+        {
+            return status;
+        }
+    }
+
+    std::vector<std::wstring> keys;
+    status = appbox::registry::Hive::CollectSubKeyNames(image, keys);
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+
+    for (const auto& name : keys)
+    {
+        status = CopyUpImageKey(appbox::registry::JoinKeyPath(relative, name), depth + 1);
+        if (!NT_SUCCESS(status))
+        {
+            return status;
+        }
+    }
+
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS appbox::registry::Hive::RenameIsolatedKey(appbox::registry::HandleView handle_view, HANDLE KeyHandle,
@@ -3020,12 +3591,45 @@ NTSTATUS appbox::registry::Hive::RenameIsolatedKey(appbox::registry::HandleView 
     }
 
     /*
+     * The rename moves the key of the state hive, so the content of a key the
+     * image holds is copied up first: the image is never written, and the
+     * marker of the old name hides it afterwards, which would leave the renamed
+     * key empty without the copy. The copy runs for a handle of either sandbox
+     * layer, because the open of a write access key only creates the shadow key
+     * and not the content of the image.
+     */
+    if (handle_view == appbox::registry::HandleView::ImageHandle && !HandlePermitsKeyDelete(KeyHandle))
+    {
+        return STATUS_ACCESS_DENIED;
+    }
+
+    NTSTATUS status = CopyUpImageKey(relative, 0);
+    if (!NT_SUCCESS(status))
+    {
+        return status;
+    }
+
+    HANDLE rename_key = KeyHandle;
+    HANDLE owned = nullptr;
+    if (handle_view == appbox::registry::HandleView::ImageHandle)
+    {
+        status = CreateHiveKey(relative, DELETE | KEY_READ | KEY_WRITE, OBJ_CASE_INSENSITIVE, nullptr, nullptr, 0,
+                               nullptr, REG_OPTION_NON_VOLATILE, nullptr, &owned, nullptr);
+        if (!NT_SUCCESS(status))
+        {
+            return status;
+        }
+        rename_key = owned;
+    }
+
+    /*
      * The kernel removes the key from its old name and creates it under the
      * new name, and it checks the rights of the handle of the caller, so a
      * handle which does not permit a rename reports the failure of the real
-     * call. A destination the hive holds is refused by the kernel as well.
+     * call. A destination the state hive holds is refused by the kernel as well.
      */
-    const NTSTATUS status = sys_NtRenameKey(KeyHandle, &new_name_unicode);
+    status = sys_NtRenameKey(rename_key, &new_name_unicode);
+    CloseHiveHandle(owned);
     if (!NT_SUCCESS(status))
     {
         return status;
@@ -3033,29 +3637,30 @@ NTSTATUS appbox::registry::Hive::RenameIsolatedKey(appbox::registry::HandleView 
 
     /*
      * The old name is the delete of the key in the merged view: the key of the
-     * hive is gone from it, so a visible host key of that name has to be
-     * recorded as deleted as well — without the marker the read through would
-     * report the host key of the old name next to the renamed key of the hive.
-     * The route is the one of the delete of a key, which is why the sandbox side
-     * is passed as held: the handle of the caller proves it.
+     * state hive is gone from it, so an entry of a layer below has to be
+     * recorded as deleted as well — without the marker the merged view would
+     * report the entry of the old name next to the renamed key. The route is the
+     * one of the delete of a key, which is why the sandbox side is passed as
+     * held: the handle of the caller proves it.
      */
+    const bool lower_holds = !IsKeyWhitedOut(relative) && LayerHoldsKey(true, relative);
     const bool host_holds = !appbox::registry::KeyHidesHost(KeyIsolation(relative)) && HostHoldsKey(view_path);
-    if (appbox::registry::KeyDeleteOutcomeOf(KeyIsolation(relative), true, host_holds) ==
-            appbox::registry::DeleteTarget::HiveAndWhiteout &&
+    if (appbox::registry::KeyDeleteOutcomeOf(KeyIsolation(relative), true, lower_holds, host_holds) ==
+            appbox::registry::DeleteTarget::SandboxAndWhiteout &&
         !RecordKeyWhiteout(relative))
     {
-        /* Failing closed: reporting a success would let the key of the host
-         * reappear under the old name. */
+        /* Failing closed: reporting a success would let the entry of the layer
+         * below reappear under the old name. */
         return STATUS_UNSUCCESSFUL;
     }
 
     return STATUS_SUCCESS;
 }
 
-NTSTATUS appbox::registry::Hive::QueryMultipleValues(HANDLE KeyHandle, const std::wstring& view_path,
-                                                     const std::wstring& relative, PKEY_VALUE_ENTRY ValueEntries,
-                                                     ULONG EntryCount, PVOID ValueBuffer, PULONG BufferLength,
-                                                     PULONG RequiredBufferLength)
+NTSTATUS appbox::registry::Hive::QueryMultipleValues(appbox::registry::HandleView handle_view, HANDLE KeyHandle,
+                                                     const std::wstring& view_path, const std::wstring& relative,
+                                                     PKEY_VALUE_ENTRY ValueEntries, ULONG EntryCount, PVOID ValueBuffer,
+                                                     PULONG BufferLength, PULONG RequiredBufferLength)
 {
     if (s_hive_data == nullptr)
     {
@@ -3070,14 +3675,39 @@ NTSTATUS appbox::registry::Hive::QueryMultipleValues(HANDLE KeyHandle, const std
     }
 
     /*
-     * Classify every entry: the hive layer wins, a value which only the host
-     * holds is read through, and a value which the isolation hides is missing
-     * in the view.
+     * The handles of the layers the batch may be read from. The handle of the
+     * caller answers the batch when every value lives in its layer, otherwise
+     * the layers are opened here and the batch is assembled below.
+     */
+    HANDLE owned_upper = nullptr;
+    HANDLE upper = handle_view == appbox::registry::HandleView::HiveHandle ? KeyHandle : nullptr;
+    if (upper == nullptr && TryOpenHiveKey(relative, KEY_QUERY_VALUE, owned_upper))
+    {
+        upper = owned_upper;
+    }
+    appbox::registry::KeyGuard upper_guard(owned_upper);
+
+    HANDLE image = nullptr;
+    TryOpenImageKey(relative, KEY_QUERY_VALUE, image);
+    appbox::registry::KeyGuard image_guard(image);
+
+    /** The layer of one entry of the batch. */
+    enum EntryLayer
+    {
+        kUpper = 0,
+        kImage = 1,
+        kHost = 2,
+    };
+
+    /*
+     * Classify every entry: the state hive wins over the image, which wins over
+     * the host layer, and a value which the isolation hides is missing in the
+     * view.
      */
     std::vector<std::wstring> names(EntryCount);
-    std::vector<bool>         from_hive(EntryCount, false);
-    std::vector<bool>         from_host(EntryCount, false);
-    bool                      any_hive = false;
+    std::vector<int>          owners(EntryCount, kHost);
+    bool                      any_upper = false;
+    bool                      any_image = false;
     bool                      any_host = false;
 
     for (ULONG index = 0; index < EntryCount; ++index)
@@ -3090,10 +3720,17 @@ NTSTATUS appbox::registry::Hive::QueryMultipleValues(HANDLE KeyHandle, const std
                                                RequiredBufferLength);
         }
 
-        if (HiveHoldsValue(KeyHandle, names[index]))
+        if (HiveHoldsValue(upper, names[index]))
         {
-            from_hive[index] = true;
-            any_hive = true;
+            owners[index] = kUpper;
+            any_upper = true;
+            continue;
+        }
+
+        if (HiveHoldsValue(image, names[index]))
+        {
+            owners[index] = kImage;
+            any_image = true;
             continue;
         }
 
@@ -3105,26 +3742,36 @@ NTSTATUS appbox::registry::Hive::QueryMultipleValues(HANDLE KeyHandle, const std
             return STATUS_OBJECT_NAME_NOT_FOUND;
         }
 
-        from_host[index] = true;
+        owners[index] = kHost;
         any_host = true;
     }
 
-    if (!any_host)
+    if (!any_host && !any_image && handle_view == appbox::registry::HandleView::HiveHandle)
     {
-        /* The whole batch lives in the hive, the kernel answers it. */
+        /* The whole batch lives in the layer of the caller, the kernel answers it. */
+        return sys_NtQueryMultipleValueKey(KeyHandle, ValueEntries, EntryCount, ValueBuffer, BufferLength,
+                                           RequiredBufferLength);
+    }
+
+    if (!any_host && !any_upper && handle_view == appbox::registry::HandleView::ImageHandle)
+    {
+        /* The whole batch lives in the image, which is the layer of the caller. */
         return sys_NtQueryMultipleValueKey(KeyHandle, ValueEntries, EntryCount, ValueBuffer, BufferLength,
                                            RequiredBufferLength);
     }
 
     HANDLE real = nullptr;
-    if (!NT_SUCCESS(OpenRealKey(view_path, KEY_QUERY_VALUE, OBJ_CASE_INSENSITIVE, nullptr, nullptr, &real)))
+    if (any_host)
     {
-        return STATUS_OBJECT_NAME_NOT_FOUND;
+        if (!NT_SUCCESS(OpenRealKey(view_path, KEY_QUERY_VALUE, OBJ_CASE_INSENSITIVE, nullptr, nullptr, &real)))
+        {
+            return STATUS_OBJECT_NAME_NOT_FOUND;
+        }
     }
 
     appbox::registry::KeyGuard real_guard(real);
 
-    if (!any_hive)
+    if (!any_upper && !any_image)
     {
         /* The whole batch lives in the host layer, the kernel answers it. */
         return sys_NtQueryMultipleValueKey(real, ValueEntries, EntryCount, ValueBuffer, BufferLength,
@@ -3132,7 +3779,7 @@ NTSTATUS appbox::registry::Hive::QueryMultipleValues(HANDLE KeyHandle, const std
     }
 
     /*
-     * The batch mixes both layers, so it is assembled here: every value is read
+     * The batch mixes the layers, so it is assembled here: every value is read
      * from the layer which holds it and the data is packed into the caller
      * buffer the way the kernel packs it (the entries follow each other without
      * padding).
@@ -3143,7 +3790,7 @@ NTSTATUS appbox::registry::Hive::QueryMultipleValues(HANDLE KeyHandle, const std
 
     for (ULONG index = 0; index < EntryCount; ++index)
     {
-        const HANDLE   owner = from_hive[index] ? KeyHandle : real;
+        const HANDLE   owner = owners[index] == kUpper ? upper : (owners[index] == kImage ? image : real);
         const NTSTATUS status = ReadValueFull(owner, names[index], types[index], datas[index]);
         if (!NT_SUCCESS(status))
         {
@@ -3193,9 +3840,9 @@ NTSTATUS appbox::registry::Hive::QueryMultipleValues(HANDLE KeyHandle, const std
     return STATUS_SUCCESS;
 }
 
-NTSTATUS appbox::registry::Hive::SaveIsolatedKey(HANDLE KeyHandle, const std::wstring& view_path,
-                                                 const std::wstring& relative, HANDLE FileHandle, ULONG Format,
-                                                 bool extended)
+NTSTATUS appbox::registry::Hive::SaveIsolatedKey(appbox::registry::HandleView handle_view, HANDLE KeyHandle,
+                                                 const std::wstring& view_path, const std::wstring& relative,
+                                                 HANDLE FileHandle, ULONG Format, bool extended)
 {
     if (s_hive_data == nullptr)
     {
@@ -3203,22 +3850,22 @@ NTSTATUS appbox::registry::Hive::SaveIsolatedKey(HANDLE KeyHandle, const std::ws
     }
 
     /*
-     * The hive layer of the key: the handle of the caller when it is a hive
-     * handle, otherwise a handle opened here. A key which only the host holds
-     * has no hive layer at all.
+     * The state hive layer of the key: the handle of the caller when it points
+     * at that layer, otherwise a handle opened here. A key which only the image
+     * or the host holds has no state hive layer at all.
      */
     HANDLE owned = nullptr;
-    HANDLE hive_key = KeyHandle;
+    HANDLE hive_key = handle_view == appbox::registry::HandleView::HiveHandle ? KeyHandle : nullptr;
     if (hive_key == nullptr && TryOpenHiveKey(relative, KEY_READ | KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS, owned))
     {
         hive_key = owned;
     }
 
     /*
-     * The fast path: when the host does not hold the key at all, the hive layer
-     * is the whole view and the key can be saved directly.
+     * The fast path: when neither the image nor the host holds the key, the
+     * state hive layer is the whole view and the key can be saved directly.
      */
-    if (hive_key != nullptr && !HostHoldsKey(view_path))
+    if (hive_key != nullptr && !LayerHoldsKey(true, relative) && !HostHoldsKey(view_path))
     {
         const NTSTATUS status =
             extended ? sys_NtSaveKeyEx(hive_key, FileHandle, Format) : sys_NtSaveKey(hive_key, FileHandle);

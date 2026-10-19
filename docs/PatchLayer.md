@@ -10,8 +10,8 @@ the `patch` directory is applied on top of them in ascending name order.
 > the patch package it writes are implemented, and the launcher consumes all four
 > domains of the packages of the `patch` directory: it validates every package
 > against the `cache` directory, mounts the filesystem layers of a package on
-> top of the layers of `app`, merges the hive of a package into the hive the
-> sandbox mounts and hands the isolation files of the four domains to the
+> top of the layers of `app`, merges the hive of a package into the read-only
+> image of the run and hands the isolation files of the four domains to the
 > sandbox, which merges them in layer order.
 
 ## Patch package
@@ -127,28 +127,27 @@ entry.
 
 ### Registry
 
-The virtual registry of `app` is the hive the launcher seeds into the state
-directory of the sandbox, and the sandbox mounts exactly that hive: a package
-does not become a layer of its own, its hive is **merged into** the hive the
-sandbox mounts. The launcher applies the hives of the packages in ascending name
-order, so the keys and the values of the last package which names an entry are
-the ones the sandboxed process observes, while an entry no package names keeps
-the content of `app` and of the earlier runs. The merge works per key and per
-value, so a package which lists a single value keeps every other entry of the
-layers below it, and a package which carries no `registry/user.hiv` keeps the
-hive of those layers.
+The registry of `app` is a read-only hive, and the sandbox mounts it together
+with the state hive of the sandbox: a package does not become a layer of its own
+either, its hive is **merged into the read-only image** of the run. The launcher
+rebuilds that image at every start — it copies `app/registry/user.hiv`, applies
+the hives of the packages in ascending name order and materializes their modes —
+so the keys and the values of the last package which names an entry are the ones
+the image carries, while an entry no package names keeps the content of `app`.
+The merge works per key and per value, so a package which lists a single value
+keeps every other entry of the layers below it, and a package which carries no
+`registry/user.hiv` keeps the hive of those layers.
 
-The merge runs **at every start** and it writes into the hive of the state
-directory, so the packages are the top of the registry of a run:
+The image is the layer **below** the state of the sandbox, so the layer order of
+the registry is the one of the filesystem and of the environment: `data` over
+`patch` over `app` over the host. The rebuild runs at every start, which means:
 
-- An entry a package names is the entry of the package at every start. A
-  modification or a deletion of such an entry inside the sandbox is therefore
-  reset by the next start — a deletion included, because the entry is written
-  into the hive again while the whiteout marker of the deletion only hides an
-  entry the hive does not hold.
-- An entry no package names keeps the state of the sandbox: a value the
-  sandboxed application wrote, and a key or a value it created, survive the
-  next run exactly like they do without a patch directory.
+- An entry no sandbox layer holds is the entry of the package at every start, so
+  a rebuilt archive and a replaced package reach the next run.
+- An entry the sandboxed application wrote or deleted keeps the state of the
+  sandbox, because the state hive wins over the rebuilt image: a modification of
+  such an entry survives the next start, and a deletion keeps its whiteout
+  marker, which hides the entry of the image as well.
 
 The isolation modes of the registry are merged the same way as the modes of the
 filesystem: every layer contributes the isolation file of its registry domain and
@@ -163,12 +162,12 @@ has to be usable — see [Registry isolation](RegistryIsolation.md).
 
 A package may name a mode which differs from the mode the layer below it packed
 the content with, and the content of a hidden entry lives in the hidden store of
-the hive. The launcher therefore **materializes** the modes of a package right
+the image. The launcher therefore **materializes** the modes of a package right
 after it merged the hive of that package: an entry the package marks `Hide` is
 copied into the hidden store and removed from the view, and an entry the package
 gives another mode is copied out of the store into the view. A write of the
-sandbox wins over the packed content in the second direction, because it is the
-highest layer of the view.
+sandbox wins over the packed content in the second direction, because the state
+hive is the highest layer of the view.
 
 ### Environment
 
@@ -225,7 +224,7 @@ run
    extracted again and an unchanged package is reused;
 3. extracts a package whose cache entry is missing or stale, mounts the layers
    of its `filesystem` directory before the layers of `app` and merges its
-   `registry/user.hiv` into the hive the sandbox mounts;
+   `registry/user.hiv` into the read-only image of the run;
 4. hands the isolation file of every layer of the four domains to the sandbox,
    which applies the files of a domain in layer order: the filesystem and the
    registry domain merge their isolation modes, the network domain merges its
@@ -270,20 +269,22 @@ after it, and the sandbox applies the list in that order.
   archive instead of being merged into a new layer, which keeps the resolution
   of the sandbox unchanged: the existing rule "the layer which was mounted first
   wins" already implements "the last patch wins".
-- **The registry is merged and not mounted.** The sandbox mounts exactly one
-  hive: its root handle carries the open and the create policy, the merged
-  enumeration and the merged counts, the whiteout store and the save snapshot.
-  Making the packages further layers would mean to rewrite that model (a merged
-  enumeration across several mounts, the recognition of the handles of every
-  mount, a copy-up into the writable one). Merging the hives into the hive the
-  sandbox mounts keeps the whole model as it is and needs no change inside the
-  sandbox at all.
-- **The merge mounts the hive of the state directory.** The merge needs the
-  hive mounted for writing, which fails while another process holds it: a
+- **The registry is merged into one image and mounted as a second hive.** The
+  packages are not layers of their own, because the sandbox would have to mount
+  one hive per package and to merge an unbounded number of enumerations. The
+  launcher materializes the read-only layers of the run into a single image
+  instead, and the sandbox mounts that image below its state hive: the open and
+  the create policy, the merged enumeration and the merged counts, the whiteout
+  store, the copy-up and the save snapshot all merge the state hive with the
+  image, which is the same layer order the filesystem and the environment
+  follow, with a fixed cost of two mounts per process.
+- **The merge mounts the image of the state directory.** The merge needs the
+  image mounted for writing, which fails while another process holds it: a
   sandbox of an earlier run which is still alive mounts the same file. A run
-  whose merge cannot mount the hive logs the failure and continues with the
-  hive as it is, which is the state of the runs before it — a package then
-  takes effect at the next start.
+  whose image cannot be rebuilt logs the failure and continues with the image of
+  that earlier run, which is the content of the packages of that start — a
+  replaced package then takes effect at the next start which can rebuild the
+  image.
 - **A broken package is not fatal.** A package which cannot be read, a package
   which is not an archive, a hive which cannot be mounted and a malformed
   isolation file of a package are logged and skipped, exactly like a malformed
@@ -304,25 +305,26 @@ after it, and the sandbox applies the list in that order.
   without touching the layers below and above it. Composing the four domains
   into one document in the launcher would move the rules of a domain out of the
   module which owns them.
-- **The state of the sandbox is applied after the layers.** The modifications
-  the packaged application made to its environment (`data/environment/state.json`)
-  are applied after the last isolation file, and the hive of the sandbox carries
-  the content of the runs before the merge runs, so a package is the top of the
-  environment and of the registry of a run which the application did not change
-  itself. An entry a package names is therefore the entry of the package at
-  every start, while an entry no package names keeps the state of the sandbox.
-- **The registry value-level isolation modes need the key inside the hive.** The
-  write of a value is routed by the mode of the value, while the read of a value
-  is filtered by the merged view of the key which holds it: a key the hive does
-  not hold is opened in the real registry, and the read of a value below a handle
-  which points there is forwarded unchanged. A value-level mode which names a key
-  only the host holds is therefore applied to the writes of that value and not to
-  its reads. This is a gap of the registry domain and not of the patch layer — it
-  holds for the isolation file of `app` as well, and the patch layer only adds
-  further files which name modes — so it is documented as a known gap of
-  [RegistryIsolation.md](RegistryIsolation.md) instead of being closed here:
-  closing it would need the handle of a real key to be traced back to the view
-  path it was opened from, which the registry layer does not track today.
+- **The state of the sandbox is the highest layer.** The modifications the
+  packaged application made to its environment (`data/environment/state.json`)
+  are applied after the last isolation file, and the registry mounts the state
+  hive above the image, so the state of the sandbox wins over the content of the
+  packages in both domains — the same rule the writable upper layer of the
+  filesystem follows. An entry no sandbox layer holds is therefore the entry of
+  the last package which names it at every start, while an entry the application
+  wrote or deleted keeps the state of the sandbox.
+- **The registry value-level isolation modes need the key inside a sandbox
+  layer.** The write of a value is routed by the mode of the value, while the
+  read of a value is filtered by the merged view of the key which holds it: a key
+  no sandbox layer holds is opened in the real registry, and the read of a value
+  below a handle which points there is forwarded unchanged. A value-level mode
+  which names a key only the host holds is therefore applied to the writes of that
+  value and not to its reads. This is a gap of the registry domain and not of the
+  patch layer — it holds for the isolation file of `app` as well, and the patch
+  layer only adds further files which name modes — so it is documented as a known
+  gap of [RegistryIsolation.md](RegistryIsolation.md) instead of being closed
+  here: closing it would need the handle of a real key to be traced back to the
+  view path it was opened from, which the registry layer does not track today.
 
 ## Related documentation
 

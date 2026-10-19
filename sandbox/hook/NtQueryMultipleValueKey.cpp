@@ -24,22 +24,23 @@ static appbox::LoggerF logger("NtQueryMultipleValueKey", NtQueryMultipleValueKey
 /**
  * @brief Detour of NtQueryMultipleValueKey().
  *
- * A batch query below a hive handle follows the same read through rule as
- * NtQueryValueKey: every entry is answered by the layer which holds it, so a
- * value which only exists in the real registry stays readable and a value
- * which the isolation hides or which the sandbox deleted (a whiteout) is
- * reported as missing. The whole policy lives in
- * appbox::registry::Hive::QueryMultipleValues.
+ * A batch query below a handle of a sandbox layer follows the same read through
+ * rule as NtQueryValueKey: every entry is answered by the layer which holds it,
+ * so a value of the state hive wins over the value of the image, which wins
+ * over the value of the real registry, and a value which the isolation hides or
+ * which the sandbox deleted (a whiteout) is reported as missing. The whole
+ * policy lives in appbox::registry::Hive::QueryMultipleValues.
  *
- * Handles which do not point into the hive are forwarded unchanged.
+ * Handles which do not point into a sandbox layer are forwarded unchanged.
  */
 static NTSTATUS NTAPI Hook_NtQueryMultipleValueKey(HANDLE KeyHandle, PKEY_VALUE_ENTRY ValueEntries, ULONG EntryCount,
                                                    PVOID ValueBuffer, PULONG BufferLength, PULONG RequiredBufferLength)
 {
     logger.Log(KeyHandle, ValueEntries, EntryCount, ValueBuffer, BufferLength, RequiredBufferLength);
 
-    std::wstring view_path;
-    if (appbox::registry::Hive::MapHandleView(KeyHandle, view_path) != appbox::registry::HandleView::HiveHandle)
+    std::wstring                       view_path;
+    const appbox::registry::HandleView view = appbox::registry::Hive::MapHandleView(KeyHandle, view_path);
+    if (!appbox::registry::IsSandboxHandle(view))
     {
         return sys_NtQueryMultipleValueKey(KeyHandle, ValueEntries, EntryCount, ValueBuffer, BufferLength,
                                            RequiredBufferLength);
@@ -52,7 +53,7 @@ static NTSTATUS NTAPI Hook_NtQueryMultipleValueKey(HANDLE KeyHandle, PKEY_VALUE_
                                            RequiredBufferLength);
     }
 
-    return appbox::registry::Hive::QueryMultipleValues(KeyHandle, view_path, relative, ValueEntries, EntryCount,
+    return appbox::registry::Hive::QueryMultipleValues(view, KeyHandle, view_path, relative, ValueEntries, EntryCount,
                                                        ValueBuffer, BufferLength, RequiredBufferLength);
 }
 

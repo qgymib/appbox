@@ -97,9 +97,21 @@ struct Sandbox
     /**
      * @brief Registry hive file path (DOS style).
      *
-     * Empty when registry isolation is not configured.
+     * The file carries the state of the sandbox: the keys and the values the
+     * sandboxed process wrote, and the whiteout store of the entries it
+     * deleted. Empty when registry isolation is not configured.
      */
     std::wstring wRegistryHiveDOSPath;
+
+    /**
+     * @brief Registry image file path (DOS style).
+     *
+     * The image carries the read-only layers of the run: the registry of the
+     * archive merged with the hive of every patch package. The sandbox merges
+     * it below the state hive, so the state wins over the image and the image
+     * wins over the real registry. Empty when the run has no image.
+     */
+    std::wstring wRegistryImageHiveDOSPath;
 
     /**
      * @brief Registry isolation file paths (DOS style), in layer order.

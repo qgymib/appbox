@@ -107,55 +107,66 @@ static bool MountLowerFS(const std::wstring& layer_root, std::vector<appbox::San
 }
 
 /**
- * @brief Seed the hive the sandbox mounts from the packed registry.
- *
- * The hive below `app` is a read-only resource, while mounting a hive writes
- * to the file: the copy-up of host keys, the whiteout store and the
- * transaction log files all land in the mounted file. The launcher therefore
- * copies the packed hive into the state directory of the sandbox on the first
- * run and the sandbox mounts that copy. A hive which already exists is kept,
- * so the modifications of an earlier run survive and deleting the state
- * directory resets the sandbox to the registry of the archive.
- *
- * A missing packed hive is not an error: the sandbox creates an empty hive
- * when it mounts a file which does not exist yet.
- *
- * @param[in] packed_hive Hive inside the resources of the application.
- * @param[in] state_hive Hive the sandbox mounts.
- * @return Error description, empty on success.
+ * @brief Whether a text starts with a prefix, ignoring the case.
+ * @param[in] text Text to inspect.
+ * @param[in] prefix Prefix to compare against.
+ * @return true when \p text starts with \p prefix.
  */
-static std::string SeedRegistryHive(const std::wstring& packed_hive, const std::wstring& state_hive)
+static bool StartsWithIgnoreCase(const std::wstring& text, const std::wstring& prefix)
 {
-    const std::filesystem::path target(state_hive);
+    if (text.size() < prefix.size())
+    {
+        return false;
+    }
+
+    for (std::size_t index = 0; index < prefix.size(); ++index)
+    {
+        wchar_t left = text[index];
+        wchar_t right = prefix[index];
+        if (left >= L'A' && left <= L'Z')
+        {
+            left = static_cast<wchar_t>(left - L'A' + L'a');
+        }
+        if (right >= L'A' && right <= L'Z')
+        {
+            right = static_cast<wchar_t>(right - L'A' + L'a');
+        }
+        if (left != right)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * @brief Remove a hive file together with the files the mount keeps next to it.
+ *
+ * Mounting a hive creates the transaction log of the hive beside it, so
+ * removing the hive alone would leave a log which belongs to a file that no
+ * longer exists. The log files are named after the hive, so every sibling
+ * which starts with its name is removed as well.
+ *
+ * @param[in] hive DOS path of the hive.
+ */
+static void RemoveHiveFiles(const std::wstring& hive)
+{
+    const std::filesystem::path path(hive);
+    const std::wstring          prefix = path.filename().wstring() + L".";
 
     std::error_code ec;
-    std::filesystem::create_directories(target.parent_path(), ec);
-    if (ec)
-    {
-        return fmt::format("failed to create '{}': {}", appbox::WideToUTF8(target.parent_path().wstring()),
-                           ec.message());
-    }
+    std::filesystem::remove(path, ec);
 
-    if (std::filesystem::exists(target, ec))
+    for (const auto& entry : std::filesystem::directory_iterator(path.parent_path(), ec))
     {
-        /* The hive of an earlier run belongs to the sandbox. */
-        return {};
+        const auto name = entry.path().filename().wstring();
+        if (name.size() > prefix.size() && StartsWithIgnoreCase(name, prefix))
+        {
+            std::error_code remove_ec;
+            std::filesystem::remove(entry.path(), remove_ec);
+        }
     }
-
-    if (!std::filesystem::exists(packed_hive, ec))
-    {
-        SPDLOG_INFO("the archive carries no registry hive, the sandbox creates an empty one");
-        return {};
-    }
-
-    std::filesystem::copy_file(packed_hive, target, std::filesystem::copy_options::none, ec);
-    if (ec)
-    {
-        return fmt::format("failed to seed '{}': {}", appbox::WideToUTF8(state_hive), ec.message());
-    }
-
-    SPDLOG_DEBUG("seeded the registry hive from '{}'", appbox::WideToUTF8(packed_hive));
-    return {};
 }
 
 /**
@@ -200,16 +211,16 @@ static bool ReadRegistryIsolationDocument(const std::wstring& path, appbox::regi
 }
 
 /**
- * @brief Apply the registry of the patch packages to the hive of the sandbox.
+ * @brief Rebuild the read-only image of the virtual registry.
  *
- * The hive the sandbox mounts is the base image of the virtual registry: it
- * was seeded from the hive of the archive and it carries the modifications of
- * the earlier runs. The hive of every package which carries one is merged on
- * top of it in the order the packages take effect in, so the keys and the
- * values of the last package which names an entry are the ones the sandboxed
- * process observes, while an entry no package names keeps the content below it.
+ * The image carries the layers of the run which the sandboxed process never
+ * modifies: the registry of `app` and the hive of every patch package, applied
+ * in the order the packages take effect in. It is rebuilt at every start, so a
+ * rebuilt archive and a replaced package reach the next run, while the state
+ * hive of the sandbox stays the highest layer of the view and keeps every
+ * modification the sandboxed process made.
  *
- * The isolation modes of a package are applied to the hive right after its
+ * The isolation modes of a package are applied to the image right after its
  * content, because a package may name a mode which differs from the mode the
  * layer below it packed the content with: a package which hides an entry of a
  * lower layer hides its content, and a package which gives a hidden entry
@@ -219,28 +230,76 @@ static bool ReadRegistryIsolationDocument(const std::wstring& path, appbox::regi
  * A package whose hive cannot be merged is logged and skipped, exactly like a
  * package which cannot be extracted is: a broken package must not fail the
  * run, and the entries of the layers below it stay in place. A package whose
- * isolation file cannot be read is logged and skipped as well; the sandbox
- * refuses such a file when it starts, so the launcher only materializes the
- * modes of the files it can read.
+ * isolation file cannot be read is logged and skipped as well.
  *
- * @param[in] state_hive Hive the sandbox mounts.
+ * The state hive of a layout which did not carry an image yet holds the content
+ * of the archive and of the packages merged with the modifications of the runs.
+ * It is dropped once, because keeping it would shadow the image and hide the
+ * content of a rebuilt archive.
+ *
+ * @param[in] paths The resolved layout of the run.
  * @param[in] layers The accepted packages in ascending name order.
+ * @return Error description, empty on success. A run whose image cannot be
+ *         rebuilt keeps the image of the earlier start when it is still there.
  */
-static void ApplyPatchHives(const std::wstring& state_hive, const std::vector<appbox::PatchLayer>& layers)
+static std::string BuildRegistryImage(const appbox::SandboxPaths& paths, const std::vector<appbox::PatchLayer>& layers)
 {
+    const std::filesystem::path image_dir(paths.StateRegistryImageDir());
+    const std::filesystem::path image_hive(paths.StateRegistryImageHiveFile());
+
+    std::error_code ec;
+
+    const std::filesystem::path state_hive(paths.StateRegistryHiveFile());
+    if (!std::filesystem::exists(image_dir, ec) && std::filesystem::exists(state_hive, ec))
+    {
+        SPDLOG_INFO("the state hive of an earlier layout is dropped: {}", appbox::WideToUTF8(state_hive.wstring()));
+        RemoveHiveFiles(state_hive.wstring());
+    }
+
+    /* The image and the log files of its mount are replaced at every start. */
+    std::filesystem::remove_all(image_dir, ec);
+    ec.clear();
+    std::filesystem::create_directories(image_dir, ec);
+    if (ec)
+    {
+        return fmt::format("failed to create '{}': {}", appbox::WideToUTF8(image_dir.wstring()), ec.message());
+    }
+
+    const std::filesystem::path packed_hive(paths.RegistryHiveFile());
+    if (std::filesystem::is_regular_file(packed_hive, ec))
+    {
+        std::filesystem::copy_file(packed_hive, image_hive, std::filesystem::copy_options::none, ec);
+        if (ec)
+        {
+            return fmt::format("failed to copy '{}' into '{}': {}", appbox::WideToUTF8(packed_hive.wstring()),
+                               appbox::WideToUTF8(image_hive.wstring()), ec.message());
+        }
+    }
+    else
+    {
+        SPDLOG_INFO("the archive carries no registry hive, the image starts empty");
+    }
+
+    std::string error;
+    if (!appbox::EnsureHiveFile(image_hive.wstring(), error))
+    {
+        return error;
+    }
+
     for (const auto& layer : layers)
     {
         if (!layer.registry_hive.empty())
         {
-            std::string error;
-            if (!appbox::MergeHiveInto(state_hive, layer.registry_hive, error))
+            if (!appbox::MergeHiveInto(image_hive.wstring(), layer.registry_hive, error))
             {
                 SPDLOG_ERROR("the registry of the patch package '{}' is skipped: {}", appbox::WideToUTF8(layer.name),
                              error);
-                continue;
             }
-
-            SPDLOG_DEBUG("applied the registry of the patch package '{}'", appbox::WideToUTF8(layer.name));
+            else
+            {
+                SPDLOG_DEBUG("applied the registry of the patch package '{}' to the image",
+                             appbox::WideToUTF8(layer.name));
+            }
         }
 
         if (layer.registry_isolation_file.empty())
@@ -249,7 +308,6 @@ static void ApplyPatchHives(const std::wstring& state_hive, const std::vector<ap
         }
 
         appbox::registry_isolation::Document document;
-        std::string                          error;
         if (!ReadRegistryIsolationDocument(layer.registry_isolation_file, document, error))
         {
             SPDLOG_ERROR("the registry isolation of the patch package '{}' is skipped: {}",
@@ -257,15 +315,18 @@ static void ApplyPatchHives(const std::wstring& state_hive, const std::vector<ap
             continue;
         }
 
-        if (!appbox::ApplyHiveIsolationModes(state_hive, document.keys, document.values, error))
+        if (!appbox::ApplyHiveIsolationModes(image_hive.wstring(), document.keys, document.values, error))
         {
             SPDLOG_ERROR("the registry isolation of the patch package '{}' is skipped: {}",
                          appbox::WideToUTF8(layer.name), error);
             continue;
         }
 
-        SPDLOG_DEBUG("applied the registry isolation of the patch package '{}'", appbox::WideToUTF8(layer.name));
+        SPDLOG_DEBUG("applied the registry isolation of the patch package '{}' to the image",
+                     appbox::WideToUTF8(layer.name));
     }
+
+    return {};
 }
 
 AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const std::wstring& log_dir)
@@ -293,12 +354,13 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const
      * filesystem resource is not mounted at all, which keeps the layers below
      * it in place for that resource.
      *
-     * The virtual registry of a package is merged into the hive the sandbox
-     * mounts instead of being mounted as a layer of its own, because the
-     * sandbox mounts exactly one hive: the keys and the values of the packages
-     * are applied to that hive in ascending order, so the last package which
-     * names an entry wins while an entry no package names keeps the content of
-     * the archive and of the earlier runs.
+     * The registry of a run is a view of the state hive of the sandbox and of a
+     * read-only image which carries the content of the archive and of the
+     * packages: the state of the sandbox wins over the image, which wins over
+     * the real registry, so a modification of the sandboxed process is never
+     * reset by a layer below it. The image is rebuilt at every start, so the
+     * content of a rebuilt archive and of a replaced package reaches the next
+     * run all the same.
      */
     ReportStartupStage(appbox::StartupStage::LoadingPatches, 0.0);
 
@@ -335,22 +397,30 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const
         inject_data.variables.push_back(appbox::SandboxVariable{ variable.name, variable.path });
     }
 
+    const std::string image_error = BuildRegistryImage(paths, patch_layers);
+    if (!image_error.empty())
     {
-        const auto error = SeedRegistryHive(paths.RegistryHiveFile(), paths.StateRegistryHiveFile());
-        if (!error.empty())
-        {
-            SPDLOG_ERROR("{}", error);
-        }
+        SPDLOG_ERROR("{}", image_error);
     }
 
-    /*
-     * The registry of the packages is applied to the hive the sandbox mounts,
-     * so a package overrides the entries of the archive and of the earlier
-     * packages while an entry no package names keeps the content below it.
-     */
-    ApplyPatchHives(paths.StateRegistryHiveFile(), patch_layers);
-
     inject_data.registry_hive_dos_path = appbox::WideToUTF8(paths.StateRegistryHiveFile());
+    {
+        std::error_code ec;
+        const auto      image_hive = paths.StateRegistryImageHiveFile();
+        if (std::filesystem::is_regular_file(image_hive, ec))
+        {
+            inject_data.registry_image_hive_dos_path = appbox::WideToUTF8(image_hive);
+        }
+        else
+        {
+            /*
+             * A run without an image still isolates the registry, but the
+             * sandboxed process then only sees the state of the sandbox and the
+             * real registry: the content of the archive is missing.
+             */
+            SPDLOG_WARN("the run has no registry image: the content of the archive is not visible");
+        }
+    }
 
     ReportStartupStage(appbox::StartupStage::MountingSandbox, 0.6);
 

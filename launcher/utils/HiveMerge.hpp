@@ -40,6 +40,20 @@ namespace appbox
 bool MergeHiveInto(const std::wstring& target_hive, const std::wstring& source_hive, std::string& error);
 
 /**
+ * @brief Create a hive file which does not exist yet.
+ *
+ * Mounting a hive which does not exist creates it, which is how the image of
+ * the registry gets a file to merge into when the archive carries no registry
+ * of its own. An existing file is left untouched, so the helper can run before
+ * every merge of a start.
+ *
+ * @param[in] hive DOS path of the hive.
+ * @param[out] error Error description on failure.
+ * @return true when the file exists afterwards.
+ */
+bool EnsureHiveFile(const std::wstring& hive, std::string& error);
+
+/**
  * @brief Apply the isolation modes of a layer to the hive the sandbox mounts.
  *
  * A layer may give an entry a mode which differs from the mode the layer below

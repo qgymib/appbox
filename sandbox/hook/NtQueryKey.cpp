@@ -196,21 +196,22 @@ static NTSTATUS QueryKeyNameTranslated(HANDLE KeyHandle, KEY_INFORMATION_CLASS K
 
 /**
  * @brief Correct the sub key and value counts of a forwarded full/cached
- *        information record to the merged two layer view.
+ *        information record to the merged three layer view.
  *
- * The counts of the hive layer are replaced by the counts of the merged view,
- * and the maximum length fields grow to the maximum of both layers, so a
- * caller which allocates based on them can hold every merged entry. The real
- * layer is filtered like the enumeration does, so the counts never announce an
- * entry which the enumeration hides.
+ * The counts of the layer of the handle are replaced by the counts of the
+ * merged view, and the maximum length fields grow to the maximum of the layers
+ * below, so a caller which allocates based on them can hold every merged entry.
+ * The image and the real layer are filtered like the enumeration does, so the
+ * counts never announce an entry which the enumeration hides.
  *
- * @param[in] KeyHandle The hive key handle of the original call.
+ * @param[in] KeyHandle The key handle of the original call.
+ * @param[in] view The layer the handle points at.
  * @param[in] view_path The logical view path of the key.
  * @param[in] KeyInformationClass KeyFullInformation or KeyCachedInformation.
  * @param[out] KeyInformation The record which was filled by the forward call.
  * @return Status code of the forward call.
  */
-static NTSTATUS FixMergedCounts(HANDLE KeyHandle, const std::wstring& view_path,
+static NTSTATUS FixMergedCounts(HANDLE KeyHandle, appbox::registry::HandleView view, const std::wstring& view_path,
                                 KEY_INFORMATION_CLASS KeyInformationClass, PVOID KeyInformation, ULONG Length,
                                 NTSTATUS forwarded)
 {
@@ -225,41 +226,82 @@ static NTSTATUS FixMergedCounts(HANDLE KeyHandle, const std::wstring& view_path,
         return forwarded;
     }
 
+    std::wstring relative;
+    const bool   mapped = appbox::registry::Hive::HiveRelativePath(view_path, relative);
+
+    /*
+     * The state hive layer: the handle of the caller when it points at that
+     * layer, otherwise a handle opened here, so the counts of a handle of the
+     * image report the entries of the layer above it as well.
+     */
+    HANDLE upper = view == appbox::registry::HandleView::HiveHandle ? KeyHandle : nullptr;
+    HANDLE owned_upper = nullptr;
+    if (upper == nullptr && mapped &&
+        NT_SUCCESS(appbox::registry::Hive::OpenKey(relative, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS,
+                                                   OBJ_CASE_INSENSITIVE, nullptr, nullptr, &owned_upper)))
+    {
+        upper = owned_upper;
+    }
+    appbox::registry::KeyGuard upper_guard(owned_upper);
+
     std::vector<std::wstring> hive_sub_keys;
     std::vector<std::wstring> hive_values;
-    if (!NT_SUCCESS(appbox::registry::Hive::CollectSubKeyNames(KeyHandle, hive_sub_keys)))
+    if (upper != nullptr)
     {
-        return forwarded;
-    }
-    if (!NT_SUCCESS(appbox::registry::Hive::CollectValueNames(KeyHandle, hive_values)))
-    {
-        return forwarded;
+        if (!NT_SUCCESS(appbox::registry::Hive::CollectSubKeyNames(upper, hive_sub_keys)) ||
+            !NT_SUCCESS(appbox::registry::Hive::CollectValueNames(upper, hive_values)))
+        {
+            return forwarded;
+        }
     }
 
-    HANDLE real = nullptr;
+    /* The image layer, filtered by the whiteouts of the state hive. */
+    std::vector<std::wstring> image_sub_keys;
+    std::vector<std::wstring> image_values;
+    HANDLE                    image = nullptr;
+    if (mapped &&
+        NT_SUCCESS(appbox::registry::Hive::OpenImageKey(relative, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS, &image)))
+    {
+        appbox::registry::KeyGuard image_guard(image);
+        if (NT_SUCCESS(appbox::registry::Hive::CollectSubKeyNames(image, image_sub_keys)) &&
+            NT_SUCCESS(appbox::registry::Hive::CollectValueNames(image, image_values)))
+        {
+            appbox::registry::Hive::FilterHiddenImageEntries(view_path, false, image_sub_keys);
+            appbox::registry::Hive::FilterHiddenImageEntries(view_path, true, image_values);
+        }
+        else
+        {
+            image_sub_keys.clear();
+            image_values.clear();
+        }
+    }
+
+    /* The real layer, filtered like the enumeration does. */
+    std::vector<std::wstring> real_sub_keys;
+    std::vector<std::wstring> real_values;
+    HANDLE                    real = nullptr;
     if (!NT_SUCCESS(appbox::registry::Hive::OpenRealKey(view_path, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS,
                                                         OBJ_CASE_INSENSITIVE, nullptr, nullptr, &real)))
     {
-        /* Without a real layer the hive counts are already the merged counts. */
-        return forwarded;
+        /* Without a real layer the counts are the ones of the sandbox layers. */
+        real = nullptr;
     }
-
     appbox::registry::KeyGuard real_guard(real);
 
-    std::vector<std::wstring> real_sub_keys;
-    std::vector<std::wstring> real_values;
-    if (!NT_SUCCESS(appbox::registry::Hive::CollectSubKeyNames(real, real_sub_keys)))
+    if (real != nullptr)
     {
-        return forwarded;
+        if (NT_SUCCESS(appbox::registry::Hive::CollectSubKeyNames(real, real_sub_keys)) &&
+            NT_SUCCESS(appbox::registry::Hive::CollectValueNames(real, real_values)))
+        {
+            appbox::registry::Hive::FilterHiddenEntries(view_path, false, real_sub_keys);
+            appbox::registry::Hive::FilterHiddenEntries(view_path, true, real_values);
+        }
+        else
+        {
+            real_sub_keys.clear();
+            real_values.clear();
+        }
     }
-    if (!NT_SUCCESS(appbox::registry::Hive::CollectValueNames(real, real_values)))
-    {
-        return forwarded;
-    }
-
-    /* The same filter the enumeration applies, so the counts match the view. */
-    appbox::registry::Hive::FilterHiddenEntries(view_path, false, real_sub_keys);
-    appbox::registry::Hive::FilterHiddenEntries(view_path, true, real_values);
 
     /* The maximum length fields of the real layer, when they are available. */
     BYTE  real_buf[sizeof(KEY_FULL_INFORMATION) + 0x100];
@@ -267,7 +309,8 @@ static NTSTATUS FixMergedCounts(HANDLE KeyHandle, const std::wstring& view_path,
     ULONG real_max_name_len = 0, real_max_class_len = 0;
     ULONG real_max_value_name_len = 0, real_max_value_data_len = 0;
     bool  have_real_max = false;
-    if (NT_SUCCESS(sys_NtQueryKey(real, KeyFullInformation, real_buf, sizeof(real_buf), &real_needed)) &&
+    if (real != nullptr &&
+        NT_SUCCESS(sys_NtQueryKey(real, KeyFullInformation, real_buf, sizeof(real_buf), &real_needed)) &&
         real_needed >= sizeof(KEY_FULL_INFORMATION) - sizeof(WCHAR))
     {
         auto* info = reinterpret_cast<KEY_FULL_INFORMATION*>(real_buf);
@@ -278,11 +321,14 @@ static NTSTATUS FixMergedCounts(HANDLE KeyHandle, const std::wstring& view_path,
         have_real_max = true;
     }
 
+    const ULONG sub_keys = (ULONG)appbox::registry::CountMerged(hive_sub_keys, image_sub_keys, real_sub_keys);
+    const ULONG values = (ULONG)appbox::registry::CountMerged(hive_values, image_values, real_values);
+
     if (full)
     {
         auto* info = reinterpret_cast<KEY_FULL_INFORMATION*>(KeyInformation);
-        info->SubKeys = (ULONG)appbox::registry::CountMerged(hive_sub_keys, real_sub_keys);
-        info->Values = (ULONG)appbox::registry::CountMerged(hive_values, real_values);
+        info->SubKeys = sub_keys;
+        info->Values = values;
         if (have_real_max)
         {
             if (real_max_name_len > info->MaxNameLen)
@@ -306,8 +352,8 @@ static NTSTATUS FixMergedCounts(HANDLE KeyHandle, const std::wstring& view_path,
     else
     {
         auto* info = reinterpret_cast<KEY_CACHED_INFORMATION*>(KeyInformation);
-        info->SubKeys = (ULONG)appbox::registry::CountMerged(hive_sub_keys, real_sub_keys);
-        info->Values = (ULONG)appbox::registry::CountMerged(hive_values, real_values);
+        info->SubKeys = sub_keys;
+        info->Values = values;
         if (have_real_max)
         {
             if (real_max_name_len > info->MaxNameLen)
@@ -331,18 +377,20 @@ static NTSTATUS FixMergedCounts(HANDLE KeyHandle, const std::wstring& view_path,
 /**
  * @brief Detour of NtQueryKey().
  *
- * Key names reported for hive handles are translated back into the logical
- * view path (\REGISTRY\USER\<SID>\...), so a redirected handle behaves exactly
- * like the key it shadows. The sub key and value counts of the full and cached
- * information classes are corrected to the merged two layer view.
+ * Key names reported for handles of a sandbox layer are translated back into
+ * the logical view path (\REGISTRY\USER\<SID>\...), so a redirected handle
+ * behaves exactly like the key it shadows, whatever layer of the sandbox it was
+ * opened in. The sub key and value counts of the full and cached information
+ * classes are corrected to the merged three layer view.
  */
 static NTSTATUS NTAPI Hook_NtQueryKey(HANDLE KeyHandle, KEY_INFORMATION_CLASS KeyInformationClass, PVOID KeyInformation,
                                       ULONG Length, PULONG ResultLength)
 {
     logger.Log(KeyHandle, KeyInformationClass, KeyInformation, Length, ResultLength);
 
-    std::wstring view_path;
-    if (appbox::registry::Hive::MapHandleView(KeyHandle, view_path) != appbox::registry::HandleView::HiveHandle)
+    std::wstring                       view_path;
+    const appbox::registry::HandleView view = appbox::registry::Hive::MapHandleView(KeyHandle, view_path);
+    if (!appbox::registry::IsSandboxHandle(view))
     {
         return sys_NtQueryKey(KeyHandle, KeyInformationClass, KeyInformation, Length, ResultLength);
     }
@@ -362,7 +410,7 @@ static NTSTATUS NTAPI Hook_NtQueryKey(HANDLE KeyHandle, KEY_INFORMATION_CLASS Ke
             return st;
         }
         /* The counts need the merged view even when the record is truncated. */
-        return FixMergedCounts(KeyHandle, view_path, KeyInformationClass, KeyInformation, Length, st);
+        return FixMergedCounts(KeyHandle, view, view_path, KeyInformationClass, KeyInformation, Length, st);
     }
 
     default:

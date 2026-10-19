@@ -43,9 +43,18 @@ enum class HandleView
     NotIsolated,
 
     /**
-     * @brief The handle refers to a key inside the sandbox hive.
+     * @brief The handle refers to a key inside the state hive of the sandbox.
      */
     HiveHandle,
+
+    /**
+     * @brief The handle refers to a key inside the read-only image of the run.
+     *
+     * The image is a sandbox layer, so a read of the handle answers like the
+     * merged view does; a modification through it has to be copied up into the
+     * state hive first, because the image is never written.
+     */
+    ImageHandle,
 
     /**
      * @brief The handle refers to a key of the real registry below one of the
@@ -53,6 +62,16 @@ enum class HandleView
      */
     RealHandle,
 };
+
+/**
+ * @brief Whether a handle points at one of the sandbox layers.
+ * @param[in] view The classification of the handle.
+ * @return true when the handle belongs to the state hive or to the image.
+ */
+inline bool IsSandboxHandle(HandleView view)
+{
+    return view == HandleView::HiveHandle || view == HandleView::ImageHandle;
+}
 
 /**
  * @brief Result of resolving a merged enumeration index onto a layer handle.
@@ -65,9 +84,14 @@ enum class MergedResolve
     NoMoreEntries,
 
     /**
-     * @brief The entry lives in the hive layer; use the original handle.
+     * @brief The entry lives in the state hive; use the original handle.
      */
     HiveLayer,
+
+    /**
+     * @brief The entry lives in the image; use the returned handle.
+     */
+    ImageLayer,
 
     /**
      * @brief The entry lives in the real layer; use the returned handle.
@@ -81,33 +105,46 @@ enum class MergedResolve
 };
 
 /**
- * @brief The sandbox registry hive.
+ * @brief The registry view of a sandboxed process.
  *
- * The hive is a real registry file mounted as an application hive
+ * The view is composed of three layers, and a layer below never overrides the
+ * layer above it:
+ *
+ * 1. the **state hive** of the sandbox (`data/registry/user.hiv`), which holds
+ *    the modifications the sandboxed processes made and is the only writable
+ *    layer of the sandbox;
+ * 2. the **image** of the run (`data/registry/image/user.hiv`), a read-only
+ *    hive which carries the registry of the archive merged with the hive of
+ *    every patch package, in the order the packages take effect in;
+ * 3. the **host layer**, the real registry.
+ *
+ * Both hives are real registry files mounted as application hives
  * (RegLoadAppKey) when the sandbox DLL is injected in isolation mode. The mount
  * is not part of the global registry namespace: it is reached only through the
  * root handle of the mount, which is exactly what the redirection needs. Every
- * process of the sandbox mounts the file, and a file which another process
+ * process of the sandbox mounts the files, and a file which another process
  * already mounted is served by the hive of that mount, so the processes of one
  * sandbox share their registry state.
  *
- * The hive holds one sub key per root key of the view (`HKEY_LOCAL_MACHINE`,
- * `HKEY_CURRENT_USER`, ...), so the path of an entry inside the hive equals
- * its path in the registry workspace of the packer and in the isolation file.
+ * A hive holds one sub key per root key of the view (`HKEY_LOCAL_MACHINE`,
+ * `HKEY_CURRENT_USER`, ...), so the path of an entry inside a hive equals its
+ * path in the registry workspace of the packer and in the isolation file.
  *
  * Redirection model (the decision table itself lives in
  * registry/IsolationPolicy.hpp, so it stays free of the registry API and unit
  * testable):
- * * Open (`OpenIsolatedKey` / `OpenIsolatedKeyEx`): every mode opens the key
- *   inside the hive first. When the hive does not hold the key the isolation
- *   mode decides (see `OpenFallback`): `Full` and `Hide` report the failure of
- *   the hive open, `Merge` hands the key of the host layer out — for a write
- *   access open as well, because a modification of an entry the sandbox does
- *   not hold lands in the host — and `WriteCopy` reads through the real
- *   registry and copies a write access open up into the hive.
+ * * Open (`OpenIsolatedKey` / `OpenIsolatedKeyEx`): the state hive is tried
+ *   first, then the image. A key the image holds is handed out for a read and
+ *   copied up into the state hive for a write, so the image is never written.
+ *   When neither sandbox layer holds the key the isolation mode decides (see
+ *   `OpenFallback`): `Full` and `Hide` report the failure of the state hive
+ *   open, `Merge` hands the key of the host layer out — for a write access open
+ *   as well, because a modification of an entry the sandbox does not hold lands
+ *   in the host — and `WriteCopy` reads through the real registry and copies a
+ *   write access open up into the state hive.
  * * Create (`CreateIsolatedKey`, built on the raw `CreateKey`): the key is
- *   created inside the hive, which also creates the intermediate keys, unless
- *   the mode is `Merge` and the sandbox does not hold the key: that create
+ *   created inside the state hive, which also creates the intermediate keys,
+ *   unless the mode is `Merge` and no sandbox layer holds the key: that create
  *   lands in the real registry, which is the write rule of the mode. The
  *   disposition the caller observes follows the merged view of the mode
  *   (`ViewCreateDisposition`).
@@ -118,10 +155,10 @@ enum class MergedResolve
  *   modifies the real registry.
  * * Transacted open and create (`OpenIsolatedKeyTransacted`,
  *   `OpenIsolatedKeyTransactedEx` and `CreateIsolatedKeyTransacted`): the same
- *   policy with the transaction of the caller, which the hive layer is opened
- *   and created with. The host layer is never enlisted into that transaction,
- *   which is why a transacted call whose answer would be a handle of the host
- *   layer is refused (`kTransactedHostFallbackStatus`).
+ *   policy with the transaction of the caller, which the state hive is opened
+ *   and created with. Neither the image nor the host layer is ever enlisted
+ *   into that transaction, which is why a transacted call whose answer would be
+ *   a handle of those layers is refused (`kTransactedHostFallbackStatus`).
  * * The isolation modes of the isolation file decide which host entries stay
  *   invisible. The table has no default mode: the file of the archive has to
  *   name the five root keys of the view, and a table which misses one of them
@@ -223,27 +260,29 @@ public:
     static bool ValueWritesToHost(const std::wstring& relative, const std::wstring& value_name);
 
     /**
-     * @brief Whether the sandbox holds a value of a key.
+     * @brief Whether a sandbox layer holds a value of a key.
      *
-     * The sandbox holds a value when the hive carries it, and it holds a value
-     * it deleted as well: the deletion is recorded in the whiteout store, so the
-     * value counts as held and a later write lands in the sandbox again.
+     * The sandbox holds a value when the state hive or the image carries it,
+     * and it holds a value it deleted as well: the deletion is recorded in the
+     * whiteout store, so the value counts as held and a later write lands in
+     * the sandbox again.
      *
      * @param[in] relative The hive relative path of the key holding the value.
      * @param[in] value_name Name of the value, empty for the default value.
-     * @return true when the hive or the whiteout store holds the value.
+     * @return true when a sandbox layer or the whiteout store holds the value.
      */
     static bool SandboxHoldsValue(const std::wstring& relative, const std::wstring& value_name);
 
     /**
-     * @brief Whether the sandbox holds a key.
+     * @brief Whether a sandbox layer holds a key.
      *
-     * The sandbox holds a key when the hive carries it, and it holds a key it
-     * deleted as well: the deletion is recorded in the whiteout store, so the
-     * key counts as held and a later create lands in the sandbox again.
+     * The sandbox holds a key when the state hive or the image carries it, and
+     * it holds a key it deleted as well: the deletion is recorded in the
+     * whiteout store, so the key counts as held and a later create lands in the
+     * sandbox again.
      *
      * @param[in] relative The hive relative path of the key.
-     * @return true when the hive or the whiteout store holds the key.
+     * @return true when a sandbox layer or the whiteout store holds the key.
      */
     static bool SandboxHoldsKey(const std::wstring& relative);
 
@@ -283,6 +322,20 @@ public:
     static void FilterHiddenEntries(const std::wstring& view_path, bool values, std::vector<std::wstring>& names);
 
     /**
+     * @brief Drop the names of the image which the state of the sandbox hides.
+     *
+     * A key or a value the sandboxed process deleted is recorded in the whiteout
+     * store of the state hive, and the marker hides the entry of every layer
+     * below it. The isolation mode takes no part in the filter: `Full` and `Hide`
+     * keep the host registry invisible and never a sandbox layer.
+     *
+     * @param[in] view_path The logical path of the parent key in the view.
+     * @param[in] values true filters value names, false filters sub key names.
+     * @param[in,out] names The names of the image, filtered in place.
+     */
+    static void FilterHiddenImageEntries(const std::wstring& view_path, bool values, std::vector<std::wstring>& names);
+
+    /**
      * @brief Open an existing key inside the hive (NtOpenKey semantics).
      * @param[in] relative The key path relative to the hive root.
      * @param[in] DesiredAccess The requested access mask.
@@ -309,6 +362,22 @@ public:
     static NTSTATUS OpenKeyEx(const std::wstring& relative, ACCESS_MASK DesiredAccess, ULONG Attributes,
                               PVOID SecurityDescriptor, PVOID SecurityQualityOfService, ULONG OpenOptions,
                               PHANDLE KeyHandle);
+
+    /**
+     * @brief Open an existing key inside the read-only image of the run.
+     *
+     * The image is a sandbox layer and is never written, so a caller which
+     * needs to modify the key copies it up into the state hive instead of
+     * writing through the handle of the image.
+     *
+     * @param[in] relative The key path relative to the hive root.
+     * @param[in] DesiredAccess The requested access mask.
+     * @param[out] KeyHandle The resulting key handle.
+     * @return Status code; a missing image reports
+     *         `STATUS_OBJECT_NAME_NOT_FOUND`, which is the status of an open of
+     *         a key the image does not hold.
+     */
+    static NTSTATUS OpenImageKey(const std::wstring& relative, ACCESS_MASK DesiredAccess, PHANDLE KeyHandle);
 
     /**
      * @brief Open a key in the real registry through its view path (NtOpenKey semantics).
@@ -725,7 +794,9 @@ public:
      * the data offsets the kernel would have produced (the entries are packed
      * without padding).
      *
-     * @param[in] KeyHandle The hive key handle of the hooked call.
+     * @param[in] handle_view The layer the handle of the caller points at.
+     * @param[in] KeyHandle The key handle of the hooked call, a handle of a
+     *                      sandbox layer.
      * @param[in] view_path The logical path of the key in the view.
      * @param[in] relative The key path relative to the hive root.
      * @param[in,out] ValueEntries The entries of the call, filled with the data
@@ -737,9 +808,9 @@ public:
      * @param[out] RequiredBufferLength The size the buffer needs.
      * @return Status code.
      */
-    static NTSTATUS QueryMultipleValues(HANDLE KeyHandle, const std::wstring& view_path, const std::wstring& relative,
-                                        PKEY_VALUE_ENTRY ValueEntries, ULONG EntryCount, PVOID ValueBuffer,
-                                        PULONG BufferLength, PULONG RequiredBufferLength);
+    static NTSTATUS QueryMultipleValues(HandleView handle_view, HANDLE KeyHandle, const std::wstring& view_path,
+                                        const std::wstring& relative, PKEY_VALUE_ENTRY ValueEntries, ULONG EntryCount,
+                                        PVOID ValueBuffer, PULONG BufferLength, PULONG RequiredBufferLength);
 
     /**
      * @brief Save a key of the merged view into a hive file (NtSaveKey semantics).
@@ -760,8 +831,9 @@ public:
      * A key whose real layer contributes nothing to the view is saved directly
      * from its hive key, which is the common case and costs no extra file.
      *
-     * @param[in] KeyHandle The hive key handle of the caller, null when the
-     *                      caller holds a real read through handle.
+     * @param[in] handle_view The layer the handle of the caller points at.
+     * @param[in] KeyHandle The key handle of the caller, null when the caller
+     *                      holds a real read through handle.
      * @param[in] view_path The logical path of the key in the view.
      * @param[in] relative The key path relative to the hive root.
      * @param[in] FileHandle The file which receives the hive, opened by the caller.
@@ -769,8 +841,8 @@ public:
      * @param[in] extended true runs NtSaveKeyEx, false NtSaveKey.
      * @return Status code.
      */
-    static NTSTATUS SaveIsolatedKey(HANDLE KeyHandle, const std::wstring& view_path, const std::wstring& relative,
-                                    HANDLE FileHandle, ULONG Format, bool extended);
+    static NTSTATUS SaveIsolatedKey(HandleView handle_view, HANDLE KeyHandle, const std::wstring& view_path,
+                                    const std::wstring& relative, HANDLE FileHandle, ULONG Format, bool extended);
 
     /**
      * @brief Classify a key handle against the isolation view.
@@ -837,26 +909,29 @@ public:
     static NTSTATUS CollectValueNames(HANDLE KeyHandle, std::vector<std::wstring>& names);
 
     /**
-     * @brief Resolve a merged enumeration index of a hive key handle.
+     * @brief Resolve a merged enumeration index of a sandbox key handle.
      *
-     * Collects the entry names of the hive layer and of the real key which the
-     * view path addresses, drops the real entries whose isolation mode hides
-     * the host registry, then maps the merged index onto the holding layer
-     * (see registry/EnumMerge.hpp for the merge rules).
+     * Collects the entry names of the state hive, of the image and of the real
+     * key which the view path addresses, drops the entries the sandbox deleted
+     * and the real entries whose isolation mode hides the host registry, then
+     * maps the merged index onto the holding layer (see registry/EnumMerge.hpp
+     * for the merge rules).
      *
-     * @param[in] KeyHandle The hive key handle of the hooked call.
+     * @param[in] KeyHandle The handle of the state hive layer of the hooked
+     *                      call, null when the key has no state hive layer.
      * @param[in] view_path The logical view path of the key.
      * @param[in] values true resolves value names (NtEnumerateValueKey), false
      *                   resolves sub key names (NtEnumerateKey).
      * @param[in] Index The index inside the merged view.
-     * @param[out] real_handle The handle of the real key, owned by the caller.
-     *                         Null unless the result is RealLayer.
+     * @param[out] layer_handle The handle to enumerate with, owned by the
+     *                          caller when \p owned is set.
+     * @param[out] owned true when the caller has to close \p layer_handle.
      * @param[out] layer_index The index of the entry inside its layer.
-     * @return The resolution result. Every result except RealLayer leaves
-     *         real_handle null.
+     * @return The resolution result. `HiveLayer` reports the handle of the
+     *         caller, `ImageLayer` and `RealLayer` a handle owned by the caller.
      */
     static MergedResolve ResolveMergedIndex(HANDLE KeyHandle, const std::wstring& view_path, bool values, ULONG Index,
-                                            HANDLE& real_handle, ULONG& layer_index);
+                                            HANDLE& layer_handle, bool& owned, ULONG& layer_index);
 };
 
 /**

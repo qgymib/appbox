@@ -38,9 +38,10 @@ std::vector<BYTE> StringData(const std::wstring& text)
  * 2. Read the value inside the sandbox.
  *
  * Expected:
- * 1. The read returns the value of the packed hive, because the launcher seeded
- *    the hive into the state directory which it created at run time.
- * 2. The state directory carries the hive the sandbox mounted.
+ * 1. The read returns the value of the packed hive, because the launcher built
+ *    the read-only image of the run from the resources and the sandbox merged it
+ *    below the state hive it created at run time.
+ * 2. The state directory carries the state hive of the sandbox and the image.
  * 3. The hive of the resources is byte identical to the one the case built, so
  *    the resources of the application were not modified.
  */
@@ -85,9 +86,13 @@ TEST_F(E2E_Launcher, RegistryStateIsSeeded)
     ASSERT_EQ(rsp.query_code, 0u);
     EXPECT_EQ(rsp.data, "packed");
 
-    /* The sandbox mounts a copy of the packed hive. */
+    /* The sandbox mounts the state hive and the image of the run. */
     ASSERT_TRUE(std::filesystem::exists(state_hive));
     EXPECT_GT(std::filesystem::file_size(state_hive), 0u);
+
+    const auto image_hive = GetCWD() / appbox::layout::kStateRegistryImageRelative;
+    ASSERT_TRUE(std::filesystem::exists(image_hive));
+    EXPECT_GT(std::filesystem::file_size(image_hive), 0u);
 
     /* The resources of the application were not modified. */
     std::vector<uint8_t> packed_after;
