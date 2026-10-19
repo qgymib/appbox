@@ -40,6 +40,7 @@ add_library(${sandbox_name} MODULE
     "filesystem/RemoveAll.cpp"
     "filesystem/ReparsePoint.cpp"
     "filesystem/Resolve.cpp"
+    "filesystem/ResolveCore.cpp"
     "filesystem/Sequence.cpp"
     "filesystem/ViewPathOfHandle.cpp"
     "fonts/Isolation.cpp"

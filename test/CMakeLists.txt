@@ -46,7 +46,6 @@ add_executable(AppBoxTests
     "unit/Log.cpp"
     "unit/LogFile.cpp"
     "unit/Md5.cpp"
-    "unit/ProcessLauncher.cpp"
     "unit/ModuleTable.cpp"
     "unit/NetworkIsolationFile.cpp"
     "unit/NetworkModel.cpp"
@@ -65,6 +64,7 @@ add_executable(AppBoxTests
     "unit/RemoteClient.cpp"
     "unit/RpcCodec.cpp"
     "unit/Shell.cpp"
+    "unit/ViewPathResolver.cpp"
     "unit/SnapshotApply.cpp"
     "unit/SnapshotCapture.cpp"
     "unit/SnapshotDiff.cpp"
@@ -179,12 +179,14 @@ add_executable(AppBoxTests
     "e2e/Launcher_Log.cpp"
     "e2e/Launcher_MissingSandboxDll.cpp"
     "e2e/Launcher_NoVcRuntime.cpp"
+    "e2e/Launcher_ProcessChain.cpp"
     "e2e/Launcher_RegistryStateIsKept.cpp"
     "e2e/Launcher_RegistryStateIsReset.cpp"
     "e2e/Launcher_RegistryStateIsSeeded.cpp"
     "e2e/Launcher_SandboxDllFromTheApp.cpp"
     "e2e/Launcher_Shell.cpp"
     "e2e/Launcher_Startup.cpp"
+    "e2e/Launcher_StartupImage.cpp"
     "e2e/Launcher_StartupScreen.cpp"
     "e2e/Launcher_StartupScript.cpp"
     "e2e/Net_Dns_EveryResolutionApiIsRedirected.cpp"
@@ -328,11 +330,11 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/MapBaseFS.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/Md5.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/ProcessJob.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/ProcessLauncher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/Shell.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/StartupImage.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/StartupLayout.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/VersionInfo.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/ViewPathResolver.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/WinCall.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/Splash.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/AboutInfo.cpp
@@ -374,7 +376,12 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/ModuleTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/environment/Configuration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/environment/Table.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/DirName.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/IsolationTable.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/ResolveCore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/Sequence.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/MappingAsDosNtPath.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/MappingAsSandboxNtPath.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/network/DnsTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/network/ProxyConfig.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/network/Socks5.cpp

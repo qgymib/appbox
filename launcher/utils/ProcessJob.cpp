@@ -2,7 +2,6 @@
 #include <detours.h>
 #include <spdlog/spdlog.h>
 #include "sandbox/utils/Defines.hpp"
-#include "utils/GetExecutableDir.hpp"
 #include "ProcessJob.hpp"
 #include "BuildCommandLine.hpp"
 
@@ -11,14 +10,15 @@ struct appbox::ProcessJob::Data
     Data(const appbox::SandboxConfig& cfg);
     ~Data();
 
-    HANDLE                    hIOCP;        /* IO Completion Port. */
-    HANDLE                    hJob;         /* Job object. */
-    PROCESS_INFORMATION       process_info; /* Process information. */
-    appbox::SandboxConfig     inject_data;  /* Injection data. */
-    std::wstring              exe_path;     /* Target executable path to run. */
-    std::vector<std::wstring> exe_args;     /* Target executable command line. */
-    bool                      hide_console; /* Start the target without a console window. */
-    DWORD                     exit_code;    /* Exit code of target executable. */
+    HANDLE                    hIOCP;             /* IO Completion Port. */
+    HANDLE                    hJob;              /* Job object. */
+    PROCESS_INFORMATION       process_info;      /* Process information. */
+    appbox::SandboxConfig     inject_data;       /* Injection data. */
+    std::wstring              image_path;        /* Host path of the image to run. */
+    std::wstring              command_line_path; /* Path the command line names. */
+    std::vector<std::wstring> exe_args;          /* Target executable command line. */
+    bool                      hide_console;      /* Start the target without a console window. */
+    DWORD                     exit_code;         /* Exit code of target executable. */
 };
 
 appbox::ProcessJob::Data::Data(const appbox::SandboxConfig& cfg)
@@ -87,11 +87,13 @@ appbox::ProcessJob::Data::~Data()
     }
 }
 
-appbox::ProcessJob::ProcessJob(const std::wstring exePath, const std::vector<std::wstring> args,
-                               const appbox::SandboxConfig& inject_data, bool hide_console)
+appbox::ProcessJob::ProcessJob(const std::wstring image_path, const std::wstring command_line_path,
+                               const std::vector<std::wstring> args, const appbox::SandboxConfig& inject_data,
+                               bool hide_console)
 {
     data_ = new Data(inject_data);
-    data_->exe_path = exePath;
+    data_->image_path = image_path;
+    data_->command_line_path = command_line_path;
     data_->exe_args = args;
     data_->hide_console = hide_console;
 }
@@ -120,30 +122,34 @@ DWORD appbox::ProcessJob::Start()
     const std::string& sandbox_dll_path = data_->inject_data.sandbox32_dos_path;
 #endif
 
-    auto                      self_path = appbox::GetExecutablePath();
-    std::vector<std::wstring> self_args = { L"--X-AppBox-ProcessLauncher=true" };
-
     /*
-     * The console flag belongs to the launcher of the target, so it has to
-     * precede the path of the target: everything behind that path is passed
-     * to the target unchanged.
+     * The command line names the path of the view, which is the path the
+     * configuration spells and the path a sandboxed process would see, while
+     * the image is the file of the layer which holds it: the launcher creates
+     * the process itself, so it has to name both.
      */
-    if (data_->hide_console)
-    {
-        self_args.push_back(L"--X-AppBox-HideConsole=true");
-    }
-
-    self_args.push_back(data_->exe_path);
-    self_args.insert(self_args.end(), data_->exe_args.begin(), data_->exe_args.end());
-    auto cmdline = appbox::BuildCommandLine(self_path, self_args);
+    auto cmdline = appbox::BuildCommandLine(data_->command_line_path, data_->exe_args);
 
     STARTUPINFOW startupInfo;
     ZeroMemory(&startupInfo, sizeof(startupInfo));
     startupInfo.cb = sizeof(startupInfo);
 
-    if (!DetourCreateProcessWithDllExW(self_path.c_str(), cmdline.data(), nullptr, nullptr, false, CREATE_SUSPENDED,
-                                       nullptr, nullptr, &startupInfo, &data_->process_info, sandbox_dll_path.c_str(),
-                                       nullptr))
+    /*
+     * A console program started by a program without a console gets a console
+     * window of its own. The flag creates that console without the window, so
+     * nothing appears on the desktop; the program keeps its console and
+     * therefore its standard streams. A GUI program never owns a console
+     * window and is not affected by the flag.
+     */
+    DWORD creation_flags = CREATE_SUSPENDED;
+    if (data_->hide_console)
+    {
+        creation_flags |= CREATE_NO_WINDOW;
+    }
+
+    if (!DetourCreateProcessWithDllExW(data_->image_path.c_str(), cmdline.data(), nullptr, nullptr, false,
+                                       creation_flags, nullptr, nullptr, &startupInfo, &data_->process_info,
+                                       sandbox_dll_path.c_str(), nullptr))
     {
         return GetLastError();
     }

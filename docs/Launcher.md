@@ -3,7 +3,9 @@
 `AppBoxLauncher.exe` is the program a packed archive starts: a program without a
 window of its own which resolves the configuration beside itself, prepares the
 sandbox of the packaged application and starts the programs the configuration
-names. The launcher is the part of an archive which a user can drive from a
+names. The launcher creates every program itself and injects the sandbox module
+into it, so the process tree of a run is the launcher and the programs it
+started. The launcher is the part of an archive which a user can drive from a
 command line, so this document describes its command line options and the log
 files a run writes.
 
@@ -23,8 +25,6 @@ them as the command of the shell.
 | `--X-AppBox-LogDir` | Directory | Directory the log files of the run are written into. A relative path is resolved against the current directory. Default: the `log` directory beside the launcher. |
 | `--X-AppBox-Startup` | Trigger of a startup file | Start the startup file with that trigger instead of the files which are marked for auto start. A trigger no startup file carries refuses the run. |
 | `--X-AppBox-Shell` | – | Run the shell of the host inside the sandbox instead of the startup files; the remaining arguments are the command of the shell. The option cannot be combined with `--X-AppBox-Startup`, which names a different program to run. |
-| `--X-AppBox-ProcessLauncher` | – | Internal mode: start the program the remaining arguments name and exit with its exit code. The launcher uses it for the target of a run, which it starts inside a job object (see `launcher/utils/ProcessJob.*`); the mode is not meant to be used by hand. |
-| `--X-AppBox-HideConsole` | – | Start the target of the process launcher mode without a console window, which is what an unattended run of a console program needs. |
 
 A run without `--X-AppBox-Startup` starts every startup file which is marked for
 auto start; a configuration without such a file refuses the run, because the
@@ -65,6 +65,31 @@ entry always carries the `.exe` extension, because the launcher is a program
 image: a session whose first startup file is `run.bat` produces the launcher
 entry `run.exe` and the configuration `run.exe.json`.
 
+### Locating the image of a startup file
+
+The executable a configuration names is a path of the **sandbox view** and not a
+path of the machine: the packer stores `<layer key>\<import>\<file>` (for example
+`#ProgramFiles#\MyApp\app.exe`), while the files themselves travel below
+`app/filesystem/<layer key>` of the archive. The launcher therefore resolves the
+path before it creates the process, with the very rules a sandboxed process
+sees:
+
+* the layer key is expanded to the known folder of the machine which runs the
+  archive, and the resulting path is resolved against the layers of the view;
+* the overlay (`data/filesystem`) is the layer the view prefers, then the lower
+  layers in the order they are mounted (the patch packages first, the resources
+  of the archive last) and finally the host filesystem;
+* a whiteout marker (`<name>.$APPBOX_DELETE$`) and an opaque marker
+  (`.$APPBOX_OPAQUE$`) of the overlay hide the entries below them;
+* the isolation modes of the archive mask the layers they hide: `Full` of a
+  folder hides the host folder and `Whiteout` hides every layer but the overlay;
+* a reparse point of a redirecting tag is expanded by the view itself, so the
+  isolation of the target decides which layers the path sees.
+
+A startup file whose image no layer and no host path holds refuses the run: the
+launcher reports the reason (missing, hidden by a marker or hidden by the
+isolation) and exits with a non zero code without starting a program.
+
 ## Logging
 
 **A run writes no log file unless it asks for one.** Without
@@ -104,9 +129,8 @@ and the same directory to the sandbox of every process it starts:
    for a level adds one file per process to the directory, so a directory which
    is used often has to be cleaned by hand.
 2. **A run writes more than one log file.** The launcher writes its own log, and
-   the process launcher it starts for the target of a run is injected into the
-   sandbox as well, so even a run of a single startup file leaves more than one
-   file in the log directory.
+   every process the sandbox is injected into writes one as well, so a run of a
+   single startup file leaves two files in the log directory, one per process.
 3. **An unknown level writes no log file.** A misspelled level name is reported
    on the console of a run which has one and is otherwise treated like a run
    which asks for no log, so such a run leaves nothing to inspect.

@@ -24,6 +24,7 @@
 #include "utils/Shell.hpp"
 #include "utils/KnownFolder.hpp"
 #include "utils/VersionInfo.hpp"
+#include "utils/ViewPathResolver.hpp"
 #include "utils/WinCall.hpp"
 #include "Launcher.hpp"
 #include "Splash.hpp"
@@ -181,11 +182,34 @@ static void SelectStartupsForRun(const appbox::CommandLineOptions& opt)
 struct LaunchTarget
 {
     std::string               name;         /* Name of the target, for the log. */
-    std::wstring              exe_path;     /* Executable to run. */
+    std::wstring              exe_path;     /* Executable to run, as the configuration spells it. */
+    std::wstring              image_path;   /* Host path of the image which is created. */
     std::vector<std::wstring> args;         /* Arguments of the executable. */
     bool                      hide_console; /* Start the process without a console window. */
     std::string               error;        /* Reason the target cannot be started at all. */
 };
+
+/**
+ * @brief Resolve the image of one target into the path of the host.
+ *
+ * The configuration names a path of the sandbox view, which usually exists in
+ * the layers of the archive only: the launcher resolves it before it creates
+ * the process, because the process has to be created from the file which holds
+ * the image. A path which no layer and no host path holds refuses the target.
+ *
+ * @param[in] resolver Resolver of the view of the run.
+ * @param[in,out] target Target whose image is resolved.
+ */
+static void ResolveTargetImage(const appbox::ViewPathResolver& resolver, LaunchTarget& target)
+{
+    if (!target.error.empty())
+    {
+        /* The kind of the startup file already refuses the run. */
+        return;
+    }
+
+    resolver.Resolve(target.exe_path, target.image_path, target.error);
+}
 
 /**
  * @brief Build the processes the launcher starts.
@@ -203,11 +227,24 @@ struct LaunchTarget
  * machine does not offer is reported and refuses the run, because the sandbox
  * would otherwise start only a part of the application.
  *
+ * The image of a program is the file of the layer which holds it, while the
+ * configuration names the path of the view: the run resolves both the shell and
+ * the startup files before it creates the first process, so a program the view
+ * does not hold refuses the run instead of failing while it starts.
+ *
  * @return The processes to start, in the order they are started in.
  */
 static std::vector<LaunchTarget> BuildLaunchTargets()
 {
     std::vector<LaunchTarget> targets;
+
+    /*
+     * The view of the run: the layers the launcher mounts and the isolation
+     * modes of the archive. The resolver decides a path with the rules the
+     * sandbox applies to a path of an application, so the launcher creates the
+     * process from the very file the application would open.
+     */
+    const appbox::ViewPathResolver resolver(LauncherApp().runtime->inject_data);
 
     if (LauncherApp().shell)
     {
@@ -216,6 +253,7 @@ static std::vector<LaunchTarget> BuildLaunchTargets()
         target.exe_path = LauncherApp().shell_path;
         target.args = LauncherApp().shell_args;
         target.hide_console = false;
+        ResolveTargetImage(resolver, target);
         targets.push_back(std::move(target));
         return targets;
     }
@@ -228,6 +266,7 @@ static std::vector<LaunchTarget> BuildLaunchTargets()
         target.name = startup->trigger;
         target.hide_console = LauncherApp().launcher_config.hide_console;
         appbox::BuildStartupInvocation(path, BuildCmdArg(*startup), target.exe_path, target.args, target.error);
+        ResolveTargetImage(resolver, target);
         targets.push_back(std::move(target));
     }
 
@@ -293,7 +332,7 @@ static DWORD MainLauncher(std::unique_ptr<appbox::SplashScreen>& splash)
             continue;
         }
 
-        auto       job = std::make_unique<appbox::ProcessJob>(target.exe_path, target.args,
+        auto       job = std::make_unique<appbox::ProcessJob>(target.image_path, target.exe_path, target.args,
                                                               LauncherApp().runtime->inject_data, target.hide_console);
         const auto ret = job->Start();
         if (ret != 0)
@@ -478,14 +517,7 @@ static DWORD RunLauncher()
     appbox::WinCallInit();
 
     appbox::CommandLineOptions opt;
-    if (!opt.ParseOptions())
-    {
-        /*
-         * The process launcher mode leaves the process in RunAsStarter(); this
-         * path is the plain "nothing to run" refusal of the option parser.
-         */
-        return 0;
-    }
+    opt.ParseOptions();
 
     /*
      * The startup screen of the run. It covers the preparation of the sandbox

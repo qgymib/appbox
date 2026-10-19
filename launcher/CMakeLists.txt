@@ -13,11 +13,11 @@ add_executable(${PROJECT_NAME} WIN32
     "utils/Md5.cpp"
     "utils/PatchLayer.cpp"
     "utils/ProcessJob.cpp"
-    "utils/ProcessLauncher.cpp"
     "utils/Shell.cpp"
     "utils/StartupImage.cpp"
     "utils/StartupLayout.cpp"
     "utils/VersionInfo.cpp"
+    "utils/ViewPathResolver.cpp"
     "utils/WinCall.cpp"
     "Launcher.cpp"
     "Splash.cpp"
@@ -29,13 +29,29 @@ add_executable(${PROJECT_NAME} WIN32
     # the very same rules the packer writes it with, including the rejection
     # of entry names which would escape the destination folder.
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipReader.cpp"
+
+    # The resolver of the view. A startup file names a path of the sandbox
+    # view, which usually exists in the layers of the archive only, so the
+    # launcher locates the image with the very same rules a sandboxed process
+    # sees: the shared implementation and the pure helpers it uses are
+    # compiled into the launcher as well.
+    "${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/DirName.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/IsolationTable.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/ResolveCore.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/Sequence.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/MappingAsDosNtPath.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/MappingAsSandboxNtPath.cpp"
 )
 appbox_setup_target_wall(${PROJECT_NAME})
 
+# The sandbox directory is added last, so the headers of the launcher win: the
+# shared resolver includes the filesystem headers of the sandbox by their
+# sandbox relative name (`filesystem/ResolveCore.hpp`, `utils/MappingAs*.hpp`).
 target_include_directories(${PROJECT_NAME}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/..
+        ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox
 )
 
 target_compile_features(${PROJECT_NAME}

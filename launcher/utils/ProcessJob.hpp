@@ -13,14 +13,22 @@ struct ProcessJob
 {
     /**
      * @brief Construct a process job.
-     * @param[in] exePath Path of the target executable.
-     * @param[in] args Arguments of the target executable.
+     *
+     * The launcher injects the sandbox module into the process and creates it
+     * itself, so the image of the program and the path its command line names
+     * are two different things: the image lives in the layer of the archive
+     * which holds it, while the command line names the path of the view the
+     * configuration spells, exactly like a sandboxed process would spell it.
+     *
+     * @param[in] image_path Host path of the image to create.
+     * @param[in] command_line_path Path the command line names as its program.
+     * @param[in] args Arguments of the program.
      * @param[in] inject_data Injection data written into the target process.
      * @param[in] hide_console True to start the target without a console
      *                         window.
      */
-    ProcessJob(const std::wstring exePath, const std::vector<std::wstring> args,
-               const appbox::SandboxConfig& inject_data, bool hide_console);
+    ProcessJob(const std::wstring image_path, const std::wstring command_line_path,
+               const std::vector<std::wstring> args, const appbox::SandboxConfig& inject_data, bool hide_console);
     ~ProcessJob();
 
     /**
@@ -49,4 +57,4 @@ struct ProcessJob
 
 } // namespace appbox
 
-#endif
+#endif // APPBOX_LAUNCHER_UTILS_PROCESSJOB_HPP

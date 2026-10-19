@@ -1,10 +1,10 @@
-#include "utils/ProcessLauncher.hpp"
 #include "utils/GetExecutableDir.hpp"
 #include "CommandLineOptions.hpp"
 #include "LogFileName.hpp"
 #include "SetLogLevel.hpp"
 #include "WString.hpp"
 #include <CLI/CLI.hpp>
+#include <cstdlib>
 #include <filesystem>
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -143,41 +143,10 @@ static void SetupConfigFile(appbox::CommandLineOptions& opt, const std::wstring&
     opt.override_config = nlohmann::json::parse(f);
 }
 
-/**
- * @brief Start the target of the process launcher and exit with its exit code.
- * @param[in] app The command line, whose first remaining argument is the
- *                target and whose other remaining arguments belong to it.
- * @param[in] hide_console True to start the target without a console window.
- */
-static void RunAsStarter(CLI::App& app, bool hide_console)
-{
-    auto remain_args = app.remaining();
-    auto remain_args_sz = remain_args.size();
-
-    std::wstring              exe_path;
-    std::vector<std::wstring> exe_args;
-    for (size_t i = 0; i < remain_args_sz; i++)
-    {
-        if (i == 0)
-        {
-            exe_path = CLI::widen(remain_args[i]);
-        }
-        else
-        {
-            auto arg = CLI::widen(remain_args[i]);
-            exe_args.push_back(arg);
-        }
-    }
-
-    exit(appbox::ProcessLauncher(exe_path, exe_args, hide_console));
-}
-
 appbox::CommandLineOptions::CommandLineOptions()
 {
     wargc = 0;
     wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
-    is_process_launcher = false;
-    hide_console = false;
     has_startup_trigger = false;
     shell = false;
     log_level = "off";
@@ -188,7 +157,7 @@ appbox::CommandLineOptions::~CommandLineOptions()
     LocalFree(wargv);
 }
 
-bool appbox::CommandLineOptions::ParseOptions()
+void appbox::CommandLineOptions::ParseOptions()
 {
     CLI::App app;
     app.prefix_command();
@@ -221,8 +190,6 @@ bool appbox::CommandLineOptions::ParseOptions()
     app.add_option_function<std::wstring>(
         "--X-AppBox-ConfigFile", [this](const std::wstring& arg) { SetupConfigFile(*this, arg); },
         "Use config file instead of loading builtin config file");
-    app.add_option("--X-AppBox-ProcessLauncher", is_process_launcher, "Run as the process launcher of the launcher");
-    app.add_option("--X-AppBox-HideConsole", hide_console, "Start the target without a console window");
     /*
      * The shell takes the command it runs from the remaining arguments, so the
      * option itself carries no value and every option of the launcher has to
@@ -237,20 +204,25 @@ bool appbox::CommandLineOptions::ParseOptions()
         },
         "Run the startup file with the given trigger instead of the auto start files");
 
-    CLI11_PARSE(app, wargc, wargv);
+    try
+    {
+        app.parse(wargc, wargv);
+    }
+    catch (const CLI::ParseError& e)
+    {
+        /*
+         * A command line which cannot be parsed is reported by CLI11 itself,
+         * which prints the message and answers `--help` as well. The run has
+         * nothing to start in that case, so it leaves with the code the parser
+         * reports.
+         */
+        exit(app.exit(e));
+    }
 
     SetupLogging(*this);
-
-    if (is_process_launcher)
-    {
-        RunAsStarter(app, hide_console);
-        return false;
-    }
 
     for (auto& arg : app.remaining())
     {
         extra_args.push_back(arg);
     }
-
-    return true;
 }

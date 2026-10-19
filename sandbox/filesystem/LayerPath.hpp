@@ -29,6 +29,9 @@ namespace appbox::filesystem
  * boundary does not match. The upper layer is matched first, then the lower
  * layers in the order they are mounted.
  *
+ * The call is the sandbox side of `RebaseLayerPathToViewCore()`, which the
+ * launcher runs with the layers of the configuration it resolved.
+ *
  * @param[in] layerPath Path of the upper layer, of a lower layer or of the
  *                      host layer, relative to the root of its volume.
  * @param[out] viewPath Path of the view the layer path belongs to, in the same

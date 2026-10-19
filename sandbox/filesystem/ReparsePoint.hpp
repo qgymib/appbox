@@ -9,31 +9,14 @@
 namespace appbox::filesystem
 {
 
-/**
- * @brief Depth limit of a chain of reparse points.
- *
- * A link may name another link, which names a third one: the view follows the
- * chain while it expands the path, and a chain which is longer than the limit
- * is reported as a failure instead of being followed forever. The file system
- * uses the same kind of limit for the same reason.
+/*
+ * The reading and the expansion of a reparse point are implemented by the
+ * shared resolver (`ResolveCore.hpp`), because the launcher resolves the image
+ * of a startup file with the same rules. This header declares the calls the
+ * sandbox adds on top of it: the read of the data of a layer, which runs
+ * through the entry points the sandbox saved, and the write side, which the
+ * filesystem hooks use when the sandboxed process creates a link.
  */
-inline constexpr std::size_t kMaxReparseDepth = 32;
-
-/**
- * @brief Whether a reparse point redirects the namespace of the view.
- *
- * Only two of the tags the file system knows name an object of the file system
- * instead of the entry which carries them, and only those have to be resolved
- * by the view: a mount point (a junction and a volume which is mounted into a
- * folder) and a symbolic link. Every other tag describes the entry itself -
- * a placeholder of a cloud store, a container image layer, a packaged
- * application - and the object the entry names is the entry the layers hold,
- * so the view forwards it unchanged.
- *
- * @param[in] tag Tag of a reparse point.
- * @return true when the tag names a target the view has to resolve.
- */
-bool IsRedirectingReparseTag(ULONG tag);
 
 /**
  * @brief Read the data of a reparse point out of a layer.
@@ -134,15 +117,8 @@ NTSTATUS CopyReparsePointEntry(const std::wstring& sourceLayerPath, const std::w
 /**
  * @brief Expand the reparse points of a path of the view.
  *
- * The components of the path are walked from the root and every component
- * which is a reparse point of a redirecting tag is replaced with the target it
- * names, which is resolved again in the view. The result is the path of the
- * view a caller reaches, so the isolation of the target decides the layers a
- * call sees and the layer a modification lands in.
- *
- * A component whose data cannot be read, whose target is no path of the view
- * or whose chain is deeper than `kMaxReparseDepth` fails the call: the view
- * must not let the layer follow a link it did not decide about.
+ * The call runs the expansion of the shared resolver with the entry points of
+ * the sandbox, see `ExpandReparsePointsCore()`.
  *
  * @param[in] fs Resolve file system.
  * @param[in] viewPath Path of the view to expand.

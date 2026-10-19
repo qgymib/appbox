@@ -15,15 +15,12 @@ struct CommandLineOptions
     ~CommandLineOptions();
 
     /**
-     * @brief Parse command line options
-     * @return True if continue, false if exit.
+     * @brief Parse the command line options.
      */
-    bool ParseOptions();
+    void ParseOptions();
 
     int                      wargc;               /* Command line argument count */
     LPWSTR*                  wargv;               /* Command line argument array */
-    bool                     is_process_launcher; /* True if it is the process launcher of the launcher */
-    bool                     hide_console;        /* True to start the target without a console window */
     std::wstring             config_dir;          /* Config file directory path */
     nlohmann::json           override_config;     /* Override config */
     std::vector<std::string> extra_args;          /* Extra arguments, encoding in UTF-8 */

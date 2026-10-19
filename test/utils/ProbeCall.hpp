@@ -129,6 +129,29 @@ nlohmann::json ProbeCall(const std::string& name, const nlohmann::json& data, co
                          ProbeBitness bitness = ProbeBitness::Bit64);
 
 /**
+ * @brief One startup file the launcher started during one run.
+ *
+ * The report is what the probe process of the startup file sent, so it
+ * describes the process the launcher created and not the configuration: the
+ * process id, the process which created it and the image it runs are the facts
+ * a case checks when it pins how the launcher starts a program.
+ */
+struct StartupReport
+{
+    /** Marker of the startup file which started the process. */
+    std::string marker;
+
+    /** Process id of the created process. */
+    std::uint32_t pid = 0;
+
+    /** Process id of the process which created it. */
+    std::uint32_t parent_pid = 0;
+
+    /** Path of the image the process runs, in UTF-8. */
+    std::string module_path;
+};
+
+/**
  * @brief Startup files the launcher started during one run.
  */
 struct StartupRun
@@ -137,6 +160,19 @@ struct StartupRun
      * @brief Markers of the startup files which were started, in name order.
      */
     std::vector<std::string> started;
+
+    /**
+     * @brief Reports of the started startup files, in the order they arrived.
+     */
+    std::vector<StartupReport> reports;
+
+    /**
+     * @brief Process id of the launcher which ran the configuration.
+     *
+     * The id is the one of the process the case started, so a case can check
+     * which process created the startup files of the run.
+     */
+    std::uint32_t launcher_pid = 0;
 
     /**
      * @brief Exit code of the launcher.
@@ -167,11 +203,16 @@ struct StartupRun
  *                           cover the work of the user; the cases which check
  *                           the screen turn it on again.
  * @param[in] log The log options of the run, see LogRun.
- * @return The markers of the started startup files and the exit code of the
+ * @param[in] use_configured_executable Whether the run starts the executable
+ *                    the configuration spells instead of the probe. A case
+ *                    which checks how the launcher locates the image of a
+ *                    startup file sets it, because replacing the executable
+ *                    would replace the very path the case describes.
+ * @return The reports of the started startup files and the exit code of the
  *         launcher.
  */
 StartupRun ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launcher_config, const std::string& trigger,
-                           bool startup_screen = false, const LogRun& log = {});
+                           bool startup_screen = false, const LogRun& log = {}, bool use_configured_executable = false);
 
 /**
  * @brief Result of a run which starts the programs of its configuration.

@@ -209,15 +209,14 @@ The launcher does not carry the messages of the sandbox: every process the sandb
 is injected into writes a log file of its own, named after the program, the UTC
 time it started at and its process id — the launcher names its own file with the
 very same rule (`common/LogFileName.hpp`). A run of one end-to-end case therefore
-leaves one file per process — the launcher, the process launcher it starts for the
-target, the probe of a case, plus the processes a case starts itself — and no two
-processes ever write the same file. The file is written by the process which
-produces it, so its content survives a crash of that process, and the name tells
-which process it belongs to:
+leaves one file per process — the launcher, the probe of a case, plus the
+processes a case starts itself — and no two processes ever write the same file.
+The file is written by the process which produces it, so its content survives a
+crash of that process, and the name tells which process it belongs to:
 
 ```
 AppBoxLauncher.20260930T021157Z.76696.log
-AppBoxLauncher.20260930T021157Z.76712.log
+AppBoxProbe64.20260930T021157Z.76712.log
 AppBoxTests.20260930T021157Z.77784.log
 ```
 
@@ -697,7 +696,7 @@ executable carries itself:
   values of the workspace as well: one per known folder, named after the layer
   key without its `#` delimiters, with the real path of the folder of this
   machine.
-* `test/unit/GetExecutableDir.cpp`, `test/unit/ProcessLauncher.cpp`,
+* `test/unit/GetExecutableDir.cpp`,
   `test/unit/ProcessJob.cpp`, `test/unit/Shell.cpp` — the launcher helpers which
   locate the executable, start it, own the job of a started process and resolve
   the shell of the host together with the arguments of the command it runs. The
@@ -710,6 +709,14 @@ executable carries itself:
   with the execution policy bypassed, the extension is recognized ignoring the
   case, a file which cannot be started is refused, and the resolver of Windows
   PowerShell finds `powershell.exe` of the system root.
+* `test/unit/ViewPathResolver.cpp` — the resolver which turns the path of a
+  startup file into the host path which holds its image. The cases build a view
+  of their own below the temp directory: a lower layer holds the image, the
+  overlay wins over a lower layer, the first lower layer wins over the second
+  (the order the patch packages are mounted in), a path no layer holds falls
+  back to the host filesystem, a whiteout marker of the overlay hides the packed
+  image, an isolation mode of the view hides the layer it names, and a missing
+  image is reported instead of being answered with a path which does not exist.
 * `test/unit/Md5.cpp` — the digest of a patch package: the digest of an empty
   file, of the text `abc` and of one million characters, which crosses the
   blocks the file is read in, plus the failure of a missing file. The digest of
@@ -1380,6 +1387,36 @@ but the sandbox refuses to run Windows PowerShell (see the limitation in
 [docs/Launcher.md](../docs/Launcher.md)), so a case would pin the failure of the
 sandbox instead of the behavior of the launcher.
 
+### Launcher process chain case
+
+The process chain case (`test/e2e/Launcher_ProcessChain.cpp`) pins that the
+launcher creates the program of a startup file itself instead of starting a
+process of its own in between: the case records the process id of the launcher it
+started, and the probe of the case reports its own process id and the id of the
+process which created it, see `test/probe/StartupStarted.cpp`.
+
+| Case | Expected |
+| --- | --- |
+| `TheStartupFileIsCreatedByTheLauncher` | the startup file is started, the process which created it is the launcher of the run, and the probe reports the image it runs |
+
+### Launcher startup image cases
+
+The startup image cases (`test/e2e/Launcher_StartupImage.cpp`) pin how the
+launcher locates the image of a startup file. A configuration names a path of the
+sandbox view (`#USERPROFILE#\AppBoxTest_StartupImage\AppBoxProbe64.exe`), while
+the file itself lives in a layer of the archive, so the launcher resolves the
+path before it creates the process, with the rules of the sandbox view (see
+[docs/Launcher.md](../docs/Launcher.md)). The cases keep the executable the
+configuration spells instead of pointing the startup file at the probe of the
+harness, which is what `ProbeStartupRun()` does when it is asked to.
+
+| Case | View | Expected |
+| --- | --- | --- |
+| `AProgramOfTheViewIsStarted` | the layer holds the probe executable, the host folder holds no such program | the launcher starts the program of the layer and the probe reports its marker |
+| `TheImageOfTheOverlayIsPreferred` | the overlay holds the probe executable, the layer holds a file of the same name which is no program | the launcher starts the image of the overlay, so the run succeeds |
+| `AWhiteoutMarkerHidesThePackedProgram` | the layer holds the program, the overlay holds its whiteout marker | the run is refused and no probe reported |
+| `AnIsolationModeHidesThePackedProgram` | the layer holds the program, the isolation file sets the layer to `Whiteout` | the run is refused and no probe reported |
+
 ### Launcher startup screen cases
 
 The startup screen cases (`test/e2e/Launcher_StartupScreen.cpp`) pin the screen
@@ -1660,7 +1697,12 @@ They are documented in their own header comments.
   `ProbeStartupRun()` runs the
   launcher for a startup file selection instead: it passes `--X-AppBox-Startup` when a
   trigger is given and reports the markers of the startup files the launcher started
-  together with its exit code. `ProbeShellRun()` passes `--X-AppBox-Shell` with the
+  together with its exit code, the process id of the launcher and the report of every
+  started process (its own process id, the process which created it and the image it
+  runs). A case which describes the image of a startup file itself keeps the executable
+  the configuration spells through the last argument of the call (see
+  [Launcher startup image cases](#launcher-startup-image-cases)). `ProbeShellRun()`
+  passes `--X-AppBox-Shell` with the
   command of the case and collects the markers which arrived until the launcher left; it
   does not wait for a probe, because the shell runs the command of the case instead of
   the probe (see [Launcher shell cases](#launcher-shell-cases)).

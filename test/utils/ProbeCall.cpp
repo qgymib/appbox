@@ -191,16 +191,20 @@ ProbeKey::~ProbeKey()
  * the probe executable of the case instead of the program of the case.
  *
  * The console window of the probe is hidden as well: the probe is a console
- * program, while the launcher and its process launcher are GUI programs without a
- * console, so Windows would open a console window for every probe process of
- * every case and that window would pop up on the desktop of the machine the
- * cases run on.
+ * program, while the launcher is a GUI program without a console, so Windows
+ * would open a console window for every probe process of every case and that
+ * window would pop up on the desktop of the machine the cases run on.
  *
  * @param[in] config Configuration of the case.
  * @param[in] probe_path Path of the probe executable the case asked for.
+ * @param[in] override_executable Whether every startup file points at the probe
+ *                    executable. A case which describes the image of a startup
+ *                    file itself clears the flag, so the path the case writes
+ *                    is the path the launcher resolves.
  * @return The configuration of the probe run.
  */
-static appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& config, const std::wstring& probe_path)
+static appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& config, const std::wstring& probe_path,
+                                             bool override_executable = true)
 {
     appbox::LauncherConfig copy_config = config;
 
@@ -221,9 +225,12 @@ static appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& confi
      * The probe runs instead of the packaged application, so every startup file
      * points at the probe executable of the bit size the case asked for.
      */
-    for (auto& startup : copy_config.startups)
+    if (override_executable)
     {
-        startup.executable = appbox::WideToUTF8(probe_path);
+        for (auto& startup : copy_config.startups)
+        {
+            startup.executable = appbox::WideToUTF8(probe_path);
+        }
     }
 
     copy_config.hide_console = true;
@@ -250,10 +257,13 @@ static appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& confi
  * @param[in] args Arguments of the launcher, without the options which select
  *                 and log the configuration.
  * @param[in] log The log options of the run, see LogRun.
+ * @param[out] launcher_pid Process id of the launcher which was started, may be
+ *                          null.
  * @return The exit code of the launcher.
  */
 static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& config,
-                         const std::vector<std::wstring>& args, const appbox::test::LogRun& log)
+                         const std::vector<std::wstring>& args, const appbox::test::LogRun& log,
+                         std::uint32_t* launcher_pid = nullptr)
 {
     std::filesystem::path cfg_path;
     {
@@ -304,6 +314,12 @@ static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& 
         SPDLOG_ERROR(msg);
         throw std::runtime_error(msg);
     }
+
+    if (launcher_pid != nullptr)
+    {
+        *launcher_pid = process_info.dwProcessId;
+    }
+
     CloseHandle(process_info.hThread);
 
     auto wait_ret = WaitForSingleObject(process_info.hProcess, INFINITE);
@@ -334,10 +350,13 @@ static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& 
  * @param[in] trigger Trigger for `--X-AppBox-Startup`, empty to omit the
  *                    option so the launcher starts the auto start files.
  * @param[in] log The log options of the run, see LogRun.
+ * @param[out] launcher_pid Process id of the launcher which was started, may be
+ *                          null.
  * @return The exit code of the launcher.
  */
 static DWORD RunLauncherForProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config,
-                                 const std::string& trigger, const appbox::test::LogRun& log)
+                                 const std::string& trigger, const appbox::test::LogRun& log,
+                                 std::uint32_t* launcher_pid = nullptr)
 {
     std::vector<std::wstring> args;
     if (!trigger.empty())
@@ -352,7 +371,7 @@ static DWORD RunLauncherForProbe(const std::string& key, const std::wstring& cwd
     args.push_back(L"--probe_key");
     args.push_back(CLI::widen(key));
 
-    return RunLauncher(cwd, config, args, log);
+    return RunLauncher(cwd, config, args, log, launcher_pid);
 }
 
 /**
@@ -442,18 +461,19 @@ nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::
 
 appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launcher_config,
                                                        const std::string& trigger, bool startup_screen,
-                                                       const LogRun& log)
+                                                       const LogRun& log, bool use_configured_executable)
 {
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
 
-    auto copy_config = OverrideConfig(launcher_config, ProbePath(ProbeBitness::Bit64));
+    auto copy_config = OverrideConfig(launcher_config, ProbePath(ProbeBitness::Bit64), !use_configured_executable);
     copy_config.startup.screen = startup_screen;
 
     ProbeKey key("StartupStarted", nlohmann::json::object());
 
     StartupRun run;
-    run.exit_code = static_cast<std::uint32_t>(RunLauncherForProbe(key.key, cwd, copy_config, trigger, log));
+    run.exit_code =
+        static_cast<std::uint32_t>(RunLauncherForProbe(key.key, cwd, copy_config, trigger, log, &run.launcher_pid));
 
     {
         std::lock_guard<std::mutex> lock(key.ctx->result_mutex);
@@ -464,6 +484,16 @@ appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, 
             {
                 run.started.push_back(marker->get<std::string>());
             }
+
+            StartupReport report;
+            if (marker != result.end() && marker->is_string())
+            {
+                report.marker = marker->get<std::string>();
+            }
+            report.pid = result.value("pid", 0u);
+            report.parent_pid = result.value("parent_pid", 0u);
+            report.module_path = result.value("module_path", std::string());
+            run.reports.push_back(std::move(report));
         }
     }
 
