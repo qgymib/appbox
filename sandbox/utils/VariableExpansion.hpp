@@ -2,6 +2,12 @@
 #define APPBOX_SANDBOX_UTILS_VARIABLE_EXPANSION_HPP
 
 #include "utils/WinAPI.h" /* Must be first include file */
+/*
+ * The path is spelled relative to this header, because the test executable
+ * compiles the file as well and its include path holds the configuration of the
+ * launcher under the very same name.
+ */
+#include "../Config.hpp"
 #include <string>
 #include <string_view>
 #include <vector>
@@ -15,8 +21,8 @@ namespace appbox
  * The values the user enters in the Environment and the Registry workspace may
  * reference a known folder of the machine which runs the sandbox instead of
  * spelling its path out. The syntax of a reference is `%APPBOX:<NAME>%`, where
- * the name is the layer key of a preset directory of the packer without its
- * `#` delimiters (`#ProgramFiles#` names the variable `ProgramFiles`).
+ * the name is the layer key of a known folder without its `#` delimiters
+ * (`#ProgramFiles#` names the variable `ProgramFiles`).
  *
  * The launcher resolves the paths of the known folders of the machine and hands
  * the list to the sandbox, so the expansion never depends on the machine which
@@ -49,6 +55,28 @@ struct VariableMapping
  * operating system.
  */
 inline constexpr std::wstring_view kVariablePrefix = L"APPBOX:";
+
+/**
+ * @brief Select the variables of one process out of the injected list.
+ *
+ * The launcher resolves every known folder twice, because the operating system
+ * shows a different folder to a 32 bit process than to a 64 bit one:
+ * `%ProgramFiles%` names `C:\Program Files` in a 64 bit process and
+ * `C:\Program Files (x86)` in a 32 bit one. The sandbox picks the view which
+ * matches the bitness of the process it is injected into, so a 32 bit
+ * application which starts a 64 bit program gives the child the paths of a 64
+ * bit process while the application itself keeps its own.
+ *
+ * A variable whose view is empty is left out of the table: its folder does not
+ * exist for the process, which is the `Not applicable` row of the table of the
+ * expansion. A reference to such a name keeps its own spelling, like a
+ * reference to a name the sandbox does not know.
+ *
+ * @param[in] variables Variables of the injected configuration.
+ * @param[in] is_64_bit Whether the process which expands the values is 64 bit.
+ * @return The variables of the process, in the order of the configuration.
+ */
+std::vector<VariableMapping> SelectVariables(const std::vector<SandboxVariable>& variables, bool is_64_bit);
 
 /**
  * @brief Expand every reference of a text.

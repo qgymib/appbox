@@ -15,6 +15,7 @@
 #include "utils/GetPEB.hpp"
 #include "utils/HandleInfo.hpp"
 #include "utils/Log.hpp"
+#include "utils/VariableExpansion.hpp"
 #include "ModuleTable.hpp"
 #include "Sandbox.hpp"
 #include "WString.hpp"
@@ -49,13 +50,13 @@ static void ParseInjectData(const std::string& data)
         appbox::sandbox->fs.fs_lower.push_back(mapping);
     }
 
-    for (const auto& v : inject_data.variables)
-    {
-        appbox::VariableMapping variable;
-        variable.name = appbox::UTF8ToWide(v.name);
-        variable.path = appbox::UTF8ToWide(v.path);
-        appbox::sandbox->variables.push_back(std::move(variable));
-    }
+    /*
+     * The launcher resolves every known folder twice and the sandbox picks the
+     * view of the process it is injected into: a 32 bit application which
+     * starts a 64 bit program gives the child the paths of a 64 bit process
+     * while the application itself keeps the paths of a 32 bit one.
+     */
+    appbox::sandbox->variables = appbox::SelectVariables(inject_data.variables, sizeof(void*) == 8);
 
     appbox::sandbox->wRegistryHiveDOSPath = appbox::UTF8ToWide(inject_data.registry_hive_dos_path);
     appbox::sandbox->wRegistryImageHiveDOSPath = appbox::UTF8ToWide(inject_data.registry_image_hive_dos_path);

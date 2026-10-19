@@ -4,7 +4,9 @@
 #include <cstring>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
+#include "../Config.hpp"
 #include "VariableExpansion.hpp"
 
 namespace
@@ -103,6 +105,34 @@ std::wstring ExpandMultiString(std::wstring_view text, const std::vector<appbox:
 }
 
 } // namespace
+
+std::vector<appbox::VariableMapping> appbox::SelectVariables(const std::vector<SandboxVariable>& variables,
+                                                             bool                                is_64_bit)
+{
+    std::vector<VariableMapping> selected;
+    selected.reserve(variables.size());
+
+    for (const auto& variable : variables)
+    {
+        /*
+         * The view of the other bitness describes a folder this process does
+         * not see; an empty view is the `Not applicable` row of the table of the
+         * expansion, which keeps a reference as it is spelled.
+         */
+        const std::string& path = is_64_bit ? variable.path : variable.path_x86;
+        if (path.empty())
+        {
+            continue;
+        }
+
+        VariableMapping mapping;
+        mapping.name = UTF8ToWide(variable.name);
+        mapping.path = UTF8ToWide(path);
+        selected.push_back(std::move(mapping));
+    }
+
+    return selected;
+}
 
 std::wstring appbox::ExpandVariables(std::wstring_view text, const std::vector<VariableMapping>& variables)
 {

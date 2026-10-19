@@ -119,6 +119,7 @@ TEST(Unit_PresetDirectory, ProvidesExpectedPresets)
         { "program_data",               "",                  L"Program Data",               L"#ProgramData#"           },
         { "windows",                    "",                  L"Windows",                    L"#Windows#"               },
         { "system32",                   "windows",           L"System32",                   L"#System32#"              },
+        { "syswow64",                   "windows",           L"SysWOW64",                   L"#SystemX86#"             },
         { "fonts",                      "windows",           L"Fonts",                      L"#Fonts#"                 },
     };
 
@@ -222,11 +223,13 @@ TEST(Unit_PresetDirectory, ChildPresetsNestThePresetTree)
     EXPECT_EQ(program_files_x86[0].layer_key, L"#ProgramFilesCommonX86#");
 
     const auto system = appbox::ChildPresets("windows");
-    ASSERT_EQ(system.size(), static_cast<std::size_t>(2));
+    ASSERT_EQ(system.size(), static_cast<std::size_t>(3));
     EXPECT_EQ(system[0].id, "fonts");
     EXPECT_EQ(system[0].layer_key, L"#Fonts#");
-    EXPECT_EQ(system[1].id, "system32");
-    EXPECT_EQ(system[1].layer_key, L"#System32#");
+    EXPECT_EQ(system[1].id, "syswow64");
+    EXPECT_EQ(system[1].layer_key, L"#SystemX86#");
+    EXPECT_EQ(system[2].id, "system32");
+    EXPECT_EQ(system[2].layer_key, L"#System32#");
 
     /* A preset without nested presets and an unknown preset hold nothing. */
     const char* const empty[] = { "application_data",
@@ -244,6 +247,7 @@ TEST(Unit_PresetDirectory, ChildPresetsNestThePresetTree)
                                   "program_files_common_x86",
                                   "startup",
                                   "system32",
+                                  "syswow64",
                                   "does_not_exist" };
     for (const char* id : empty)
     {
@@ -321,6 +325,9 @@ TEST(Unit_PresetDirectory, FindsKnownAndRejectsUnknownIds)
     EXPECT_EQ(preset.layer_key, L"#Windows#");
     EXPECT_TRUE(appbox::FindPresetDirectory("system32", preset));
     EXPECT_EQ(preset.layer_key, L"#System32#");
+    EXPECT_TRUE(appbox::FindPresetDirectory("syswow64", preset));
+    EXPECT_EQ(preset.layer_key, L"#SystemX86#");
+    EXPECT_EQ(preset.parent_id, "windows");
     EXPECT_TRUE(appbox::FindPresetDirectory("fonts", preset));
     EXPECT_EQ(preset.layer_key, L"#Fonts#");
     EXPECT_FALSE(appbox::FindPresetDirectory("does_not_exist", preset));

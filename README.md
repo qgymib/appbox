@@ -103,20 +103,52 @@ compared ignoring the case, so `%appbox:documents%` names the same folder as
 | `%APPBOX:ProgramData%` | `C:\ProgramData` |
 | `%APPBOX:ProgramFiles%` | `C:\Program Files` |
 | `%APPBOX:ProgramFilesCommon%` | `C:\Program Files\Common Files` |
+| `%APPBOX:ProgramFilesCommonX64%` | `C:\Program Files\Common Files` |
 | `%APPBOX:ProgramFilesCommonX86%` | `C:\Program Files (x86)\Common Files` |
+| `%APPBOX:ProgramFilesX64%` | `C:\Program Files` |
 | `%APPBOX:ProgramFilesX86%` | `C:\Program Files (x86)` |
 | `%APPBOX:Programs%` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu\Programs` |
 | `%APPBOX:StartMenu%` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu` |
 | `%APPBOX:Startup%` | `C:\Users\Alice\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup` |
 | `%APPBOX:System32%` | `C:\Windows\System32` |
+| `%APPBOX:SystemX86%` | `C:\Windows\SysWOW64` |
 | `%APPBOX:USERPROFILE%` | `C:\Users\Alice` |
 | `%APPBOX:Windows%` | `C:\Windows` |
 
-The list follows the preset directories of the Filesystem workspace: the name of
-a variable is the layer key of a preset directory without its `#` delimiters, so
-a preset directory which is added to the packer later brings its variable with
-it. The example paths above are the ones of a machine whose user profile is not
-redirected; the sandbox always reports the real path of the machine it runs on.
+The list follows the known folders of the machine: the name of a variable is the
+layer key of a folder without its `#` delimiters, so a folder which is added to
+the table later brings its variable with it. The example paths above are the
+ones of a 64 bit machine whose user profile is not redirected; the sandbox
+always reports the real path of the machine it runs on.
+
+Three of the folders are only variables and no layer of the Filesystem
+workspace: `ProgramFilesX64`, `ProgramFilesCommonX64` and `SystemX86` name the
+64 bit folders unambiguously, which is what the capture needs to reference a
+path that a 32 bit process may expand as well (`SystemX86` is also a layer of
+the `SysWOW64` folder of the tree).
+
+#### The folder of a 32 bit process
+
+The operating system shows a different folder to a 32 bit process than to a 64
+bit one, and the sandbox follows it: it picks the view which matches the bitness
+of the process it is injected into, so a 32 bit application reads the folders a
+32 bit process of the machine sees.
+
+| Name | 64 bit process | 32 bit process |
+| --- | --- | --- |
+| `%APPBOX:ProgramFiles%` | `C:\Program Files` | `C:\Program Files (x86)` |
+| `%APPBOX:ProgramFilesCommon%` | `C:\Program Files\Common Files` | `C:\Program Files (x86)\Common Files` |
+| `%APPBOX:ProgramFilesX86%` | `C:\Program Files (x86)` | `C:\Program Files (x86)` |
+| `%APPBOX:ProgramFilesCommonX86%` | `C:\Program Files (x86)\Common Files` | `C:\Program Files (x86)\Common Files` |
+| `%APPBOX:ProgramFilesX64%` | `C:\Program Files` | not applicable |
+| `%APPBOX:ProgramFilesCommonX64%` | `C:\Program Files\Common Files` | `C:\Program Files\Common Files` |
+| `%APPBOX:System32%` | `C:\Windows\System32` | `C:\Windows\System32` |
+| `%APPBOX:SystemX86%` | `C:\Windows\SysWOW64` | `C:\Windows\SysWOW64` |
+
+A folder which does not exist for a 32 bit process (`ProgramFilesX64`) is the
+`Not applicable` row of that table: the reference keeps its own spelling there,
+exactly like a reference to a name the sandbox does not know. Every other folder
+of the list is the same one in both views.
 
 Where a reference may be used:
 
@@ -131,10 +163,15 @@ Where a reference may be used:
   when they happen to spell a reference.
 
 The capture of the packer fills the references in on its own: an absolute path of
-a registry value or of an environment variable which points into a preset
-directory is rewritten to the reference of that folder while the difference of
-two snapshots is written into the workspaces (see
-[Capture](docs/Capture.md)).
+a registry value or of an environment variable which points into a known folder
+is rewritten to the reference of that folder while the difference of two
+snapshots is written into the workspaces (see [Capture](docs/Capture.md)). The
+capture only writes a reference whose meaning does not depend on the bitness of
+the process which expands it, because it does not know that bitness:
+`C:\Program Files` becomes `%APPBOX:ProgramFilesX64%` and `C:\Program
+Files\Common Files` becomes `%APPBOX:ProgramFilesCommonX64%`, while
+`%APPBOX:ProgramFiles%` and `%APPBOX:ProgramFilesCommon%` are never written by
+the capture.
 
 The rules of the expansion:
 
@@ -148,6 +185,11 @@ The rules of the expansion:
   is expanded while it is mounted, so a value the packaged application stores
   while it runs is reported as the application spelled it for the rest of that
   run.
+* The expansion of a registry value is written into the mounted hives, so the
+  first process which mounts them decides it — a later process of the run and a
+  later run of the same state directory read the expanded text; see the known
+  gaps of
+  [Registry Isolation](docs/RegistryIsolation.md#known-gaps-and-limitations).
 
 The names are resolved by the launcher (`launcher/utils/KnownFolder.*`) and handed
 to the sandbox through the injected configuration; the expansion itself is the

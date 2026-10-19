@@ -425,6 +425,14 @@ bookkeeping of the sandbox and no value of the workspace. A value is written bac
 only when the expansion changed it, so the walk is idempotent and a hive without
 a reference is left exactly as it is.
 
+The table of the names carries the folder of a 64 bit process and the folder of a
+32 bit one, and the sandbox keeps the view which matches the bitness of the
+process it is injected into (`appbox::SelectVariables()`): a 32 bit application
+reads `%APPBOX:ProgramFiles%` as `C:\Program Files (x86)`, while
+`%APPBOX:ProgramFilesX64%` keeps its own spelling there. Because the walk writes
+the expanded text into the hives, the first process of a run decides the
+expansion of the run; see the known gaps below.
+
 The syntax, the supported names and the rules of the expansion are documented in
 [README.md](../README.md#variable-expansion); the expansion itself is
 `appbox::ExpandRegistryValueData()` of `sandbox/utils/VariableExpansion.*`.
@@ -629,6 +637,19 @@ reaches the registry through them acts on the layer of the object of the call.
    in, and a value entry point which acts on it re-routes the call by the mode of
    the value, while a key level call still acts on that layer. The isolation
    covers the keys a sandboxed process opens itself.
+9. **The expansion of a value is decided by the first process which mounts the
+   hive.** The walk of the mounted hives replaces the references and writes the
+   expanded text back (see [Variable references](#variable-references)), so the
+   hives carry the expansion of the process which mounted them first, and the
+   state hive keeps it for the following runs as well. A process of the other bit
+   size which the application starts afterwards reads that text, although its own
+   table names another folder for the same reference: a 32 bit application which
+   starts a 64 bit program gives the child the expansion of the 32 bit view. The
+   environment is not affected, because a child inherits the composed block of its
+   parent, which is what a process of the machine does as well. A read time
+   expansion — the answer of `NtQueryValueKey` and of the enumeration hooks
+   rewritten in the caller buffer — would give every process its own view, and it
+   is the change which removes the gap.
 
 ### The entry points the isolation does not hook at all
 

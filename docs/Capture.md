@@ -548,16 +548,35 @@ in step by hand.
 ## Variable references
 
 An absolute path of a registry value or of an environment variable which points
-into a preset directory is rewritten to the reference of that folder, so the
-archive stays correct on a machine whose folders are somewhere else:
-`C:\Program Files\Foo\Bar.exe` becomes `%APPBOX:ProgramFiles%\Foo\Bar.exe`. The
-rules are the ones of [Variable Expansion](../README.md#variable-expansion) and
-they are applied to the value of a registry entry of a string type and to the
-value of an environment variable. `src/core/KnownFolderReference.*` is the
-counterpart of the expansion of the sandbox: it matches the real path of a
-preset directory, requires a boundary around it (so `C:\Program FilesX` is left
-alone), prefers the longest path (so `#ProgramFilesCommon#` wins over
-`#ProgramFiles#`) and keeps the remainder of the path with its own separator.
+into a known folder is rewritten to the reference of that folder, so the archive
+stays correct on a machine whose folders are somewhere else. The rules are the
+ones of [Variable Expansion](../README.md#variable-expansion) and they are
+applied to the value of a registry entry of a string type and to the value of an
+environment variable. `src/core/KnownFolderReference.*` is the counterpart of
+the expansion of the sandbox: it matches the real path of a folder, requires a
+boundary around it (so `C:\Program FilesX` is left alone), prefers the longest
+path (so `C:\Program Files\Common Files` is the folder of
+`ProgramFilesCommonX64` and not a folder of `ProgramFilesX64`) and keeps the
+remainder of the path with its own separator.
+
+The capture writes a reference only for a folder whose expansion does not depend
+on the bitness of the process which reads the value, because the capture does
+not know that bitness:
+
+| Path of the machine | Reference |
+| --- | --- |
+| `C:\Program Files` | `%APPBOX:ProgramFilesX64%` |
+| `C:\Program Files\Common Files` | `%APPBOX:ProgramFilesCommonX64%` |
+| `C:\Program Files (x86)` | `%APPBOX:ProgramFilesX86%` |
+| `C:\Program Files (x86)\Common Files` | `%APPBOX:ProgramFilesCommonX86%` |
+| `C:\Windows\System32` | `%APPBOX:System32%` |
+| `C:\Windows\SysWOW64` | `%APPBOX:SystemX86%` |
+
+`%APPBOX:ProgramFiles%` and `%APPBOX:ProgramFilesCommon%` are therefore never
+written by the capture: they name `C:\Program Files (x86)` and `C:\Program
+Files (x86)\Common Files` in a 32 bit process, so a reference of one of them
+would name another folder there. The user may still type them in a value of a
+workspace, and a 32 bit application then reads the folder it sees itself.
 
 ## Runtime
 

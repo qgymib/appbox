@@ -387,14 +387,19 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const
 
     /*
      * The variables the sandbox expands in the values of the workspace. The
-     * name of each one is the layer key of a preset directory without its `#`
-     * delimiters, so the supported list follows the preset directories of the
-     * packer and a preset directory which is added later brings its variable
-     * with it.
+     * name of each one is the layer key of a known folder without its `#`
+     * delimiters, so the supported list follows the table of the known folders
+     * and a folder which is added later brings its variable with it.
+     *
+     * Every variable carries the folder of a 64 bit process and the folder of a
+     * 32 bit process, because the operating system redirects some of them. The
+     * sandbox picks the view which matches the process it is injected into, so
+     * a 32 bit application which starts a 64 bit program gives the child the
+     * paths of a 64 bit process.
      */
     for (const auto& variable : appbox::KnownFolderVariables())
     {
-        inject_data.variables.push_back(appbox::SandboxVariable{ variable.name, variable.path });
+        inject_data.variables.push_back(appbox::SandboxVariable{ variable.name, variable.path, variable.path_x86 });
     }
 
     const std::string image_error = BuildRegistryImage(paths, patch_layers);

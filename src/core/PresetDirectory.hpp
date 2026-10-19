@@ -30,7 +30,8 @@ inline constexpr const wchar_t* kFilesystemContainerLabel = L"Sandbox Filesystem
  * its parent is shown below that preset (the folders of the user profile are
  * offered below `Current User Directory`, `Programs` hangs below `Start Menu`
  * and `Startup` below `Programs`, while `Common` hangs below `Program Files`
- * and below `Program Files (x86)`), and a preset without a parent is a direct
+ * and below `Program Files (x86)`, and `SysWOW64` hangs below `Windows` next to
+ * `System32`), and a preset without a parent is a direct
  * child of the container of the filesystem view (`Program Data` is such a top
  * level preset, next to `Program Files`, `Program Files (x86)`,
  * `Current User Directory` and `Windows`). Every preset owns a layer of its

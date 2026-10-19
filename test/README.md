@@ -494,7 +494,9 @@ The unit tests of the packer:
   folder the user created), the question whether a directory of a preset
   directory is a folder of the view, and the
   host folder a folder of the filesystem view maps to (the text the tooltip of
-  the tree shows).
+  the tree shows). The table of the preset directories and the tree it builds are
+  part of the case: every preset is resolved on this machine, the siblings are
+  ordered by their label, and `Windows` holds `Fonts`, `SysWOW64` and `System32`.
 * `test/unit/SnapshotModel.cpp` — the identifiers the comparison of two states
   is built on: the fold of the case and the key of an entry of the filesystem,
   of a key and of a value of the registry and of an environment variable.
@@ -600,12 +602,16 @@ The unit tests of the packer:
   which started no launcher and wrote nothing else part of the artifact of the
   run.
 * `test/unit/KnownFolderReference.cpp` — the rewrite of an absolute path to the
-  reference of its preset directory: the path of a preset directory, of the
-  folder itself and of a path below it, the case, the boundary before and behind
-  the path, the longest of several matching paths, every path of a text, an
-  unknown path, a text which already carries a reference, a value of a string
-  type which keeps its terminator, a multi string value whose items are rewritten
-  on their own and the types which keep their bytes.
+  reference of its known folder: the path of a folder, of the folder itself and
+  of a path below it, the case, the boundary before and behind the path, the
+  longest of several matching paths, every path of a text, an unknown path, a
+  text which already carries a reference, a value of a string type which keeps
+  its terminator, a multi string value whose items are rewritten on their own and
+  the types which keep their bytes. The references the case pins are the bitness
+  neutral ones: `C:\Program Files` is `%APPBOX:ProgramFilesX64%`,
+  `C:\Program Files\Common Files` is `%APPBOX:ProgramFilesCommonX64%`, the two 32
+  bit folders keep their own references and `C:\Windows\SysWOW64` is
+  `%APPBOX:SystemX86%`.
 * `test/unit/FilesystemMarker.cpp` — the names of the markers of the view as the
   packer spells them against the macros of the sandbox, which is what keeps the
   two spellings from drifting apart while the packer must not include a header of
@@ -692,10 +698,16 @@ executable carries itself:
   historical `%Name%` delimiter and the set of known layer keys: a key is
   matched exactly as the table spells it, so only the keys the packer produces
   are known and a mapping which no preset directory uses is removed from the
-  table. It pins the variables the sandbox expands in the
-  values of the workspace as well: one per known folder, named after the layer
-  key without its `#` delimiters, with the real path of the folder of this
-  machine.
+  table. A key which exists for the variable expansion alone
+  (`#ProgramFilesX64#`, `#ProgramFilesCommonX64#`) names no layer, so it is
+  neither mounted nor expanded in a path. It pins the variables the sandbox
+  expands in the values of the workspace as well: one per known folder, named
+  after the layer key without its `#` delimiters, with the folder of a 64 bit
+  process and the folder of a 32 bit one (the redirected program files folders,
+  and the empty second view of `ProgramFilesX64`, which no 32 bit process sees).
+  The table of the capture is part of the case as well: it holds the folders
+  whose expansion does not depend on the bitness of the reading process, so
+  `ProgramFiles` and `ProgramFilesCommon` are not part of it.
 * `test/unit/GetExecutableDir.cpp`,
   `test/unit/ProcessJob.cpp`, `test/unit/Shell.cpp` — the launcher helpers which
   locate the executable, start it, own the job of a started process and resolve
@@ -740,7 +752,12 @@ executable carries itself:
   an expansion is never resolved again. The registry side pins the three string
   types (`REG_SZ` with and without its terminator, `REG_EXPAND_SZ` and
   `REG_MULTI_SZ` with an empty item), that every other type keeps its data, and
-  that a blob which is not made of whole wide characters is left alone.
+  that a blob which is not made of whole wide characters is left alone. The
+  selection of the process (`appbox::SelectVariables()`) is covered as well: the
+  table of a 64 bit process carries the 64 bit folder of a variable and the table
+  of a 32 bit one the redirected folder, a variable whose view is empty is left
+  out (so its reference keeps its spelling), and the order of the configuration
+  survives.
 * `test/unit/IsolationDocument.cpp` — the schema of the five documents of
   `common/` (the four isolation files and the environment state file): the
   round trip of a document through its text, the refusal of a member which is
@@ -909,7 +926,7 @@ comment.
 | `QueryInformationByName_LowerLayer` | – | `data.txt` | query the information of `data.txt` with `NtQueryInformationByName` and `FileStatInformation` | success, a regular file with the size of the packed content is reported |
 | `QueryInformationByName_NonExists` | – | `other.txt` | query the information of a missing file and of a file below a missing folder | failure with `File Not Found` and `Path Not Found` |
 
-Five cases are not part of the matrices above:
+Six cases are not part of the matrices above:
 `test/e2e/Fs_LaunchProcess_FromLower.cpp` starts an executable which only a
 lower layer holds, `test/e2e/Fs_ListDir_UserPresetLayers.cpp` mounts one layer
 per folder below `Current User Directory` (`#Documents#`, `#Desktop#`,
@@ -919,13 +936,15 @@ per folder below `Current User Directory` (`#Documents#`, `#Desktop#`,
 them is mapped to the real folder its layer key names,
 `test/e2e/Fs_QueryAttributes_SystemPresetLayers.cpp` does the same for the
 system folders (`#Windows#`, `#System32#`),
+`test/e2e/Fs_QueryAttributes_SysWOW64PresetLayer.cpp` for the 32 bit system
+folder (`#SystemX86#`, which the tree shows as `SysWOW64` below `Windows`),
 `test/e2e/Fs_QueryAttributes_ProgramPresetLayers.cpp` for the `Program Data`
 folder of the system and the `Common` folder below `Program Files`
 (`#ProgramData#`, `#ProgramFilesCommon#`), and
 `test/e2e/Fs_QueryAttributes_ProgramFilesX86PresetLayers.cpp` for the 32 bit
 program files folders (`#ProgramFiles#`, `#ProgramFilesX86#`,
 `#ProgramFilesCommonX86#`), where the 32 bit folder is a sibling of the 64 bit
-one. The last four cases include that the file of one layer is not visible in
+one. The last five cases include that the file of one layer is not visible in
 the folder of the other one.
 
 The cases which exercise the isolation modes of the workspace write the
@@ -1207,6 +1226,14 @@ sandboxed process creates.
   and a `REG_BINARY` value whose bytes spell the same reference keep their own
   bytes. The hive of the resources is byte identical afterwards, so the archive
   keeps the reference and the expansion happens while the sandbox runs.
+* `test/e2e/Reg_VariableExpansion32.cpp` — the same hive read by the **32 bit**
+  probe: `%APPBOX:ProgramFiles%` is `C:\Program Files (x86)` and
+  `%APPBOX:ProgramFilesCommon%` is `C:\Program Files (x86)\Common Files`, the
+  folder a 32 bit process does not see (`%APPBOX:ProgramFilesX64%`) keeps its
+  own spelling, `%APPBOX:ProgramFilesCommonX64%` names the 64 bit `Common Files`
+  folder and `%APPBOX:SystemX86%` names `%windir%\SysWOW64`. The case is the
+  counterpart of `Reg_VariableExpansion`, which pins the view of a 64 bit
+  process.
 * `test/e2e/Reg_TwoProcesses_ShareTheHive.cpp` — two processes of one sandbox
   exchange registry values. The probe process writes a value, starts the
   `regchild` worker as a child process of its own, the worker reads that value
@@ -1346,7 +1373,8 @@ machine the cases run on.
 | `Env_ModificationStaysInTheSandbox` | `Replace` | store the variable, remove a variable of the host, read both back | the stored value is read back, the removed variable is gone, and the environment of the test process still holds the values it set |
 | `Env_StateIsKeptAcrossRuns` | `Replace` | store the variable in one run, read it in the next one | the second run sees the stored value, which is what the state directory of the sandbox carries |
 | `Env_StateFileIsApplied` | – | read the variables while the state directory carries the document of an earlier run | the stored value is seen and the removed variable is gone |
-| `Env_VariableExpansion` | `Write Copy` + `Replace`, one row with `Prepend` and a value of the host | read variables whose values reference a known folder of this machine with `%APPBOX:<NAME>%`, a name the sandbox does not know and `%PATH%` | the known references carry the real path of the folder of this machine (also in another spelling of the prefix and of the name, and for the system folder of the machine), the merged row carries `<path>;<host>`, the unknown reference and the reference of the shell keep their spelling, and the block which enumerates the environment reports the expanded value |
+| `Env_VariableExpansion` | `Write Copy` + `Replace`, one row with `Prepend` and a value of the host | read variables whose values reference a known folder of this machine with `%APPBOX:<NAME>%`, a name the sandbox does not know and `%PATH%`, in the **64 bit** probe | the known references carry the real path of the folder of this machine (also in another spelling of the prefix and of the name, for the system folder of the machine, for the 64 bit program folders and for the 32 bit system folder), the merged row carries `<path>;<host>`, the unknown reference and the reference of the shell keep their spelling, and the block which enumerates the environment reports the expanded value |
+| `Env_VariableExpansion32` | `Write Copy` + `Replace` | read the variables which reference the redirected folders in the **32 bit** probe | `%APPBOX:ProgramFiles%` is `C:\Program Files (x86)` and `%APPBOX:ProgramFilesCommon%` is `C:\Program Files (x86)\Common Files`, `%APPBOX:ProgramFilesX64%` keeps its own spelling, `%APPBOX:ProgramFilesCommonX64%` is `C:\Program Files\Common Files`, and the two system folders name `System32` and `SysWOW64` like they do in a 64 bit process |
 | `Env_MalformedIsolationFile_FallsBack` | document which cannot be read | read the variable | the value of the host stays visible and the sandbox still runs |
 
 The child of a sandboxed process sees the view of its parent, which every one of
@@ -1937,14 +1965,26 @@ They are documented in their own header comments.
   `FileLinkInformationExBypassAccessCheck` belong to kernel mode callers, which
   no case of the suite can drive; the cases pin the four classes a user mode
   caller reaches.
-* **The 32 bit probe is covered by one case.** The suite runs the 64 bit probe
-  unless a case asks for `ProbeBitness::Bit32`, and only
-  `E2E_Fs.Probe32_DefaultMerge_WritesTheFileOfTheHost` asks for it: the case
-  proves that a 32 bit process starts under the sandbox of the suite and that a
-  write of it reaches the host filesystem. The other domains (registry,
-  environment, network, fonts) are only driven in a 64 bit process so far, so a
-  regression which touches a 32 bit structure layout would reach the suite only
-  through the filesystem path.
+* **The 32 bit probe is covered by three cases.** The suite runs the 64 bit
+  probe unless a case asks for `ProbeBitness::Bit32`:
+  `E2E_Fs.Probe32_DefaultMerge_WritesTheFileOfTheHost` proves that a 32 bit
+  process starts under the sandbox of the suite and that a write of it reaches
+  the host filesystem, and `E2E_Env.VariableExpansion32` and
+  `E2E_Reg.VariableExpansion32` prove that the sandbox of such a process expands
+  a reference with the folder a 32 bit process sees. The network and the font
+  domains are only driven in a 64 bit process so far, so a regression which
+  touches a 32 bit structure layout would reach the suite only through the
+  filesystem, the environment and the registry paths.
+* **A child of the other bit size is not covered.** A 32 bit application which
+  starts a 64 bit program is the edge case of the variable expansion, and no
+  case drives it: the sandbox of the run expands the values of the registry while
+  it mounts the hive and writes the expanded text back, so the first process of
+  the run decides the expansion of the whole run (see the known gaps of
+  [RegistryIsolation.md](../docs/RegistryIsolation.md)). The environment is not
+  affected, because a child inherits the composed block of its parent, which is
+  what a process of the machine does as well. The selection of the process itself
+  is covered by `Unit_VariableExpansion.SelectVariablesPicksTheViewOfTheProcess`,
+  and the two end-to-end cases above pin both views.
 * **The timeout and the coredumps of a run are verified by hand.** The test
   suite does not test itself (see
   [Timeouts and coredumps](#timeouts-and-coredumps)).

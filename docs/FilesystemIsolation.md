@@ -293,7 +293,7 @@ A layer key is a `#Name#` delimited token (`#ProgramFiles#`,
 `#USERPROFILE#`, `#Documents#`, `#Desktop#`, `#AppData#`, `#LocalAppData#`,
 `#LocalAppDataLow#`, `#Downloads#`, `#Favorites#`, `#Music#`, `#Pictures#`,
 `#StartMenu#`, `#Programs#`, `#Startup#`, `#ProgramData#`, `#Windows#`,
-`#System32#`, `#Fonts#`, a single drive letter);
+`#System32#`, `#SystemX86#`, `#Fonts#`, a single drive letter);
 `#REGISTRY#` and `#NETWORK#` are reserved for the other isolation domains. The packer offers one
 layer per preset directory of its filesystem workspace and names it after the
 layer key of that preset, so the launcher knows exactly the keys the packer
@@ -389,10 +389,11 @@ imported folders at their preset locations (`#ProgramFiles#\<import>`,
 `#Favorites#\<import>`, `#Music#\<import>`, `#Pictures#\<import>`,
 `#StartMenu#\<import>`, `#Programs#\<import>`, `#Startup#\<import>`,
 `#ProgramData#\<import>`, `#Windows#\<import>`, `#System32#\<import>`,
-`#Fonts#\<import>`) and starts the selected startup files
+`#SystemX86#\<import>`, `#Fonts#\<import>`) and starts the selected startup files
 inside the isolation. The folders of the user hang below `Current User
 Directory` in the tree of the packer, `Programs` hangs below `Start Menu` and
-`Startup` below `Programs`, while the system directory hangs below `Windows` and
+`Startup` below `Programs`, while the system directories hang below `Windows`
+(`System32` and `SysWOW64`) and
 `Common` below `Program Files` and below `Program Files (x86)`;
 `Program Data` is a top level preset next to `Program Files`,
 `Program Files (x86)`, `Current User Directory` and `Windows`. Yet every preset
@@ -403,7 +404,8 @@ resolved from its own id instead of being a subdirectory of `Local Application
 Data`,
 `Programs` and `Startup` are resolved from their own ids instead of being
 subdirectories of the `Start Menu` layer, `System32` is resolved from its own
-id instead of being a subdirectory of the `Windows` layer, and the `Common`
+id instead of being a subdirectory of the `Windows` layer, `SysWOW64` is
+resolved from `FOLDERID_SystemX86` next to it, and the `Common`
 folder of the 32 bit program files is resolved from its own id
 (`FOLDERID_ProgramFilesCommonX86`) instead of being a subdirectory of the
 `Program Files (x86)` layer, just like the 32 bit `Program Files` folder is

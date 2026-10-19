@@ -264,6 +264,12 @@ replaced by `appbox::ExpandVariables()` (`sandbox/utils/VariableExpansion.*`)
 table of the launcher, which is handed to the sandbox through the injected
 configuration.
 
+The table carries the folder of a 64 bit process and the folder of a 32 bit one,
+and the sandbox keeps the view which matches the bitness of the process it is
+injected into (`appbox::SelectVariables()`): `%APPBOX:ProgramFiles%` is
+`C:\Program Files (x86)` in a 32 bit application, and a folder which does not
+exist for such a process (`ProgramFilesX64`) keeps its own spelling there.
+
 Only the values of the archive are expanded: the modifications of the state
 file are applied as the application spelled them. The syntax, the supported
 names and the rules of the expansion are documented in

@@ -31,11 +31,14 @@ static const KnownFolderMap KnownFolders[] = {
     { L"#Startup#",               FOLDERID_Startup               },
     { L"#ProgramData#",           FOLDERID_ProgramData           },
     { L"#ProgramFiles#",          FOLDERID_ProgramFiles          },
+    { L"#ProgramFilesX64#",       FOLDERID_ProgramFilesX64       },
     { L"#ProgramFilesCommon#",    FOLDERID_ProgramFilesCommon    },
+    { L"#ProgramFilesCommonX64#", FOLDERID_ProgramFilesCommonX64 },
     { L"#ProgramFilesX86#",       FOLDERID_ProgramFilesX86       },
     { L"#ProgramFilesCommonX86#", FOLDERID_ProgramFilesCommonX86 },
     { L"#Windows#",               FOLDERID_Windows               },
     { L"#System32#",              FOLDERID_System                },
+    { L"#SystemX86#",             FOLDERID_SystemX86             },
     { L"#Fonts#",                 FOLDERID_Fonts                 },
 };
 

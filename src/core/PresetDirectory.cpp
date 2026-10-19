@@ -42,6 +42,7 @@ const PresetDefinition s_preset_definitions[] = {
     { "program_data",               L"Program Data",               L"#ProgramData#",           nullptr             },
     { "windows",                    L"Windows",                    L"#Windows#",               nullptr             },
     { "system32",                   L"System32",                   L"#System32#",              "windows"           },
+    { "syswow64",                   L"SysWOW64",                   L"#SystemX86#",             "windows"           },
     { "fonts",                      L"Fonts",                      L"#Fonts#",                 "windows"           },
 };
 

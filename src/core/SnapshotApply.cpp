@@ -706,14 +706,14 @@ void ApplyRemovedFiles(const appbox::SnapshotDiff& diff, appbox::PackModel& mode
  *
  * @param[in] diff The difference to write.
  * @param[in,out] registry Registry which receives the keys and the values.
- * @param[in] presets Preset directories which are resolved on this machine.
+ * @param[in] references Known folders which are resolved on this machine.
  * @param[in,out] ignored List which receives the entries which cannot be expressed.
  * @param[in,out] errors List which receives the entries which could not be written.
  * @param[in] progress Callback which receives the work of the fill.
  * @param[out] report Report which counts the entries which were written.
  */
 void ApplyRegistry(const appbox::SnapshotDiff& diff, appbox::RegistryModel& registry,
-                   const std::vector<appbox::PresetDirectory>& presets, NoticeList& ignored, NoticeList& errors,
+                   const std::vector<appbox::KnownFolderReference>& references, NoticeList& ignored, NoticeList& errors,
                    const appbox::CaptureFillProgressCallback& progress, appbox::CaptureFillReport& report)
 {
     /* A key which is gone is hidden, and its sub keys are hidden with it. */
@@ -840,7 +840,7 @@ void ApplyRegistry(const appbox::SnapshotDiff& diff, appbox::RegistryModel& regi
         }
 
         bool       rewritten = false;
-        const auto data = appbox::RewriteRegistryValueReferences(value.type, value.data, presets, rewritten);
+        const auto data = appbox::RewriteRegistryValueReferences(value.type, value.data, references, rewritten);
 
         std::string detail;
         if (!registry.EnsureKey(value.path, detail) || !registry.SetValue(value.path, value.name, type, data, detail))
@@ -873,15 +873,16 @@ void ApplyRegistry(const appbox::SnapshotDiff& diff, appbox::RegistryModel& regi
  *
  * @param[in] diff The difference to write.
  * @param[in,out] environment Environment which receives the variables.
- * @param[in] presets Preset directories which are resolved on this machine.
+ * @param[in] references Known folders which are resolved on this machine.
  * @param[in,out] ignored List which receives the entries which cannot be expressed.
  * @param[in,out] errors List which receives the entries which could not be written.
  * @param[in] progress Callback which receives the work of the fill.
  * @param[out] report Report which counts the entries which were written.
  */
 void ApplyEnvironment(const appbox::SnapshotDiff& diff, appbox::EnvironmentModel& environment,
-                      const std::vector<appbox::PresetDirectory>& presets, NoticeList& ignored, NoticeList& errors,
-                      const appbox::CaptureFillProgressCallback& progress, appbox::CaptureFillReport& report)
+                      const std::vector<appbox::KnownFolderReference>& references, NoticeList& ignored,
+                      NoticeList& errors, const appbox::CaptureFillProgressCallback& progress,
+                      appbox::CaptureFillReport& report)
 {
     const auto write_entry = [&](const appbox::SnapshotDiffEnvironment& entry) {
         Report(progress, appbox::CaptureFillDomain::Environment, kEnvironmentAction, entry.name,
@@ -891,7 +892,7 @@ void ApplyEnvironment(const appbox::SnapshotDiff& diff, appbox::EnvironmentModel
 
         appbox::EnvironmentEntry candidate;
         candidate.name = entry.name;
-        candidate.value = appbox::RewriteKnownFolderReferences(entry.value, presets, rewritten);
+        candidate.value = appbox::RewriteKnownFolderReferences(entry.value, references, rewritten);
 
         /*
          * The modes are the ones a variable of the workspace starts with: the
@@ -984,15 +985,22 @@ bool ApplySnapshotDiff(const SnapshotDiff& diff, PackModel& model, RegistryModel
         return false;
     }
 
-    const auto presets = PresetDirectories();
+    /*
+     * The capture writes the references of the folders whose meaning does not
+     * depend on the bitness of the process which expands them, so the table of
+     * the references is not the table of the preset directories: the 64 bit
+     * `Program Files` is written as `%APPBOX:ProgramFilesX64%` and not as
+     * `%APPBOX:ProgramFiles%`, which names another folder in a 32 bit process.
+     */
+    const auto references = KnownFolderReferences();
 
     NoticeList ignored;
     NoticeList errors;
 
     ApplyAddedFiles(diff, model, ignored, errors, progress, report);
     ApplyRemovedFiles(diff, model, ignored, errors, progress, report);
-    ApplyRegistry(diff, registry, presets, ignored, errors, progress, report);
-    ApplyEnvironment(diff, environment, presets, ignored, errors, progress, report);
+    ApplyRegistry(diff, registry, references, ignored, errors, progress, report);
+    ApplyEnvironment(diff, environment, references, ignored, errors, progress, report);
 
     ignored.Finish(report.ignored, report.total_ignored);
     errors.Finish(report.errors, report.total_errors);

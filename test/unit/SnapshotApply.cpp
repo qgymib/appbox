@@ -502,7 +502,13 @@ TEST(Unit_SnapshotApply, WritesTheRegistryKeysAndTheValues)
 
     const auto* server = FindValue(registry, L"HKEY_CURRENT_USER\\Software\\Foo", L"Server");
     ASSERT_NE(server, nullptr);
-    EXPECT_EQ(appbox::RegistryStringValue(server->data), L"%APPBOX:ProgramFiles%\\Foo\\Bar.exe");
+
+    /*
+     * The path of the 64 bit `Program Files` folder is written as the reference
+     * of that folder: `%APPBOX:ProgramFiles%` would name `Program Files (x86)`
+     * in a 32 bit process.
+     */
+    EXPECT_EQ(appbox::RegistryStringValue(server->data), L"%APPBOX:ProgramFilesX64%\\Foo\\Bar.exe");
 
     /* A value which is created now follows the key it is created in. */
     EXPECT_EQ(server->isolation, appbox::RegistryValueIsolation::Full);

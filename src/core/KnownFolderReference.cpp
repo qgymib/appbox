@@ -81,40 +81,41 @@ bool EndsAtBoundary(const std::wstring& text, std::size_t position)
 }
 
 /**
- * @brief Find the preset directory whose path matches a text at a position.
+ * @brief Find the folder whose path matches a text at a position.
  *
- * The longest path wins, which is what tells the nested preset directories
- * apart: `C:\Program Files\Common Files` is the folder of
- * `#ProgramFilesCommon#` and not a folder of `#ProgramFiles#`.
+ * The longest path wins, which is what tells the nested folders apart:
+ * `C:\Program Files\Common Files` is the folder of `ProgramFilesCommonX64` and
+ * not a folder of `ProgramFilesX64`. Two folders which name the same path are
+ * matched in the order of the table, so the first one wins.
  *
  * @param[in] text Text to inspect.
  * @param[in] position Position to start at.
- * @param[in] presets Preset directories which are resolved on this machine.
- * @return The matching preset directory, null when none matches.
+ * @param[in] references Folders which are resolved on this machine.
+ * @return The matching folder, null when none matches.
  */
-const appbox::PresetDirectory* LongestMatchAt(const std::wstring& text, std::size_t position,
-                                              const std::vector<appbox::PresetDirectory>& presets)
+const appbox::KnownFolderReference* LongestMatchAt(const std::wstring& text, std::size_t position,
+                                                   const std::vector<appbox::KnownFolderReference>& references)
 {
-    const appbox::PresetDirectory* best = nullptr;
-    std::size_t                    best_length = 0;
+    const appbox::KnownFolderReference* best = nullptr;
+    std::size_t                         best_length = 0;
 
-    for (const auto& preset : presets)
+    for (const auto& reference : references)
     {
-        if (preset.real_path.empty() || preset.real_path.size() <= best_length)
+        if (reference.path.empty() || reference.path.size() <= best_length)
         {
             continue;
         }
-        if (!MatchesAt(text, position, preset.real_path))
+        if (!MatchesAt(text, position, reference.path))
         {
             continue;
         }
-        if (!EndsAtBoundary(text, position + preset.real_path.size()))
+        if (!EndsAtBoundary(text, position + reference.path.size()))
         {
             continue;
         }
 
-        best = &preset;
-        best_length = preset.real_path.size();
+        best = &reference;
+        best_length = reference.path.size();
     }
 
     return best;
@@ -125,27 +126,11 @@ const appbox::PresetDirectory* LongestMatchAt(const std::wstring& text, std::siz
 namespace appbox
 {
 
-std::wstring KnownFolderReferenceName(const std::wstring& layer_key)
-{
-    std::wstring name = layer_key;
-
-    if (!name.empty() && name.front() == L'#')
-    {
-        name.erase(name.begin());
-    }
-    if (!name.empty() && name.back() == L'#')
-    {
-        name.pop_back();
-    }
-
-    return name;
-}
-
-std::wstring RewriteKnownFolderReferences(const std::wstring& text, const std::vector<PresetDirectory>& presets,
+std::wstring RewriteKnownFolderReferences(const std::wstring& text, const std::vector<KnownFolderReference>& references,
                                           bool& changed)
 {
     changed = false;
-    if (text.empty() || presets.empty())
+    if (text.empty() || references.empty())
     {
         return text;
     }
@@ -156,7 +141,7 @@ std::wstring RewriteKnownFolderReferences(const std::wstring& text, const std::v
     std::size_t position = 0;
     while (position < text.size())
     {
-        const auto* match = StartsAtBoundary(text, position) ? LongestMatchAt(text, position, presets) : nullptr;
+        const auto* match = StartsAtBoundary(text, position) ? LongestMatchAt(text, position, references) : nullptr;
         if (match == nullptr)
         {
             result.push_back(text[position]);
@@ -169,10 +154,10 @@ std::wstring RewriteKnownFolderReferences(const std::wstring& text, const std::v
          * and the expansion of the sandbox rebuild the same path.
          */
         result += kKnownFolderReferencePrefix;
-        result += KnownFolderReferenceName(match->layer_key);
+        result += match->name;
         result.push_back(L'%');
 
-        position += match->real_path.size();
+        position += match->path.size();
         changed = true;
     }
 
@@ -180,7 +165,8 @@ std::wstring RewriteKnownFolderReferences(const std::wstring& text, const std::v
 }
 
 std::vector<std::uint8_t> RewriteRegistryValueReferences(std::uint32_t type, const std::vector<std::uint8_t>& data,
-                                                         const std::vector<PresetDirectory>& presets, bool& changed)
+                                                         const std::vector<KnownFolderReference>& references,
+                                                         bool&                                    changed)
 {
     changed = false;
 
@@ -203,7 +189,7 @@ std::vector<std::uint8_t> RewriteRegistryValueReferences(std::uint32_t type, con
         for (const auto& part : parts)
         {
             bool       part_changed = false;
-            const auto text = RewriteKnownFolderReferences(part, presets, part_changed);
+            const auto text = RewriteKnownFolderReferences(part, references, part_changed);
             changed = changed || part_changed;
             rewritten.push_back(text);
         }
@@ -229,7 +215,7 @@ std::vector<std::uint8_t> RewriteRegistryValueReferences(std::uint32_t type, con
         content.assign(text, content_chars);
     }
 
-    const auto rewritten = RewriteKnownFolderReferences(content, presets, changed);
+    const auto rewritten = RewriteKnownFolderReferences(content, references, changed);
     if (!changed)
     {
         return data;

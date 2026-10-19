@@ -214,3 +214,55 @@ TEST(Unit_VariableExpansion, AnEmptyStringValueIsUnchanged)
     EXPECT_TRUE(ExpandRegistryValueData(REG_EXPAND_SZ, {}, Table()).empty());
     EXPECT_TRUE(ExpandRegistryValueData(REG_MULTI_SZ, {}, Table()).empty());
 }
+
+/**
+ * @brief The table of a process carries the view of its own bitness.
+ *
+ * The launcher resolves every known folder twice, because the operating system
+ * shows a different folder to a 32 bit process than to a 64 bit one:
+ * `%ProgramFiles%` is `C:\Program Files` in a 64 bit process and
+ * `C:\Program Files (x86)` in a 32 bit one. A folder which a 32 bit process does
+ * not see at all (`ProgramFilesX64`) is not part of its table, so a reference to
+ * it keeps its own spelling there.
+ */
+TEST(Unit_VariableExpansion, SelectVariablesPicksTheViewOfTheProcess)
+{
+    const std::vector<appbox::SandboxVariable> injected = {
+        { "ProgramFiles",    "C:\\Program Files",            "C:\\Program Files (x86)"      },
+        { "ProgramFilesX64", "C:\\Program Files",            ""                             },
+        { "Documents",       "C:\\Users\\appbox\\Documents", "C:\\Users\\appbox\\Documents" }
+    };
+
+    const auto variables64 = appbox::SelectVariables(injected, true);
+    ASSERT_EQ(variables64.size(), 3u);
+    EXPECT_EQ(variables64[0].name, L"ProgramFiles");
+    EXPECT_EQ(variables64[0].path, L"C:\\Program Files");
+    EXPECT_EQ(variables64[1].path, L"C:\\Program Files");
+    EXPECT_EQ(variables64[2].path, L"C:\\Users\\appbox\\Documents");
+
+    const auto variables32 = appbox::SelectVariables(injected, false);
+    ASSERT_EQ(variables32.size(), 2u);
+    EXPECT_EQ(variables32[0].path, L"C:\\Program Files (x86)");
+    EXPECT_EQ(variables32[1].name, L"Documents");
+
+    /* The folder a 32 bit process does not see keeps the reference as it is spelled. */
+    EXPECT_EQ(ExpandVariables(L"%APPBOX:ProgramFilesX64%\\Foo", variables32), L"%APPBOX:ProgramFilesX64%\\Foo");
+    EXPECT_EQ(ExpandVariables(L"%APPBOX:ProgramFiles%\\Foo", variables32), L"C:\\Program Files (x86)\\Foo");
+}
+
+/**
+ * @brief A variable without a view names no folder in the process.
+ *
+ * The launcher never sends a variable without the view of a 64 bit process, so
+ * the case describes a table which cannot come from a run; the sandbox still
+ * leaves such a variable out instead of expanding it to an empty path.
+ */
+TEST(Unit_VariableExpansion, SelectVariablesLeavesAnEmptyViewOut)
+{
+    const std::vector<appbox::SandboxVariable> injected = {
+        { "Empty", "", "" }
+    };
+
+    EXPECT_TRUE(appbox::SelectVariables(injected, true).empty());
+    EXPECT_TRUE(appbox::SelectVariables(injected, false).empty());
+}

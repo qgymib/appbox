@@ -20,7 +20,7 @@ The workspace which imports the fonts is documented in
 | Layer key | `#Fonts#` |
 | Known folder | `FOLDERID_Fonts` (`%windir%\Fonts`) |
 | Variable | `%APPBOX:Fonts%` |
-| Position in the tree | below `Windows`, next to `System32` |
+| Position in the tree | below `Windows`, next to `SysWOW64` and `System32` |
 
 The layer is an ordinary layer of the filesystem view: the content travels in the
 archive as `app/filesystem/#Fonts#/<import>/...`, the folder merges its layers like

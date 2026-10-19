@@ -45,7 +45,7 @@ struct SandboxVariable
     std::string name;
 
     /**
-     * @brief Path the reference of a value is replaced with.
+     * @brief Path the reference of a value is replaced with in a 64 bit process.
      *
      * The real path of the known folder on the machine which runs the sandbox,
      * for example `C:\Program Files`.
@@ -54,7 +54,23 @@ struct SandboxVariable
      */
     std::string path;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(SandboxVariable, name, path)
+    /**
+     * @brief Path the reference of a value is replaced with in a 32 bit process.
+     *
+     * The operating system shows a different folder to a 32 bit process than to
+     * a 64 bit one for some known folders, for example `C:\Program Files (x86)`
+     * for `%ProgramFiles%`. The sandbox picks the view which matches the
+     * process it is injected into.
+     *
+     * The text is empty while the folder does not exist for a 32 bit process,
+     * which is the `Not applicable` row of the table of the variable expansion:
+     * the sandbox then keeps the reference as it is spelled.
+     *
+     * @note encoding in UTF-8
+     */
+    std::string path_x86;
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(SandboxVariable, name, path, path_x86)
 };
 
 struct SandboxConfig
