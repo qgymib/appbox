@@ -364,8 +364,9 @@ static bool RedirectSetName(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
     /*
      * The layer the new entry lands in is decided from every layer which holds
      * the destination, so the resolver has to report all of them: `Merge`
-     * applies the modification to the host filesystem when the host holds the
-     * entry or when no layer holds it at all.
+     * applies the modification to the host filesystem only when no sandbox
+     * layer holds the entry, while the marker of a sandbox layer hides the
+     * entry of the host.
      */
     appbox::filesystem::ResolveOption resolve_option;
     resolve_option.bStopOnFirstFound = false;
@@ -426,8 +427,7 @@ static bool RedirectSetName(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
         return true;
     }
 
-    const bool target_host =
-        appbox::filesystem::WritesToHost(destination->isolation, destination->bHostHolds, destination->bSandboxHolds);
+    const bool target_host = appbox::filesystem::WritesToHost(destination->isolation, destination->bSandboxHolds);
     const std::wstring& target_path = target_host ? destination->hostPath : destination->uPath;
     const size_t        target_base = target_host ? destination->hostPathBaseSize : destination->uPathBaseSize;
     LOG_T(L"set name: target={}", target_host ? L"host" : L"view");

@@ -141,13 +141,12 @@ static NTSTATUS NTAPI Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAcc
                                              FILE_APPEND_DATA | WRITE_DAC | WRITE_OWNER | GENERIC_WRITE | GENERIC_ALL));
 
     /*
-     * `Merge` applies a modification to the host filesystem when the host
-     * holds the entry or when no layer holds it, so such an entry is opened in
-     * the host filesystem and is not copied into the upper layer.
+     * `Merge` applies a modification to the host filesystem only when no
+     * sandbox layer holds the entry, so an entry the sandbox holds is opened in
+     * the view and copied into the upper layer first.
      */
     const bool target_host =
-        want_edit && appbox::filesystem::WritesToHost(resolve_result->isolation, resolve_result->bHostHolds,
-                                                      resolve_result->bSandboxHolds);
+        want_edit && appbox::filesystem::WritesToHost(resolve_result->isolation, resolve_result->bSandboxHolds);
     LOG_T(L"open: target={}", target_host ? L"host" : L"view");
 
     if (want_edit && !target_host && !resolve_result->bInUpper)

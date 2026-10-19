@@ -325,11 +325,10 @@ static NTSTATUS NTAPI Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredA
     }
 
     /*
-     * A call which may create or write the entry is a modification, and the
-     * layer it lands in is decided from the layers which hold the entry, so
-     * such a call asks the resolver for every layer. The isolation of a path
-     * no entry covers is the default of the view, which is `Merge`, so the
-     * resolver has to know every layer here as well.
+     * A call which may create or write the entry is a modification, so it asks
+     * the resolver for every layer which holds the entry: the layer of the
+     * modification is the layer which holds it (see `WritesToHost()`), and a
+     * create also has to know whether the entry exists in any layer at all.
      */
     appbox::filesystem::ResolveOption resolve_option;
     resolve_option.bStopOnFirstFound = !(want_create || want_edit);
@@ -412,11 +411,14 @@ static NTSTATUS NTAPI Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredA
         /*
          * The whiteout hid every layer below the upper one, so the layers
          * which hold the entry have to be looked up again before the layer of
-         * the creation is picked: `Merge` writes to the host filesystem when
-         * the host holds the entry or when no layer holds it, and the entry
-         * the whiteout hid may be a packed entry which only a lower layer
-         * holds. A path no entry covers follows the default of the view, which
-         * is `Merge` as well, so the mode of the result decides on its own.
+         * the creation is picked: `Merge` writes to the host filesystem only
+         * when no sandbox layer holds the entry, and the entry the whiteout
+         * hid may be a packed entry which only a lower layer holds. The marker
+         * was the record of a delete of the sandbox, so a create which removes
+         * it hands the entry back to the host filesystem when no other sandbox
+         * layer holds it. A path no entry covers follows the default of the
+         * view, which is `Merge` as well, so the mode of the result decides on
+         * its own.
          */
         if (resolve_result->isolation == appbox::FilesystemIsolation::Merge)
         {
@@ -449,16 +451,15 @@ static NTSTATUS NTAPI Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredA
 
     /*
      * The layer the call is applied to. `Merge` writes to the host filesystem
-     * whenever the host holds the entry or when no layer holds it at all,
-     * while every other mode and every entry only the sandbox holds stays in
-     * the upper layer. A call which neither creates nor writes the entry is no
-     * modification, so it keeps reading the layer the view prefers.
+     * only when no sandbox layer holds the entry, while every other mode and
+     * every entry the sandbox holds stays in the upper layer. A call which
+     * neither creates nor writes the entry is no modification, so it keeps
+     * reading the layer the view prefers.
      */
     const bool modifies =
         want_edit || (want_create && resolve_result->status != appbox::filesystem::ResolveResult::Status::Exists);
     const bool target_host =
-        modifies && appbox::filesystem::WritesToHost(resolve_result->isolation, resolve_result->bHostHolds,
-                                                     resolve_result->bSandboxHolds);
+        modifies && appbox::filesystem::WritesToHost(resolve_result->isolation, resolve_result->bSandboxHolds);
     LOG_T(L"create: target={}", target_host ? L"host" : L"view");
 
     if (want_create || want_edit)

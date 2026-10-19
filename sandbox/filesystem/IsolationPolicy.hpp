@@ -100,30 +100,38 @@ inline bool HidesEntry(FilesystemIsolation mode)
  * `Merge` is the only mode which lets a modification reach the host
  * filesystem, and it does so by the rule of the mode:
  *
- * - the host filesystem holds the entry - the modification is applied to the
- *   host entry, so the real system changes;
- * - no layer holds the entry at all - the entry is created in the host
- *   filesystem;
- * - only a sandbox layer (the upper layer or a lower layer) holds the entry -
- *   the modification is redirected into the upper layer, because the host
- *   filesystem holds no entry the sandboxed process could have meant.
+ * - a sandbox layer (the upper layer or a lower layer) holds the entry - the
+ *   modification is applied to that layer, which is the upper layer for every
+ *   write and delete: the sandbox owns the entry, so the host filesystem keeps
+ *   its own content;
+ * - no sandbox layer holds the entry - the entry belongs to the host
+ *   filesystem, which is modified when it holds the entry and which gains the
+ *   entry when no layer holds it at all.
+ *
+ * The layer which holds the entry therefore decides the layer of the
+ * modification, and not the host filesystem: a copy the state of the sandbox
+ * carries, which an earlier run of another mode left there, keeps the entry
+ * inside the sandbox until the copy is removed. This is the same rule the
+ * registry applies with `appbox::registry::ValueWritesToHost()`, and it is what
+ * makes the mode a later run observes the mode of the layers of that run: the
+ * state of the sandbox never pins the behaviour of a mode the archive or a
+ * patch package no longer names.
  *
  * Every other mode redirects every modification into the sandbox, which is
  * what keeps the host filesystem untouched outside `Merge`.
  *
  * @param[in] mode The isolation mode of the closest listed entry.
- * @param[in] host_holds Whether the host layer holds the entry.
  * @param[in] sandbox_holds Whether the upper layer or a lower layer holds the
- *                          entry.
+ *                          entry, or hides it with a marker of the view.
  * @return true when the modification has to be applied to the host layer.
  */
-inline bool WritesToHost(FilesystemIsolation mode, bool host_holds, bool sandbox_holds)
+inline bool WritesToHost(FilesystemIsolation mode, bool sandbox_holds)
 {
     if (mode != FilesystemIsolation::Merge)
     {
         return false;
     }
-    return host_holds || !sandbox_holds;
+    return !sandbox_holds;
 }
 
 } // namespace filesystem

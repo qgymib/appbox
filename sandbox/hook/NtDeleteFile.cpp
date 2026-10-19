@@ -75,18 +75,17 @@ static NTSTATUS CreateWhiteout(const std::wstring& path, ULONG Attributes)
  */
 static bool DeletesInHost(const appbox::filesystem::ResolveResult& resolve_result)
 {
-    return appbox::filesystem::WritesToHost(resolve_result.isolation, resolve_result.bHostHolds,
-                                            resolve_result.bSandboxHolds);
+    return appbox::filesystem::WritesToHost(resolve_result.isolation, resolve_result.bSandboxHolds);
 }
 
 /**
  * @brief Remove the entry of the host filesystem which the isolation names.
  *
- * The delete is the modification of the isolation mode, so a `Merge` entry the
- * host filesystem holds is really removed from the host. An entry which is
- * already gone is not an error: a handle which was opened on the host entry
- * and marked for deletion removes it when it is closed, before the sandbox
- * records the delete.
+ * The delete is the modification of the isolation mode, so a `Merge` entry no
+ * sandbox layer holds is really removed from the host filesystem. An entry
+ * which is already gone is not an error: a handle which was opened on the host
+ * entry and marked for deletion removes it when it is closed, before the
+ * sandbox records the delete.
  *
  * @param[in] resolve_result Resolve result.
  * @param[in] Attributes File attributes.

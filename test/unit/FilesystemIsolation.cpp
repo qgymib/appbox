@@ -169,8 +169,8 @@ TEST(Unit_FilesystemIsolation, WriteCopyIsExpressedAsFullForAFile)
 
     /*
      * `Merge` stays `Merge` for a file as well: a file below a `Merge` folder
-     * is written to the host filesystem whenever the host holds it, which
-     * `Full` would not tell the user.
+     * is written to the host filesystem only when no sandbox layer holds it,
+     * which `Full` would not tell the user.
      */
     EXPECT_EQ(appbox::FilesystemIsolationForKind(FilesystemIsolation::Merge, FilesystemEntryKind::File),
               FilesystemIsolation::Merge);

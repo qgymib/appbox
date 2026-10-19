@@ -154,12 +154,11 @@ struct ResolveResult
     size_t hostPathBaseSize = 0;
 
     /**
-     * @brief True if the host layer holds the file.
-     */
-    bool bHostHolds = false;
-
-    /**
      * @brief True if the upper layer or a lower layer holds the file.
+     *
+     * A marker of a sandbox layer (a whiteout or an opaque marker) counts as
+     * held as well, because it hides the entry of every layer below it: the
+     * sandbox holds the path even while no layer holds its content.
      */
     bool bSandboxHolds = false;
 
@@ -190,10 +189,10 @@ struct ResolveResult
      * path. Without such an entry the field keeps the default of the view
      * (`Merge`, see `kDefaultIsolation`), which is the behaviour of a sandbox
      * without an isolation file: every layer of the view stays visible and a
-     * modification is applied to the host filesystem when the host holds the
-     * entry or when no layer holds it at all. A file has no default of its
-     * own: the mode of a file path is the mode of the closest entry above it,
-     * which is the folder that holds the file.
+     * modification is applied to the host filesystem only when no sandbox
+     * layer holds the entry. A file has no default of its own: the mode of a
+     * file path is the mode of the closest entry above it, which is the folder
+     * that holds the file.
      */
     FilesystemIsolation isolation = filesystem_isolation::kDefaultIsolation;
 

@@ -37,6 +37,17 @@ struct SearchResult
      * not set it, and a path whose parents no layer holds sets it never.
      */
     bool reparse_point_found = false;
+
+    /**
+     * @brief Whether a sandbox layer hides the path with a marker.
+     *
+     * A whiteout or an opaque marker is the record of a delete the sandbox
+     * made, so the sandbox holds the entry even while no layer holds its
+     * content: the marker hides the entry of every layer below it, which is
+     * why a modification of such a path has to land in the upper layer
+     * instead of an entry of the host filesystem the view never reports.
+     */
+    bool sandbox_marker_found = false;
 };
 
 /**
@@ -434,6 +445,7 @@ void SearchInMultipleLayer(const FileLayerVec& path_vec, const appbox::filesyste
                            SearchResult& search_result, appbox::filesystem::ResolveResult& resolve_result)
 {
     const auto path_vec_sz = path_vec.size();
+    const auto host_layer = path_vec_sz - 1;
     for (size_t i = 0; !search_result.whiteout_found && !search_result.opaque_found && i < path_vec_sz; ++i)
     {
         /* Split path sequence into parent directory and self. */
@@ -447,6 +459,17 @@ void SearchInMultipleLayer(const FileLayerVec& path_vec, const appbox::filesyste
         if (i == 0 && !resolve_result.hPath.empty())
         {
             resolve_result.bInUpper = true;
+        }
+
+        /*
+         * A marker of a sandbox layer is the record of a delete the sandbox
+         * made, so the sandbox holds the path even while no layer holds its
+         * content. The marker of the host layer is a marker of the host, which
+         * is not part of the state of the sandbox.
+         */
+        if (i != host_layer && (search_result.whiteout_found || search_result.opaque_found))
+        {
+            search_result.sandbox_marker_found = true;
         }
 
         if (i == 0 && !resolve_result.whiteoutPath.empty())
@@ -496,8 +519,8 @@ void ApplyIsolation(const appbox::filesystem::IsolationTable* isolation, const s
         /*
          * Without a listed entry the default of the view applies, which the
          * result already carries: it keeps every layer visible and lets a
-         * modification reach the host filesystem when the host holds the entry
-         * or when no layer holds it, so there is nothing to mask here.
+         * modification reach the host filesystem only when no sandbox layer
+         * holds the entry, so there is nothing to mask here.
          */
         return;
     }
@@ -596,55 +619,43 @@ ResolvePlainResult ResolvePlain(const appbox::filesystem::ResolveFs& fs, const s
     resolve_result->hostPathBaseSize = host_colon == std::wstring::npos ? 0 : host_colon + 2;
 
     /*
-     * A `Merge` path is modified in the host filesystem when the host layer
-     * holds the entry or when no layer holds it at all, so the resolver has to
-     * know every layer which holds the path and not only the first one. The
-     * mode is looked up before the search, because the search itself stops at
-     * the first hit while the caller asked for it. A path no entry covers
-     * follows the default of the view, which is `Merge` as well, so a caller
-     * which may modify such a path asks for every layer through
-     * `ResolveOption::bStopOnFirstFound`.
+     * A caller which may modify the entry asks for every layer which holds it,
+     * because the layer of the modification is the layer which holds the entry
+     * (see `WritesToHost()`). A caller which only reads the entry is answered
+     * by the first layer which holds it, which is the one the view prefers.
      */
-    appbox::filesystem::ResolveOption search_option = option;
-    if (search_option.bStopOnFirstFound && isolation != nullptr && !isolation->Empty())
-    {
-        appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::WriteCopy;
-        appbox::FilesystemEntryKind source_kind = appbox::FilesystemEntryKind::Directory;
-        if (isolation->Lookup(copy_v_path, mode, source_kind) && mode == appbox::FilesystemIsolation::Merge)
-        {
-            search_option.bStopOnFirstFound = false;
-        }
-    }
-
-    /* For each layer, check if the file exists. */
     SearchResult search_result;
-    SearchInMultipleLayer(path_vec, search_option, has_trailing_slash, ops, search_result, *resolve_result);
+    SearchInMultipleLayer(path_vec, option, has_trailing_slash, ops, search_result, *resolve_result);
 
     /*
      * The isolation of the path decides which of the hits stay visible: the
      * host layer of a `Full` folder and every layer but the upper one of a
-     * `Whiteout` entry are masked. The search itself ran over every layer, so
-     * a parent directory which only the host holds still decided whether the
-     * path can be created.
+     * `Whiteout` entry are masked. The search itself stays untouched, so a
+     * parent directory which only the host holds still decided whether the path
+     * can be created.
      */
     ApplyIsolation(isolation, copy_v_path, path_vec.size() - 1, *resolve_result);
 
     /*
-     * The hooks decide the layer a modification is applied to from the two
-     * flags: `WritesToHost()` keeps the host filesystem in place when the host
-     * layer holds the entry or when no layer holds it at all, and redirects
-     * the modification into the upper layer otherwise.
+     * The hooks decide the layer a modification is applied to from the sandbox
+     * flag: `WritesToHost()` redirects the modification into the upper layer
+     * while a sandbox layer holds the entry and keeps the host filesystem in
+     * place when no sandbox layer holds it. A marker of a sandbox layer counts
+     * as held, because the marker hides the entry of the host: the modification
+     * of such a path has to land in the upper layer instead of an entry the
+     * view never reports.
      */
     for (const auto& path : resolve_result->hPath)
     {
-        if (path.layer == resolve_result->hostLayer)
-        {
-            resolve_result->bHostHolds = true;
-        }
-        else
+        if (path.layer != resolve_result->hostLayer)
         {
             resolve_result->bSandboxHolds = true;
         }
+    }
+
+    if (search_result.sandbox_marker_found)
+    {
+        resolve_result->bSandboxHolds = true;
     }
 
     /*

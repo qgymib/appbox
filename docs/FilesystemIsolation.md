@@ -10,14 +10,13 @@ redirecting every path through a **view** that is composed of three kinds of lay
 | **host** | The real filesystem of the machine, used as the last layer of the view. | no |
 
 A modification lands in the upper layer, unless the isolation mode of the path is
-`Merge`: that mode applies the modification to the host layer when the host holds the
-entry or when no layer holds it at all, which is what lets a packaged application change
-the real filesystem on purpose (see
-[Workspace isolation modes](#workspace-isolation-modes)). Every other mode keeps the
-lower and the host layers untouched: "deleted" and "directory is opaque" states are
-expressed with **marker files** created inside the upper layer, so the read-only layers
-stay untouched and can be shared between runs. Operations that are not redirected yet are
-listed in [Known gaps and limitations](#known-gaps-and-limitations).
+`Merge`: that mode applies the modification to the host layer only when no sandbox layer
+holds the entry, which is what lets a packaged application change the real filesystem on
+purpose (see [Workspace isolation modes](#workspace-isolation-modes)). Every other mode
+keeps the lower and the host layers untouched: "deleted" and "directory is opaque" states
+are expressed with **marker files** created inside the upper layer, so the read-only
+layers stay untouched and can be shared between runs. Operations that are not redirected
+yet are listed in [Known gaps and limitations](#known-gaps-and-limitations).
 
 Isolation is active only when the sandbox DLL was injected by the launcher
 (`appbox::Sandbox::bIsolationMode`). Outside isolation mode the hooks are never
@@ -77,13 +76,13 @@ sandbox reads back and enforces.
   in the sandbox.
 * **Merge** (folder) - the host filesystem and the virtual filesystem are both
   visible with the virtual one taking precedence, like `Write Copy`, yet a
-  modification does not always land in the sandbox: an entry which the host
-  filesystem does not hold while a sandbox layer does is modified inside the
-  sandbox, and every other modification is applied to the host filesystem. The
-  host folders above an entry which is written are created when they are
-  missing, so an application which installs a file into the real system can do
-  so; a folder which the host does not allow to be changed makes the write fail
-  with the error of the host filesystem.
+  modification does not always land in the sandbox: an entry a sandbox layer
+  (the upper layer or a lower layer) holds is modified inside the sandbox, and
+  an entry no sandbox layer holds is applied to the host filesystem. The host
+  folders above an entry which is written are created when they are missing, so
+  an application which installs a file into the real system can do so; a folder
+  which the host does not allow to be changed makes the write fail with the
+  error of the host filesystem.
 * **Whiteout** (folder and file) - the entry is invisible for the sandboxed
   process, even when the host or the packed content holds it: opening, reading,
   writing and deleting report `File Not Found`. Creating the entry succeeds
@@ -125,12 +124,20 @@ creation.
 
 The layers which stay visible decide what the sandboxed process reads; the mode
 decides where its modifications land. Only `Merge` lets them reach the host
-filesystem, and it does so by the rule of the mode: the entry of the host
-filesystem is modified when the host holds it or when no layer holds it at all,
-while an entry only a sandbox layer holds is modified in the upper layer. A
-delete follows the same rule, so an entry the host holds is really removed from
-the host filesystem while an entry only the sandbox holds is recorded as
-deleted inside the sandbox.
+filesystem, and it does so by the rule of the mode: an entry a sandbox layer
+holds is modified in the upper layer, while an entry no sandbox layer holds is
+modified in the host filesystem, which also gains an entry no layer holds at
+all. A delete follows the same rule, so an entry a sandbox layer holds is
+recorded as deleted inside the sandbox while an entry no sandbox layer holds is
+really removed from the host filesystem. A whiteout or an opaque marker of a
+sandbox layer counts as held, because the marker hides the entry of the host.
+
+The layer which holds the entry therefore decides the layer of the modification,
+and the state of the sandbox never pins the behaviour of a mode the archive or a
+patch package no longer names: a copy the upper layer carries from an earlier run
+of another mode keeps the entry inside the sandbox until the copy is removed,
+and a create which removes the marker of an earlier delete hands the entry back
+to the host filesystem when no other sandbox layer holds it.
 
 ### Folders created in the workspace
 
@@ -245,8 +252,8 @@ The launcher derives the path of the file from the resources of the archive and
 passes it to the sandbox. A missing file, a missing configuration or a malformed document is not
 an error: the sandbox then behaves like one without an isolation file, in which
 every entry follows the default of the view, which is `Merge`: the host
-filesystem stays visible and a modification is applied to it when the host holds
-the entry or when no layer holds it at all.
+filesystem stays visible and a modification is applied to it only when no
+sandbox layer holds the entry.
 
 A run has one isolation file per layer: the file of the resources of the archive
 comes first and the file of every patch package follows in the order the
@@ -414,8 +421,8 @@ These rules constrain every hooked API; the implementation lives in
   read-only layer and is opened for modification is **copied up** into the upper
   layer first; the read-only layers are never written. A path whose isolation is
   `Merge` is the exception: its modification is applied to the host filesystem
-  when the host holds the entry or when no layer holds it, and the folders above
-  the entry are created in that layer first.
+  only when no sandbox layer holds the entry, and the folders above the entry are
+  created in that layer first.
 * **An alternate data stream belongs to the file which carries it.** The path of
   a stream (`file.txt:stream`) is decided by the entry of `file.txt`, so the mode
   of a file covers the streams of that file, a whiteout of the file hides them,
@@ -568,8 +575,8 @@ These rules constrain every hooked API; the implementation lives in
   `NtSetInformationFile` resolves that name through the view and forwards the
   call against the path of the layer the isolation names, which is the layer a
   create of the same entry would land in: the entry of the host filesystem is
-  renamed when the mode is `Merge` and the host holds the name or no layer holds
-  it, and the overlay is used otherwise. The object the handle denotes is copied
+  renamed when the mode is `Merge` and no sandbox layer holds the name, and the
+  overlay is used otherwise. The object the handle denotes is copied
   up first when only a read-only layer holds it and it is a file (a directory is
   the exception, see [Known gaps and limitations](#known-gaps-and-limitations)),
   and a rename records the delete of the name it moved away from with a whiteout

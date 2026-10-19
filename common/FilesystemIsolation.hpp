@@ -30,13 +30,13 @@ namespace appbox
  * - `Merge` - the host filesystem and the virtual filesystem are both visible
  *   with the virtual one taking precedence, like `WriteCopy`, but a
  *   modification is not always redirected into the sandbox: a write of an
- *   entry which the host filesystem does not hold while a sandbox layer does
- *   is redirected into the sandbox, and every other write lands in the host
- *   filesystem, which also creates an entry no layer holds at all. The host
- *   folders above a written entry are created when they are missing. A delete
- *   follows the same rule, so an entry the host filesystem holds is really
- *   removed while an entry only the sandbox holds is recorded as deleted
- *   inside the sandbox. This is the default mode of a folder, see
+ *   entry which a sandbox layer holds is redirected into the sandbox, and a
+ *   write of an entry no sandbox layer holds lands in the host filesystem,
+ *   which also creates an entry no layer holds at all. The host folders above
+ *   a written entry are created when they are missing. A delete follows the
+ *   same rule, so an entry a sandbox layer holds is recorded as deleted inside
+ *   the sandbox while an entry no sandbox layer holds is really removed from
+ *   the host filesystem. This is the default mode of a folder, see
  *   `filesystem_isolation::kDefaultIsolation`.
  * - `Whiteout` - the folder is invisible for the sandboxed process: opening,
  *   reading and writing report `File Not Found`, even when the host holds the
@@ -314,11 +314,11 @@ inline bool IsAllowed(FilesystemIsolation isolation, FilesystemEntryKind kind)
  *
  * The mode of the closest listed entry wins; a path which no entry covers at
  * all follows this default, which is `Merge`: every layer of the view stays
- * visible and a modification is applied to the host filesystem when the host
- * holds the entry or when no layer holds it at all, while an entry only a
- * sandbox layer holds is modified inside the sandbox. A sandbox without an
- * isolation file behaves like a document which lists no entry, so the default
- * is what an unconfigured run does.
+ * visible and a modification is applied to the host filesystem only when no
+ * sandbox layer holds the entry, while an entry a sandbox layer holds is
+ * modified inside the sandbox. A sandbox without an isolation file behaves like
+ * a document which lists no entry, so the default is what an unconfigured run
+ * does.
  *
  * A **file** cannot hold `Merge`, so the workspace shows `Full` for a file
  * which no entry covers; that default belongs to the workspace alone, because

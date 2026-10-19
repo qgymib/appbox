@@ -108,10 +108,11 @@ std::wstring FilesystemIsolationDescription(FilesystemIsolation isolation, Files
                L"modification lands in the sandbox.";
     case FilesystemIsolation::Merge:
         return L"The host entry and the sandbox entry are both visible with the sandbox taking precedence, and a "
-               L"modification is written to the host filesystem whenever the host holds the entry or no layer holds "
-               L"it at all, while an entry only the sandbox holds is modified inside the sandbox. The host folders "
-               L"above a written entry are created when they are missing, and deleting an entry the host holds "
-               L"really removes it from the host filesystem. This is the default mode of a folder.";
+               L"modification is written inside the sandbox while a sandbox layer holds the entry. An entry no "
+               L"sandbox layer holds is written to the host filesystem, which also gains an entry no layer holds at "
+               L"all. The host folders above a written entry are created when they are missing, and deleting an entry "
+               L"no sandbox layer holds really removes it from the host filesystem. This is the default mode of a "
+               L"folder.";
     case FilesystemIsolation::Whiteout:
         return L"The entry is invisible for the application, even while the host holds it; creating the entry succeeds "
                L"inside the sandbox and it is readable and writable afterwards.";

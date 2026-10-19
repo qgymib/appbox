@@ -97,9 +97,9 @@ FilesystemIsolation DefaultFilesystemIsolation(FilesystemEntryKind kind);
  * both keep the host content visible and send every write into the sandbox.
  * `Merge` describes the merge of a folder as well, yet a file cannot express
  * it as `Full`: it is returned unchanged, because a file below a `Merge`
- * folder is written to the host filesystem whenever the host holds it, which
- * the mode has to keep telling the user. Every other mode is returned
- * unchanged as well.
+ * folder is written to the host filesystem only when no sandbox layer holds
+ * it, which the mode has to keep telling the user. Every other mode is
+ * returned unchanged as well.
  *
  * @param[in] isolation The mode to express.
  * @param[in] kind The kind of the entry.

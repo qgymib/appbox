@@ -110,7 +110,6 @@ void appbox::filesystem::to_json(nlohmann::json& j, const ResolveResult& r)
 
     j["hostLayer"] = r.hostLayer;
     j["hostPath"] = appbox::WideToUTF8(r.hostPath);
-    j["bHostHolds"] = r.bHostHolds;
     j["bSandboxHolds"] = r.bSandboxHolds;
 
     j["bIsolationListed"] = r.bIsolationListed;
