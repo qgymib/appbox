@@ -1,10 +1,12 @@
 ###############################################################################
 # The test executable
 #
-# One executable runs both sides of the test suite of the project: the
-# in-process unit tests below `test/unit` and the end-to-end cases below
-# `test/e2e`, which start the real launcher and let it inject the sandbox DLL
-# into this executable started as the probe process of the case.
+# One executable runs the test suite of the project: the in-process unit tests
+# below `test/unit` and the end-to-end cases below `test/e2e`, which start the
+# real launcher and let it inject the sandbox DLL into the probe executable of
+# the case (`test/probe/CMakeLists.txt`). The probe is a program of its own,
+# built for 32 bit and 64 bit, so a case can choose the bit size of the process
+# its operations run in.
 #
 # The `--mode` option selects the side of a run; CTest registers one entry per
 # mode, so the unit tests still run on their own in a second.
@@ -147,6 +149,7 @@ add_executable(AppBoxTests
     "e2e/Fs_Merge_WritesTheHostFile.cpp"
     "e2e/Fs_NewFile_WhiteoutInLower.cpp"
     "e2e/Fs_NewFile_WhiteoutInUpper.cpp"
+    "e2e/Fs_Probe32_DefaultMerge_WritesTheFileOfTheHost.cpp"
     "e2e/Fs_QueryAttributes_LowerLayer.cpp"
     "e2e/Fs_QueryAttributes_ProgramFilesX86PresetLayers.cpp"
     "e2e/Fs_QueryAttributes_ProgramPresetLayers.cpp"
@@ -274,50 +277,14 @@ add_executable(AppBoxTests
     "e2e/Snapshot_StrictCaptureFillsOnlyTheCapturedEntries.cpp"
     "e2e/Snapshot_WhiteoutHidesAHostEntry.cpp"
 
-    # The operations which are executed inside the sandbox. The launcher starts
-    # this executable as the probe process of a case.
-    "probe/__init__.cpp"
-    "probe/ConsoleWindow.cpp"
-    "probe/CreateDirectoryW.cpp"
-    "probe/CreateFileW.cpp"
-    "probe/DeleteFileW.cpp"
-    "probe/EnvironmentRead.cpp"
-    "probe/EnvironmentWrite.cpp"
-    "probe/FindStreams.cpp"
-    "probe/Fonts.cpp"
-    "probe/LaunchProcess.cpp"
-    "probe/ListDir.cpp"
-    "probe/ListDirNt.cpp"
-    "probe/LoadedModules.cpp"
-    "probe/QueryAttributes.cpp"
-    "probe/QueryFullAttributes.cpp"
-    "probe/QueryInformationByName.cpp"
-    "probe/QueryInformationFile.cpp"
-    "probe/RemoveDirectory.cpp"
-    "probe/ReparsePoint.cpp"
-    "probe/ReadFileFull.cpp"
-    "probe/RegChildProcess.cpp"
-    "probe/RegDeleteKey.cpp"
-    "probe/RegDeleteValue.cpp"
-    "probe/RegEnumKey.cpp"
-    "probe/RegEnumValue.cpp"
-    "probe/RegKeyApi.cpp"
-    "probe/RegOpenWriteValue.cpp"
-    "probe/RegQueryKeyName.cpp"
-    "probe/RegQueryMultipleValues.cpp"
-    "probe/RegReadValue.cpp"
-    "probe/RegReadValues.cpp"
-    "probe/RegRenameKey.cpp"
-    "probe/RegSaveKey.cpp"
-    "probe/RegShadowRead.cpp"
-    "probe/RegTransacted.cpp"
-    "probe/RegTwoProcesses.cpp"
-    "probe/RegWriteValue.cpp"
-    "probe/WriteFile.cpp"
-    "probe/ResolveName.cpp"
-    "probe/SetInformationFile.cpp"
-    "probe/SocketTraffic.cpp"
-    "probe/StartupStarted.cpp"
+    # The operations which are executed inside the sandbox are a program of
+    # their own (`test/probe/CMakeLists.txt`), so they are not part of this
+    # executable: a case asks for the 32 bit or the 64 bit probe through
+    # `ProbeCall()`. The headers below `test/probe` stay here, because a case
+    # registers its request against the probe which implements it, and the
+    # registry file defines the probe objects of this executable, which carry
+    # the name of the probe only.
+    "probe/Registry.cpp"
 
     # Test helpers.
     "utils/CommandLine.cpp"
@@ -337,6 +304,7 @@ add_executable(AppBoxTests
     "utils/ReadFileFull.cpp"
     "utils/RealFsFolder.cpp"
     "utils/RealHkcuKey.cpp"
+    "utils/RegChildExitCode.cpp"
     "utils/RegistryRootKey.cpp"
     "utils/Semaphore.cpp"
     "utils/Socks5Server.cpp"
@@ -460,6 +428,65 @@ add_dependencies(AppBoxTests
 )
 
 ###############################################################################
+# The probe executables
+#
+# The probe is the program the end-to-end cases run inside the sandbox, and the
+# suite needs both bit sizes: the 64 bit executable is the probe of a case by
+# default, while the 32 bit one lets a case run its operations inside a 32 bit
+# process. The probe is a resource of the suite and not a product of the packer,
+# so its builds are configured here and not by the top level project.
+#
+# Like the injection modules, both builds are configured on their own below the
+# build tree, and like them the probe project installs its executable: the two
+# builds share the install prefix of the foreign builds of the top level project
+# (`resource`), and the probe project names the directory below it. The path of
+# an executable therefore carries neither the configuration nor the layout of
+# the generator, so a single config generator (MinGW Makefiles, Ninja) and a
+# multi config one (Visual Studio) name the same file, and the cases find the
+# probe whatever the configuration of the build is.
+###############################################################################
+include(ExternalProject)
+
+set(APPBOX_PROBE_DIR "${CMAKE_BINARY_DIR}/resource/probe")
+set(APPBOX_PROBE32 "${APPBOX_PROBE_DIR}/AppBoxProbe32.exe")
+set(APPBOX_PROBE64 "${APPBOX_PROBE_DIR}/AppBoxProbe64.exe")
+
+# The arguments of a foreign build are computed by the top level project, which
+# forwards the bit size, the build type and the toolchain file to the builds of
+# the injection modules: the probe is built the same way, so it inherits them.
+ExternalProject_Add(probe_x86_build
+    SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/probe"
+    BINARY_DIR "${CMAKE_BINARY_DIR}/_probe_x86_build"
+    CMAKE_ARGS
+        ${X86_CMAKE_EXTRA_ARGS}
+        ${FWD_BUILD_TYPE}
+        ${X86_FWD_TOOLCHAIN_FILE}
+        -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/resource
+    BUILD_BYPRODUCTS ${APPBOX_PROBE32}
+    BUILD_ALWAYS ON
+)
+
+ExternalProject_Add(probe_x64_build
+    SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/probe"
+    BINARY_DIR "${CMAKE_BINARY_DIR}/_probe_x64_build"
+    CMAKE_ARGS
+        ${X64_CMAKE_EXTRA_ARGS}
+        ${FWD_BUILD_TYPE}
+        ${X64_FWD_TOOLCHAIN_FILE}
+        -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/resource
+    BUILD_BYPRODUCTS ${APPBOX_PROBE64}
+    BUILD_ALWAYS ON
+)
+
+# Every case runs its operations in a probe process, so both probes have to
+# exist before the cases run: the 64 bit one is the probe of a case by default,
+# the 32 bit one is the probe of the case which checks a 32 bit process.
+add_dependencies(AppBoxTests
+    probe_x86_build
+    probe_x64_build
+)
+
+###############################################################################
 # Dependency
 ###############################################################################
 target_link_libraries(AppBoxTests PRIVATE AppBoxCommon)
@@ -543,6 +570,8 @@ add_test(NAME AppBoxUnitTests
         --launcher=$<TARGET_FILE:AppBoxLauncher>
         --sandbox32=${APPBOX_RESOURCE_SANDBOX32}
         --sandbox64=${APPBOX_RESOURCE_SANDBOX64}
+        --probe32=${APPBOX_PROBE32}
+        --probe64=${APPBOX_PROBE64}
         --packer=$<TARGET_FILE:AppBox>
         --mode=unit
 )
@@ -552,6 +581,8 @@ add_test(NAME AppBoxTests
         --launcher=$<TARGET_FILE:AppBoxLauncher>
         --sandbox32=${APPBOX_RESOURCE_SANDBOX32}
         --sandbox64=${APPBOX_RESOURCE_SANDBOX64}
+        --probe32=${APPBOX_PROBE32}
+        --probe64=${APPBOX_PROBE64}
         --packer=$<TARGET_FILE:AppBox>
         --mode=e2e
 )

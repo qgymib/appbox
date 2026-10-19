@@ -39,9 +39,10 @@ static appbox::LoggerF logger("NtCreateKeyTransacted", NtCreateKeyTransactedLogP
  * A call which passes no transaction is answered by the plain create policy:
  * there is no transaction to keep, so the entry point behaves like NtCreateKey.
  */
-static NTSTATUS Hook_NtCreateKeyTransacted(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess,
-                                           POBJECT_ATTRIBUTES ObjectAttributes, ULONG TitleIndex, PUNICODE_STRING Class,
-                                           ULONG CreateOptions, HANDLE TransactionHandle, PULONG Disposition)
+static NTSTATUS NTAPI Hook_NtCreateKeyTransacted(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess,
+                                                 POBJECT_ATTRIBUTES ObjectAttributes, ULONG TitleIndex,
+                                                 PUNICODE_STRING Class, ULONG CreateOptions, HANDLE TransactionHandle,
+                                                 PULONG Disposition)
 {
     logger.Log(KeyHandle, DesiredAccess, ObjectAttributes, TitleIndex, Class, CreateOptions, TransactionHandle,
                Disposition);

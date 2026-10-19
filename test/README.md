@@ -34,13 +34,18 @@ configuration, whose workflow carries no package step, while
 is registered at all.
 
 CTest passes `--launcher=$<TARGET_FILE:AppBoxLauncher>` to both entries, the two
-injection modules the build installed below `resource/lib` and the packer
-executable `$<TARGET_FILE:AppBox>`.
+injection modules the build installed below `resource/lib`, the two probe
+executables the build installed below `resource/probe`
+(`build/<configuration>/resource/probe/AppBoxProbe32.exe` and
+`AppBoxProbe64.exe`) and the packer executable `$<TARGET_FILE:AppBox>`.
 
 A test executable which is started by hand needs those arguments as well:
 without the launcher the end-to-end cases cannot start it, without the modules the
-cases skip themselves (see `appbox::test::CommonFixture::SetUp()`), and without
-the packer the unit test of the embedded resources skips itself.
+cases skip themselves (see `appbox::test::CommonFixture::SetUp()`), and without the
+packer the unit test of the embedded resources skips itself. A run which was
+started without one of the two probes is refused before the first case (see
+`appbox::test::ValidateProbePaths()`): the probe is the program a case runs inside
+the sandbox, so a missing probe reports a failure instead of skipped cases.
 
 Two end-to-end cases need the `SeBackupPrivilege` of the process, because
 `RegSaveKeyW` / `RegSaveKeyExW` reach `NtSaveKey` / `NtSaveKeyEx`, which the
@@ -54,6 +59,8 @@ build/Debug/test/Debug/AppBoxTests.exe --mode=e2e \
     --launcher=<absolute path of AppBoxLauncher.exe> \
     --sandbox32=<absolute path of AppBoxSandbox32.dll> \
     --sandbox64=<absolute path of AppBoxSandbox64.dll> \
+    --probe32=<absolute path of AppBoxProbe32.exe> \
+    --probe64=<absolute path of AppBoxProbe64.exe> \
     --packer=<absolute path of AppBox.exe>
 ```
 
@@ -65,6 +72,8 @@ variable counterpart:
 | `--launcher` | `APPBOX_TEST_LAUNCHER` | Path of the launcher executable the cases start. |
 | `--sandbox32` | `APPBOX_TEST_SANDBOX32` | Path of the 32 bit sandbox injection module the cases put into the resource root of their directory. |
 | `--sandbox64` | `APPBOX_TEST_SANDBOX64` | Path of the 64 bit sandbox injection module. |
+| `--probe32` | `APPBOX_TEST_PROBE32` | Path of the 32 bit probe executable, which runs the operations of a case inside a 32 bit process. |
+| `--probe64` | `APPBOX_TEST_PROBE64` | Path of the 64 bit probe executable, which is the probe of a case unless it asks for the 32 bit one. |
 | `--packer` | `APPBOX_TEST_PACKER` | Path of the packer executable, which carries the payloads as resources. |
 | `--log-level` | `APPBOX_TEST_LOG_LEVEL` | Level of the launcher and of the sandboxed processes of a case: `trace`, `debug`, `info`, `warn`, `err`, `critical` or `off`; default `info`. The level is handed to the launcher of a case, so `off` leaves the case without a log file (see [Logs of a case](#logs-of-a-case)). The test executable itself stays silent and prints its messages only when a case fails. |
 | `--mode` | `APPBOX_TEST_MODE` | `all`, `unit` or `e2e`; default `all`. |
@@ -286,9 +295,12 @@ which died is the first one to open:
 
 | Path | Content |
 | --- | --- |
+| `test/CMakeLists.txt` | The build of the suite: the sources of the test executable, the two foreign builds of the probe (`probe_x86_build` and `probe_x64_build`, which install below `resource/probe`), and the CTest entries which pass the paths of the products to the executable. |
 | `test/unit/` | The in-process unit tests, one file per module (`<Module>.cpp`); the suite of a file is named `Unit_<Module>`. |
 | `test/e2e/` | The end-to-end cases, one file per case (`<Domain>_<Case>.cpp`); the suite of a file is named `E2E_<Domain>`. |
-| `test/probe/` | The operations which are executed **inside** the sandbox. A probe registers itself by name (`test/probe/__init__.hpp`) and is called from a case through `ProbeCall`. |
+| `test/probe/` | The operations which are executed **inside** the sandbox. A probe registers itself by name (`test/probe/__init__.hpp`) and is called from a case through `ProbeCall`; the sources are a program of their own (`test/probe/CMakeLists.txt`), built as `AppBoxProbe32.exe` and `AppBoxProbe64.exe`. |
+| `test/probe/CMakeLists.txt` | The project of the probe executable: it builds `AppBoxProbe32` and `AppBoxProbe64` with the static runtime and installs the executable below `resource/probe` of the build tree, which is where the cases find it. The probe is not part of the package, because the only product of the repository which is installed is the packer. |
+| `test/probe/Registry.cpp` | The probe objects of the test executable: they carry the name of a probe only, because the work runs in the probe process. |
 | `test/utils/` | The builders and helpers which the cases share, see [Test helpers](#test-helpers). |
 | `test/utils/ProbeCall.*` | The call of a probe: it starts the launcher for the case, serves the probe over the pipe and reports the logs of the processes of the run when the case fails. The log options of the run (`appbox::test::LogRun`) decide whether a case asks for log files at all and which directory it names. |
 | `test/utils/TestTimeout.*` | The timeout of a test case: the GoogleTest hook, the watchdog thread and the options of a run. |
@@ -297,8 +309,10 @@ which died is the first one to open:
 | `test/utils/CommandLine.*` | The command line and the environment of a run, which the coredump writer reads before GoogleTest and CLI11 look at them. |
 | `test/utils/LauncherPath.hpp` | The launcher path of a run: `LauncherPath()` answers the `--launcher` value of the configuration. |
 | `test/utils/SandboxDll.hpp` | The injection modules of a run: `Sandbox32DllPath()` and `Sandbox64DllPath()` answer the `--sandbox32` and `--sandbox64` values, and `SandboxModulesAvailable()` tells whether the run can start the launcher at all. |
-| `test/Test.cpp` / `test/Test.hpp` | The configuration of the run: `--launcher`, `--sandbox32`, `--sandbox64`, `--packer`, `--log-level`, `--mode`, `--no-cleanup`, the timeout options, the prefixes which tell the mode of a suite, the guard which keeps the prefix and the directory of a suite together and the mode filter. |
-| `test/main.cpp` | The entry point of the test executable. It serves both sides, and it also handles the coredump writer, the name resolution probe of the tracer and the `probe` subcommand the launcher starts. |
+| `test/utils/ProbePath.hpp` | The probe executables of a run: `ProbePath(ProbeBitness)` answers the path of the 32 bit or of the 64 bit probe. A run which cannot find both is refused before the first case, see `ValidateProbePaths()`. |
+| `test/utils/RegChildExitCode.*` | The exit code bits of the registry worker (`regchild`) and their description; the worker itself is a subcommand of the probe executable. |
+| `test/Test.cpp` / `test/Test.hpp` | The configuration of the run: `--launcher`, `--sandbox32`, `--sandbox64`, `--probe32`, `--probe64`, `--packer`, `--log-level`, `--mode`, `--no-cleanup`, the timeout options, the prefixes which tell the mode of a suite, the guard which keeps the prefix and the directory of a suite together, the mode filter and the check of the probe executables. |
+| `test/main.cpp` | The entry point of the test executable. It serves the unit tests and the end-to-end cases, and it also handles the coredump writer and the name resolution probe of the tracer. |
 
 The source files of the executable are an explicit list in
 `test/CMakeLists.txt`, not a glob, so a new test file has to be registered
@@ -841,11 +855,13 @@ The timeout and the coredumps of a run have a unit test of their own:
 
 `AppBoxTests` runs every case through the real chain: the case writes its
 `LauncherConfig`, `test/utils/ProbeCall.*` starts the **launcher** with
-`--X-AppBox-ConfigFile`, the launcher launches the test binary as a probe process
-with the sandbox DLL injected, and the probe asks the test process for its task
-over a named pipe and reports the result back. One probe call costs about two
-seconds, so a case which asks several questions of one sandbox asks them in one
-call where the protocol allows it.
+`--X-AppBox-ConfigFile`, the launcher launches the **probe executable** of the
+case with the sandbox DLL injected, and the probe asks the test process for its
+task over a named pipe and reports the result back. The probe is
+`AppBoxProbe64.exe` unless the case asks for `ProbeBitness::Bit32`, which runs
+the operations inside a 32 bit process. One probe call costs about two seconds,
+so a case which asks several questions of one sandbox asks them in one call where
+the protocol allows it.
 
 ### Filesystem isolation cases
 
@@ -935,6 +951,7 @@ filesystem: they pin what the view does with the names of its own markers.
 | `RootIsolation_MergeWritesTheFileOfTheHost` | root of the view `Merge`, host file, no entry names the folder | open the file of the host for writing | the mode of the root reaches the write, so the host file carries the new content |
 | `DefaultMerge_CreatesTheEntriesInTheHost` | no entry names the folder, so the default of the view applies | create a directory and a file below a folder of the host | the directory and the file are created in the host filesystem, while the overlay holds neither of them |
 | `DefaultMerge_WritesTheFileOfTheHost` | no entry names the file, so the default of the view applies | open the file of the host for writing | the write is applied to the file of the host filesystem, while the overlay holds no copy of it |
+| `Probe32_DefaultMerge_WritesTheFileOfTheHost` | the same case, run in the **32 bit** probe (`ProbeBitness::Bit32`); the case first checks that the executable it was given is a PE32 image | open the file of the host for writing, which the 32 bit sandbox module serves | the write of the 32 bit process reaches the file of the host filesystem, while the overlay holds no copy of it |
 | `Rename_LowerLayer` | layer `Write Copy`, packed file | rename the packed file inside its folder | the new name is an entry of the overlay which carries the packed content, the old name is hidden by a whiteout marker, and the lower layer keeps its file |
 | `Rename_MergeWritesTheHostFile` | folder `Merge`, host file | rename the host file inside its folder | the host carries the new name and not the old one any more, and the overlay holds neither of the two names |
 | `Rename_TargetExists` | layer `Write Copy`, two packed files | rename one file onto the name of the other one, once without and once with the replace flag | the rename without the flag reports `Name Collision`, the one with it succeeds and leaves the new name in the overlay, the hidden source and the untouched lower layer |
@@ -1629,9 +1646,12 @@ They are documented in their own header comments.
 * `test/utils/CWD.*` — the working directory itself: `Create()` makes it,
   `NoCleanup()` keeps it after the case.
 * `test/utils/ProbeCall.*` — writes the `LauncherConfig` to `config.json`, starts the
-  **launcher** with `--X-AppBox-ConfigFile`, which launches the test binary as a probe
-  process with the sandbox DLL injected; the probe asks the test process for its task
-  over a named pipe and reports the result back. Every configuration it hands to the
+  **launcher** with `--X-AppBox-ConfigFile`, which launches the probe executable of the
+  case (`AppBoxProbe32.exe` or `AppBoxProbe64.exe`) with the sandbox DLL injected; the
+  probe asks the test process for its task over a named pipe and reports the result back.
+  `ProbeCall()` takes the bit size of the probe as its last argument and defaults to the
+  64 bit one, so a case which asks for the 32 bit probe names `ProbeBitness::Bit32` and
+  nothing else changes. Every configuration it hands to the
   launcher enables `hide_console`, so the probe process of a case does not open a console
   window (see [Launcher console case](#launcher-console-case)). The log options of the run
   (`appbox::test::LogRun`) are passed as `--X-AppBox-LogLevel` and `--X-AppBox-LogDir` and
@@ -1804,9 +1824,15 @@ They are documented in their own header comments.
   the list the case about the runtime library of a sandboxed process reads (see
   [Launcher runtime library case](#launcher-runtime-library-case)).
 * `test/probe/__init__.hpp` — the probe registry: a probe registers itself by
-  name on start and `ProbeInit` registers the command which the launcher starts.
-  `--startup_marker` carries the marker of the startup file a probe process was
-  started for, which `StartupMarker()` returns.
+  name on start and `ProbeInit` registers the command which the launcher starts
+  in the probe executable (`test/probe/main.cpp`). The test executable defines
+  the same objects without a function (`test/probe/Registry.cpp`), because it
+  only names the probe a case asks for. `--startup_marker` carries the marker of
+  the startup file a probe process was started for, which `StartupMarker()`
+  returns.
+* `test/probe/main.cpp` — the entry point of the probe executable: the command
+  line of the probe (`probe --probe_pipe … --probe_key …`), the `regchild`
+  worker of the registry cases and the MinGW wrapper of the entry point.
 
 ## Tracer tests
 
@@ -1834,6 +1860,14 @@ They are documented in their own header comments.
   `FileLinkInformationExBypassAccessCheck` belong to kernel mode callers, which
   no case of the suite can drive; the cases pin the four classes a user mode
   caller reaches.
+* **The 32 bit probe is covered by one case.** The suite runs the 64 bit probe
+  unless a case asks for `ProbeBitness::Bit32`, and only
+  `E2E_Fs.Probe32_DefaultMerge_WritesTheFileOfTheHost` asks for it: the case
+  proves that a 32 bit process starts under the sandbox of the suite and that a
+  write of it reaches the host filesystem. The other domains (registry,
+  environment, network, fonts) are only driven in a 64 bit process so far, so a
+  regression which touches a 32 bit structure layout would reach the suite only
+  through the filesystem path.
 * **The timeout and the coredumps of a run are verified by hand.** The test
   suite does not test itself (see
   [Timeouts and coredumps](#timeouts-and-coredumps)).

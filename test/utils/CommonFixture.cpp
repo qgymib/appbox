@@ -1,4 +1,5 @@
 #include "utils/CWD.hpp"
+#include "utils/ProbePath.hpp"
 #include "utils/SandboxDll.hpp"
 #include "utils/TestLog.hpp"
 #include "CommonFixture.hpp"

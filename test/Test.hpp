@@ -42,6 +42,8 @@ struct TestConfig
     std::wstring      launcher_path;        /* Path to launcher */
     std::wstring      sandbox32_path;       /* Path to the 32 bit sandbox injection module */
     std::wstring      sandbox64_path;       /* Path to the 64 bit sandbox injection module */
+    std::wstring      probe32_path;         /* Path to the 32 bit probe executable */
+    std::wstring      probe64_path;         /* Path to the 64 bit probe executable */
     std::wstring      packer_path;          /* Path to the packer */
     std::wstring      log_level = L"info";  /* Level of the log files of a case, not of the test executable */
     bool              no_cleanup = false;   /* Do not cleanup the test directory */
@@ -98,6 +100,24 @@ int SetupTestConfig(CLI::App& app);
  *         the standard error stream and no test case is run.
  */
 int ApplyTestModeFilter(TestMode mode);
+
+/**
+ * @brief Refuse a run which cannot start the probe executable of a case.
+ *
+ * Every case runs its operations in a probe process, which the launcher starts
+ * instead of the application of the case, and the unit test of the static
+ * runtime reads the two probe executables as well. A run which was started
+ * without them cannot execute a case, so the run is refused here instead of
+ * letting the cases skip themselves: a skipped case reports a green run although
+ * nothing was verified.
+ *
+ * The check covers both bit sizes whatever the mode of the run is, because the
+ * probes are the programs of the cases and not of a single side of the suite.
+ *
+ * @return 0 on success, otherwise a non-zero value; a failure is reported on
+ *         the standard error stream and no test case is run.
+ */
+int ValidateProbePaths();
 
 } // namespace appbox::test
 

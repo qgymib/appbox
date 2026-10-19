@@ -40,8 +40,8 @@ static appbox::LoggerF logger("NtSetValueKey", NtSetValueKeyLogParam);
  *
  * Handles outside the root keys of the view are forwarded unchanged.
  */
-static NTSTATUS Hook_NtSetValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName, ULONG TitleIndex, ULONG Type,
-                                   PVOID Data, ULONG DataSize)
+static NTSTATUS NTAPI Hook_NtSetValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName, ULONG TitleIndex, ULONG Type,
+                                         PVOID Data, ULONG DataSize)
 {
     logger.Log(KeyHandle, ValueName, TitleIndex, Type, Data, DataSize);
 

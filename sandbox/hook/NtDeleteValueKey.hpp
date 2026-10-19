@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwdeletevaluekey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtDeleteValueKey)(
+typedef NTSTATUS(NTAPI* T_NtDeleteValueKey)(
     /* [IN] */ HANDLE          KeyHandle,
     /* [IN] */ PUNICODE_STRING ValueName
 );

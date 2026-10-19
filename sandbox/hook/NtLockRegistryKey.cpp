@@ -25,7 +25,7 @@ static appbox::LoggerF logger("NtLockRegistryKey", NtLockRegistryKeyLogParam);
  * call is refused. A handle outside the root keys of the view belongs to no
  * layer of the view and is forwarded unchanged.
  */
-static NTSTATUS Hook_NtLockRegistryKey(HANDLE KeyHandle)
+static NTSTATUS NTAPI Hook_NtLockRegistryKey(HANDLE KeyHandle)
 {
     logger.Log(KeyHandle);
 

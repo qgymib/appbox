@@ -470,8 +470,9 @@ static bool RedirectSetName(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
     return true;
 }
 
-static NTSTATUS Hook_NtSetInformationFile(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation,
-                                          ULONG Length, FILE_INFORMATION_CLASS FileInformationClass)
+static NTSTATUS NTAPI Hook_NtSetInformationFile(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
+                                                PVOID FileInformation, ULONG Length,
+                                                FILE_INFORMATION_CLASS FileInformationClass)
 {
     logger.Log(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
 

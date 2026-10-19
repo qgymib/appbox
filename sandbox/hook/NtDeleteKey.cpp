@@ -30,7 +30,7 @@ static appbox::LoggerF logger("NtDeleteKey", NtDeleteKeyLogParam);
  *
  * Paths outside the root keys of the view are forwarded unchanged.
  */
-static NTSTATUS Hook_NtDeleteKey(HANDLE KeyHandle)
+static NTSTATUS NTAPI Hook_NtDeleteKey(HANDLE KeyHandle)
 {
     logger.Log(KeyHandle);
 

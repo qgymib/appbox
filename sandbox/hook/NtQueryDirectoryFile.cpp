@@ -28,10 +28,11 @@ static nlohmann::json NtQueryDirectoryFileLogParam(HANDLE FileHandle, HANDLE Eve
 }
 static appbox::LoggerF logger("NtQueryDirectoryFile", NtQueryDirectoryFileLogParam);
 
-static NTSTATUS Hook_NtQueryDirectoryFile(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext,
-                                          PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation, ULONG Length,
-                                          FILE_INFORMATION_CLASS FileInformationClass, BOOLEAN ReturnSingleEntry,
-                                          PUNICODE_STRING FileName, BOOLEAN RestartScan)
+static NTSTATUS NTAPI Hook_NtQueryDirectoryFile(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine,
+                                                PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation,
+                                                ULONG Length, FILE_INFORMATION_CLASS FileInformationClass,
+                                                BOOLEAN ReturnSingleEntry, PUNICODE_STRING FileName,
+                                                BOOLEAN RestartScan)
 {
     logger.Log(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, FileInformation, Length, FileInformationClass,
                ReturnSingleEntry, FileName, RestartScan);

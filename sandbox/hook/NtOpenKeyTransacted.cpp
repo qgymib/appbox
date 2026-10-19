@@ -35,8 +35,8 @@ static appbox::LoggerF logger("NtOpenKeyTransacted", NtOpenKeyTransactedLogParam
  * appbox::registry::FallbackForKeyTransacted). Paths outside the root keys of
  * the view are forwarded unchanged, with the transaction of the caller.
  */
-static NTSTATUS Hook_NtOpenKeyTransacted(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess,
-                                         POBJECT_ATTRIBUTES ObjectAttributes, HANDLE TransactionHandle)
+static NTSTATUS NTAPI Hook_NtOpenKeyTransacted(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess,
+                                               POBJECT_ATTRIBUTES ObjectAttributes, HANDLE TransactionHandle)
 {
     logger.Log(KeyHandle, DesiredAccess, ObjectAttributes, TransactionHandle);
 

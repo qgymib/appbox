@@ -3,7 +3,8 @@
 
 T_SetProcessMitigationPolicy sys_SetProcessMitigationPolicy = nullptr;
 
-static BOOL Hook_SetProcessMitigationPolicy(PROCESS_MITIGATION_POLICY MitigationPolicy, PVOID lpBuffer, SIZE_T dwLength)
+static BOOL WINAPI Hook_SetProcessMitigationPolicy(PROCESS_MITIGATION_POLICY MitigationPolicy, PVOID lpBuffer,
+                                                   SIZE_T dwLength)
 {
     /* Windows 8 */
     if (appbox::sys.OSBuild < 8400)

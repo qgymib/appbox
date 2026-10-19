@@ -59,8 +59,9 @@ static bool NtOpenFileGetDosNtPath(POBJECT_ATTRIBUTES ObjectAttributes, std::wst
     return true;
 }
 
-static NTSTATUS Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes,
-                                PIO_STATUS_BLOCK IoStatusBlock, ULONG ShareAccess, ULONG OpenOptions)
+static NTSTATUS NTAPI Hook_NtOpenFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
+                                      POBJECT_ATTRIBUTES ObjectAttributes, PIO_STATUS_BLOCK IoStatusBlock,
+                                      ULONG ShareAccess, ULONG OpenOptions)
 {
     logger.Log(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, ShareAccess, OpenOptions);
 

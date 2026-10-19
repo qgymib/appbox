@@ -10,7 +10,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-zwdeletefile
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtDeleteFile)(
+typedef NTSTATUS(NTAPI* T_NtDeleteFile)(
     /* [IN] */  POBJECT_ATTRIBUTES  ObjectAttributes
 );
 /* clang-format on */

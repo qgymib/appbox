@@ -33,8 +33,8 @@ static appbox::LoggerF logger("NtQueryMultipleValueKey", NtQueryMultipleValueKey
  *
  * Handles which do not point into the hive are forwarded unchanged.
  */
-static NTSTATUS Hook_NtQueryMultipleValueKey(HANDLE KeyHandle, PKEY_VALUE_ENTRY ValueEntries, ULONG EntryCount,
-                                             PVOID ValueBuffer, PULONG BufferLength, PULONG RequiredBufferLength)
+static NTSTATUS NTAPI Hook_NtQueryMultipleValueKey(HANDLE KeyHandle, PKEY_VALUE_ENTRY ValueEntries, ULONG EntryCount,
+                                                   PVOID ValueBuffer, PULONG BufferLength, PULONG RequiredBufferLength)
 {
     logger.Log(KeyHandle, ValueEntries, EntryCount, ValueBuffer, BufferLength, RequiredBufferLength);
 

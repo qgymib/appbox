@@ -25,7 +25,7 @@ static appbox::LoggerF logger("NtCompressKey", NtCompressKeyLogParam);
  * so the call is refused. A handle outside the root keys of the view belongs to
  * no layer of the view and is forwarded unchanged.
  */
-static NTSTATUS Hook_NtCompressKey(HANDLE Key)
+static NTSTATUS NTAPI Hook_NtCompressKey(HANDLE Key)
 {
     logger.Log(Key);
 

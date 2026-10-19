@@ -304,8 +304,9 @@ static ULONG DropMarkerStreams(PVOID FileInformation, ULONG Length, PIO_STATUS_B
     return write;
 }
 
-static NTSTATUS Hook_NtQueryInformationFile(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation,
-                                            ULONG Length, FILE_INFORMATION_CLASS FileInformationClass)
+static NTSTATUS NTAPI Hook_NtQueryInformationFile(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
+                                                  PVOID FileInformation, ULONG Length,
+                                                  FILE_INFORMATION_CLASS FileInformationClass)
 {
     logger.Log(FileHandle, IoStatusBlock, FileInformation, Length, FileInformationClass);
 

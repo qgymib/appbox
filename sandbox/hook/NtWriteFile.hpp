@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntwritefile
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtWriteFile)(
+typedef NTSTATUS(NTAPI* T_NtWriteFile)(
     /* [IN] */          HANDLE              FileHandle,
     /* [IN,OPTIONAL] */ HANDLE              Event,
     /* [IN,OPTIONAL] */ PIO_APC_ROUTINE     ApcRoutine,

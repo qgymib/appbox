@@ -28,7 +28,7 @@ static bool IsPendingDelete(HANDLE hFile)
     return fsi.DeletePending;
 }
 
-static NTSTATUS Hook_NtClose(HANDLE Handle)
+static NTSTATUS NTAPI Hook_NtClose(HANDLE Handle)
 {
     logger.Log(Handle);
 

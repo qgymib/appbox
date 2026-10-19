@@ -10,7 +10,7 @@ extern "C" {
  * https://www.geoffchappell.com/studies/windows/win32/ntdll/api/rtl/rtlexec/queryimagefileexecutionoptionsex.htm
  */
 /* clang-format off */
-typedef NTSTATUS (*T_LdrQueryImageFileExecutionOptionsEx)(
+typedef NTSTATUS(NTAPI* T_LdrQueryImageFileExecutionOptionsEx)(
     /* [IN] */              PUNICODE_STRING lpImageFile,
     /* [IN] */              PCWSTR          lpszOption,
     /* [IN] */              ULONG           dwType,

@@ -33,8 +33,8 @@ static appbox::LoggerF logger("NtSetInformationKey", NtSetInformationKeyLogParam
  * host layer the same way: a handle which the isolation handed out for a read
  * access open must not become the right to change the key of the host.
  */
-static NTSTATUS Hook_NtSetInformationKey(HANDLE KeyHandle, KEY_SET_INFORMATION_CLASS KeySetInformationClass,
-                                         PVOID KeySetInformation, ULONG KeySetInformationLength)
+static NTSTATUS NTAPI Hook_NtSetInformationKey(HANDLE KeyHandle, KEY_SET_INFORMATION_CLASS KeySetInformationClass,
+                                               PVOID KeySetInformation, ULONG KeySetInformationLength)
 {
     logger.Log(KeyHandle, KeySetInformationClass, KeySetInformation, KeySetInformationLength);
 

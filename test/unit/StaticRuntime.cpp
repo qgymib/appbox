@@ -6,6 +6,7 @@
 #include <vector>
 #include "utils/LauncherPath.hpp"
 #include "utils/ModuleList.hpp"
+#include "utils/ProbePath.hpp"
 #include "utils/ReadFileFull.hpp"
 #include "utils/SandboxDll.hpp"
 #include "Test.hpp"
@@ -300,41 +301,47 @@ std::wstring SelfPath()
 
 /**
  * Condition:
- * 1. The build produced the packer, the launcher and the two sandbox injection
- *    modules.
+ * 1. The build produced the packer, the launcher, the two sandbox injection
+ *    modules and the two probe executables.
  *
  * Expected:
  * 1. Every one of them links the runtime library of the compiler statically, so
  *    its import table names no module of the Visual C++ runtime: the products
- *    run on a machine which carries no Visual C++ Redistributable, and the
- *    injection modules can be injected into an application which does not
- *    depend on it either.
+ *    run on a machine which carries no Visual C++ Redistributable, the injection
+ *    modules can be injected into an application which does not depend on it
+ *    either, and the probe the cases run inside the sandbox needs no
+ *    redistributable of its own.
  */
 TEST(Unit_StaticRuntime, ProductsImportNoVcRuntime)
 {
     if (appbox::test::config.packer_path.empty() || appbox::test::LauncherPath().empty() ||
         appbox::test::Sandbox32DllPath().empty() || appbox::test::Sandbox64DllPath().empty())
     {
-        GTEST_SKIP() << "the products of the build are unavailable: pass --packer=, --launcher=, --sandbox32= and "
-                        "--sandbox64=";
+        GTEST_SKIP() << "the products of the build are unavailable: pass --packer=, --launcher=, --sandbox32= "
+                        "and --sandbox64=";
     }
 
     ExpectStaticRuntime(appbox::test::config.packer_path);
     ExpectStaticRuntime(appbox::test::LauncherPath());
     ExpectStaticRuntime(appbox::test::Sandbox32DllPath());
     ExpectStaticRuntime(appbox::test::Sandbox64DllPath());
+
+    /* The probe is the program the cases run inside the sandbox, so the module
+     * list the case `E2E_Launcher_NoVcRuntime` reads cannot carry a runtime
+     * module because of the probe itself. */
+    ExpectStaticRuntime(appbox::test::ProbePath(appbox::test::ProbeBitness::Bit32));
+    ExpectStaticRuntime(appbox::test::ProbePath(appbox::test::ProbeBitness::Bit64));
 }
 
 /**
  * Condition:
- * 1. The end-to-end cases run this executable as the program inside the
- *    sandbox, so the modules it imports are the ones every sandboxed process of
- *    the suite carries.
+ * 1. The test executable is a product of the build: it runs the cases and
+ *    starts the launcher, which starts the probe of a case.
  *
  * Expected:
  * 1. The executable links the runtime library of the compiler statically as
- *    well, so the module list the case `E2E_Launcher_NoVcRuntime` reads cannot
- *    carry a runtime module because of the probe itself.
+ *    well, so the machine which runs the suite needs no Visual C++
+ *    Redistributable for the test executable.
  */
 TEST(Unit_StaticRuntime, TestExecutableImportsNoVcRuntime)
 {

@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-rtlinitunicodestring
  */
 /* clang-format off */
-typedef void (*T_RtlInitUnicodeString)(
+typedef void(NTAPI* T_RtlInitUnicodeString)(
     /* [OUT] */         PUNICODE_STRING DestinationString,
     /* [IN,OPTIONAL] */ PCWSTR          SourceString
 );

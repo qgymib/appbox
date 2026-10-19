@@ -10,7 +10,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtCreateFile)(
+typedef NTSTATUS(NTAPI* T_NtCreateFile)(
     /* [OUT] */         PHANDLE             FileHandle,
     /* [IN] */          ACCESS_MASK         DesiredAccess,
     /* [IN] */          POBJECT_ATTRIBUTES  ObjectAttributes,

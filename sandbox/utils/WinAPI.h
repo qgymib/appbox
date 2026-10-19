@@ -1076,24 +1076,24 @@ typedef void(NTAPI* PIO_APC_ROUTINE)(IN PVOID ApcContext, IN PIO_STATUS_BLOCK Io
 /**
  * @see https://learn.microsoft.com/en-us/windows/win32/devnotes/rtldospathnametontpathname_u_withstatus
  */
-typedef NTSTATUS (*T_RtlDosPathNameToNtPathName_U_WithStatus)(PCWSTR DosFileName, PUNICODE_STRING NtFileName,
+typedef NTSTATUS(NTAPI* T_RtlDosPathNameToNtPathName_U_WithStatus)(PCWSTR DosFileName, PUNICODE_STRING NtFileName,
                                                               PWSTR* FilePart, PVOID Reserved);
 
 /**
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-rtlfreeunicodestring
  */
-typedef void (*T_RtlFreeUnicodeString)(PUNICODE_STRING UnicodeString);
+typedef void(NTAPI* T_RtlFreeUnicodeString)(PUNICODE_STRING UnicodeString);
 
 /**
  * @see https://learn.microsoft.com/zh-cn/windows/win32/api/winternl/nf-winternl-rtlntstatustodoserror
  */
-typedef ULONG (*T_RtlNtStatusToDosError)(NTSTATUS Status);
+typedef ULONG(NTAPI* T_RtlNtStatusToDosError)(NTSTATUS Status);
 
 /**
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntqueryinformationprocess
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtQueryInformationProcess)(
+typedef NTSTATUS(NTAPI* T_NtQueryInformationProcess)(
 	/* [IN] */				HANDLE           	ProcessHandle,
 	/* [IN] */				PROCESSINFOCLASS	ProcessInformationClass,
 	/* [OUT] */				PVOID            	ProcessInformation,
@@ -1106,7 +1106,7 @@ typedef NTSTATUS (*T_NtQueryInformationProcess)(
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwenumeratekey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtEnumerateKey)(
+typedef NTSTATUS(NTAPI* T_NtEnumerateKey)(
 	/* [IN] */  HANDLE                  KeyHandle,
 	/* [IN] */  ULONG                   Index,
 	/* [IN] */  KEY_INFORMATION_CLASS   KeyInformationClass,
@@ -1120,7 +1120,7 @@ typedef NTSTATUS (*T_NtEnumerateKey)(
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwenumeratevaluekey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtEnumerateValueKey)(
+typedef NTSTATUS(NTAPI* T_NtEnumerateValueKey)(
 	/* [IN] */  HANDLE                      KeyHandle,
 	/* [IN] */  ULONG                       Index,
 	/* [IN] */  KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
@@ -1134,7 +1134,7 @@ typedef NTSTATUS (*T_NtEnumerateValueKey)(
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwquerykey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtQueryKey)(
+typedef NTSTATUS(NTAPI* T_NtQueryKey)(
 	/* [IN] */  HANDLE                  KeyHandle,
 	/* [IN] */  KEY_INFORMATION_CLASS   KeyInformationClass,
 	/* [OUT] */ PVOID                   KeyInformation,
@@ -1147,7 +1147,7 @@ typedef NTSTATUS (*T_NtQueryKey)(
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwqueryvaluekey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtQueryValueKey)(
+typedef NTSTATUS(NTAPI* T_NtQueryValueKey)(
 	/* [IN] */  HANDLE                      KeyHandle,
 	/* [IN] */  PUNICODE_STRING             ValueName,
 	/* [IN] */  KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
@@ -1161,7 +1161,7 @@ typedef NTSTATUS (*T_NtQueryValueKey)(
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwsetvaluekey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtSetValueKey)(
+typedef NTSTATUS(NTAPI* T_NtSetValueKey)(
 	/* [IN] */ HANDLE          KeyHandle,
 	/* [IN] */ PUNICODE_STRING ValueName,
 	/* [IN] */ ULONG           TitleIndex,

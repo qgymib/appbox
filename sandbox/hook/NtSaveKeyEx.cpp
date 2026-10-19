@@ -25,7 +25,7 @@ static appbox::LoggerF logger("NtSaveKeyEx", NtSaveKeyExLogParam);
  *
  * Paths outside the root keys of the view are forwarded unchanged.
  */
-static NTSTATUS Hook_NtSaveKeyEx(HANDLE KeyHandle, HANDLE FileHandle, ULONG Format)
+static NTSTATUS NTAPI Hook_NtSaveKeyEx(HANDLE KeyHandle, HANDLE FileHandle, ULONG Format)
 {
     logger.Log(KeyHandle, FileHandle, Format);
 

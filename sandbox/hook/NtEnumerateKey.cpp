@@ -33,8 +33,8 @@ static appbox::LoggerF logger("NtEnumerateKey", NtEnumerateKeyLogParam);
  * Handles which do not point into the hive are forwarded unchanged: a real
  * fallback handle only exposes the real layer anyway.
  */
-static NTSTATUS Hook_NtEnumerateKey(HANDLE KeyHandle, ULONG Index, KEY_INFORMATION_CLASS KeyInformationClass,
-                                    PVOID KeyInformation, ULONG Length, PULONG ResultLength)
+static NTSTATUS NTAPI Hook_NtEnumerateKey(HANDLE KeyHandle, ULONG Index, KEY_INFORMATION_CLASS KeyInformationClass,
+                                          PVOID KeyInformation, ULONG Length, PULONG ResultLength)
 {
     logger.Log(KeyHandle, Index, KeyInformationClass, KeyInformation, Length, ResultLength);
 

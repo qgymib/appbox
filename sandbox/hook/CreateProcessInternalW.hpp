@@ -9,7 +9,7 @@ extern "C" {
  * @see http://a-twisted-world.blogspot.com/2008/03/createprocessinternal-function.html
  */
 /* clang-format off */
-typedef BOOL (*T_CreateProcessInternalW)(
+typedef BOOL(WINAPI* T_CreateProcessInternalW)(
     /* [IN] */              HANDLE                  hToken,
     /* [IN,OPTIONAL]*/      LPCWSTR                 lpApplicationName,
     /* [IN,OUT,OPTIONAL] */ LPWSTR                  lpCommandLine,

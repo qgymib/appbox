@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntquerymultiplevaluekey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtQueryMultipleValueKey)(
+typedef NTSTATUS(NTAPI* T_NtQueryMultipleValueKey)(
     /* [IN] */     HANDLE          KeyHandle,
     /* [IN,OUT] */ PKEY_VALUE_ENTRY ValueEntries,
     /* [IN] */     ULONG           EntryCount,

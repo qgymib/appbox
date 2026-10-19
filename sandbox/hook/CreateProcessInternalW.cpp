@@ -44,6 +44,34 @@ static nlohmann::json CreateProcessInternalWLogParam(HANDLE hToken, LPCWSTR lpAp
 }
 static appbox::LoggerF logger("CreateProcessInternalW", CreateProcessInternalWLogParam);
 
+namespace
+{
+
+/**
+ * @brief Mark the current thread as being inside this hook.
+ *
+ * The cross-bitness injection of Detours starts a helper process of its own
+ * (`rundll32.exe` with the injection module of the other bit size) through
+ * `CreateProcessW`, which reaches this hook again. The helper only patches the
+ * import table of the target process and leaves, so it is not part of the
+ * sandbox: the nested creation is forwarded unchanged, and the mark tells the
+ * hook that the creation is the nested one.
+ */
+struct HookLock
+{
+    HookLock()
+    {
+        appbox::ThreadLocal::Get().disable_CreateProcessInternalW_hook = true;
+    }
+
+    ~HookLock()
+    {
+        appbox::ThreadLocal::Get().disable_CreateProcessInternalW_hook = false;
+    }
+};
+
+} // namespace
+
 /**
  * @brief Resolve the application path of a process creation into the layer
  *        path which hosts the image.
@@ -157,13 +185,27 @@ static BOOL WrapDetourCreateProcessWithDllExW(HANDLE hToken, LPCWSTR lpApplicati
     return TRUE;
 }
 
-static BOOL Hook_CreateProcessInternalW(HANDLE hToken, LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
-                                        LPSECURITY_ATTRIBUTES lpProcessAttributes,
-                                        LPSECURITY_ATTRIBUTES lpThreadAttributes, BOOL bInheritHandles,
-                                        ULONG dwCreationFlags, LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory,
-                                        LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation,
-                                        PHANDLE hNewToken)
+static BOOL WINAPI Hook_CreateProcessInternalW(HANDLE hToken, LPCWSTR lpApplicationName, LPWSTR lpCommandLine,
+                                               LPSECURITY_ATTRIBUTES lpProcessAttributes,
+                                               LPSECURITY_ATTRIBUTES lpThreadAttributes, BOOL bInheritHandles,
+                                               ULONG dwCreationFlags, LPVOID lpEnvironment, LPCWSTR lpCurrentDirectory,
+                                               LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation,
+                                               PHANDLE hNewToken)
 {
+    /*
+     * The helper process of the cross-bitness injection is created from inside
+     * this hook (see HookLock): the call is forwarded unchanged, without the
+     * rewrite of the application path and without an injection of its own.
+     */
+    if (appbox::ThreadLocal::Get().disable_CreateProcessInternalW_hook)
+    {
+        return sys_CreateProcessInternalW(hToken, lpApplicationName, lpCommandLine, lpProcessAttributes,
+                                          lpThreadAttributes, bInheritHandles, dwCreationFlags, lpEnvironment,
+                                          lpCurrentDirectory, lpStartupInfo, lpProcessInformation, hNewToken);
+    }
+
+    HookLock lock;
+
     logger.Log(hToken, lpApplicationName, lpCommandLine, lpProcessAttributes, lpThreadAttributes, bInheritHandles,
                dwCreationFlags, lpEnvironment, lpCurrentDirectory, lpStartupInfo, lpProcessInformation, hNewToken);
 

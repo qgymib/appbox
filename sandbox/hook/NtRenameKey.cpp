@@ -38,7 +38,7 @@ static appbox::LoggerF logger("NtRenameKey", NtRenameKeyLogParam);
  *
  * Paths outside the root keys of the view are forwarded unchanged.
  */
-static NTSTATUS Hook_NtRenameKey(HANDLE KeyHandle, PUNICODE_STRING NewName)
+static NTSTATUS NTAPI Hook_NtRenameKey(HANDLE KeyHandle, PUNICODE_STRING NewName)
 {
     logger.Log(KeyHandle, NewName);
 

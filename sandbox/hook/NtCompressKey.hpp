@@ -9,7 +9,7 @@ extern "C" {
  * @see https://ntdoc.m417z.com/ntcompresskey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtCompressKey)(
+typedef NTSTATUS(NTAPI* T_NtCompressKey)(
     /* [IN] */ HANDLE Key
 );
 /* clang-format on */

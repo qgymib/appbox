@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwsavekeyex
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtSaveKeyEx)(
+typedef NTSTATUS(NTAPI* T_NtSaveKeyEx)(
     /* [IN] */ HANDLE KeyHandle,
     /* [IN] */ HANDLE FileHandle,
     /* [IN] */ ULONG  Format

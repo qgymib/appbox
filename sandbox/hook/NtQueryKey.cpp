@@ -336,8 +336,8 @@ static NTSTATUS FixMergedCounts(HANDLE KeyHandle, const std::wstring& view_path,
  * like the key it shadows. The sub key and value counts of the full and cached
  * information classes are corrected to the merged two layer view.
  */
-static NTSTATUS Hook_NtQueryKey(HANDLE KeyHandle, KEY_INFORMATION_CLASS KeyInformationClass, PVOID KeyInformation,
-                                ULONG Length, PULONG ResultLength)
+static NTSTATUS NTAPI Hook_NtQueryKey(HANDLE KeyHandle, KEY_INFORMATION_CLASS KeyInformationClass, PVOID KeyInformation,
+                                      ULONG Length, PULONG ResultLength)
 {
     logger.Log(KeyHandle, KeyInformationClass, KeyInformation, Length, ResultLength);
 

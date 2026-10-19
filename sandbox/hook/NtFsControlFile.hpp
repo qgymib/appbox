@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntfscontrolfile
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtFsControlFile)(
+typedef NTSTATUS(NTAPI* T_NtFsControlFile)(
     /* [IN] */          HANDLE              FileHandle,
     /* [IN,OPTIONAL] */ HANDLE              Event,
     /* [IN,OPTIONAL] */ PIO_APC_ROUTINE     ApcRoutine,

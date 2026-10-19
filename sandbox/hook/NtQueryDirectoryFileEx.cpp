@@ -26,10 +26,11 @@ static nlohmann::json NtQueryDirectoryFileExLogParam(HANDLE FileHandle, HANDLE E
 }
 static appbox::LoggerF logger("NtQueryDirectoryFileEx", NtQueryDirectoryFileExLogParam);
 
-static NTSTATUS Hook_NtQueryDirectoryFileEx(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine,
-                                            PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation,
-                                            ULONG Length, FILE_INFORMATION_CLASS FileInformationClass, ULONG QueryFlags,
-                                            PUNICODE_STRING FileName)
+static NTSTATUS NTAPI Hook_NtQueryDirectoryFileEx(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine,
+                                                  PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock,
+                                                  PVOID FileInformation, ULONG Length,
+                                                  FILE_INFORMATION_CLASS FileInformationClass, ULONG QueryFlags,
+                                                  PUNICODE_STRING FileName)
 {
     logger.Log(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, FileInformation, Length, FileInformationClass,
                QueryFlags, FileName);

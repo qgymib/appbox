@@ -22,6 +22,7 @@
 #include "WString.hpp"
 #include "BuildCommandLine.hpp"
 #include "ProbeCall.hpp"
+#include "ProbePath.hpp"
 #include "Test.hpp"
 
 struct ProbeContext
@@ -41,7 +42,6 @@ struct ProbeServer
 {
     typedef std::shared_ptr<ProbeServer> Ptr;
 
-    std::string               exe_path;   /* Self executable path */
     std::string               pipe_path;  /* Pipe path */
     appbox::RemoteServer::Ptr rpc_server; /* RPC server */
 
@@ -135,29 +135,9 @@ static void OnProbeResponse(uint64_t id, const nlohmann::json& req)
     s_probe_srv->rpc_server->SendResponse(id, j_rsp);
 }
 
-static std::wstring GetExePath()
-{
-    std::wstring buf(MAX_PATH, L'\0');
-    while (true)
-    {
-        DWORD len = GetModuleFileNameW(nullptr, buf.data(), static_cast<DWORD>(buf.size()));
-        if (len < buf.size())
-        {
-            buf.resize(len);
-            return buf;
-        }
-        buf.resize(buf.size() * 2);
-    }
-}
-
 static void InitProbeServer()
 {
     s_probe_srv = std::make_shared<ProbeServer>();
-
-    {
-        auto exe_path = GetExePath();
-        s_probe_srv->exe_path = appbox::WideToUTF8(exe_path.c_str());
-    }
 
     {
         std::time_t timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
@@ -208,7 +188,7 @@ ProbeKey::~ProbeKey()
  *
  * A case which describes no startup file starts the probe once, like the single
  * main program of a packaged application, and every startup file is pointed at
- * the test executable instead of the program of the case.
+ * the probe executable of the case instead of the program of the case.
  *
  * The console window of the probe is hidden as well: the probe is a console
  * program, while the launcher and its process launcher are GUI programs without a
@@ -217,9 +197,10 @@ ProbeKey::~ProbeKey()
  * cases run on.
  *
  * @param[in] config Configuration of the case.
+ * @param[in] probe_path Path of the probe executable the case asked for.
  * @return The configuration of the probe run.
  */
-static appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& config)
+static appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& config, const std::wstring& probe_path)
 {
     appbox::LauncherConfig copy_config = config;
 
@@ -237,12 +218,12 @@ static appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& confi
     }
 
     /*
-     * The probe runs itself instead of the packaged application, so every
-     * startup file points at the probe executable.
+     * The probe runs instead of the packaged application, so every startup file
+     * points at the probe executable of the bit size the case asked for.
      */
     for (auto& startup : copy_config.startups)
     {
-        startup.executable = s_probe_srv->exe_path;
+        startup.executable = appbox::WideToUTF8(probe_path);
     }
 
     copy_config.hide_console = true;
@@ -406,8 +387,16 @@ static void ReportSandboxLogs(const std::wstring& cwd)
     }
 }
 
-static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config,
-                           const appbox::test::LogRun& log)
+/**
+ * @brief Run the launcher so it starts the probe process of a case.
+ * @param[in] key Probe key passed to the probe process.
+ * @param[in] cwd The current working directory.
+ * @param[in] config The launcher configuration, already pointed at the probe.
+ * @param[in] log The log options of the run, see LogRun.
+ * @throws std::runtime_error The probe process did not leave with code 0.
+ */
+static void RunProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config,
+                     const appbox::test::LogRun& log)
 {
     const auto exit_code = RunLauncherForProbe(key, cwd, config, std::string(), log);
     if (exit_code != 0)
@@ -421,15 +410,31 @@ static void RunSelfAsProbe(const std::string& key, const std::wstring& cwd, cons
 }
 
 nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::json& data, const std::wstring& cwd,
-                                       const LauncherConfig& launcher_config, const LogRun& log)
+                                       const LauncherConfig& launcher_config, const LogRun& log, ProbeBitness bitness)
 {
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
 
-    auto copy_config = OverrideConfig(launcher_config);
+    /*
+     * The probe is a program of its own, so the path of the executable is the
+     * one the run named for the bit size: a case which asks for a probe the run
+     * does not know cannot fall back to another one, because the operations of
+     * a case would then run in a process of the wrong bit size.
+     */
+    const std::wstring& probe_path = ProbePath(bitness);
+    std::error_code     ec;
+    if (probe_path.empty() || !std::filesystem::is_regular_file(probe_path, ec))
+    {
+        const auto msg = fmt::format("the {} bit probe is unavailable: pass --probe32= and --probe64=",
+                                     bitness == ProbeBitness::Bit32 ? 32 : 64);
+        SPDLOG_ERROR(msg);
+        throw std::runtime_error(msg);
+    }
+
+    auto copy_config = OverrideConfig(launcher_config, probe_path);
 
     ProbeKey key(name, data);
-    RunSelfAsProbe(key.key, cwd, copy_config, log);
+    RunProbe(key.key, cwd, copy_config, log);
 
     key.ctx->sem.Acquire();
     return key.ctx->result;
@@ -442,7 +447,7 @@ appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, 
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
 
-    auto copy_config = OverrideConfig(launcher_config);
+    auto copy_config = OverrideConfig(launcher_config, ProbePath(ProbeBitness::Bit64));
     copy_config.startup.screen = startup_screen;
 
     ProbeKey key("StartupStarted", nlohmann::json::object());
@@ -491,7 +496,7 @@ appbox::test::ShellRun appbox::test::ProbeShellRun(const std::wstring& cwd, cons
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
 
-    auto copy_config = OverrideConfig(launcher_config);
+    auto copy_config = OverrideConfig(launcher_config, ProbePath(ProbeBitness::Bit64));
 
     ProbeKey key("StartupStarted", nlohmann::json::object());
 

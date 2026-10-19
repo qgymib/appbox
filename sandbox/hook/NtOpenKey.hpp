@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntopenkey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtOpenKey)(
+typedef NTSTATUS(NTAPI* T_NtOpenKey)(
     /* [OUT] */             PHANDLE             KeyHandle,
     /* [IN] */              ACCESS_MASK         DesiredAccess,
     /* [IN] */              POBJECT_ATTRIBUTES  ObjectAttributes

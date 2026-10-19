@@ -10,7 +10,7 @@ extern "C" {
  * https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-setprocessmitigationpolicy
  */
 /* clang-format off */
-typedef BOOL (*T_SetProcessMitigationPolicy)(
+typedef BOOL(WINAPI* T_SetProcessMitigationPolicy)(
     /* [IN] */  PROCESS_MITIGATION_POLICY   MitigationPolicy,
     /* [IN] */  PVOID                       lpBuffer,
     /* [IN] */  SIZE_T                      dwLength

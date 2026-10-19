@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <spdlog/spdlog.h>
 #include "utils/CommandLine.hpp"
+#include "utils/ProbePath.hpp"
 #include "Test.hpp"
 #include "WString.hpp"
 
@@ -199,6 +201,53 @@ bool CheckSuiteOwnership(std::string& error)
     return true;
 }
 
+/**
+ * @brief Get the name of a bit size as the options of a run spell it.
+ * @param[in] bitness The bit size of the probe.
+ * @return `32` for the 32 bit probe, `64` otherwise.
+ */
+const char* ProbeBitnessName(appbox::test::ProbeBitness bitness)
+{
+    return bitness == appbox::test::ProbeBitness::Bit32 ? "32" : "64";
+}
+
+/**
+ * @brief Check that the probe executable of a bit size is available.
+ *
+ * The path is the one the run was started with: `ctest` passes `--probe32=` and
+ * `--probe64=`, and the environment variables `APPBOX_TEST_PROBE32` and
+ * `APPBOX_TEST_PROBE64` are the fallback of a run which is started by hand. A
+ * probe which was not provided and a probe whose file is missing are reported
+ * the same way, because both leave the cases without a program to run.
+ *
+ * @param[in] bitness The bit size of the probe.
+ * @param[out] error Description of the failure, set only when the probe is
+ *                   unavailable.
+ * @return true when the path was provided and names an existing file.
+ */
+bool CheckProbePath(appbox::test::ProbeBitness bitness, std::string& error)
+{
+    const char*         option = bitness == appbox::test::ProbeBitness::Bit32 ? "--probe32" : "--probe64";
+    const std::wstring& path = appbox::test::ProbePath(bitness);
+
+    if (path.empty())
+    {
+        error = fmt::format("the {} bit probe was not provided: pass {}=<path of the {} bit probe executable>",
+                            ProbeBitnessName(bitness), option, ProbeBitnessName(bitness));
+        return false;
+    }
+
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path, ec))
+    {
+        error = fmt::format("the {} bit probe `{}` does not exist: pass {}=<path of the {} bit probe executable>",
+                            ProbeBitnessName(bitness), appbox::WideToUTF8(path), option, ProbeBitnessName(bitness));
+        return false;
+    }
+
+    return true;
+}
+
 /** @brief Take the level of the log files of a case out of a command line value. */
 void SetCaseLogLevelFromString(const std::wstring& level)
 {
@@ -232,6 +281,14 @@ void SetConfigFromEnv()
     if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_SANDBOX64", val))
     {
         appbox::test::config.sandbox64_path = val;
+    }
+    if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_PROBE32", val))
+    {
+        appbox::test::config.probe32_path = val;
+    }
+    if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_PROBE64", val))
+    {
+        appbox::test::config.probe64_path = val;
     }
     if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_PACKER", val))
     {
@@ -306,6 +363,10 @@ int appbox::test::SetupTestConfig(CLI::App& app)
                    "Path to the 32 bit sandbox injection module. Environment variable: APPBOX_TEST_SANDBOX32.");
     app.add_option("--sandbox64", appbox::test::config.sandbox64_path,
                    "Path to the 64 bit sandbox injection module. Environment variable: APPBOX_TEST_SANDBOX64.");
+    app.add_option("--probe32", appbox::test::config.probe32_path,
+                   "Path to the 32 bit probe executable. Environment variable: APPBOX_TEST_PROBE32.");
+    app.add_option("--probe64", appbox::test::config.probe64_path,
+                   "Path to the 64 bit probe executable. Environment variable: APPBOX_TEST_PROBE64.");
     app.add_option("--packer", appbox::test::config.packer_path,
                    "Path to the packer executable. Environment variable: APPBOX_TEST_PACKER.");
     app.add_option_function<std::wstring>("--log-level", SetCaseLogLevelFromString,
@@ -367,5 +428,24 @@ int appbox::test::ApplyTestModeFilter(TestMode mode)
     }
 
     GTEST_FLAG_SET(filter, composed);
+    return 0;
+}
+
+int appbox::test::ValidateProbePaths()
+{
+    std::string error;
+
+    /*
+     * Both probes are checked whatever the mode of the run is: the probe is the
+     * program a case runs inside the sandbox, and a run which cannot start it
+     * would report skipped cases instead of a failure.
+     */
+    if (!CheckProbePath(ProbeBitness::Bit32, error) || !CheckProbePath(ProbeBitness::Bit64, error))
+    {
+        std::fprintf(stderr, "AppBox tests: %s\n", error.c_str());
+        SPDLOG_ERROR("{}", error);
+        return 1;
+    }
+
     return 0;
 }

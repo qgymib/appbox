@@ -34,8 +34,9 @@ static appbox::LoggerF logger("NtCreateKey", NtCreateKeyLogParam);
  * shadow key of the hive hides it, which is the behaviour of `WriteCopy` and
  * of `Full` and `Hide` alike.
  */
-static NTSTATUS Hook_NtCreateKey(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes,
-                                 ULONG TitleIndex, PUNICODE_STRING Class, ULONG CreateOptions, PULONG Disposition)
+static NTSTATUS NTAPI Hook_NtCreateKey(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess,
+                                       POBJECT_ATTRIBUTES ObjectAttributes, ULONG TitleIndex, PUNICODE_STRING Class,
+                                       ULONG CreateOptions, PULONG Disposition)
 {
     logger.Log(KeyHandle, DesiredAccess, ObjectAttributes, TitleIndex, Class, CreateOptions, Disposition);
 

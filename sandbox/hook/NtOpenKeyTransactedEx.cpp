@@ -28,9 +28,9 @@ static appbox::LoggerF logger("NtOpenKeyTransactedEx", NtOpenKeyTransactedExLogP
  * of the caller forwarded to every attempt. RegOpenKeyTransactedW() reaches
  * this entry point on current Windows versions.
  */
-static NTSTATUS Hook_NtOpenKeyTransactedEx(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess,
-                                           POBJECT_ATTRIBUTES ObjectAttributes, ULONG OpenOptions,
-                                           HANDLE TransactionHandle)
+static NTSTATUS NTAPI Hook_NtOpenKeyTransactedEx(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess,
+                                                 POBJECT_ATTRIBUTES ObjectAttributes, ULONG OpenOptions,
+                                                 HANDLE TransactionHandle)
 {
     logger.Log(KeyHandle, DesiredAccess, ObjectAttributes, OpenOptions, TransactionHandle);
 

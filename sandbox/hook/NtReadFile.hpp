@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows/win32/devnotes/ntreadfile
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtReadFile)(
+typedef NTSTATUS(NTAPI* T_NtReadFile)(
     /* [IN] */          HANDLE              FileHandle,
     /* [IN,OPTIONAL] */ HANDLE              Event,
     /* [IN,OPTIONAL] */ PIO_APC_ROUTINE     ApcRoutine,

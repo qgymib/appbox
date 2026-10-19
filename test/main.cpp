@@ -2,8 +2,6 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 #include <base64.hpp>
-#include "probe/__init__.hpp"
-#include "probe/RegChildProcess.hpp"
 #include "utils/Coredump.hpp"
 #include "utils/NameResolutionProbe.hpp"
 #include "utils/TestLog.hpp"
@@ -13,11 +11,11 @@
 /**
  * @brief Entry point of the AppBox test executable.
  *
- * The executable runs both sides of the test suite of the project: the
- * in-process unit tests below `test/unit` and the end-to-end cases below
- * `test/e2e`. The `--mode` option selects the side; the end-to-end cases
- * start the real launcher, which injects the sandbox DLL and starts this
- * executable again as the probe process of the case.
+ * The executable runs the test suite of the project: the in-process unit tests
+ * below `test/unit` and the end-to-end cases below `test/e2e`. The `--mode`
+ * option selects the side; the end-to-end cases start the real launcher, which
+ * injects the sandbox DLL and starts the probe executable of the case (see
+ * `test/probe/CMakeLists.txt`).
  *
  * @param[in] argc Number of command line arguments.
  * @param[in] argv Command line arguments.
@@ -47,14 +45,6 @@ int wmain(int argc, wchar_t* argv[])
 
     CLI::App app("AppBox tests");
     appbox::test::SetupTestConfig(app);
-    appbox::test::ProbeInit(app);
-
-    /*
-     * The worker a sandboxed probe starts as a child process of its own. It is
-     * a subcommand of this executable like the probe, so the sandbox injects
-     * the same module into it.
-     */
-    appbox::test::RegChildProcessInit(app);
 
     testing::InitGoogleTest(&argc, argv);
     CLI11_PARSE(app, argc, argv);
@@ -65,6 +55,16 @@ int wmain(int argc, wchar_t* argv[])
      * narrows the range of the mode.
      */
     if (appbox::test::ApplyTestModeFilter(appbox::test::config.mode) != 0)
+    {
+        return 1;
+    }
+
+    /*
+     * A run without the probe executables cannot start a case, so it is refused
+     * before the first case instead of letting the cases skip themselves: a
+     * skipped case would report a green run although nothing was verified.
+     */
+    if (appbox::test::ValidateProbePaths() != 0)
     {
         return 1;
     }

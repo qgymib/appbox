@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntrenamekey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtRenameKey)(
+typedef NTSTATUS(NTAPI* T_NtRenameKey)(
     /* [IN] */ HANDLE          KeyHandle,
     /* [IN] */ PUNICODE_STRING NewName
 );

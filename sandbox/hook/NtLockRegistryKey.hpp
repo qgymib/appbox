@@ -9,7 +9,7 @@ extern "C" {
  * @see https://ntdoc.m417z.com/ntlockregistrykey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtLockRegistryKey)(
+typedef NTSTATUS(NTAPI* T_NtLockRegistryKey)(
     /* [IN] */ HANDLE KeyHandle
 );
 /* clang-format on */

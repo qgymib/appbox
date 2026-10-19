@@ -9,7 +9,7 @@ extern "C" {
  * @see https://ntdoc.m417z.com/ntsetinformationkey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtSetInformationKey)(
+typedef NTSTATUS(NTAPI* T_NtSetInformationKey)(
     /* [IN] */ HANDLE                    KeyHandle,
     /* [IN] */ KEY_SET_INFORMATION_CLASS KeySetInformationClass,
     /* [IN] */ PVOID                     KeySetInformation,

@@ -357,7 +357,7 @@ static NTSTATUS DeleteAsDirectory(const std::wstring&                      view_
     return 0;
 }
 
-static NTSTATUS Hook_NtDeleteFile(POBJECT_ATTRIBUTES ObjectAttributes)
+static NTSTATUS NTAPI Hook_NtDeleteFile(POBJECT_ATTRIBUTES ObjectAttributes)
 {
     logger.Log(ObjectAttributes);
 

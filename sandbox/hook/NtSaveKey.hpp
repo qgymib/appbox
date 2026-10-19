@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwsavekey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtSaveKey)(
+typedef NTSTATUS(NTAPI* T_NtSaveKey)(
     /* [IN] */ HANDLE KeyHandle,
     /* [IN] */ HANDLE FileHandle
 );

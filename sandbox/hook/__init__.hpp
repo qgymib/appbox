@@ -16,6 +16,20 @@ struct ThreadLocal
 
     bool disable_NtCreateFile_hook = false;
     bool disable_NtQueryObject_hook = false;
+
+    /**
+     * @brief Whether the current thread is inside the CreateProcessInternalW
+     *        hook.
+     *
+     * The cross-bitness injection of Detours starts a helper process of its own
+     * (`rundll32.exe`, which loads the injection module of the other bit size)
+     * through `CreateProcessW`, and that call reaches the hook again. The helper
+     * only patches the import table of the target and leaves, so it is not part
+     * of the sandbox and the nested creation is forwarded unchanged; a nested
+     * creation which is injected again would start another helper, until the
+     * stack overflows.
+     */
+    bool disable_CreateProcessInternalW_hook = false;
 };
 
 struct HookRecord

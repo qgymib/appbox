@@ -3,8 +3,9 @@
 
 T_LdrQueryImageFileExecutionOptionsEx sys_LdrQueryImageFileExecutionOptionsEx = nullptr;
 
-static NTSTATUS Hook_LdrQueryImageFileExecutionOptionsEx(PUNICODE_STRING lpImageFile, PCWSTR lpszOption, ULONG dwType,
-                                                         PVOID lpData, ULONG cbData, ULONG* lpcbData, BOOLEAN bWow64)
+static NTSTATUS NTAPI Hook_LdrQueryImageFileExecutionOptionsEx(PUNICODE_STRING lpImageFile, PCWSTR lpszOption,
+                                                               ULONG dwType, PVOID lpData, ULONG cbData,
+                                                               ULONG* lpcbData, BOOLEAN bWow64)
 {
     if (appbox::sys.OSBuild < 14942)
     {

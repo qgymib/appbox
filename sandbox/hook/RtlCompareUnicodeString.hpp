@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlcompareunicodestring
  */
 /* clang-format off */
-typedef LONG (*T_RtlCompareUnicodeString)(
+typedef LONG(NTAPI* T_RtlCompareUnicodeString)(
     /* [IN} */  PCUNICODE_STRING    String1,
     /* [IN} */  PCUNICODE_STRING    String2,
     /* [IN} */  BOOLEAN             CaseInSensitive

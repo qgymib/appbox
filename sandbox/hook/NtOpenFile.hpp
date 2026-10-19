@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntopenfile
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtOpenFile)(
+typedef NTSTATUS(NTAPI* T_NtOpenFile)(
     /* [OUT] */ PHANDLE             FileHandle,
     /* [IN] */  ACCESS_MASK         DesiredAccess,
     /* [IN] */  POBJECT_ATTRIBUTES  ObjectAttributes,

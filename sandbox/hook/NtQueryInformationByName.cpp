@@ -21,9 +21,9 @@ static nlohmann::json NtQueryInformationByNameLogParam(POBJECT_ATTRIBUTES Object
 
 static appbox::LoggerF logger("NtQueryInformationByName", NtQueryInformationByNameLogParam);
 
-static NTSTATUS Hook_NtQueryInformationByName(POBJECT_ATTRIBUTES ObjectAttributes, PIO_STATUS_BLOCK IoStatusBlock,
-                                              PVOID FileInformation, ULONG Length,
-                                              FILE_INFORMATION_CLASS FileInformationClass)
+static NTSTATUS NTAPI Hook_NtQueryInformationByName(POBJECT_ATTRIBUTES ObjectAttributes, PIO_STATUS_BLOCK IoStatusBlock,
+                                                    PVOID FileInformation, ULONG Length,
+                                                    FILE_INFORMATION_CLASS FileInformationClass)
 {
     logger.Log(ObjectAttributes, IoStatusBlock, FileInformation, Length, FileInformationClass);
 

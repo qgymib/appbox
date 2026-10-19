@@ -47,6 +47,20 @@ struct ProbeResponse
 };
 
 /**
+ * @brief The bit size of the probe process of a case.
+ *
+ * The probe is a program of its own which is built for both bit sizes, so a
+ * case chooses the kind of process its operations run in. A case which does not
+ * name a bit size runs the 64 bit probe, which is the probe the suite used
+ * before the 32 bit one existed.
+ */
+enum class ProbeBitness
+{
+    Bit64, /*!< The 64 bit probe, the probe of a case by default. */
+    Bit32  /*!< The 32 bit probe, for a case which checks a 32 bit process. */
+};
+
+/**
  * @brief Name of the directory a case collects the log files of a run in.
  *
  * The directory lives inside the working directory of the case, so the log
@@ -104,10 +118,15 @@ struct LogRun
  * @param[in] cwd The current working directory.
  * @param[in] launcher_config The launcher configuration.
  * @param[in] log The log options of the run, see LogRun.
+ * @param[in] bitness The bit size of the probe process which runs the function,
+ *                    see ProbeBitness.
  * @return The result of the probe function.
+ * @throws std::runtime_error The probe executable of the bit size is
+ *                            unavailable or the run of the launcher fails.
  */
 nlohmann::json ProbeCall(const std::string& name, const nlohmann::json& data, const std::wstring& cwd,
-                         const LauncherConfig& launcher_config, const LogRun& log = {});
+                         const LauncherConfig& launcher_config, const LogRun& log = {},
+                         ProbeBitness bitness = ProbeBitness::Bit64);
 
 /**
  * @brief Startup files the launcher started during one run.
@@ -129,12 +148,12 @@ struct StartupRun
  * @brief Run the launcher of a configuration and report the startup files it
  *        started.
  *
- * Every startup file of the configuration is started as the probe process of
- * this executable, so every started file reports the marker of its own
+ * Every startup file of the configuration is started as the 64 bit probe
+ * process of the run, so every started file reports the marker of its own
  * arguments. The call waits for the launcher, which waits for every file it
  * started, so the reported list is complete when the call returns.
  *
- * The executable of a startup file is replaced by this executable, like
+ * The executable of a startup file is replaced by the 64 bit probe, like
  * ProbeCall() does: the paths of a packaged configuration point into the
  * sandbox view, which does not exist on the test machine.
  *
@@ -170,8 +189,8 @@ struct ProgramRun
  *
  * The executable of every startup file is kept as the configuration spells it,
  * which is what a case needs to check how the launcher starts a program of its
- * own: ProbeStartupRun() points every startup file at the probe process of this
- * executable, which would hide the kind of the file.
+ * own: ProbeStartupRun() points every startup file at the 64 bit probe, which
+ * would hide the kind of the file.
  *
  * The remaining arguments of the launcher are left out as well, because the
  * launcher appends them to the arguments of every startup file. The console
@@ -212,10 +231,10 @@ struct ShellRun
  * which the launcher turns into `cmd /c <command>` and runs inside the sandbox
  * of the configuration.
  *
- * The startup files of the configuration are pointed at the probe process of
- * this executable, like ProbeStartupRun() does, so a report of a probe proves
- * that the launcher started a startup file although the shell replaces the
- * application of the configuration. The call does not wait for a report: the
+ * The startup files of the configuration are pointed at the 64 bit probe, like
+ * ProbeStartupRun() does, so a report of a probe proves that the launcher
+ * started a startup file although the shell replaces the application of the
+ * configuration. The call does not wait for a report: the
  * shell runs the command of the case instead of the probe, and the markers
  * which arrived until the launcher left are collected afterwards.
  *

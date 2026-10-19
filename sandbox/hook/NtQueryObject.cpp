@@ -116,8 +116,8 @@ static NTSTATUS QueryObjectNameIsolated(HANDLE Handle, PVOID ObjectInformation, 
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS Hook_NtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS ObjectInformationClass,
-                                   PVOID ObjectInformation, ULONG ObjectInformationLength, PULONG ReturnLength)
+static NTSTATUS NTAPI Hook_NtQueryObject(HANDLE Handle, OBJECT_INFORMATION_CLASS ObjectInformationClass,
+                                         PVOID ObjectInformation, ULONG ObjectInformationLength, PULONG ReturnLength)
 {
     if (appbox::ThreadLocal::Get().disable_NtQueryObject_hook)
     {

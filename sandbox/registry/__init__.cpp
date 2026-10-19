@@ -69,7 +69,7 @@ typedef LONG(WINAPI* T_RegSetValueExW)(HKEY hKey, LPCWSTR lpValueName, DWORD Res
  * @brief Opens the access token of a process.
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntopenprocesstoken
  */
-typedef NTSTATUS (*T_NtOpenProcessToken)(
+typedef NTSTATUS(NTAPI* T_NtOpenProcessToken)(
     /* [IN] */ HANDLE      ProcessHandle,
     /* [IN] */ ACCESS_MASK DesiredAccess,
     /* [OUT] */ PHANDLE    TokenHandle);
@@ -78,7 +78,7 @@ typedef NTSTATUS (*T_NtOpenProcessToken)(
  * @brief Queries the access token of a process.
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationtoken
  */
-typedef NTSTATUS (*T_NtQueryInformationToken)(
+typedef NTSTATUS(NTAPI* T_NtQueryInformationToken)(
     /* [IN] */ HANDLE      Handle,
     /* [IN] */ ULONG       TokenInformationClass,
     /* [OUT] */ PVOID      TokenInformation,
@@ -89,7 +89,7 @@ typedef NTSTATUS (*T_NtQueryInformationToken)(
  * @brief Converts a SID into its string representation.
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-rtlconvertsidtounicodestring
  */
-typedef NTSTATUS (*T_RtlConvertSidToUnicodeString)(
+typedef NTSTATUS(NTAPI* T_RtlConvertSidToUnicodeString)(
     /* [OUT] */ PUNICODE_STRING UnicodeString,
     /* [IN] */ PVOID            Sid,
     /* [IN] */ BOOLEAN          AllocateDestinationString);
@@ -97,7 +97,7 @@ typedef NTSTATUS (*T_RtlConvertSidToUnicodeString)(
 /**
  * @brief Frees a buffer which was allocated by RtlConvertSidToUnicodeString().
  */
-typedef void (*T_RtlFreeUnicodeStringLocal)(PUNICODE_STRING UnicodeString);
+typedef void(NTAPI* T_RtlFreeUnicodeStringLocal)(PUNICODE_STRING UnicodeString);
 
 /**
  * @brief The kernel object name of the root of every application hive.
@@ -165,7 +165,7 @@ static NTSTATUS CloseLocal(HANDLE handle)
         return STATUS_DLL_NOT_FOUND;
     }
 
-    auto fn = reinterpret_cast<NTSTATUS (*)(HANDLE)>(GetProcAddress(ntdll, "NtClose"));
+    auto fn = reinterpret_cast<NTSTATUS(NTAPI*)(HANDLE)>(GetProcAddress(ntdll, "NtClose"));
     if (fn == nullptr)
     {
         return STATUS_PROCEDURE_NOT_FOUND;

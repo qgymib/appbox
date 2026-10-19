@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntquerydirectoryfile
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtQueryDirectoryFile)(
+typedef NTSTATUS(NTAPI* T_NtQueryDirectoryFile)(
     /* [IN] */              HANDLE                  FileHandle,
     /* [IN, OPTIONAL] */    HANDLE                  Event,
     /* [IN, OPTIONAL] */    PIO_APC_ROUTINE         ApcRoutine,

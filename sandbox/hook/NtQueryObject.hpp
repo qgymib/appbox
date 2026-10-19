@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntqueryobject
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtQueryObject)(
+typedef NTSTATUS(NTAPI* T_NtQueryObject)(
     /* [IN,OPTIONAL] */     HANDLE                      Handle,
     /* [IN] */              OBJECT_INFORMATION_CLASS    ObjectInformationClass,
     /* [OUT,OPTIONAL] */    PVOID                       ObjectInformation,

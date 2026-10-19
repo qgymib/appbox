@@ -1,6 +1,7 @@
 #include "probe/RegChildProcess.hpp"
 #include "probe/RegReadValue.hpp"
 #include "probe/RegTwoProcesses.hpp"
+#include "utils/RegChildExitCode.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "SandboxLayout.hpp"

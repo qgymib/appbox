@@ -29,7 +29,7 @@ static appbox::LoggerF logger("NtOpenKey", NtOpenKeyLogParam);
  *
  * Paths outside the root keys of the view are forwarded unchanged.
  */
-static NTSTATUS Hook_NtOpenKey(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes)
+static NTSTATUS NTAPI Hook_NtOpenKey(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes)
 {
     logger.Log(KeyHandle, DesiredAccess, ObjectAttributes);
 

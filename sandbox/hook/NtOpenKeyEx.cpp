@@ -26,8 +26,8 @@ static appbox::LoggerF logger("NtOpenKeyEx", NtOpenKeyExLogParam);
  * to every attempt. RegOpenKeyExW() reaches this entry point on current
  * Windows versions.
  */
-static NTSTATUS Hook_NtOpenKeyEx(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes,
-                                 ULONG OpenOptions)
+static NTSTATUS NTAPI Hook_NtOpenKeyEx(PHANDLE KeyHandle, ACCESS_MASK DesiredAccess,
+                                       POBJECT_ATTRIBUTES ObjectAttributes, ULONG OpenOptions)
 {
     logger.Log(KeyHandle, DesiredAccess, ObjectAttributes, OpenOptions);
 

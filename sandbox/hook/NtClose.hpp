@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntclose
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtClose)(
+typedef NTSTATUS(NTAPI* T_NtClose)(
     /* [IN] */  HANDLE  Handle
 );
 /* clang-format on */

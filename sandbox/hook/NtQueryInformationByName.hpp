@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntqueryinformationbyname
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtQueryInformationByName)(
+typedef NTSTATUS(NTAPI* T_NtQueryInformationByName)(
     /* [IN] */  POBJECT_ATTRIBUTES      ObjectAttributes,
     /* [OUT] */ PIO_STATUS_BLOCK        IoStatusBlock,
     /* [OUT] */ PVOID                   FileInformation,

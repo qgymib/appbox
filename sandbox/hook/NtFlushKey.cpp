@@ -24,7 +24,7 @@ static appbox::LoggerF logger("NtFlushKey", NtFlushKeyLogParam);
  * and never writes a file of the host. A handle outside the root keys of the
  * view belongs to no layer of the view and is forwarded unchanged.
  */
-static NTSTATUS Hook_NtFlushKey(HANDLE KeyHandle)
+static NTSTATUS NTAPI Hook_NtFlushKey(HANDLE KeyHandle)
 {
     logger.Log(KeyHandle);
 

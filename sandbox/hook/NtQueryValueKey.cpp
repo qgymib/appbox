@@ -36,9 +36,9 @@ static appbox::LoggerF logger("NtQueryValueKey", NtQueryValueKeyLogParam);
  *
  * Handles which do not point into the hive are forwarded unchanged.
  */
-static NTSTATUS Hook_NtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName,
-                                     KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass, PVOID KeyValueInformation,
-                                     ULONG Length, PULONG ResultLength)
+static NTSTATUS NTAPI Hook_NtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName,
+                                           KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
+                                           PVOID KeyValueInformation, ULONG Length, PULONG ResultLength)
 {
     logger.Log(KeyHandle, ValueName, KeyValueInformationClass, KeyValueInformation, Length, ResultLength);
 

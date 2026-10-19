@@ -74,9 +74,10 @@ static bool TranslateSetReparsePoint(PVOID InputBuffer, ULONG InputBufferLength,
     return true;
 }
 
-static NTSTATUS Hook_NtFsControlFile(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext,
-                                     PIO_STATUS_BLOCK IoStatusBlock, ULONG FsControlCode, PVOID InputBuffer,
-                                     ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength)
+static NTSTATUS NTAPI Hook_NtFsControlFile(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine,
+                                           PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, ULONG FsControlCode,
+                                           PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer,
+                                           ULONG OutputBufferLength)
 {
     logger.Log(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, FsControlCode, InputBuffer, InputBufferLength,
                OutputBuffer, OutputBufferLength);

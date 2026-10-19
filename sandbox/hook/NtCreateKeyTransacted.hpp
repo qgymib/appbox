@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-zwcreatekeytransacted
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtCreateKeyTransacted)(
+typedef NTSTATUS(NTAPI* T_NtCreateKeyTransacted)(
     /* [OUT] */             PHANDLE             KeyHandle,
     /* [IN] */              ACCESS_MASK         DesiredAccess,
     /* [IN] */              POBJECT_ATTRIBUTES  ObjectAttributes,

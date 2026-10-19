@@ -16,7 +16,8 @@ static nlohmann::json NtQueryAttributesFileLogParam(POBJECT_ATTRIBUTES      Obje
 T_NtQueryAttributesFile sys_NtQueryAttributesFile = nullptr;
 static appbox::LoggerF  logger("NtQueryAttributesFile", NtQueryAttributesFileLogParam);
 
-static NTSTATUS Hook_NtQueryAttributesFile(POBJECT_ATTRIBUTES ObjectAttributes, PFILE_BASIC_INFORMATION FileInformation)
+static NTSTATUS NTAPI Hook_NtQueryAttributesFile(POBJECT_ATTRIBUTES      ObjectAttributes,
+                                                 PFILE_BASIC_INFORMATION FileInformation)
 {
     logger.Log(ObjectAttributes, FileInformation);
 

@@ -9,7 +9,7 @@ extern "C" {
  * @see https://learn.microsoft.com/en-us/windows/win32/devnotes/ntqueryattributesfile
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtQueryAttributesFile)(
+typedef NTSTATUS(NTAPI* T_NtQueryAttributesFile)(
     /* [IN] */  POBJECT_ATTRIBUTES      ObjectAttributes,
     /* [OUT] */ PFILE_BASIC_INFORMATION FileInformation
 );

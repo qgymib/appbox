@@ -9,7 +9,7 @@ extern "C" {
  * @see https://ntdoc.m417z.com/ntflushkey
  */
 /* clang-format off */
-typedef NTSTATUS (*T_NtFlushKey)(
+typedef NTSTATUS(NTAPI* T_NtFlushKey)(
     /* [IN] */ HANDLE KeyHandle
 );
 /* clang-format on */
