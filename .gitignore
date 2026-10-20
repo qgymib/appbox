@@ -11,6 +11,9 @@ __pycache__/
 *.mo
 *.pot
 
+# Backup files
+*.bak
+
 # Ruff stuff:
 .ruff_cache/
 
