@@ -758,6 +758,17 @@ executable carries itself:
   of a 32 bit one the redirected folder, a variable whose view is empty is left
   out (so its reference keeps its spelling), and the order of the configuration
   survives.
+* `test/unit/RegistryValueExpansion.cpp` — the read time expansion of the answer
+  of a value query (`appbox::registry::ExpandValueBuffer()`) and of a batch
+  (`appbox::registry::ExpandValueBatch()`): the partial and the full information
+  classes with their aligned variants, a `REG_MULTI_SZ` whose items are expanded
+  on their own, a type which carries no text and a value without a reference
+  (both leave the buffer byte identical), a `KeyValueBasicInformation` which
+  carries no data at all, the overflow of an expanded text (the status and the
+  size the caller needs, with the data of the buffer untouched), a missing result
+  length, a record which describes data outside of the buffer, and a batch which
+  is packed again in the order of the call together with the size it reports when
+  the buffer is too small.
 * `test/unit/IsolationDocument.cpp` — the schema of the five documents of
   `common/` (the four isolation files and the environment state file): the
   round trip of a document through its text, the refusal of a member which is
@@ -1225,7 +1236,8 @@ sandboxed process creates.
   `REG_EXPAND_SZ` and every item of a `REG_MULTI_SZ` value, while a `REG_DWORD`
   and a `REG_BINARY` value whose bytes spell the same reference keep their own
   bytes. The hive of the resources is byte identical afterwards, so the archive
-  keeps the reference and the expansion happens while the sandbox runs.
+  keeps the reference and the expansion happens while the sandbox answers the
+  read.
 * `test/e2e/Reg_VariableExpansion32.cpp` — the same hive read by the **32 bit**
   probe: `%APPBOX:ProgramFiles%` is `C:\Program Files (x86)` and
   `%APPBOX:ProgramFilesCommon%` is `C:\Program Files (x86)\Common Files`, the
@@ -1233,7 +1245,25 @@ sandboxed process creates.
   own spelling, `%APPBOX:ProgramFilesCommonX64%` names the 64 bit `Common Files`
   folder and `%APPBOX:SystemX86%` names `%windir%\SysWOW64`. The case is the
   counterpart of `Reg_VariableExpansion`, which pins the view of a 64 bit
-  process.
+  process: the table of the reading process decides the expansion, and not the
+  process which mounted the hive.
+* `test/e2e/Reg_VariableExpansion_PerProcessView.cpp` — the expansion belongs to
+  the process which reads the value. The **32 bit** probe stores
+  `%APPBOX:ProgramFiles%\Foo` in a value of the sandbox hive and reads it back as
+  `C:\Program Files (x86)\Foo`, a second run of the 32 bit probe reads the same
+  value, and a run of the **64 bit** probe reads `C:\Program Files\Foo`: the
+  first process of the state directory does not decide the expansion of the
+  value, and the state hive keeps the reference afterwards, so the expansion
+  never reaches the files of the sandbox. The real HKCU stays untouched.
+* `test/e2e/Reg_TwoProcesses_ExpansionAcrossBitness.cpp` — a parent process
+  writes `%APPBOX:ProgramFiles%\Foo`, reads it back with the folders of its own
+  bit size and then starts the `regchild` worker of the other bit size, which
+  reads the same value with its own table and reports the match through its exit
+  code (`ChildExpect` names the text the worker has to see):
+  `E2E_Reg.TwoProcesses_ExpansionChild32OfParent64` and
+  `E2E_Reg.TwoProcesses_ExpansionChild64OfParent32` pin both directions, so a 32
+  bit application which starts a 64 bit program does not give the child the
+  expansion of the 32 bit view. The real HKCU stays untouched.
 * `test/e2e/Reg_TwoProcesses_ShareTheHive.cpp` — two processes of one sandbox
   exchange registry values. The probe process writes a value, starts the
   `regchild` worker as a child process of its own, the worker reads that value
@@ -1978,28 +2008,28 @@ They are documented in their own header comments.
   `FileLinkInformationExBypassAccessCheck` belong to kernel mode callers, which
   no case of the suite can drive; the cases pin the four classes a user mode
   caller reaches.
-* **The 32 bit probe is covered by three cases.** The suite runs the 64 bit
+* **The 32 bit probe is covered by four cases.** The suite runs the 64 bit
   probe unless a case asks for `ProbeBitness::Bit32`:
   `E2E_Fs.Probe32_DefaultMerge_WritesTheFileOfTheHost` proves that a 32 bit
   process starts under the sandbox of the suite and that a write of it reaches
-  the host filesystem, and `E2E_Env.VariableExpansion32` and
-  `E2E_Reg.VariableExpansion32` prove that the sandbox of such a process expands
-  a reference with the folder a 32 bit process sees. The network and the font
-  domains are only driven in a 64 bit process so far, so a regression which
-  touches a 32 bit structure layout would reach the suite only through the
-  filesystem, the environment and the registry paths.
+  the host filesystem, `E2E_Env.VariableExpansion32`, `E2E_Reg.VariableExpansion32`
+  and `E2E_Reg.VariableExpansion_PerProcessView` prove that the sandbox of such a
+  process expands a reference with the folder a 32 bit process sees. The network
+  and the font domains are only driven in a 64 bit process so far, so a
+  regression which touches a 32 bit structure layout would reach the suite only
+  through the filesystem, the environment and the registry paths.
 * **A child of the other bit size is covered for the registry only.** The three
   cases of `test/e2e/Reg_TwoProcesses_CrossBitness.cpp` drive a 32 bit parent
   with a 64 bit worker, a 32 bit worker and the 64 bit parent with a 32 bit
-  worker, but the exchange they pin is a registry value. The variable expansion
-  of a run is still decided by the first process of the run, because the sandbox
-  expands the values of the registry while it mounts the hive and writes the
-  expanded text back (see the known gaps of
-  [RegistryIsolation.md](../docs/RegistryIsolation.md)). The environment is not
-  affected, because a child inherits the composed block of its parent, which is
-  what a process of the machine does as well. The selection of the process itself
-  is covered by `Unit_VariableExpansion.SelectVariablesPicksTheViewOfTheProcess`,
-  and the two end-to-end cases above pin both views.
+  worker, but the exchange they pin is a registry value. The two cases of
+  `test/e2e/Reg_TwoProcesses_ExpansionAcrossBitness.cpp` add the variable
+  expansion to that pair: the sandbox expands a registry value while it answers
+  the read, so the parent and the worker of the other bit size read the same
+  value with the folders of their own bit size. The environment is not affected,
+  because a child inherits the composed block of its parent, which is what a
+  process of the machine does as well. The selection of the process itself is
+  covered by `Unit_VariableExpansion.SelectVariablesPicksTheViewOfTheProcess`,
+  and the end-to-end cases above pin both views.
 * **The timeout and the coredumps of a run are verified by hand.** The test
   suite does not test itself (see
   [Timeouts and coredumps](#timeouts-and-coredumps)).

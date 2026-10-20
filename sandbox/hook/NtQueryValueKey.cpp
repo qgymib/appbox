@@ -1,7 +1,9 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "registry/__init__.hpp"
 #include "registry/KeyGuard.hpp"
+#include "registry/ValueExpansion.hpp"
 #include "utils/Log.hpp"
+#include "Sandbox.hpp"
 #include "NtQueryValueKey.hpp"
 
 T_NtQueryValueKey sys_NtQueryValueKey = nullptr;
@@ -23,7 +25,7 @@ static nlohmann::json NtQueryValueKeyLogParam(HANDLE KeyHandle, PUNICODE_STRING 
 static appbox::LoggerF logger("NtQueryValueKey", NtQueryValueKeyLogParam);
 
 /**
- * @brief Detour of NtQueryValueKey().
+ * @brief Answer a value query below a handle of a sandbox layer.
  *
  * A value query below a handle of a sandbox layer answers with the value of the
  * highest layer which holds it: the state hive wins over the image, which wins
@@ -37,22 +39,21 @@ static appbox::LoggerF logger("NtQueryValueKey", NtQueryValueKeyLogParam);
  * results of a layer are returned as they are: that layer holds the value, only
  * the caller buffer is too small.
  *
- * Handles which do not point into a sandbox layer are forwarded unchanged.
+ * @param[in] KeyHandle The key handle of the caller, a handle of a sandbox layer.
+ * @param[in] ValueName The name of the value, empty for the default value.
+ * @param[in] KeyValueInformationClass The information class of the call.
+ * @param[out] KeyValueInformation The buffer which receives the answer.
+ * @param[in] Length The size of the buffer in bytes.
+ * @param[out] ResultLength The size the answer uses.
+ * @param[in] view The layer the handle of the caller points at.
+ * @param[in] view_path The logical path of the key in the view.
+ * @return Status code.
  */
-static NTSTATUS NTAPI Hook_NtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName,
-                                           KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
-                                           PVOID KeyValueInformation, ULONG Length, PULONG ResultLength)
+static NTSTATUS QuerySandboxValue(HANDLE KeyHandle, PUNICODE_STRING ValueName,
+                                  KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass, PVOID KeyValueInformation,
+                                  ULONG Length, PULONG ResultLength, appbox::registry::HandleView view,
+                                  const std::wstring& view_path)
 {
-    logger.Log(KeyHandle, ValueName, KeyValueInformationClass, KeyValueInformation, Length, ResultLength);
-
-    std::wstring                       view_path;
-    const appbox::registry::HandleView view = appbox::registry::Hive::MapHandleView(KeyHandle, view_path);
-    if (!appbox::registry::IsSandboxHandle(view))
-    {
-        return sys_NtQueryValueKey(KeyHandle, ValueName, KeyValueInformationClass, KeyValueInformation, Length,
-                                   ResultLength);
-    }
-
     std::wstring relative;
     std::wstring value_name;
     const bool   mapped = appbox::registry::Hive::HiveRelativePath(view_path, relative) &&
@@ -134,6 +135,43 @@ static NTSTATUS NTAPI Hook_NtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING Val
 
     appbox::registry::KeyGuard real_guard(real);
     return sys_NtQueryValueKey(real, ValueName, KeyValueInformationClass, KeyValueInformation, Length, ResultLength);
+}
+
+/**
+ * @brief Detour of NtQueryValueKey().
+ *
+ * The layer of the answer is decided by the isolation (see QuerySandboxValue).
+ * The value of the view keeps the `%APPBOX:<NAME>%` references of the workspace,
+ * because the hives are never rewritten by the expansion: the references are
+ * replaced here, in the buffer of the caller, so every process reads the folders
+ * of its own bitness and a value the sandboxed application stored is expanded
+ * like a value of the archive.
+ *
+ * Handles which do not point into a sandbox layer are forwarded unchanged.
+ */
+static NTSTATUS NTAPI Hook_NtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName,
+                                           KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
+                                           PVOID KeyValueInformation, ULONG Length, PULONG ResultLength)
+{
+    logger.Log(KeyHandle, ValueName, KeyValueInformationClass, KeyValueInformation, Length, ResultLength);
+
+    std::wstring                       view_path;
+    const appbox::registry::HandleView view = appbox::registry::Hive::MapHandleView(KeyHandle, view_path);
+    if (!appbox::registry::IsSandboxHandle(view))
+    {
+        return sys_NtQueryValueKey(KeyHandle, ValueName, KeyValueInformationClass, KeyValueInformation, Length,
+                                   ResultLength);
+    }
+
+    const NTSTATUS status = QuerySandboxValue(KeyHandle, ValueName, KeyValueInformationClass, KeyValueInformation,
+                                              Length, ResultLength, view, view_path);
+    if (!NT_SUCCESS(status) || appbox::sandbox == nullptr)
+    {
+        return status;
+    }
+
+    return appbox::registry::ExpandValueBuffer(KeyValueInformationClass, KeyValueInformation, Length,
+                                               appbox::sandbox->variables, ResultLength);
 }
 
 static void LoadNtQueryValueKey()

@@ -47,6 +47,17 @@ struct ProtocolRegTwoProcesses
         std::string ChildData;   /* Text the child process writes. */
 
         /**
+         * @brief Text the child expects to read as the value of the parent.
+         *
+         * Empty expects the text of `ParentData`, which is the case of a value
+         * whose text does not depend on the process which reads it. A case
+         * which pins a value the sandbox expands — a `%APPBOX:<NAME>%`
+         * reference, which every process replaces with the folders of its own
+         * bit size — names the text the child has to see here.
+         */
+        std::string ChildExpect;
+
+        /**
          * @brief Image the child process runs, in UTF-8; empty runs the image of
          *        the parent.
          *
@@ -58,7 +69,7 @@ struct ProtocolRegTwoProcesses
 
         DWORD ChildHoldMs = 2000; /* Time the child stays alive after its writes. */
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, Root, Key, ParentValue, ParentData, ChildValue, ChildData,
-                                                    ChildExecutable, ChildHoldMs)
+                                                    ChildExpect, ChildExecutable, ChildHoldMs)
     };
 
     struct Rsp

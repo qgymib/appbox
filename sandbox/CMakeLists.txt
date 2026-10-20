@@ -129,6 +129,7 @@ add_library(${sandbox_name} MODULE
     "registry/IsolationTable.cpp"
     "registry/KeyPath.cpp"
     "registry/RootMap.cpp"
+    "registry/ValueExpansion.cpp"
     "registry/Whiteout.cpp"
     "utils/BitParser.cpp"
     "utils/CheckPathExist.cpp"

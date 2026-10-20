@@ -407,35 +407,62 @@ package reaches the next run without discarding the state of the sandbox.
 
 A value of the workspace may reference a known folder of the machine which runs
 the sandbox with `%APPBOX:<NAME>%` instead of spelling its path out, so an
-archive stays correct on a machine whose folders are somewhere else. The
-references are replaced while the hives are mounted — which happens before the
-hooks are attached — so every read path of the registry reports the expanded
-value without a hook which would have to resize a caller buffer: the value
-query, the enumeration, the batch query and the export of a key all see it. The
-walk runs over the image and over the state hive, so a value a package carries
-and a value the sandboxed process wrote are expanded alike.
+archive stays correct on a machine whose folders are somewhere else. The hives
+keep the reference: the archive, the image and the state hive alike hold the
+text the workspace spells, and the reference is replaced while a value is
+**read**.
 
-The walk covers the string types of the registry only: `REG_SZ`, `REG_EXPAND_SZ`
-and `REG_MULTI_SZ`, whose every item is expanded on its own. `REG_DWORD`,
-`REG_BINARY` and every other type keep their bytes, even when they happen to
-spell a reference. The hidden store is part of the walk, because it carries
-values of the workspace which are visible again as soon as a layer gives the
-entry another mode. The whiteout store is skipped, because it holds the
-bookkeeping of the sandbox and no value of the workspace. A value is written back
-only when the expansion changed it, so the walk is idempotent and a hive without
-a reference is left exactly as it is.
+The three read entry points of the registry answer with the expanded text of the
+process which called them: `NtQueryValueKey`, `NtEnumerateValueKey` — for the
+classes which carry the data of the value — and `NtQueryMultipleValueKey`. The
+answer is rewritten inside the buffer of the caller, so every path which builds
+on those entry points (`RegQueryValueEx`, `RegEnumValue`, the export of a single
+value, ...) reports the expanded text without a hook which would have to resize a
+buffer of its own.
 
 The table of the names carries the folder of a 64 bit process and the folder of a
 32 bit one, and the sandbox keeps the view which matches the bitness of the
 process it is injected into (`appbox::SelectVariables()`): a 32 bit application
 reads `%APPBOX:ProgramFiles%` as `C:\Program Files (x86)`, while
-`%APPBOX:ProgramFilesX64%` keeps its own spelling there. Because the walk writes
-the expanded text into the hives, the first process of a run decides the
-expansion of the run; see the known gaps below.
+`%APPBOX:ProgramFilesX64%` keeps its own spelling there. Because the expansion
+belongs to the read, **every process expands the same value with the folders of
+its own bitness**: a child of the other bit size which the application starts,
+and a process of a later run of the same state directory. Nothing a process reads
+reaches the files of the sandbox, which is what keeps the view of one process
+from deciding the view of another one.
+
+The expansion covers the string types of the registry only: `REG_SZ`,
+`REG_EXPAND_SZ` and `REG_MULTI_SZ`, whose every item is expanded on its own.
+`REG_DWORD`, `REG_BINARY` and every other type keep their bytes, even when they
+happen to spell a reference. A value which carries no `%` is returned exactly as
+the layer holds it, so a hive without a reference is served without a copy. The
+expansion depends on the text of the value and not on the layer it lives in: a
+value the sandboxed process wrote is expanded like a value of the archive, and
+the content of the hidden store is expanded when a layer gives the entry another
+mode and the value is read.
+
+The expanded text can be longer than the text the layers hold. A caller which
+asks for the size of a value — `NtQueryValueKey` without a buffer — therefore
+learns the size of the stored text, and the read which follows reports
+`STATUS_BUFFER_OVERFLOW` with the size the expanded text needs, which is the
+retry the registry API documents (`RegQueryValueEx` reports `ERROR_MORE_DATA`
+for it). The batch query packs the entries again, because the expansion changes
+the length of a value.
+
+Two paths report the stored text and not the expansion:
+
+* The **export** of a key (`NtSaveKey`, `NtSaveKeyEx`) writes the values as the
+  layers hold them, so the references survive the export and are expanded again
+  by the process which reads the restored hive.
+* A handle of the **host layer** is forwarded unchanged, so a value of a key
+  which only the host holds is reported as the host spells it (see the fifth
+  point of [the semantics the view cannot express](#the-semantics-the-view-cannot-express)).
 
 The syntax, the supported names and the rules of the expansion are documented in
 [README.md](../README.md#variable-expansion); the expansion itself is
-`appbox::ExpandRegistryValueData()` of `sandbox/utils/VariableExpansion.*`.
+`appbox::ExpandRegistryValueData()` of `sandbox/utils/VariableExpansion.*`, and
+the rewriting of an answer is `appbox::registry::ExpandValueBuffer()` of
+`sandbox/registry/ValueExpansion.*`.
 
 ## Deletion and whiteouts
 
@@ -480,9 +507,9 @@ in the sandbox again.
 | `NtSetValueKey` | Routes the write to the layer the mode of the value names: the sandbox for every mode but `Merge`, the real registry for a merged value no sandbox layer holds. A key of the image is copied up first. |
 | `NtDeleteKey` / `NtDeleteValueKey` | Removes the entry of the state hive and records a visible entry of the image or of the host as deleted (a whiteout), or deletes the entry of the real registry for `Merge` when no sandbox layer holds it. |
 | `NtRenameKey` | Copies the content of the image up, renames the key of the state hive and records a visible key of the image or of the host of the old name as deleted (a whiteout), or renames the key of the real registry for `Merge` when no sandbox layer holds it; a root key of the view and a destination which the merged view already holds are refused. |
-| `NtEnumerateKey` / `NtEnumerateValueKey` | Merged three layer enumeration: state hive entries first, then the image entries, then the visible real entries. |
+| `NtEnumerateKey` / `NtEnumerateValueKey` | Merged three layer enumeration: state hive entries first, then the image entries, then the visible real entries. A value of a class which carries the data is expanded with the folders of the calling process. |
 | `NtQueryKey` | Key name translated back into the view; `SubKeys` / `Values` counts of the merged view. |
-| `NtQueryValueKey` / `NtQueryMultipleValueKey` | Read through of a value / of a batch: the state hive wins over the image, which wins over the host. |
+| `NtQueryValueKey` / `NtQueryMultipleValueKey` | Read through of a value / of a batch: the state hive wins over the image, which wins over the host. The answer is expanded with the folders of the calling process, and a batch is packed again when the expansion changed the length of a value. |
 | `NtSaveKey` / `NtSaveKeyEx` | Exports the merged view of a key. |
 | `NtSetInformationKey` / `NtCompressKey` / `NtLockRegistryKey` | A call which acts on the key or on the hive file of its handle: a handle of the host layer or of the image is refused with `STATUS_ACCESS_DENIED`, a handle of the state hive is forwarded. |
 | `NtFlushKey` | A flush changes no entry of the view: a handle of the host layer is refused with `STATUS_ACCESS_DENIED`, a handle of either sandbox layer is forwarded. |
@@ -637,19 +664,6 @@ reaches the registry through them acts on the layer of the object of the call.
    in, and a value entry point which acts on it re-routes the call by the mode of
    the value, while a key level call still acts on that layer. The isolation
    covers the keys a sandboxed process opens itself.
-9. **The expansion of a value is decided by the first process which mounts the
-   hive.** The walk of the mounted hives replaces the references and writes the
-   expanded text back (see [Variable references](#variable-references)), so the
-   hives carry the expansion of the process which mounted them first, and the
-   state hive keeps it for the following runs as well. A process of the other bit
-   size which the application starts afterwards reads that text, although its own
-   table names another folder for the same reference: a 32 bit application which
-   starts a 64 bit program gives the child the expansion of the 32 bit view. The
-   environment is not affected, because a child inherits the composed block of its
-   parent, which is what a process of the machine does as well. A read time
-   expansion — the answer of `NtQueryValueKey` and of the enumeration hooks
-   rewritten in the caller buffer — would give every process its own view, and it
-   is the change which removes the gap.
 
 ### The entry points the isolation does not hook at all
 

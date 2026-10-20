@@ -794,6 +794,11 @@ public:
      * the data offsets the kernel would have produced (the entries are packed
      * without padding).
      *
+     * The answer carries the text of the layers, which keeps the
+     * `%APPBOX:<NAME>%` references of the workspace: the hook expands them in
+     * the buffer of the caller (`registry/ValueExpansion.hpp`), because the
+     * expansion depends on the bitness of the process which reads the value.
+     *
      * @param[in] handle_view The layer the handle of the caller points at.
      * @param[in] KeyHandle The key handle of the hooked call, a handle of a
      *                      sandbox layer.

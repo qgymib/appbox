@@ -1,7 +1,9 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "registry/__init__.hpp"
 #include "registry/KeyGuard.hpp"
+#include "registry/ValueExpansion.hpp"
 #include "utils/Log.hpp"
+#include "Sandbox.hpp"
 #include "NtEnumerateValueKey.hpp"
 
 T_NtEnumerateValueKey sys_NtEnumerateValueKey = nullptr;
@@ -32,6 +34,12 @@ static appbox::LoggerF logger("NtEnumerateValueKey", NtEnumerateValueKeyLogParam
  * with the read through of NtQueryValueKey the enumeration is consistent: every
  * enumerated value can be queried.
  *
+ * A class which carries the data of the value (`KeyValueFullInformation` and
+ * its aligned variant) answers with the expanded text of this process, like the
+ * value query does: the hives keep the `%APPBOX:<NAME>%` references of the
+ * workspace and every process replaces them with the folders of its own
+ * bitness.
+ *
  * Handles which do not point into a sandbox layer are forwarded unchanged: a
  * host fallback handle only exposes the real layer anyway.
  */
@@ -60,6 +68,8 @@ static NTSTATUS NTAPI Hook_NtEnumerateValueKey(HANDLE KeyHandle, ULONG Index,
         owned, layer_index);
     appbox::registry::KeyGuard layer_guard(owned ? layer_handle : nullptr);
 
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+
     switch (resolve)
     {
     case appbox::registry::MergedResolve::NoMoreEntries:
@@ -67,19 +77,30 @@ static NTSTATUS NTAPI Hook_NtEnumerateValueKey(HANDLE KeyHandle, ULONG Index,
 
     case appbox::registry::MergedResolve::Error:
         /* The layers could not be collected, degrade to the single layer call. */
-        return sys_NtEnumerateValueKey(KeyHandle, Index, KeyValueInformationClass, KeyValueInformation, Length,
-                                       ResultLength);
+        status = sys_NtEnumerateValueKey(KeyHandle, Index, KeyValueInformationClass, KeyValueInformation, Length,
+                                         ResultLength);
+        break;
 
     case appbox::registry::MergedResolve::HiveLayer:
     case appbox::registry::MergedResolve::ImageLayer:
     case appbox::registry::MergedResolve::RealLayer:
-        return sys_NtEnumerateValueKey(layer_handle, layer_index, KeyValueInformationClass, KeyValueInformation, Length,
-                                       ResultLength);
+        status = sys_NtEnumerateValueKey(layer_handle, layer_index, KeyValueInformationClass, KeyValueInformation,
+                                         Length, ResultLength);
+        break;
 
     default:
-        return sys_NtEnumerateValueKey(KeyHandle, Index, KeyValueInformationClass, KeyValueInformation, Length,
-                                       ResultLength);
+        status = sys_NtEnumerateValueKey(KeyHandle, Index, KeyValueInformationClass, KeyValueInformation, Length,
+                                         ResultLength);
+        break;
     }
+
+    if (!NT_SUCCESS(status) || appbox::sandbox == nullptr)
+    {
+        return status;
+    }
+
+    return appbox::registry::ExpandValueBuffer(KeyValueInformationClass, KeyValueInformation, Length,
+                                               appbox::sandbox->variables, ResultLength);
 }
 
 static void LoadNtEnumerateValueKey()

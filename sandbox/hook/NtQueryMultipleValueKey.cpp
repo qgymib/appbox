@@ -1,6 +1,8 @@
 #include "utils/WinAPI.h" /* Must be first include file */
 #include "registry/__init__.hpp"
+#include "registry/ValueExpansion.hpp"
 #include "utils/Log.hpp"
+#include "Sandbox.hpp"
 #include "NtQueryMultipleValueKey.hpp"
 
 T_NtQueryMultipleValueKey sys_NtQueryMultipleValueKey = nullptr;
@@ -31,6 +33,12 @@ static appbox::LoggerF logger("NtQueryMultipleValueKey", NtQueryMultipleValueKey
  * which the sandbox deleted (a whiteout) is reported as missing. The whole
  * policy lives in appbox::registry::Hive::QueryMultipleValues.
  *
+ * The layers answer with the text they hold, which keeps the
+ * `%APPBOX:<NAME>%` references of the workspace. The references of the answer
+ * are replaced here, in the buffer of the caller, so every process reads the
+ * folders of its own bitness; the entries are packed again because the
+ * expansion changes the length of a value.
+ *
  * Handles which do not point into a sandbox layer are forwarded unchanged.
  */
 static NTSTATUS NTAPI Hook_NtQueryMultipleValueKey(HANDLE KeyHandle, PKEY_VALUE_ENTRY ValueEntries, ULONG EntryCount,
@@ -53,8 +61,16 @@ static NTSTATUS NTAPI Hook_NtQueryMultipleValueKey(HANDLE KeyHandle, PKEY_VALUE_
                                            RequiredBufferLength);
     }
 
-    return appbox::registry::Hive::QueryMultipleValues(view, KeyHandle, view_path, relative, ValueEntries, EntryCount,
-                                                       ValueBuffer, BufferLength, RequiredBufferLength);
+    const NTSTATUS status =
+        appbox::registry::Hive::QueryMultipleValues(view, KeyHandle, view_path, relative, ValueEntries, EntryCount,
+                                                    ValueBuffer, BufferLength, RequiredBufferLength);
+    if (!NT_SUCCESS(status) || appbox::sandbox == nullptr)
+    {
+        return status;
+    }
+
+    return appbox::registry::ExpandValueBatch(ValueEntries, EntryCount, ValueBuffer, BufferLength, RequiredBufferLength,
+                                              appbox::sandbox->variables);
 }
 
 static void LoadNtQueryMultipleValueKey()

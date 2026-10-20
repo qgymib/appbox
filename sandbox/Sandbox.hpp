@@ -89,8 +89,14 @@ struct Sandbox
      * Environment or the Registry workspace may reference a folder with
      * `%APPBOX:<NAME>%` instead of spelling its path out: the reference is
      * replaced with the path of the entry while the sandbox composes its
-     * environment and while it mounts its registry hive, so the archive stays
-     * correct on a machine whose known folders are somewhere else.
+     * environment and while it answers a read of a registry value, so the
+     * archive stays correct on a machine whose known folders are somewhere
+     * else.
+     *
+     * The registry keeps the references in its hives and expands them while a
+     * value is read, which is what gives every process the folders of its own
+     * bitness: the table of a 32 bit process names another folder for
+     * `%APPBOX:ProgramFiles%` than the table of a 64 bit one.
      */
     std::vector<VariableMapping> variables;
 

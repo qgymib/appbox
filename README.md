@@ -180,16 +180,18 @@ The rules of the expansion:
   and a lone `%` keep their own spelling.
 * An expansion is never resolved again: the text a reference was replaced with is
   copied as it is.
-* The expansion belongs to the values the archive carries. The environment of
-  the sandbox is composed while the sandbox starts and the hive of the registry
-  is expanded while it is mounted, so a value the packaged application stores
-  while it runs is reported as the application spelled it for the rest of that
-  run.
-* The expansion of a registry value is written into the mounted hives, so the
-  first process which mounts them decides it — a later process of the run and a
-  later run of the same state directory read the expanded text; see the known
-  gaps of
-  [Registry Isolation](docs/RegistryIsolation.md#known-gaps-and-limitations).
+* The expansion belongs to the reader. The environment of the sandbox is
+  composed while the sandbox starts, and a value of the registry is expanded
+  while it is read: the hives keep the reference, so every process — a child of
+  the other bit size, a later process of the run and a later run of the same
+  state directory — expands the value with the folders of its own bitness. A
+  value the packaged application stores while it runs is expanded the same way.
+* A read of a registry value reports the expanded text. The expanded text can be
+  longer than the stored one, so a caller which sizes its buffer from the size of
+  the value retries with the size of the second answer, which is the
+  `ERROR_MORE_DATA` retry of the registry API. The export of a key keeps the
+  references, see
+  [Registry Isolation](docs/RegistryIsolation.md#variable-references).
 
 The names are resolved by the launcher (`launcher/utils/KnownFolder.*`) and handed
 to the sandbox through the injected configuration; the expansion itself is the

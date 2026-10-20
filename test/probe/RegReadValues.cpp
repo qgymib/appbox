@@ -92,6 +92,13 @@ std::string Hex(const std::vector<BYTE>& data)
 
 /**
  * @brief Read one value of an open key into an answer.
+ *
+ * The first call asks for the size of the value. The sandbox expands the
+ * `%APPBOX:<NAME>%` references of a text while it answers the read, so the data
+ * of the second call can be longer than the size the first one reported: the
+ * read is repeated with the size of the retry, which is what the registry API
+ * documents for `ERROR_MORE_DATA`.
+ *
  * @param[in] key The open key.
  * @param[in] name Name of the value, empty for the default value.
  * @param[out] answer The answer to fill.
@@ -108,9 +115,20 @@ void ReadValue(HKEY key, const std::wstring& name, appbox::test::ProtocolRegRead
     }
 
     std::vector<BYTE> data(size);
-    DWORD             read = size;
-    answer.query_code =
-        RegQueryValueExW(key, name.c_str(), nullptr, &type, data.empty() ? nullptr : data.data(), &read);
+    DWORD             read = 0;
+    for (;;)
+    {
+        read = static_cast<DWORD>(data.size());
+        answer.query_code =
+            RegQueryValueExW(key, name.c_str(), nullptr, &type, data.empty() ? nullptr : data.data(), &read);
+        if (answer.query_code != ERROR_MORE_DATA)
+        {
+            break;
+        }
+
+        /* The refused call reports the size the data needs. */
+        data.resize(read);
+    }
     if (answer.query_code != ERROR_SUCCESS)
     {
         return;

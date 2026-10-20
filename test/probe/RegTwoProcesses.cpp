@@ -110,6 +110,10 @@ DWORD ReadValueOfKey(HKEY root, const std::wstring& key_path, const std::wstring
 /**
  * @brief Command line of the worker process of the case.
  *
+ * The text the worker expects is the one the case names for it: a case which
+ * leaves `ChildExpect` empty expects the text the parent wrote, and a case
+ * which pins a value the sandbox expands names the text of the child.
+ *
  * @param[in] req The request of the case.
  * @param[in] observation Name of the value which carries what the child read.
  * @return The arguments of the worker, without the path of the executable.
@@ -125,12 +129,14 @@ std::vector<std::wstring> ChildArguments(const appbox::test::ProtocolRegTwoProce
         args.push_back(appbox::UTF8ToWide(req.Root));
     }
 
+    const std::string expected = req.ChildExpect.empty() ? req.ParentData : req.ChildExpect;
+
     args.push_back(L"--key");
     args.push_back(appbox::UTF8ToWide(req.Key));
     args.push_back(L"--read");
     args.push_back(appbox::UTF8ToWide(req.ParentValue));
     args.push_back(L"--expect");
-    args.push_back(appbox::UTF8ToWide(req.ParentData));
+    args.push_back(appbox::UTF8ToWide(expected));
     args.push_back(L"--set");
     args.push_back(appbox::UTF8ToWide(req.ChildValue) + L"=" + appbox::UTF8ToWide(req.ChildData));
     args.push_back(L"--set");
