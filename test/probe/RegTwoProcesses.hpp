@@ -39,15 +39,26 @@ struct ProtocolRegTwoProcesses
 
     struct Req
     {
-        std::string Root;               /* Root key name, empty means HKEY_CURRENT_USER. */
-        std::string Key;                /* Key path relative to the root key. Encoding in UTF-8. */
-        std::string ParentValue;        /* Name of the value the parent process writes. */
-        std::string ParentData;         /* Text the parent process writes. */
-        std::string ChildValue;         /* Name of the value the child process writes. */
-        std::string ChildData;          /* Text the child process writes. */
-        DWORD       ChildHoldMs = 2000; /* Time the child stays alive after its writes. */
+        std::string Root;        /* Root key name, empty means HKEY_CURRENT_USER. */
+        std::string Key;         /* Key path relative to the root key. Encoding in UTF-8. */
+        std::string ParentValue; /* Name of the value the parent process writes. */
+        std::string ParentData;  /* Text the parent process writes. */
+        std::string ChildValue;  /* Name of the value the child process writes. */
+        std::string ChildData;   /* Text the child process writes. */
+
+        /**
+         * @brief Image the child process runs, in UTF-8; empty runs the image of
+         *        the parent.
+         *
+         * A case which names the probe executable of the other bit size starts a
+         * child of that bit size, which is the case in which the sandbox of the
+         * parent has to inject the module of the target bit size.
+         */
+        std::string ChildExecutable;
+
+        DWORD ChildHoldMs = 2000; /* Time the child stays alive after its writes. */
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, Root, Key, ParentValue, ParentData, ChildValue, ChildData,
-                                                    ChildHoldMs)
+                                                    ChildExecutable, ChildHoldMs)
     };
 
     struct Rsp

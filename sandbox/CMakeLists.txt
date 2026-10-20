@@ -62,6 +62,7 @@ add_library(${sandbox_name} MODULE
     "hook/GetEnvironmentStringsW.cpp"
     "hook/GetEnvironmentVariableA.cpp"
     "hook/GetEnvironmentVariableW.cpp"
+    "hook/GetTempPathW.cpp"
     "hook/gethostbyname.cpp"
     "hook/LdrQueryImageFileExecutionOptionsEx.cpp"
     "hook/NtClose.cpp"

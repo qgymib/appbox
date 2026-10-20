@@ -59,6 +59,7 @@
 #include "hook/GetEnvironmentStringsW.hpp"
 #include "hook/GetEnvironmentVariableA.hpp"
 #include "hook/GetEnvironmentVariableW.hpp"
+#include "hook/GetTempPathW.hpp"
 #include "hook/gethostbyname.hpp"
 #include "hook/closesocket.hpp"
 #include "hook/connect.hpp"
@@ -102,6 +103,7 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookGetEnvironmentStringsW,
     &appbox::HookGetEnvironmentVariableA,
     &appbox::HookGetEnvironmentVariableW,
+    &appbox::HookGetTempPathW,
     &appbox::HookGetHostByName,
     &appbox::HookLdrQueryImageFileExecutionOptionsEx,
     &appbox::HookNtClose,

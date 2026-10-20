@@ -284,6 +284,7 @@ add_executable(AppBoxTests
     "e2e/Reg_Transacted_ForeignHiveIsForwarded.cpp"
     "e2e/Reg_Transacted_OpenIsRefused.cpp"
     "e2e/Reg_Transacted_ReadThroughIsRefused.cpp"
+    "e2e/Reg_TwoProcesses_CrossBitness.cpp"
     "e2e/Reg_TwoProcesses_ShareTheHive.cpp"
     "e2e/Reg_UsersRoot_MapsToTheCurrentUserHive.cpp"
     "e2e/Reg_VariableExpansion.cpp"

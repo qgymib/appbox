@@ -205,9 +205,13 @@ static nlohmann::json ProbeRegTwoProcesses_Entry(const nlohmann::json& data)
 
     /*
      * The worker is created by this process, so the sandbox is injected into it
-     * and it mounts the hive of the same sandbox.
+     * and it mounts the hive of the same sandbox. The image of the worker is the
+     * one the case asked for: a case which names the probe executable of the
+     * other bit size starts a worker of that bit size.
      */
-    std::wstring cmdline = appbox::BuildCommandLine(ModulePath(), ChildArguments(req, observation));
+    const std::wstring child_image =
+        req.ChildExecutable.empty() ? ModulePath() : appbox::UTF8ToWide(req.ChildExecutable);
+    std::wstring cmdline = appbox::BuildCommandLine(child_image, ChildArguments(req, observation));
 
     STARTUPINFOW        startup_info;
     PROCESS_INFORMATION process_info;

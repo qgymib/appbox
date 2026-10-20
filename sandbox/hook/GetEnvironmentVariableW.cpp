@@ -13,11 +13,12 @@ T_GetEnvironmentVariableW sys_GetEnvironmentVariableW = nullptr;
  * the packaged application reads is the one the isolation composed and never
  * the one the host holds for a variable the isolation hides.
  *
- * The contract of the call is the one of the operating system: the value
- * without its terminator is copied and its length is reported, a buffer which
- * is too small is left untouched and the size it needs is reported instead,
- * and a variable which the environment does not hold reports the failure with
- * `ERROR_ENVVAR_NOT_FOUND`.
+ * The contract of the call is the one of the operating system: the value is
+ * copied with its terminator and the number of characters without it is
+ * returned, a buffer which is too small is left untouched and the size the
+ * caller has to provide — counted in characters with the terminator — is
+ * returned instead, and a variable which the environment does not hold reports
+ * the failure with `ERROR_ENVVAR_NOT_FOUND`.
  */
 static DWORD WINAPI Hook_GetEnvironmentVariableW(LPCWSTR lpName, LPWSTR lpBuffer, DWORD nSize)
 {

@@ -15,10 +15,12 @@ T_RtlExpandEnvironmentStrings_U sys_RtlExpandEnvironmentStrings_U = nullptr;
  * which an isolation mode hides.
  *
  * The contract of the call is the one of the kernel and is measured, not
- * assumed: the reported length counts the bytes of the answer with its
- * terminator, the length of the destination counts the bytes without it, and a
- * destination which is too small reports `STATUS_BUFFER_TOO_SMALL` with the
- * length the caller has to provide.
+ * assumed: the answer is copied with its terminator, the length of the
+ * destination reports the bytes of the answer without the terminator, the
+ * returned length reports them with the terminator, and a destination which is
+ * too small reports `STATUS_BUFFER_TOO_SMALL` with the size the caller has to
+ * provide through the returned length only — the length of the destination is
+ * left untouched and the buffer keeps its content.
  */
 static NTSTATUS NTAPI Hook_RtlExpandEnvironmentStrings_U(PWSTR Environment, PUNICODE_STRING Source,
                                                          PUNICODE_STRING Destination, PULONG ReturnLength)

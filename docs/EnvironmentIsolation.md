@@ -215,13 +215,17 @@ of the host keeps every value it had, whatever the packaged application does:
 | `RtlSetEnvironmentVariable` | The lowest writer; a caller which brings its own environment block is forwarded. |
 | `RtlExpandEnvironmentStrings_U` | The lowest expansion. |
 | `RtlCreateEnvironment` | A caller which asks for a copy of the environment of the process receives the view of the sandbox, so a child it starts does not see the values of the host. |
+| `GetTempPathW` | Answers the temporary directory from the table — `TMP`, `TEMP` and `USERPROFILE`, in that order, with the separator the operating system appends — and keeps the compatibility query of `CreateProcessInternalW` away from the lowest reader, which crashes a 32 bit process that creates a child when it is detoured (see [Child processes](#child-processes)). |
 
 The hooks live in `sandbox/hook/`, one file per export. The contracts of the
 counted `ntdll` entry points are measured rather than assumed: the lengths of
 `RtlQueryEnvironmentVariable` are counted in characters, `RtlQueryEnvironmentVariable_U`
-reports the size a buffer has to provide through the length of the value, and
-`RtlExpandEnvironmentStrings_U` reports the size of its answer with its
-terminator.
+copies the value **with** its terminator — a caller hands the buffer to the
+string functions of the kernel, which require a terminated string — reports the
+bytes of the value without the terminator through the length of the value, and
+reports the size a buffer has to provide through that length as well while the
+buffer is missing or too small, and `RtlExpandEnvironmentStrings_U` reports the
+size of its answer with its terminator.
 
 The entry points which the isolation does not hook at all, and the points of the
 view which no mode can express, are listed in
@@ -288,6 +292,16 @@ The launcher starts the relay process, which starts the packaged application, so
 every sandboxed process of a run is a child of a sandboxed process: the
 end-to-end cases below pin the hand over of the environment with the value they
 read, which is the composed one.
+
+A child of the other bit size is a child as well, and the creation of one reads
+the temporary directory of the parent: the compatibility query of
+`CreateProcessInternalW` asks `GetTempPathW` for it and compares the answer with
+the image of the child. The query keeps the state of the parent in a register
+across that read, so the sandbox answers `GetTempPathW` from its own table and
+never lets the read reach the detour of `RtlQueryEnvironmentVariable_U`, which
+would leave the query with a null path on the 32 bit architecture and crash the
+process before the module of the child is injected. The three cases of
+`test/e2e/Reg_TwoProcesses_CrossBitness.cpp` pin the pair of bit sizes.
 
 ### State and reset
 

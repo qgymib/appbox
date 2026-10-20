@@ -1242,6 +1242,17 @@ sandboxed process creates.
   The case pins that the processes of one sandbox share the hive — a file which
   another process already mounted is served by the hive of that mount — and that
   the state of the run survives it, while the real HKCU stays untouched.
+* `test/e2e/Reg_TwoProcesses_CrossBitness.cpp` — the same exchange with the bit
+  size of the two processes chosen by the case:
+  `E2E_Reg.TwoProcesses_Child64OfParent32` runs the 32 bit probe and starts the
+  64 bit probe as its worker, `E2E_Reg.TwoProcesses_Child32OfParent32` starts a
+  worker of its own bit size, and `E2E_Reg.TwoProcesses_Child32OfParent64` is the
+  direction the suite covered before. The worker is the image the request names
+  (`ChildExecutable`), so one case drives any pair of images, and every case
+  first checks that the two files it was given really are images of the bit size
+  it names. The cases pin that the sandbox injects the module of the target bit
+  size into the child, that both processes share the hive of the run and that
+  the real HKCU stays untouched.
 * `test/e2e/Reg_SetInformationKey_HiveHandle.cpp` — the probe `RegKeyApi` opens
   a key which only the host holds for writing, which the isolation answers by
   copying the key up into the hive, and calls
@@ -1914,7 +1925,9 @@ They are documented in their own header comments.
   observation of the run. The worker does not talk to the RPC server of the
   case: it reports its work through the exit code bits of `RegChildExitCode`,
   which is what a case reads when the registry of the worker is not visible to
-  the parent.
+  the parent. The worker is the image the request names in `ChildExecutable` —
+  the probe of the other bit size when a case asks for it — and `ChildHoldMs`
+  carries how long the worker stays alive.
 * `test/probe/ResolveName.*` — resolves hostnames inside the sandbox with one
   of the seven entry points the sandbox hooks and reports the return code and
   the addresses of every answer.
@@ -1975,11 +1988,13 @@ They are documented in their own header comments.
   domains are only driven in a 64 bit process so far, so a regression which
   touches a 32 bit structure layout would reach the suite only through the
   filesystem, the environment and the registry paths.
-* **A child of the other bit size is not covered.** A 32 bit application which
-  starts a 64 bit program is the edge case of the variable expansion, and no
-  case drives it: the sandbox of the run expands the values of the registry while
-  it mounts the hive and writes the expanded text back, so the first process of
-  the run decides the expansion of the whole run (see the known gaps of
+* **A child of the other bit size is covered for the registry only.** The three
+  cases of `test/e2e/Reg_TwoProcesses_CrossBitness.cpp` drive a 32 bit parent
+  with a 64 bit worker, a 32 bit worker and the 64 bit parent with a 32 bit
+  worker, but the exchange they pin is a registry value. The variable expansion
+  of a run is still decided by the first process of the run, because the sandbox
+  expands the values of the registry while it mounts the hive and writes the
+  expanded text back (see the known gaps of
   [RegistryIsolation.md](../docs/RegistryIsolation.md)). The environment is not
   affected, because a child inherits the composed block of its parent, which is
   what a process of the machine does as well. The selection of the process itself
