@@ -1,42 +1,10 @@
 #include "utils/WinAPI.h" /* Must be first include file */
-#include <algorithm>
 #include <cstring>
 #include <utility>
 #include "Table.hpp"
 
 namespace
 {
-
-/**
- * @brief Append the ANSI text of a wide string.
- *
- * A character the code page cannot express is written as its default character,
- * which is what the ANSI entry points of the operating system do.
- *
- * @param[in] text The text to convert.
- * @param[in,out] out The text which receives the converted characters.
- * @return true on success.
- */
-bool AppendAnsi(const std::wstring& text, std::string& out)
-{
-    if (text.empty())
-    {
-        return true;
-    }
-
-    const int size =
-        ::WideCharToMultiByte(CP_ACP, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
-    if (size <= 0)
-    {
-        return false;
-    }
-
-    const std::size_t offset = out.size();
-    out.resize(offset + static_cast<std::size_t>(size));
-
-    return ::WideCharToMultiByte(CP_ACP, 0, text.data(), static_cast<int>(text.size()), out.data() + offset, size,
-                                 nullptr, nullptr) == size;
-}
 
 /**
  * @brief Find the character which separates the name of an entry from its value.
@@ -62,33 +30,6 @@ std::size_t SeparatorOf(const std::wstring& entry)
 } // namespace
 
 appbox::environment::Table::Table() = default;
-
-appbox::environment::Table::~Table()
-{
-    /*
-     * A block which the application did not release is freed here: the table
-     * owns every block it handed out, so the last owner of a block which is
-     * still outstanding releases it.
-     *
-     * The destructor runs while the process keeps running (the sandbox is
-     * released with `FreeLibrary`), and only then: a process which is
-     * terminating never tears its sandbox down, because the runtime of the
-     * application releases its own references to the environment while it
-     * exits, and a block which was freed here would be freed a second time by
-     * that release. See `OnDllDetach()` of `sandbox/Sandbox.cpp`.
-     */
-    for (auto* block : blocks_)
-    {
-        ::HeapFree(::GetProcessHeap(), 0, block);
-    }
-    blocks_.clear();
-
-    for (auto* block : ansi_blocks_)
-    {
-        ::HeapFree(::GetProcessHeap(), 0, block);
-    }
-    ansi_blocks_.clear();
-}
 
 void appbox::environment::Table::Clear()
 {
@@ -220,18 +161,10 @@ void appbox::environment::Table::AssignBlock(const wchar_t* block)
     entries_ = std::move(parsed);
 }
 
-wchar_t* appbox::environment::Table::CreateBlock()
+wchar_t* appbox::environment::Table::CreateBlock() const
 {
     std::lock_guard<std::mutex> guard(lock_);
-
-    wchar_t* block = BuildBlock();
-    if (block == nullptr)
-    {
-        return nullptr;
-    }
-
-    blocks_.push_back(block);
-    return block;
+    return BuildBlock();
 }
 
 wchar_t* appbox::environment::Table::BuildBlock() const
@@ -269,83 +202,6 @@ wchar_t* appbox::environment::Table::BuildBlock() const
     *cursor = L'\0';
 
     return block;
-}
-
-wchar_t* appbox::environment::Table::CreateOwnedBlock() const
-{
-    std::lock_guard<std::mutex> guard(lock_);
-    return BuildBlock();
-}
-
-bool appbox::environment::Table::ReleaseBlock(wchar_t* block)
-{
-    if (block == nullptr)
-    {
-        return false;
-    }
-
-    std::lock_guard<std::mutex> guard(lock_);
-
-    const auto it = std::find(blocks_.begin(), blocks_.end(), block);
-    if (it == blocks_.end())
-    {
-        return false;
-    }
-
-    blocks_.erase(it);
-    ::HeapFree(::GetProcessHeap(), 0, block);
-    return true;
-}
-
-char* appbox::environment::Table::CreateAnsiBlock()
-{
-    std::lock_guard<std::mutex> guard(lock_);
-
-    std::string text;
-    for (const auto& entry : entries_)
-    {
-        if (!AppendAnsi(entry.name, text))
-        {
-            return nullptr;
-        }
-        text.push_back('=');
-        if (!AppendAnsi(entry.value, text))
-        {
-            return nullptr;
-        }
-        text.push_back('\0');
-    }
-    text.push_back('\0');
-
-    auto* block = static_cast<char*>(::HeapAlloc(::GetProcessHeap(), 0, text.size()));
-    if (block == nullptr)
-    {
-        return nullptr;
-    }
-
-    std::memcpy(block, text.data(), text.size());
-    ansi_blocks_.push_back(block);
-    return block;
-}
-
-bool appbox::environment::Table::ReleaseAnsiBlock(char* block)
-{
-    if (block == nullptr)
-    {
-        return false;
-    }
-
-    std::lock_guard<std::mutex> guard(lock_);
-
-    const auto it = std::find(ansi_blocks_.begin(), ansi_blocks_.end(), block);
-    if (it == ansi_blocks_.end())
-    {
-        return false;
-    }
-
-    ansi_blocks_.erase(it);
-    ::HeapFree(::GetProcessHeap(), 0, block);
-    return true;
 }
 
 bool appbox::environment::NamesEqual(const std::wstring& left, const std::wstring& right)

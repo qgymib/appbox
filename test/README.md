@@ -1405,6 +1405,7 @@ machine the cases run on.
 
 | Case | Isolation of the row | Steps | Expected |
 | --- | --- | --- | --- |
+| `Env_BlockOfTheProcessIsComposed` | `Full`, host holds `host` | read the environment block the process parameters point at, without an entry point of the environment API, and read the variable through the API | the block of the process carries the value of the row, it does not carry the value of the host, and the entry point reports the same value |
 | `Env_Full_HidesTheHostValue` | `Full`, host holds `foo` | read the configured variable and a variable the file does not list | the configured variable carries the value of the row, the unlisted one carries the value of the host, and the ANSI entry point reports the same view |
 | `Env_WriteCopy_Replace` | `Write Copy` + `Replace` | read the variable, and ask the lowest reader of the process environment for its size while bringing no buffer | the value of the row, and a refusal (`STATUS_BUFFER_TOO_SMALL`) with the size the caller has to provide, which is what the loader of the operating system relies on while it computes the search path of a DLL |
 | `Env_WriteCopy_Host` | `Write Copy` + `Host` | read the variable | the value of the host |

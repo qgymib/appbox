@@ -1,4 +1,5 @@
 #include "utils/WinAPI.h" /* Must be first include file */
+#include <cstdint>
 #include <exception>
 #include <fstream>
 #include <iterator>
@@ -17,6 +18,13 @@
 
 namespace
 {
+
+/**
+ * @brief RtlSetCurrentEnvironment() of ntdll.
+ *
+ * @see https://ntdoc.m417z.com/rtlsetcurrentenvironment
+ */
+typedef NTSTATUS(NTAPI* T_RtlSetCurrentEnvironment)(PWSTR Environment, PWSTR* PreviousEnvironment);
 
 /**
  * @brief Read a text file.
@@ -112,8 +120,8 @@ void ApplyModifications(const std::vector<appbox::environment::Modification>& mo
  *
  * The launcher owns the state directory of the sandbox and writes the document
  * the sandbox sends over the RPC pipe. A failure is not fatal: the environment
- * of the running process is the table, which stays correct, and only the next
- * run would miss the modification.
+ * of the running process is the block of the process, which stays correct, and
+ * only the next run would miss the modification.
  */
 void PersistState()
 {
@@ -144,6 +152,53 @@ void PersistState()
     catch (const std::exception& e)
     {
         LOG_W("the environment of the sandbox cannot be kept: {}", e.what());
+    }
+}
+
+/**
+ * @brief Replace the environment block of the process with the composed one.
+ *
+ * The block of the process parameters is what the loader, the runtime of the
+ * application and every module which walks the block itself read, so replacing
+ * it is what makes the composed environment the environment of the process.
+ * The call keeps the size of the environment in step — the process creation of
+ * the operating system copies the block of the parent by that size — and
+ * releases the block it replaces, which is why the new block comes from the
+ * heap of the process.
+ *
+ * A failure leaves the process with the block of the host: the sandbox is then
+ * transparent for the environment instead of broken, so it is reported and not
+ * fatal.
+ */
+void InstallBlock()
+{
+    const HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
+    if (ntdll == nullptr)
+    {
+        LOG_E("the environment of the process is not replaced: ntdll is not loaded");
+        return;
+    }
+
+    const auto set_current =
+        reinterpret_cast<T_RtlSetCurrentEnvironment>(::GetProcAddress(ntdll, "RtlSetCurrentEnvironment"));
+    if (set_current == nullptr)
+    {
+        LOG_E("the environment of the process is not replaced: RtlSetCurrentEnvironment is missing");
+        return;
+    }
+
+    wchar_t* block = appbox::sandbox->env_table.CreateBlock();
+    if (block == nullptr)
+    {
+        LOG_E("the environment of the process is not replaced: the block is not allocated");
+        return;
+    }
+
+    const NTSTATUS status = set_current(block, nullptr);
+    if (!NT_SUCCESS(status))
+    {
+        ::HeapFree(::GetProcessHeap(), 0, block);
+        LOG_E("the environment of the process is not replaced: {:#x}", static_cast<std::uint32_t>(status));
     }
 }
 
@@ -246,6 +301,13 @@ NTSTATUS appbox::environment::Isolation::Init()
         }
     }
 
+    /*
+     * The composition becomes the environment of the process: from here on
+     * every reader sees it, whether it uses an entry point of the environment
+     * API or walks the block of the process parameters itself.
+     */
+    InstallBlock();
+
     LOG_I("environment isolation loaded: {} variables, {} configured, {} kept from an earlier run, inherited {}",
           appbox::sandbox->env_table.Count(), configured, modifications, appbox::sandbox->bEnvironmentComposed);
 
@@ -261,8 +323,8 @@ void appbox::environment::Isolation::Exit()
 
     /*
      * The table and the state belong to the sandbox instance, which owns them
-     * for the run. The hooks are detached before this runs, so no block the
-     * table handed out is used any more.
+     * for the run. The block of the process was handed to the operating system
+     * when it was installed, so it is not released here.
      */
     appbox::sandbox->env_table.Clear();
     appbox::sandbox->env_state.Clear();
@@ -271,21 +333,6 @@ void appbox::environment::Isolation::Exit()
 bool appbox::environment::Isolation::IsEnabled()
 {
     return appbox::sandbox != nullptr && appbox::sandbox->bIsolationMode;
-}
-
-std::size_t appbox::environment::Isolation::Count()
-{
-    return appbox::sandbox == nullptr ? 0 : appbox::sandbox->env_table.Count();
-}
-
-bool appbox::environment::Isolation::Contains(const std::wstring& name)
-{
-    return appbox::sandbox != nullptr && appbox::sandbox->env_table.Contains(name);
-}
-
-bool appbox::environment::Isolation::Query(const std::wstring& name, std::wstring& value)
-{
-    return appbox::sandbox != nullptr && appbox::sandbox->env_table.Get(name, value);
 }
 
 bool appbox::environment::Isolation::Store(const std::wstring& name, const std::wstring& value)
@@ -306,6 +353,13 @@ bool appbox::environment::Isolation::Store(const std::wstring& name, const std::
     }
 
     appbox::sandbox->env_table.Set(name, value);
+
+    if (appbox::sandbox->env_state.HasValue(name, value))
+    {
+        /* The state already carries the modification, so it is not sent again. */
+        return true;
+    }
+
     appbox::sandbox->env_state.Record(name, value);
     PersistState();
     return true;
@@ -324,6 +378,13 @@ bool appbox::environment::Isolation::Remove(const std::wstring& name)
     }
 
     appbox::sandbox->env_table.Delete(name);
+
+    if (appbox::sandbox->env_state.HasDeletion(name))
+    {
+        /* The state already carries the modification, so it is not sent again. */
+        return true;
+    }
+
     appbox::sandbox->env_state.RecordDeletion(name);
     PersistState();
     return true;
@@ -364,73 +425,6 @@ void appbox::environment::Isolation::Clear()
     PersistState();
 }
 
-wchar_t* appbox::environment::Isolation::CreateBlock()
-{
-    return appbox::sandbox == nullptr ? nullptr : appbox::sandbox->env_table.CreateBlock();
-}
-
-wchar_t* appbox::environment::Isolation::CreateOwnedBlock()
-{
-    return appbox::sandbox == nullptr ? nullptr : appbox::sandbox->env_table.CreateOwnedBlock();
-}
-
-bool appbox::environment::Isolation::ReleaseBlock(wchar_t* block)
-{
-    return appbox::sandbox == nullptr ? false : appbox::sandbox->env_table.ReleaseBlock(block);
-}
-
-char* appbox::environment::Isolation::CreateAnsiBlock()
-{
-    return appbox::sandbox == nullptr ? nullptr : appbox::sandbox->env_table.CreateAnsiBlock();
-}
-
-bool appbox::environment::Isolation::ReleaseAnsiBlock(char* block)
-{
-    return appbox::sandbox == nullptr ? false : appbox::sandbox->env_table.ReleaseAnsiBlock(block);
-}
-
-std::wstring appbox::environment::Isolation::Expand(const std::wstring& text)
-{
-    std::wstring result;
-    result.reserve(text.size());
-
-    std::size_t index = 0;
-    while (index < text.size())
-    {
-        if (text[index] != L'%')
-        {
-            result.push_back(text[index]);
-            ++index;
-            continue;
-        }
-
-        const std::size_t end = text.find(L'%', index + 1);
-        if (end == std::wstring::npos)
-        {
-            /* A lone percent sign is copied, like the operating system does. */
-            result.push_back(text[index]);
-            ++index;
-            continue;
-        }
-
-        const std::wstring name = text.substr(index + 1, end - index - 1);
-
-        std::wstring value;
-        if (name.empty() || !Query(name, value))
-        {
-            /* A reference the environment does not hold keeps its spelling. */
-            result.append(text, index, end - index + 1);
-            index = end + 1;
-            continue;
-        }
-
-        result.append(value);
-        index = end + 1;
-    }
-
-    return result;
-}
-
 FARPROC appbox::environment::ResolveEnvironmentProc(const char* name)
 {
     FARPROC address = ::GetProcAddress(appbox::sys.h_kernelbase, name);
@@ -441,22 +435,22 @@ FARPROC appbox::environment::ResolveEnvironmentProc(const char* name)
     return address;
 }
 
-bool appbox::environment::ReadUnicodeStringText(const PUNICODE_STRING text, std::wstring& out)
+bool appbox::environment::AnsiToWide(const std::string& text, std::wstring& out)
 {
-    out.clear();
+    if (text.empty())
+    {
+        out.clear();
+        return true;
+    }
 
-    if (text == nullptr || text->Buffer == nullptr || text->Length == 0)
+    const int size = ::MultiByteToWideChar(CP_ACP, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
+    if (size <= 0)
     {
         return false;
     }
 
-    if (text->Length > text->MaximumLength || (text->Length % sizeof(wchar_t)) != 0)
-    {
-        return false;
-    }
-
-    out.assign(text->Buffer, static_cast<std::size_t>(text->Length) / sizeof(wchar_t));
-    return true;
+    out.resize(static_cast<std::size_t>(size));
+    return ::MultiByteToWideChar(CP_ACP, 0, text.data(), static_cast<int>(text.size()), out.data(), size) == size;
 }
 
 std::string appbox::environment::BuildChildInjectData()
@@ -484,40 +478,20 @@ std::string appbox::environment::BuildChildInjectData()
     }
 }
 
-bool appbox::environment::AnsiToWide(const std::string& text, std::wstring& out)
+bool appbox::environment::ReadUnicodeStringText(const PUNICODE_STRING text, std::wstring& out)
 {
-    if (text.empty())
-    {
-        out.clear();
-        return true;
-    }
+    out.clear();
 
-    const int size = ::MultiByteToWideChar(CP_ACP, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
-    if (size <= 0)
+    if (text == nullptr || text->Buffer == nullptr || text->Length == 0)
     {
         return false;
     }
 
-    out.resize(static_cast<std::size_t>(size));
-    return ::MultiByteToWideChar(CP_ACP, 0, text.data(), static_cast<int>(text.size()), out.data(), size) == size;
-}
-
-bool appbox::environment::WideToAnsi(const std::wstring& text, std::string& out)
-{
-    if (text.empty())
-    {
-        out.clear();
-        return true;
-    }
-
-    const int size =
-        ::WideCharToMultiByte(CP_ACP, 0, text.data(), static_cast<int>(text.size()), nullptr, 0, nullptr, nullptr);
-    if (size <= 0)
+    if (text->Length > text->MaximumLength || (text->Length % sizeof(wchar_t)) != 0)
     {
         return false;
     }
 
-    out.resize(static_cast<std::size_t>(size));
-    return ::WideCharToMultiByte(CP_ACP, 0, text.data(), static_cast<int>(text.size()), out.data(), size, nullptr,
-                                 nullptr) == size;
+    out.assign(text->Buffer, static_cast<std::size_t>(text->Length) / sizeof(wchar_t));
+    return true;
 }

@@ -157,6 +157,27 @@ void appbox::environment::State::RecordDeletion(const std::wstring& name)
     entries_.push_back(Modification{ name, std::wstring(), true });
 }
 
+bool appbox::environment::State::HasValue(const std::wstring& name, const std::wstring& value) const
+{
+    std::lock_guard<std::mutex> guard(lock_);
+
+    const std::size_t index = IndexOf(name);
+    if (index == entries_.size())
+    {
+        return false;
+    }
+
+    return !entries_[index].deleted && entries_[index].value == value;
+}
+
+bool appbox::environment::State::HasDeletion(const std::wstring& name) const
+{
+    std::lock_guard<std::mutex> guard(lock_);
+
+    const std::size_t index = IndexOf(name);
+    return index != entries_.size() && entries_[index].deleted;
+}
+
 std::vector<appbox::environment::Modification> appbox::environment::State::Entries() const
 {
     std::lock_guard<std::mutex> guard(lock_);

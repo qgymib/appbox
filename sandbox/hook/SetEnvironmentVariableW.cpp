@@ -8,15 +8,15 @@ T_SetEnvironmentVariableW sys_SetEnvironmentVariableW = nullptr;
 /**
  * @brief Detour of SetEnvironmentVariableW().
  *
- * The variable is written to the environment of the sandbox and never to the
- * environment of the host: the block of this process is not touched at all, so
- * the environment of the host keeps the value it had whatever the packaged
- * application does. The modification is handed to the launcher, which keeps it in
- * the state directory of the sandbox, so it survives the end of the process.
+ * The block of the process is the environment of the sandbox (see
+ * `environment/Isolation.cpp`), so the call is forwarded: the operating system
+ * writes the value into the block, which is what every reader sees. The
+ * modification is recorded afterwards, so it survives the end of the process.
  *
- * The contract of the call is the one of the operating system: a value of null
- * removes the variable, and a name which is missing or carries an equals sign
- * is refused with `ERROR_INVALID_PARAMETER`.
+ * The entry point is hooked next to `RtlSetEnvironmentVariable` because the
+ * runtime of the operating system does not route every write through the
+ * exported reader: `kernelbase` calls an implementation of its own, so a write
+ * of the application is only observed here.
  */
 static BOOL WINAPI Hook_SetEnvironmentVariableW(LPCWSTR lpName, LPCWSTR lpValue)
 {
@@ -25,29 +25,21 @@ static BOOL WINAPI Hook_SetEnvironmentVariableW(LPCWSTR lpName, LPCWSTR lpValue)
         return sys_SetEnvironmentVariableW(lpName, lpValue);
     }
 
-    if (lpName == nullptr || *lpName == L'\0')
+    const BOOL stored = sys_SetEnvironmentVariableW(lpName, lpValue);
+    if (!stored || lpName == nullptr)
     {
-        ::SetLastError(ERROR_INVALID_PARAMETER);
-        return FALSE;
+        return stored;
     }
 
     if (lpValue == nullptr)
     {
-        if (!appbox::environment::Isolation::Remove(lpName))
-        {
-            ::SetLastError(ERROR_INVALID_PARAMETER);
-            return FALSE;
-        }
-        return TRUE;
+        /* A value of null removes the variable. */
+        appbox::environment::Isolation::Remove(lpName);
+        return stored;
     }
 
-    if (!appbox::environment::Isolation::Store(lpName, lpValue))
-    {
-        ::SetLastError(ERROR_INVALID_PARAMETER);
-        return FALSE;
-    }
-
-    return TRUE;
+    appbox::environment::Isolation::Store(lpName, lpValue);
+    return stored;
 }
 
 static void LoadSetEnvironmentVariableW()

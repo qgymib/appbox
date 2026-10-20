@@ -234,54 +234,26 @@ static BOOL WINAPI Hook_CreateProcessInternalW(HANDLE hToken, LPCWSTR lpApplicat
 #endif
 
     /*
-     * The environment of the child is the view of the sandbox. A caller which
-     * inherits the environment of this process receives the block of the
-     * sandbox, and every child is told that its environment is composed
+     * The environment of the child is the environment of this process, which is
+     * the block of the sandbox: a caller which inherits receives the composed
+     * environment, and every child is told that its environment is composed
      * already, so the configuration is not applied to it a second time: the
      * values the merge modes join would be joined twice.
      */
-    wchar_t*           environment_block = nullptr;
-    LPVOID             effective_environment = lpEnvironment;
     std::string        child_inject_data;
     const std::string* inject_data = &appbox::sandbox->inject_data;
 
     if (appbox::environment::Isolation::IsEnabled())
     {
-        if (lpEnvironment == nullptr)
-        {
-            environment_block = appbox::environment::Isolation::CreateBlock();
-            if (environment_block != nullptr)
-            {
-                effective_environment = environment_block;
-            }
-        }
-
         child_inject_data = appbox::environment::BuildChildInjectData();
         inject_data = &child_inject_data;
     }
 
-    DWORD creation_flags = dwCreationFlags | CREATE_SUSPENDED;
-    if (environment_block != nullptr)
-    {
-        /*
-         * The block of the sandbox is Unicode text, and a caller which brings
-         * an environment block of its own has to say so as well: without the
-         * flag the block is read as ANSI text and the creation fails with
-         * `ERROR_INVALID_PARAMETER`.
-         */
-        creation_flags |= CREATE_UNICODE_ENVIRONMENT;
-    }
+    const DWORD creation_flags = dwCreationFlags | CREATE_SUSPENDED;
 
-    const BOOL started = WrapDetourCreateProcessWithDllExW(hToken, effective_app_name, lpCommandLine,
-                                                           lpProcessAttributes, lpThreadAttributes, bInheritHandles,
-                                                           creation_flags, effective_environment, lpCurrentDirectory,
-                                                           lpStartupInfo, lpProcessInformation, hNewToken, lpDllName);
-
-    if (environment_block != nullptr)
-    {
-        /* The block is read while the process is created and not afterwards. */
-        appbox::environment::Isolation::ReleaseBlock(environment_block);
-    }
+    const BOOL started = WrapDetourCreateProcessWithDllExW(
+        hToken, effective_app_name, lpCommandLine, lpProcessAttributes, lpThreadAttributes, bInheritHandles,
+        creation_flags, lpEnvironment, lpCurrentDirectory, lpStartupInfo, lpProcessInformation, hNewToken, lpDllName);
 
     if (!started)
     {

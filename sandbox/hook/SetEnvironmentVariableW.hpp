@@ -7,7 +7,7 @@
 extern "C" {
 
 /**
- * @see https://learn.microsoft.com/en-us/windows/win32/api/processenv/nf-processenv-setenvironmentvariablew
+ * @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setenvironmentvariablew
  */
 typedef BOOL(WINAPI* T_SetEnvironmentVariableW)(LPCWSTR lpName, LPCWSTR lpValue);
 

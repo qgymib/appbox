@@ -1,11 +1,91 @@
 #include "sandbox/utils/WinAPI.h" /* Must be first include file */
 #include "EnvironmentRead.hpp"
 #include "WString.hpp"
+#include <intrin.h>
 #include <string>
 #include <vector>
 
 namespace
 {
+
+/**
+ * @brief Read the environment block the process parameters point at.
+ *
+ * The block is read through the process block of the process and not through an
+ * entry point of the environment API, so a case which uses it pins what the
+ * process itself carries. The offsets are the ones of the process block and of
+ * the process parameters of the two architectures; the block of a process is
+ * never moved by the runtime, so reading it is safe.
+ *
+ * @return The entries of the block, each one `name=value`.
+ */
+std::vector<std::wstring> ReadProcessBlock()
+{
+    std::vector<std::wstring> entries;
+
+#if defined(_WIN64)
+    const auto*           process_block = reinterpret_cast<const std::uint8_t*>(__readgsqword(0x60));
+    constexpr std::size_t kParametersOffset = 0x20;
+    constexpr std::size_t kEnvironmentOffset = 0x80;
+#else
+    const auto*           process_block = reinterpret_cast<const std::uint8_t*>(__readfsdword(0x30));
+    constexpr std::size_t kParametersOffset = 0x10;
+    constexpr std::size_t kEnvironmentOffset = 0x48;
+#endif
+
+    if (process_block == nullptr)
+    {
+        return entries;
+    }
+
+    const auto* parameters = *reinterpret_cast<const std::uint8_t* const*>(process_block + kParametersOffset);
+    if (parameters == nullptr)
+    {
+        return entries;
+    }
+
+    const auto* block = *reinterpret_cast<const wchar_t* const*>(parameters + kEnvironmentOffset);
+    if (block == nullptr)
+    {
+        return entries;
+    }
+
+    for (const wchar_t* cursor = block; *cursor != L'\0';)
+    {
+        const std::wstring entry(cursor);
+        entries.push_back(entry);
+        cursor += entry.size() + 1;
+    }
+
+    return entries;
+}
+
+/**
+ * @brief Read the value of one entry of a block.
+ * @param[in] entry One entry of the block, spelled `name=value`.
+ * @param[in] name Name to look for, compared ignoring the case.
+ * @param[out] value Value of the entry, empty when it carries none.
+ * @return true when the entry names the variable.
+ */
+bool ValueOfEntry(const std::wstring& entry, const std::wstring& name, std::wstring& value)
+{
+    const std::size_t begin = !entry.empty() && entry.front() == L'=' ? 1 : 0;
+    const std::size_t separator = entry.find(L'=', begin);
+    if (separator == std::wstring::npos)
+    {
+        return false;
+    }
+
+    const std::wstring entry_name = entry.substr(0, separator);
+    if (::CompareStringOrdinal(entry_name.data(), static_cast<int>(entry_name.size()), name.data(),
+                               static_cast<int>(name.size()), TRUE) != CSTR_EQUAL)
+    {
+        return false;
+    }
+
+    value = entry.substr(separator + 1);
+    return true;
+}
 
 /**
  * @brief Read a variable with the wide entry point of the process environment.
@@ -157,7 +237,12 @@ std::string ExpandAnsi(const std::string& text)
  * way: it reads the length of the value afterwards and copies the value into a
  * buffer it allocated, so an answer of success with a null buffer would make it
  * copy from the null pointer. The call is made through the entry point of
- * `ntdll` itself, which the sandbox hooks as well.
+ * `ntdll` itself.
+ *
+ * The entry point takes three arguments and reports the size through the length
+ * of the value: a call which declares a fourth argument leaves the stack of the
+ * caller unbalanced on the 32 bit architecture, because the entry point pops the
+ * bytes of the three arguments it takes.
  *
  * @param[in] name Name of the variable.
  * @param[out] status Status the entry point reported.
@@ -169,7 +254,7 @@ void QueryWithoutABuffer(const std::wstring& name, std::uint32_t& status, std::u
      * @see https://ntdoc.m417z.com/rtlqueryenvironmentvariable_u
      */
     typedef LONG(NTAPI * T_RtlQueryEnvironmentVariable_U)(PWSTR Environment, PUNICODE_STRING Name,
-                                                          PUNICODE_STRING Value, PULONG ReturnLength);
+                                                          PUNICODE_STRING Value);
 
     const auto query = reinterpret_cast<T_RtlQueryEnvironmentVariable_U>(
         ::GetProcAddress(::GetModuleHandleW(L"ntdll.dll"), "RtlQueryEnvironmentVariable_U"));
@@ -188,9 +273,7 @@ void QueryWithoutABuffer(const std::wstring& name, std::uint32_t& status, std::u
     value.MaximumLength = 0xFFFF; /* A caller which believes it has room. */
     value.Buffer = nullptr;
 
-    ULONG returned = 0;
-
-    status = static_cast<std::uint32_t>(query(nullptr, &name_string, &value, &returned));
+    status = static_cast<std::uint32_t>(query(nullptr, &name_string, &value));
     length = value.Length;
 }
 
@@ -220,6 +303,36 @@ static nlohmann::json ProbeEnvironmentRead_Entry(const nlohmann::json& data)
 
     rsp.entries = ReadWideEntries();
     rsp.ansi_entries = ReadAnsiEntries();
+
+    /*
+     * The block of the process parameters is reported as well, so a case can
+     * tell the view of an entry point apart from what the process carries.
+     */
+    const std::vector<std::wstring> block = ReadProcessBlock();
+
+    for (const auto& entry : block)
+    {
+        rsp.block_entries.push_back(appbox::WideToUTF8(entry));
+    }
+
+    for (const auto& name : req.names)
+    {
+        const std::wstring wide_name = appbox::UTF8ToWide(name);
+
+        std::wstring value;
+        bool         found = false;
+        for (const auto& entry : block)
+        {
+            if (ValueOfEntry(entry, wide_name, value))
+            {
+                found = true;
+                break;
+            }
+        }
+
+        rsp.block_values.push_back(found ? appbox::WideToUTF8(value) : std::string());
+        rsp.block_found.push_back(found);
+    }
 
     if (!req.names.empty())
     {

@@ -30,27 +30,27 @@ struct Variable
 /**
  * @brief The environment variables the sandboxed process sees.
  *
- * The table is the private environment of the sandbox: the process of the
- * packaged application keeps its own environment block untouched, and every
- * entry point which reads, writes, enumerates or expands a variable of the
- * process environment is answered from this table instead. The environment of
- * the host is therefore never modified, whatever the application does.
+ * The table composes the environment of the packaged application: it is filled
+ * with the block of the host while the sandbox DLL is injected, the variables
+ * of the isolation files are composed into it, and the modifications of an
+ * earlier run are applied afterwards. The composition is then built into a
+ * block which becomes the environment of the process, so the table is the
+ * record of what the process carries and not the place a read is answered
+ * from.
  *
  * The names are compared ignoring the case, because the environment of a
  * process is case insensitive on Windows: `Path` names the same variable as
- * `PATH`. The entries keep the order they were given in, so an enumeration
- * reports the variables of the host first, followed by the variables the
- * configuration added, and a variable which is written keeps its position.
+ * `PATH`. The entries keep the order they were given in, so a block reports
+ * the variables of the host first, followed by the variables the configuration
+ * added, and a variable which is written keeps its position.
  *
  * Every method may be called from any thread: the table is guarded by a lock
- * of its own. A block which CreateBlock() handed out is owned by the caller
- * and stays valid until it is passed to ReleaseBlock().
+ * of its own.
  */
 class Table
 {
 public:
     Table();
-    ~Table();
 
     Table(const Table&) = delete;
     Table& operator=(const Table&) = delete;
@@ -130,52 +130,14 @@ public:
     /**
      * @brief Build an environment block of the whole table.
      *
-     * The block is allocated on the heap of the process and is owned by the
-     * caller: it has to be passed to ReleaseBlock() once it is no longer used,
-     * which is what the hook of FreeEnvironmentStringsW() does.
+     * The block is allocated on the heap of the process, which is the heap the
+     * environment of a process has to come from, and is owned by the caller: it
+     * becomes the environment of the process, and the operating system releases
+     * it when the block is replaced or the process ends.
      *
      * @return The block, null when the allocation failed.
      */
-    wchar_t* CreateBlock();
-
-    /**
-     * @brief Release an environment block of this table.
-     * @param[in] block Block which CreateBlock() handed out.
-     * @return true when the block belongs to the table and was released.
-     */
-    bool ReleaseBlock(wchar_t* block);
-
-    /**
-     * @brief Build an environment block of the whole table which the caller
-     *        owns.
-     *
-     * The block is built like the one of CreateBlock(), but it is not tracked:
-     * a caller which creates an environment of its own releases the block with
-     * the entry point of the operating system which destroys an environment, so
-     * the table must not release it a second time.
-     *
-     * @return The block, null when the allocation failed.
-     */
-    wchar_t* CreateOwnedBlock() const;
-
-    /**
-     * @brief Build an environment block of the whole table in the ANSI code
-     *        page.
-     *
-     * The block is the one GetEnvironmentStringsA() reports, so it has to be
-     * built from the same table. A character the code page cannot express is
-     * written as its default character.
-     *
-     * @return The block, null when the allocation failed.
-     */
-    char* CreateAnsiBlock();
-
-    /**
-     * @brief Release an ANSI environment block of this table.
-     * @param[in] block Block which CreateAnsiBlock() handed out.
-     * @return true when the block belongs to the table and was released.
-     */
-    bool ReleaseAnsiBlock(char* block);
+    wchar_t* CreateBlock() const;
 
 private:
     /**
@@ -189,9 +151,8 @@ private:
     /**
      * @brief Build an environment block of the entries.
      *
-     * The block is allocated on the heap of the process and is not tracked; the
-     * caller holds the lock of the table and decides whether the table owns the
-     * block.
+     * The block is allocated on the heap of the process; the caller holds the
+     * lock of the table.
      *
      * @return The block, null when the allocation failed.
      */
@@ -206,16 +167,6 @@ private:
      * @brief The variables in table order.
      */
     std::vector<Variable> entries_;
-
-    /**
-     * @brief The blocks CreateBlock() handed out and nobody released so far.
-     */
-    std::vector<wchar_t*> blocks_;
-
-    /**
-     * @brief The blocks CreateAnsiBlock() handed out and nobody released so far.
-     */
-    std::vector<char*> ansi_blocks_;
 };
 
 /**

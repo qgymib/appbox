@@ -8,9 +8,12 @@ T_SetEnvironmentVariableA sys_SetEnvironmentVariableA = nullptr;
 /**
  * @brief Detour of SetEnvironmentVariableA().
  *
- * The ANSI entry point writes the same environment as the wide one: the name
- * and the value are converted into UTF-16 and the variable is stored in the
- * environment of the sandbox, which never touches the environment of the host.
+ * The ANSI entry point writes the environment of the process as well, so the
+ * modification is recorded like the one of the wide entry point. The name and
+ * the value are recorded in the wide form, which is the form the environment of
+ * a process keeps: the value is read back from the block instead of being
+ * converted a second time, so the record carries what the operating system
+ * stored.
  */
 static BOOL WINAPI Hook_SetEnvironmentVariableA(LPCSTR lpName, LPCSTR lpValue)
 {
@@ -19,43 +22,33 @@ static BOOL WINAPI Hook_SetEnvironmentVariableA(LPCSTR lpName, LPCSTR lpValue)
         return sys_SetEnvironmentVariableA(lpName, lpValue);
     }
 
-    if (lpName == nullptr || *lpName == '\0')
+    const BOOL stored = sys_SetEnvironmentVariableA(lpName, lpValue);
+    if (!stored || lpName == nullptr)
     {
-        ::SetLastError(ERROR_INVALID_PARAMETER);
-        return FALSE;
+        return stored;
     }
 
     std::wstring name;
-    if (!appbox::environment::AnsiToWide(std::string(lpName), name))
+    if (!appbox::environment::AnsiToWide(lpName, name) || name.empty())
     {
-        ::SetLastError(ERROR_NO_UNICODE_TRANSLATION);
-        return FALSE;
+        return stored;
     }
 
     if (lpValue == nullptr)
     {
-        if (!appbox::environment::Isolation::Remove(name))
-        {
-            ::SetLastError(ERROR_INVALID_PARAMETER);
-            return FALSE;
-        }
-        return TRUE;
+        /* A value of null removes the variable. */
+        appbox::environment::Isolation::Remove(name);
+        return stored;
     }
 
     std::wstring value;
-    if (!appbox::environment::AnsiToWide(std::string(lpValue), value))
+    if (!appbox::environment::AnsiToWide(lpValue, value))
     {
-        ::SetLastError(ERROR_NO_UNICODE_TRANSLATION);
-        return FALSE;
+        return stored;
     }
 
-    if (!appbox::environment::Isolation::Store(name, value))
-    {
-        ::SetLastError(ERROR_INVALID_PARAMETER);
-        return FALSE;
-    }
-
-    return TRUE;
+    appbox::environment::Isolation::Store(name, value);
+    return stored;
 }
 
 static void LoadSetEnvironmentVariableA()

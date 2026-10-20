@@ -198,34 +198,28 @@ points of the process. The composition has four sources, in this order:
 4. The modifications of the state file, which an earlier run of the application
    made and which win over the three sources above.
 
-The environment block of the process is **never** modified. The composed
-environment lives in a private table of the sandbox (`sandbox/environment/`),
-and the entry points which read, write, enumerate or expand a variable of the
-process environment are hooked and answered from that table, so the environment
-of the host keeps every value it had, whatever the packaged application does:
+The composed environment is then **installed as the environment block of the
+process**: `RtlSetCurrentEnvironment()` of `ntdll` replaces the block the process
+parameters point at, keeps the size of the environment in step — the process
+creation of the operating system copies the block of the parent by that size —
+and releases the block it replaces. From that moment every reader sees the view
+of the sandbox, whether it uses an entry point of the environment API, the
+loader of the operating system or the block of the process parameters directly,
+so the environment of the host keeps every value it had and no reader of the
+environment is hooked at all:
 
 | Entry point | Behaviour |
 | --- | --- |
-| `GetEnvironmentVariableW` / `GetEnvironmentVariableA` | Reads the table; a variable the table does not hold reports `ERROR_ENVVAR_NOT_FOUND`. |
-| `SetEnvironmentVariableW` / `SetEnvironmentVariableA` | Writes the table and records the modification; a value of null removes the variable. |
-| `GetEnvironmentStringsW` / `GetEnvironmentStringsA` | Builds a block of the table, which the caller owns. A block of the process would report the values of the host, so a variable the `Full` mode hides would leak through it. |
-| `FreeEnvironmentStringsW` / `FreeEnvironmentStringsA` | Releases a block the sandbox handed out; every other block goes to the operating system. |
-| `ExpandEnvironmentStringsW` / `ExpandEnvironmentStringsA` | Expands the `%NAME%` references from the table. |
-| `RtlQueryEnvironmentVariable_U`, `RtlQueryEnvironmentVariable` | The lowest readers of the process environment, which the runtime of a process uses as well. |
-| `RtlSetEnvironmentVariable` | The lowest writer; a caller which brings its own environment block is forwarded. |
-| `RtlExpandEnvironmentStrings_U` | The lowest expansion. |
-| `RtlCreateEnvironment` | A caller which asks for a copy of the environment of the process receives the view of the sandbox, so a child it starts does not see the values of the host. |
-| `GetTempPathW` | Answers the temporary directory from the table — `TMP`, `TEMP` and `USERPROFILE`, in that order, with the separator the operating system appends — and keeps the compatibility query of `CreateProcessInternalW` away from the lowest reader, which crashes a 32 bit process that creates a child when it is detoured (see [Child processes](#child-processes)). |
+| `SetEnvironmentVariableW` / `SetEnvironmentVariableA` | Forwards the call, so the operating system writes the block, and records the modification for the state file; a value of null removes the variable. |
+| `RtlSetEnvironmentVariable` | The lowest writer, hooked for the same reason; a caller which brings its own environment block is forwarded without a record. |
+| every reader — `GetEnvironmentVariableW`, `GetEnvironmentStringsW`, `ExpandEnvironmentStringsW`, `RtlQueryEnvironmentVariable`, `RtlQueryEnvironmentVariable_U`, `RtlCreateEnvironment`, `GetTempPathW`, ... | Not hooked. It reads the block of the process, which is the composed environment, so the answer of the host and the answer of the sandbox are the same answer. |
 
-The hooks live in `sandbox/hook/`, one file per export. The contracts of the
-counted `ntdll` entry points are measured rather than assumed: the lengths of
-`RtlQueryEnvironmentVariable` are counted in characters, `RtlQueryEnvironmentVariable_U`
-copies the value **with** its terminator — a caller hands the buffer to the
-string functions of the kernel, which require a terminated string — reports the
-bytes of the value without the terminator through the length of the value, and
-reports the size a buffer has to provide through that length as well while the
-buffer is missing or too small, and `RtlExpandEnvironmentStrings_U` reports the
-size of its answer with its terminator.
+The hooks live in `sandbox/hook/`, one file per export. `RtlSetCurrentEnvironment`
+is what makes the composition visible to the process itself, and the two writers
+are what keeps the state of the sandbox in step: the runtime of the operating
+system does not route every write through the exported `RtlSetEnvironmentVariable`
+— `kernelbase` calls an implementation of its own, which a detour of the export
+never observes — so the entry point the application uses is hooked as well.
 
 The entry points which the isolation does not hook at all, and the points of the
 view which no mode can express, are listed in
@@ -282,8 +276,9 @@ names and the rules of the expansion are documented in
 ### Child processes
 
 A process which the packaged application starts receives the view of its parent:
-the hook of `CreateProcessInternalW` hands the block of the sandbox over while
-the caller inherits the environment of its parent, and it marks the child so the
+the environment block of the parent **is** the composed environment, so a caller
+which inherits the environment of its parent hands the view over without a block
+of its own, and the hook of `CreateProcessInternalW` only marks the child so the
 configuration is not applied to it a second time. A value the merge modes join
 would be joined twice otherwise, because the environment of the child is the
 composed view of the parent and not the environment of the host.
@@ -296,11 +291,9 @@ read, which is the composed one.
 A child of the other bit size is a child as well, and the creation of one reads
 the temporary directory of the parent: the compatibility query of
 `CreateProcessInternalW` asks `GetTempPathW` for it and compares the answer with
-the image of the child. The query keeps the state of the parent in a register
-across that read, so the sandbox answers `GetTempPathW` from its own table and
-never lets the read reach the detour of `RtlQueryEnvironmentVariable_U`, which
-would leave the query with a null path on the 32 bit architecture and crash the
-process before the module of the child is injected. The three cases of
+the image of the child. The read is answered by the operating system from the
+block of the process, which is the composed environment, and the sandbox has no
+detour on that path at all. The three cases of
 `test/e2e/Reg_TwoProcesses_CrossBitness.cpp` pin the pair of bit sizes.
 
 ### State and reset
@@ -319,24 +312,21 @@ state of the sandbox.
 
 The points below are visible in the current code and have to be kept in mind
 when the isolation is extended or tested. They fall into two groups. The first
-group is about the semantics the view cannot express: the sandbox answers from a
-table of its own, which is a copy of the environment of the host taken while the
-library was injected, so an answer which does not come from a hook is the answer
-of the host. The second group is about the entry points the isolation does not
-hook at all: a call which reaches the environment through them acts on the block
-of the process.
+group is about the semantics the view cannot express: the block of the process
+is the composed environment, so an entry point which is not hooked reads the
+view as well, and what the modes cannot say is what the view cannot say. The
+second group is about the entry points which replace the block without the
+sandbox observing it, so a change of the run does not survive the end of the
+process.
 
 ### The semantics the view cannot express
 
-1. **The block of the process is never rewritten.** The composed environment
-   lives in the table of the sandbox and the block of the process keeps the
-   values of the host, which is what makes the environment of the host
-   untouchable. A reader which does not use one of the hooked entry points — a
-   module which follows `ProcessParameters->Environment` of the PEB, or one of
-   the entry points of the second group below — therefore reads the host, and a
-   variable a `Full` row hides is visible through that path. The hand over of
-   [Child processes](#child-processes) is what keeps the block of a child
-   correct.
+1. **The block of the host is replaced, not extended.** The composition replaces
+   `ProcessParameters->Environment` of the process while the library is
+   injected, so the environment of the host is never modified and every reader
+   inside the process sees the view — an entry point of the API, the loader and
+   a module which walks the block itself alike. A process which does not run the
+   sandbox DLL keeps the environment of the host, which is the point below 10.
 2. **A row cannot remove a variable.** Every mode reports a variable: `Full` and
    `Write Copy` with `Replace` report the value of the row, `Host` reports the
    value below the row, and `Prepend` and `Append` report the join. The
@@ -359,17 +349,15 @@ of the process.
    `CreateEnvironmentBlock` of the second group — hands the values of the host
    to the child. A caller which builds the block with `GetEnvironmentStringsW`
    hands the view over, which is the normal case.
-4. **A name which carries an equals sign can be read but not written.** The
-   block of a process holds the drive relative current directory of a drive as
-   `=C:=C:\...`; the table keeps such an entry with its own spelling and reports
-   it through a read and through an enumeration, while a row of the workspace
-   and a write of the application are refused. The write is refused with
-   `ERROR_INVALID_PARAMETER` (`STATUS_INVALID_PARAMETER` for
-   `RtlSetEnvironmentVariable`), and the operating system accepts the same call:
-   `SetEnvironmentVariableW(L"=C:", L"C:\\...")` succeeds on a machine without
-   the sandbox. The entry of the table is the one the host held while the
-   environment was composed, and nothing updates it afterwards, so it does not
-   follow a change of the current directory of the drive either.
+4. **A name which carries an equals sign is written but not kept.** The block of
+   a process holds the drive relative current directory of a drive as
+   `=C:=C:\...`; the write of the application reaches the operating system,
+   which accepts it — `SetEnvironmentVariableW(L"=C:", L"C:\\...")` succeeds on a
+   machine without the sandbox — while the state refuses the name, because the
+   equals sign separates the name from the value inside the block. Such an entry
+   therefore follows the application for the rest of the run and does not
+   survive the end of the process. A row of the workspace refuses the name as
+   well.
 5. **The state belongs to the sandbox and not to a layer.** A value the
    application stored wins over the rows of every layer of every later run,
    including a run which applies a patch package the archive did not have when
@@ -378,20 +366,22 @@ of the process.
    package cannot take a variable back, and the way back to the rows is the
    deletion of the state directory (`data/`).
 6. **Two processes of one sandbox do not share the environment of the run.**
-   Every process composes its own table while it is injected and reads the state
+   Every process composes its own block while it is injected and reads the state
    as it is at that moment, and every modification writes the whole document of
    the state (`launcher/rpc/Environment.cpp`), so the process which writes last
    wins: the modification of the other process is dropped, and neither process
    observes a modification the other makes after it started.
 7. **An emptied environment is not kept.** The state is the list of the
-   modifications, and a run which replaced its whole environment with an empty
-   block records no modification at all, so the next run composes the
-   environment of the layers again instead of starting empty.
+   modifications, and the entry points which replace the whole environment of a
+   process are not hooked (see the second group below), so a run which replaced
+   its whole environment with an empty block records no modification at all and
+   the next run composes the environment of the layers again instead of starting
+   empty.
 8. **A modification is kept only while the launcher answers.** The document
    travels over the RPC pipe and the launcher writes it to disk, and a call
    which fails is logged while the modification stays in the process alone, so
-   it is lost when the process ends. The sandbox keeps answering from its table
-   either way.
+   it is lost when the process ends. The block of the process carries the value
+   either way, so the running application sees it.
 9. **The names are compared ignoring the case.** `Path` and `PATH` name the same
    variable, like the operating system does, so two rows which differ in case
    name one variable.
@@ -402,54 +392,44 @@ of the process.
     task of the task scheduler — is not composed and sees the environment of the
     host.
 
-### The entry points the isolation does not hook at all
+### The entry points which replace the block without a record
 
 The hooks of the isolation are the ones `sandbox/hook/` installs, so an entry
 point which the table of [Sandbox](#sandbox) does not name acts on the block of
-the process with the arguments of the caller, and the answer of such a call is
-the answer of the host. The points below are the ones which matter for the view.
+the process with the arguments of the caller. Since that block is the composed
+environment, such a call reads and writes the view; what it does not do is reach
+the state of the sandbox. The points below are the ones which matter.
 
 1. **`RtlSetCurrentEnvironment`.** The call replaces the block of the process,
-    and the sandbox does not see it: the table keeps the environment the process
-    had, so every hooked entry point reports the old view, the state is not
-    written, and a child which is started afterwards is handed the old view as
-    well.
+    which is what the sandbox itself does while it is injected. An application
+    which calls it replaces the view with a block of its own, and the sandbox
+    does not see it: the state is not written, so the change does not survive the
+    end of the process, and a child which is started afterwards inherits the new
+    block.
 2. **`SetEnvironmentStringsW`, `SetEnvironmentStringsA` and
     `RtlSetEnvironmentStrings`.** The three entry points replace the whole
-    environment of the process, and none of them is hooked, so the block of the
-    process becomes the block of the caller while the table and the state stay
-    as they were. The module of the runtime is built on the entry point below
-    them: `kernelbase` imports `RtlSetEnvironmentStrings`, next to the
+    environment of the process as well, and none of them is hooked, so the block
+    of the process becomes the block of the caller while the state stays as it
+    was. The module of the runtime is built on the entry point below them:
+    `kernelbase` imports `RtlSetEnvironmentStrings`, next to the
     `RtlSetEnvironmentVariable` which the isolation hooks.
-3. **`RtlCreateEnvironmentEx`.** The call builds an environment out of a source
-    the caller picks. A caller which asks for a copy of the environment of its
-    process receives the block of the host, so a child it starts with that block
-    sees the values the isolation hides.
-4. **`RtlExpandEnvironmentStrings`.** The entry point without the `_U` suffix
-    exists next to the `RtlExpandEnvironmentStrings_U` which the isolation
-    hooks, and it is not hooked: a caller which resolves it from `ntdll` itself
-    expands the references from the block of the process. The exported
-    `ExpandEnvironmentStringsW` and `ExpandEnvironmentStringsA` of the runtime
-    are hooked, so the common path is covered.
-5. **`NeedCurrentDirectoryForExePathW` and `NeedCurrentDirectoryForExePathA`.**
-    The calls answer from the `NoDefaultCurrentDirectoryInExePath` variable of
-    the block of the process, so the value of the host decides whether the
-    current directory is part of the search path of an image, whatever a row of
-    the archive says.
-6. **`CreateEnvironmentBlock` and `ExpandEnvironmentStringsForUserW` of
+3. **`CreateEnvironmentBlock` and `ExpandEnvironmentStringsForUserW` of
     `userenv.dll`.** The calls build the environment of a user out of the
     profile of the user through the registry, so the rows of the archive and the
     state are not part of the block they report: what they report is what the
-    registry isolation reports for the keys of the profile.
-7. **The process creation below `CreateProcessInternalW`.**
+    registry isolation reports for the keys of the profile. A caller which hands
+    that block to a child hands it over as it was written, which is the point 3
+    of the first group.
+4. **The process creation below `CreateProcessInternalW`.**
     `NtCreateUserProcess` and `RtlCreateUserProcess` are not hooked, and neither
     is `RtlCreateProcessParametersEx`, which builds the parameters of a process
     — the environment among them — for a caller which creates the process
     itself. A process which the runtime creates through them does not pass the
-    hook of `CreateProcessInternalW`, so it is neither composed nor injected: it
-    inherits the block of its parent, which is the block of the host. The same
-    holds for a child which `CreateProcessAsUserW`, `CreateProcessWithTokenW` or
-    `CreateProcessWithLogonW` creates without passing the hooked entry point.
+    hook of `CreateProcessInternalW`, so it is not injected: it inherits the
+    block of its parent, which is the composed environment, but it is not
+    sandboxed. The same holds for a child which `CreateProcessAsUserW`,
+    `CreateProcessWithTokenW` or `CreateProcessWithLogonW` creates without
+    passing the hooked entry point.
 
 ## Tests
 
@@ -481,16 +461,18 @@ The runtime side is covered by:
 - `test/unit/EnvironmentIsolationFile.cpp` — the document the packer writes: the
   order of the entries, the members of an entry, the tokens of the modes and the
   refusal of an entry the model refuses.
-- `test/unit/EnvironmentTable.cpp` — the private table and the two documents the
-  sandbox reads: the block of the host with its drive relative entry, the case
-  insensitive names, the order of the table, the round trip of a block, the ANSI
-  block, the refusal of a malformed isolation file without a partial result, and
-  the state with its one modification per variable.
+- `test/unit/EnvironmentTable.cpp` — the table which composes the environment
+  and the two documents the sandbox reads: the block of the host with its drive
+  relative entry, the case insensitive names, the order of the table, the round
+  trip of a block, the refusal of a malformed isolation file without a partial
+  result, and the state with its one modification per variable.
 - `test/e2e/Env_*.cpp` — the whole chain with the real launcher and a probe
-  process inside the sandbox: every isolation and merge combination, a variable
-  the host does not hold, the enumeration of the block and the expansion of a
-  reference, a modification which stays in the sandbox, the state of an earlier
-  run and the state file a case writes itself, a malformed isolation file
+  process inside the sandbox: the block of the process parameters, which pins
+  that the composition is the environment of the process itself, every isolation
+  and merge combination, a variable the host does not hold, the enumeration of
+  the block and the expansion of a reference, a modification which stays in the
+  sandbox, the state of an earlier run and the state file a case writes itself,
+  a malformed isolation file
   which falls back to the environment of the host, and the references of a
   value (the canonical and another spelling of a name, a merged row, a name the
   sandbox does not know and a `%NAME%` reference of the shell).

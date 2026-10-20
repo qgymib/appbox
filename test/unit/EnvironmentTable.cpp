@@ -26,46 +26,11 @@ std::wstring MakeBlock(const std::vector<std::wstring>& entries)
 }
 
 /**
- * @brief Build an ANSI environment block from a list of entries.
- * @param[in] entries Entries of the block, each one `name=value`.
- * @return The block, terminated by a second null character.
- */
-std::string MakeAnsiBlock(const std::vector<std::string>& entries)
-{
-    std::string block;
-    for (const auto& entry : entries)
-    {
-        block.append(entry);
-        block.push_back('\0');
-    }
-    block.push_back('\0');
-    return block;
-}
-
-/**
- * @brief Read the entries of an ANSI environment block.
- * @param[in] block The block to read.
- * @return The entries of the block.
- */
-std::vector<std::string> ReadAnsiBlock(const char* block)
-{
-    std::vector<std::string> entries;
-    const char*              cursor = block;
-    while (*cursor != '\0')
-    {
-        const std::string entry(cursor);
-        entries.push_back(entry);
-        cursor += entry.size() + 1;
-    }
-    return entries;
-}
-
-/**
  * @brief Take the block of a table and release it.
- * @param[in,out] table The table to read.
+ * @param[in] table The table to read.
  * @return The entries of the block.
  */
-std::vector<std::wstring> BlockOf(appbox::environment::Table& table)
+std::vector<std::wstring> BlockOf(const appbox::environment::Table& table)
 {
     wchar_t* block = table.CreateBlock();
     EXPECT_NE(block, nullptr);
@@ -79,7 +44,8 @@ std::vector<std::wstring> BlockOf(appbox::environment::Table& table)
         cursor += entry.size() + 1;
     }
 
-    EXPECT_TRUE(table.ReleaseBlock(block));
+    /* The block becomes the environment of a process, which owns it. */
+    ::HeapFree(::GetProcessHeap(), 0, block);
     return entries;
 }
 
@@ -221,52 +187,17 @@ TEST(Unit_EnvironmentTable, BlockRoundTripsTheTable)
     EXPECT_EQ(value, L"foo;bar");
 }
 
-TEST(Unit_EnvironmentTable, ReleaseBlockRefusesABlockOfAnotherSource)
-{
-    appbox::environment::Table table;
-
-    EXPECT_FALSE(table.ReleaseBlock(nullptr));
-
-    wchar_t other[4] = { L'A', L'=', L'1', L'\0' };
-    EXPECT_FALSE(table.ReleaseBlock(other));
-
-    /* A block which the table handed out is released exactly once. */
-    wchar_t* block = table.CreateBlock();
-    ASSERT_NE(block, nullptr);
-    EXPECT_TRUE(table.ReleaseBlock(block));
-    EXPECT_FALSE(table.ReleaseBlock(block));
-}
-
-TEST(Unit_EnvironmentTable, CreateOwnedBlockIsNotOwnedByTheTable)
+TEST(Unit_EnvironmentTable, CreateBlockIsOwnedByTheCaller)
 {
     appbox::environment::Table table;
     table.Set(L"A", L"1");
 
-    wchar_t* block = table.CreateOwnedBlock();
+    wchar_t* block = table.CreateBlock();
     ASSERT_NE(block, nullptr);
     EXPECT_STREQ(block, L"A=1");
 
-    /* The caller owns the block, so the table never releases it. */
-    EXPECT_FALSE(table.ReleaseBlock(block));
+    /* The block becomes the environment of a process, which owns it. */
     ::HeapFree(::GetProcessHeap(), 0, block);
-}
-
-TEST(Unit_EnvironmentTable, CreateAnsiBlockReportsTheSameVariables)
-{
-    appbox::environment::Table table;
-    table.Set(L"A", L"1");
-    table.Set(L"B", L"2");
-
-    char* block = table.CreateAnsiBlock();
-    ASSERT_NE(block, nullptr);
-
-    const auto entries = ReadAnsiBlock(block);
-    ASSERT_EQ(entries.size(), 2u);
-    EXPECT_EQ(entries[0], "A=1");
-    EXPECT_EQ(entries[1], "B=2");
-
-    EXPECT_TRUE(table.ReleaseAnsiBlock(block));
-    EXPECT_FALSE(table.ReleaseAnsiBlock(block));
 }
 
 TEST(Unit_EnvironmentTable, ParsesTheIsolationDocument)

@@ -85,6 +85,27 @@ struct ProtocolEnvironmentRead
         std::vector<std::string> ansi_entries;
 
         /**
+         * @brief Value of every name read from the environment block the
+         *        process parameters point at.
+         *
+         * The block is read without an entry point of the environment API, so
+         * the values pin what the process itself carries and not what an entry
+         * point answers.
+         */
+        std::vector<std::string> block_values;
+
+        /**
+         * @brief Whether the environment block of the process parameters holds
+         *        the name.
+         */
+        std::vector<bool> block_found;
+
+        /**
+         * @brief Entries of the environment block of the process parameters.
+         */
+        std::vector<std::string> block_entries;
+
+        /**
          * @brief Status the lowest reader of the process environment reported
          *        for a size query which brings no value buffer at all.
          */
@@ -96,7 +117,8 @@ struct ProtocolEnvironmentRead
         std::uint32_t rtl_size_query_length = 0;
 
         NLOHMANN_DEFINE_TYPE_INTRUSIVE(Rsp, values, found, ansi_values, expanded, ansi_expanded, entries, ansi_entries,
-                                       rtl_size_query_status, rtl_size_query_length)
+                                       block_values, block_found, block_entries, rtl_size_query_status,
+                                       rtl_size_query_length)
     };
 };
 

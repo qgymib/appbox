@@ -131,6 +131,26 @@ public:
     void RecordDeletion(const std::wstring& name);
 
     /**
+     * @brief Whether the state already carries a value of a variable.
+     *
+     * A write which the runtime reports twice — the entry point of the runtime
+     * and the reader below it — records the value once, so the state document
+     * travels to the launcher once.
+     *
+     * @param[in] name Name of the variable.
+     * @param[in] value Value of the variable.
+     * @return true when the last modification of the variable stores that value.
+     */
+    bool HasValue(const std::wstring& name, const std::wstring& value) const;
+
+    /**
+     * @brief Whether the state already carries the removal of a variable.
+     * @param[in] name Name of the variable.
+     * @return true when the last modification of the variable removes it.
+     */
+    bool HasDeletion(const std::wstring& name) const;
+
+    /**
      * @brief Get a copy of every modification.
      * @return The modifications in the order of the state.
      */
