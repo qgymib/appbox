@@ -15,6 +15,12 @@ typedef NTSTATUS (*T_NtSetInformationFileProbe)(
 );
 /* clang-format on */
 
+/** @brief Class of the call of one item of the request. */
+using Action = appbox::test::ProtocolSetInformationFile::Req::Item::Action;
+
+/** @brief Access the source of one item is opened with. */
+using Access = appbox::test::ProtocolSetInformationFile::Req::Item::Access;
+
 /** Access a rename needs on the handle of the object. */
 static const ACCESS_MASK kDeleteAccess = DELETE | SYNCHRONIZE;
 
@@ -55,37 +61,34 @@ static std::wstring AsNtName(const std::wstring& path)
  * @param[out] bLink Whether the action links the object.
  * @return false when the action is unknown.
  */
-static bool ActionToClass(const std::string& action, FILE_INFORMATION_CLASS& FileInformationClass, bool& bExtended,
-                          bool& bLink)
+static bool ActionToClass(Action action, FILE_INFORMATION_CLASS& FileInformationClass, bool& bExtended, bool& bLink)
 {
-    if (action == "rename")
+    switch (action)
     {
+    case Action::Rename:
         FileInformationClass = FileRenameInformation;
         bExtended = false;
         bLink = false;
         return true;
-    }
-    if (action == "rename_ex")
-    {
+    case Action::RenameEx:
         FileInformationClass = FileRenameInformationEx;
         bExtended = true;
         bLink = false;
         return true;
-    }
-    if (action == "link")
-    {
+    case Action::Link:
         FileInformationClass = FileLinkInformation;
         bExtended = false;
         bLink = true;
         return true;
-    }
-    if (action == "link_ex")
-    {
+    case Action::LinkEx:
         FileInformationClass = FileLinkInformationEx;
         bExtended = true;
         bLink = true;
         return true;
+    case Action::Unknown:
+        break;
     }
+
     return false;
 }
 
@@ -115,7 +118,7 @@ static nlohmann::json ProbeSetInformationFile_Entry(const nlohmann::json& data)
         }
 
         const std::wstring source = appbox::UTF8ToWide(item.source);
-        const ACCESS_MASK  access = item.access == "read" ? kReadAccess : kDeleteAccess;
+        const ACCESS_MASK  access = item.access == Access::Read ? kReadAccess : kDeleteAccess;
         HANDLE             handle =
             CreateFileW(source.c_str(), access, kShareAll, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
         if (handle == INVALID_HANDLE_VALUE)

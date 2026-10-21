@@ -98,6 +98,8 @@ add_library(${sandbox_name} MODULE
     "hook/recvfrom.cpp"
     "hook/RtlCompareUnicodeString.cpp"
     "hook/RtlInitUnicodeString.cpp"
+    "hook/RtlSetCurrentEnvironment.cpp"
+    "hook/RtlSetEnvironmentStrings.cpp"
     "hook/RtlSetEnvironmentVariable.cpp"
     "hook/sendto.cpp"
     "hook/SetEnvironmentVariableA.cpp"

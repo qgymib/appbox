@@ -57,6 +57,8 @@
 #include "hook/recvfrom.hpp"
 #include "hook/RtlCompareUnicodeString.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
+#include "hook/RtlSetCurrentEnvironment.hpp"
+#include "hook/RtlSetEnvironmentStrings.hpp"
 #include "hook/RtlSetEnvironmentVariable.hpp"
 #include "hook/sendto.hpp"
 #include "hook/SetEnvironmentVariableA.hpp"
@@ -126,6 +128,8 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookRecvFrom,
     &appbox::HookRtlCompareUnicodeString,
     &appbox::HookRtlInitUnicodeString,
+    &appbox::HookRtlSetCurrentEnvironment,
+    &appbox::HookRtlSetEnvironmentStrings,
     &appbox::HookRtlSetEnvironmentVariable,
     &appbox::HookSendTo,
     &appbox::HookSetEnvironmentVariableA,

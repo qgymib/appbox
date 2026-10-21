@@ -41,7 +41,7 @@ TEST_F(E2E_Reg, DeleteKey_ReadHandle)
 
     ProtocolRegDeleteKey::Req req;
     req.Key = appbox::WideToUTF8(subkey);
-    req.Mode = "read_handle";
+    req.Mode = ProtocolRegDeleteKey::ModeKind::ReadHandle;
 
     const auto rsp = ProbeRegDeleteKey.Call(req, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();
     ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));

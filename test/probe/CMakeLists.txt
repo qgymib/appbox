@@ -86,6 +86,11 @@ add_executable(${probe_name}
     "${CMAKE_CURRENT_SOURCE_DIR}/../utils/NtDirectoryQuery.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../utils/ReadFileFull.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../utils/RegistryRootKey.cpp"
+
+    # The probe names the environment of the process the way the runtime of the
+    # operating system does, so it reads the address of the environment pointer
+    # of the process parameters with the helper of the sandbox.
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../sandbox/utils/GetPEB.cpp"
 )
 setup_target_wall(${probe_name})
 set_target_properties(${probe_name}

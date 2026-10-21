@@ -24,11 +24,11 @@ struct ProtocolSocketTraffic
      */
     enum class Operation
     {
-        TcpEcho,               /* Connect, send a payload and read the echo. */
-        TcpConnect,            /* Connect and report the result only. */
-        TcpConnectNonBlocking, /* Connect on a non-blocking socket and report the mode afterwards. */
-        UdpEcho,               /* Send a datagram and read the answer. */
-        UdpSendOnly,           /* Send a datagram without waiting for an answer. */
+        TcpEcho,               ///< Connect, send a payload and read the echo.
+        TcpConnect,            ///< Connect and report the result only.
+        TcpConnectNonBlocking, ///< Connect on a non-blocking socket and report the mode afterwards.
+        UdpEcho,               ///< Send a datagram and read the answer.
+        UdpSendOnly,           ///< Send a datagram without waiting for an answer.
     };
 
     /**
@@ -122,6 +122,22 @@ struct ProtocolSocketTraffic
         NLOHMANN_DEFINE_TYPE_INTRUSIVE(Rsp, results)
     };
 };
+
+/**
+ * @brief The tokens of Operation, which the protocol carries as text.
+ *
+ * The first entry is the value the reader falls back to for a token it does not
+ * know, so an unknown token connects, sends and reads the echo.
+ */
+NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolSocketTraffic::Operation,
+                             {
+                                 { ProtocolSocketTraffic::Operation::TcpEcho,               "tcp_echo"      },
+                                 { ProtocolSocketTraffic::Operation::TcpConnect,            "tcp_connect"   },
+                                 { ProtocolSocketTraffic::Operation::TcpConnectNonBlocking,
+                                  "tcp_connect_non_blocking"                                                },
+                                 { ProtocolSocketTraffic::Operation::UdpEcho,               "udp_echo"      },
+                                 { ProtocolSocketTraffic::Operation::UdpSendOnly,           "udp_send_only" },
+})
 
 /**
  * @brief Carry the traffic of an application through the socket API.

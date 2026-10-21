@@ -31,22 +31,63 @@ namespace appbox::test
  */
 struct ProtocolRegTransacted
 {
+    /**
+     * @brief Transacted entry point the probe calls.
+     *
+     * - `Create` - `NtCreateKeyTransacted`. This is the default.
+     * - `Open` - `NtOpenKeyTransacted`.
+     * - `OpenEx` - `NtOpenKeyTransactedEx`.
+     */
+    enum class ApiKind
+    {
+        Create, ///< `create`, runs `NtCreateKeyTransacted`.
+        Open,   ///< `open`, runs `NtOpenKeyTransacted`.
+        OpenEx  ///< `open_ex`, runs `NtOpenKeyTransactedEx`.
+    };
+
+    /**
+     * @brief Access the key is opened with.
+     *
+     * - `Write` - `KEY_ALL_ACCESS`. This is the default.
+     * - `Read` - `KEY_READ`.
+     */
+    enum class AccessKind
+    {
+        Write, ///< `write`, opens with `KEY_ALL_ACCESS`.
+        Read   ///< `read`, opens with `KEY_READ`.
+    };
+
+    /**
+     * @brief How the transaction ends.
+     *
+     * - `Close` - the handle of the transaction is closed, which commits it as
+     *   well because it is the last handle. This is the default.
+     * - `Commit` - `CommitTransaction`.
+     * - `Rollback` - `RollbackTransaction`.
+     */
+    enum class EndKind
+    {
+        Close,   ///< `close`, closes the handle, which commits the transaction.
+        Commit,  ///< `commit`, commits the transaction.
+        Rollback ///< `rollback`, rolls the transaction back.
+    };
+
     struct Req
     {
-        std::string Root;      /* Root key name, empty means HKEY_CURRENT_USER. */
-        std::string Hive;      /* DOS path of an application hive the probe mounts itself, empty for a root key of
-                                * the view. A hive which the probe mounts is a path outside the view, so the
-                                * transacted call names an object the isolation does not redirect. */
-        std::string Key;       /* Key path relative to the root key, or to the mounted hive. Encoding in UTF-8. */
-        std::string Api;       /* `create` runs NtCreateKeyTransacted, `open` NtOpenKeyTransacted and `open_ex`
-                                * NtOpenKeyTransactedEx. */
-        std::string Access;    /* `read` opens with KEY_READ, every other value with KEY_ALL_ACCESS. */
-        std::string Value;     /* Name of the value the probe writes through the handle, empty for no write. */
-        std::string Data;      /* Data of the value, written as REG_SZ. */
-        std::string End;       /* `commit` commits the transaction, `rollback` rolls it back, every other value
-                                * closes the handle, which commits the transaction as well. */
-        bool ReadBack = true;  /* Read the value back inside the transaction. */
-        bool ReadAfter = true; /* Read the value again after the transaction ended. */
+        std::string Root;                       /* Root key name, empty means HKEY_CURRENT_USER. */
+        std::string Hive;                       /* DOS path of an application hive the probe mounts itself, empty
+                                                 * for a root key of the view. A hive which the probe mounts is a
+                                                 * path outside the view, so the transacted call names an object the
+                                                 * isolation does not redirect. */
+        std::string Key;                        /* Key path relative to the root key, or to the mounted hive. */
+        ApiKind     Api = ApiKind::Create;      /* Entry point of the call, see ApiKind. */
+        AccessKind  Access = AccessKind::Write; /* Access of the open, see AccessKind. */
+        std::string Value;                      /* Name of the value the probe writes through the handle, empty
+                                                 * for no write. */
+        std::string Data;                       /* Data of the value, written as REG_SZ. */
+        EndKind     End = EndKind::Close;       /* End of the transaction, see EndKind. */
+        bool        ReadBack = true;            /* Read the value back inside the transaction. */
+        bool        ReadAfter = true;           /* Read the value again after the transaction ended. */
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, Root, Hive, Key, Api, Access, Value, Data, End, ReadBack,
                                                     ReadAfter)
     };
@@ -70,6 +111,43 @@ struct ProtocolRegTransacted
                                                     after)
     };
 };
+
+/**
+ * @brief The tokens of ApiKind, which the protocol carries as text.
+ *
+ * The first entry is the value the reader falls back to for a token it does not
+ * know, so an unknown token creates the key.
+ */
+NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolRegTransacted::ApiKind, {
+                                                                 { ProtocolRegTransacted::ApiKind::Create, "create"  },
+                                                                 { ProtocolRegTransacted::ApiKind::Open,   "open"    },
+                                                                 { ProtocolRegTransacted::ApiKind::OpenEx, "open_ex" },
+})
+
+/**
+ * @brief The tokens of AccessKind, which the protocol carries as text.
+ *
+ * The first entry is the value the reader falls back to for a token it does not
+ * know, so an unknown token opens the key with `KEY_ALL_ACCESS`.
+ */
+NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolRegTransacted::AccessKind,
+                             {
+                                 { ProtocolRegTransacted::AccessKind::Write, "write" },
+                                 { ProtocolRegTransacted::AccessKind::Read,  "read"  },
+})
+
+/**
+ * @brief The tokens of EndKind, which the protocol carries as text.
+ *
+ * The first entry is the value the reader falls back to for a token it does not
+ * know, so an unknown token closes the handle, which commits the transaction.
+ */
+NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolRegTransacted::EndKind,
+                             {
+                                 { ProtocolRegTransacted::EndKind::Close,    "close"    },
+                                 { ProtocolRegTransacted::EndKind::Commit,   "commit"   },
+                                 { ProtocolRegTransacted::EndKind::Rollback, "rollback" },
+})
 
 /**
  * @brief Transacted key probe: run a transacted open or create inside the

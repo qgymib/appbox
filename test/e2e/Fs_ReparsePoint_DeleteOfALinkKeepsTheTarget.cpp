@@ -59,27 +59,27 @@ TEST_F(E2E_Fs, ReparsePoint_DeleteOfALinkKeepsTheTarget)
     ProtocolReparsePoint::Req req;
 
     ProtocolReparsePoint::Req::Item link;
-    link.action = "attributes";
+    link.action = ProtocolReparsePoint::Req::Item::Action::Attributes;
     link.path = appbox::WideToUTF8(folder + L"\\link");
     req.items.push_back(link);
 
     ProtocolReparsePoint::Req::Item through_link;
-    through_link.action = "read_text";
+    through_link.action = ProtocolReparsePoint::Req::Item::Action::ReadText;
     through_link.path = appbox::WideToUTF8(folder + L"\\link\\data.txt");
     req.items.push_back(through_link);
 
     ProtocolReparsePoint::Req::Item remove;
-    remove.action = "remove_dir";
+    remove.action = ProtocolReparsePoint::Req::Item::Action::RemoveDir;
     remove.path = appbox::WideToUTF8(folder + L"\\link");
     req.items.push_back(remove);
 
     ProtocolReparsePoint::Req::Item link_after;
-    link_after.action = "attributes";
+    link_after.action = ProtocolReparsePoint::Req::Item::Action::Attributes;
     link_after.path = appbox::WideToUTF8(folder + L"\\link");
     req.items.push_back(link_after);
 
     ProtocolReparsePoint::Req::Item target_after;
-    target_after.action = "read_text";
+    target_after.action = ProtocolReparsePoint::Req::Item::Action::ReadText;
     target_after.path = appbox::WideToUTF8(folder + L"\\target\\data.txt");
     req.items.push_back(target_after);
 

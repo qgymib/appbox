@@ -47,8 +47,8 @@ TEST_F(E2E_Reg, SetInformationKey_ReadHandle)
 
     ProtocolRegKeyApi::Req req;
     req.Key = appbox::WideToUTF8(subkey);
-    req.Api = "NtSetInformationKey";
-    req.Mode = "read_handle";
+    req.Api = ProtocolRegKeyApi::ApiKind::SetInformationKey;
+    req.Mode = ProtocolRegKeyApi::ModeKind::ReadHandle;
 
     const auto rsp = ProbeRegKeyApi.Call(req, GetCWD(), config).get<ProtocolRegKeyApi::Rsp>();
     ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));

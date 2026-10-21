@@ -71,6 +71,8 @@ static std::wstring QueryName(T_NtQueryInformationFileProbe fn_query, HANDLE han
 
 static nlohmann::json ProbeQueryInformationFile_Entry(const nlohmann::json& data)
 {
+    using Mode = appbox::test::ProtocolQueryInformationFile::Req::Item::Mode;
+
     const auto req = data.get<appbox::test::ProtocolQueryInformationFile::Req>();
 
     appbox::test::ProtocolQueryInformationFile::Rsp rsp;
@@ -93,7 +95,7 @@ static nlohmann::json ProbeQueryInformationFile_Entry(const nlohmann::json& data
         }
 
         const std::wstring path = appbox::UTF8ToWide(item.path);
-        const DWORD        access = item.mode == "write" ? (GENERIC_READ | GENERIC_WRITE) : GENERIC_READ;
+        const DWORD        access = item.mode == Mode::Write ? (GENERIC_READ | GENERIC_WRITE) : GENERIC_READ;
 
         HANDLE handle = CreateFileW(path.c_str(), access, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                     nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);

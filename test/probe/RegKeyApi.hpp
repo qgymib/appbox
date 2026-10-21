@@ -29,13 +29,45 @@ constexpr uint64_t kProbeWriteTime = 126227808000000000ULL;
  */
 struct ProtocolRegKeyApi
 {
+    /**
+     * @brief Entry point the probe calls on the handle.
+     *
+     * - `Unknown` - no call at all, which is the default of the member, so a
+     *   request which names no entry point leaves the key untouched.
+     * - `SetInformationKey` - `NtSetInformationKey` with
+     *   `KeyWriteTimeInformation`, the only call which changes the key.
+     * - `FlushKey` - `NtFlushKey`.
+     * - `CompressKey` - `NtCompressKey`.
+     * - `LockRegistryKey` - `NtLockRegistryKey`.
+     */
+    enum class ApiKind
+    {
+        Unknown,           ///< No call at all.
+        SetInformationKey, ///< `NtSetInformationKey(KeyWriteTimeInformation)`.
+        FlushKey,          ///< `NtFlushKey`.
+        CompressKey,       ///< `NtCompressKey`.
+        LockRegistryKey    ///< `NtLockRegistryKey`.
+    };
+
+    /**
+     * @brief Layer of the handle the call runs on.
+     *
+     * - `ReadHandle` - the key is opened read only, which the isolation answers
+     *   with a handle of the host layer (the read through). This is the default.
+     * - `HiveHandle` - the key is opened for writing, which the isolation
+     *   answers with a handle of the sandbox hive.
+     */
+    enum class ModeKind
+    {
+        ReadHandle, ///< Read only open, answered with a handle of the host layer.
+        HiveHandle  ///< Write open, answered with a handle of the sandbox hive.
+    };
+
     struct Req
     {
-        std::string Key;  /* Key path relative to HKCU. Encoding in UTF-8. */
-        std::string Api;  /* `NtSetInformationKey`, `NtFlushKey`, `NtCompressKey` or `NtLockRegistryKey`. */
-        std::string Mode; /* `hive_handle` opens the key for writing, which the isolation answers with a
-                           * handle of the sandbox hive; `read_handle` opens it read only, which the
-                           * isolation answers with a handle of the host layer (the read through). */
+        std::string Key;                         /* Key path relative to HKCU. Encoding in UTF-8. */
+        ApiKind     Api = ApiKind::Unknown;      /* Entry point of the call, see ApiKind. */
+        ModeKind    Mode = ModeKind::ReadHandle; /* Layer of the handle, see ModeKind. */
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, Key, Api, Mode)
     };
 
@@ -50,6 +82,34 @@ struct ProtocolRegKeyApi
                                                     write_time_after)
     };
 };
+
+/**
+ * @brief The tokens of ApiKind, which the protocol carries as text.
+ *
+ * The first entry carries no token: the reader falls back to it for a token it
+ * does not know and the writer spells it as `null`, so a token which the probe
+ * does not know never calls an entry point.
+ */
+NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolRegKeyApi::ApiKind,
+                             {
+                                 { ProtocolRegKeyApi::ApiKind::Unknown,           nullptr               },
+                                 { ProtocolRegKeyApi::ApiKind::SetInformationKey, "NtSetInformationKey" },
+                                 { ProtocolRegKeyApi::ApiKind::FlushKey,          "NtFlushKey"          },
+                                 { ProtocolRegKeyApi::ApiKind::CompressKey,       "NtCompressKey"       },
+                                 { ProtocolRegKeyApi::ApiKind::LockRegistryKey,   "NtLockRegistryKey"   },
+})
+
+/**
+ * @brief The tokens of ModeKind, which the protocol carries as text.
+ *
+ * The first entry is the value the reader falls back to for a token it does not
+ * know, so an unknown token opens the key read only.
+ */
+NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolRegKeyApi::ModeKind,
+                             {
+                                 { ProtocolRegKeyApi::ModeKind::ReadHandle, "read_handle" },
+                                 { ProtocolRegKeyApi::ModeKind::HiveHandle, "hive_handle" },
+})
 
 /**
  * @brief Remaining key API probe: call a key entry point of the isolation on a

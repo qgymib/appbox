@@ -4,6 +4,7 @@
 #include "utils/HiveBuilder.hpp"
 #include "Random.hpp"
 #include "WString.hpp"
+#include <utility>
 #include <vector>
 
 typedef appbox::test::CommonFixture E2E_Reg;
@@ -61,23 +62,29 @@ TEST_F(E2E_Reg, Transacted_OpenIsRefused)
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;
 
-    for (const char* api : { "open", "open_ex" })
+    /* The entry points the case asks for, with the token the messages name. */
+    const std::pair<ProtocolRegTransacted::ApiKind, const char*> apis[] = {
+        { ProtocolRegTransacted::ApiKind::Open,   "open"    },
+        { ProtocolRegTransacted::ApiKind::OpenEx, "open_ex" },
+    };
+
+    for (const auto& [api, api_name] : apis)
     {
         ProtocolRegTransacted::Req req;
         req.Api = api;
-        req.Access = "read";
+        req.Access = ProtocolRegTransacted::AccessKind::Read;
         req.Key = appbox::WideToUTF8(subkey);
         req.Value = "SandboxValue";
-        req.End = "close";
+        req.End = ProtocolRegTransacted::EndKind::Close;
 
         const auto rsp = ProbeRegTransacted.Call(req, GetCWD(), config).get<ProtocolRegTransacted::Rsp>();
         ASSERT_EQ(rsp.mount_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.tx_code, static_cast<DWORD>(ERROR_SUCCESS));
-        EXPECT_EQ(rsp.call_code, static_cast<DWORD>(STATUS_NOT_SUPPORTED)) << "api: " << api;
+        EXPECT_EQ(rsp.call_code, static_cast<DWORD>(STATUS_NOT_SUPPORTED)) << "api: " << api_name;
 
         /* The key of the sandbox is still part of the view. */
-        EXPECT_EQ(rsp.after_open_code, static_cast<DWORD>(ERROR_SUCCESS)) << "api: " << api;
-        EXPECT_EQ(rsp.after_read_code, static_cast<DWORD>(ERROR_SUCCESS)) << "api: " << api;
-        EXPECT_EQ(rsp.after, "sandbox") << "api: " << api;
+        EXPECT_EQ(rsp.after_open_code, static_cast<DWORD>(ERROR_SUCCESS)) << "api: " << api_name;
+        EXPECT_EQ(rsp.after_read_code, static_cast<DWORD>(ERROR_SUCCESS)) << "api: " << api_name;
+        EXPECT_EQ(rsp.after, "sandbox") << "api: " << api_name;
     }
 }

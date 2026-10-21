@@ -124,8 +124,14 @@ public:
      * sandbox reports it like the block of the host does.
      *
      * @param[in] block The block to read, may be null.
+     * @param[in] size_in_bytes Length of the block in bytes, zero for a block
+     *                          which ends with a double null character. The
+     *                          length is what `RtlSetEnvironmentStrings`
+     *                          receives from its caller, so a block which is not
+     *                          terminated is read up to its end instead of
+     *                          running past the buffer of the caller.
      */
-    void AssignBlock(const wchar_t* block);
+    void AssignBlock(const wchar_t* block, std::size_t size_in_bytes = 0);
 
     /**
      * @brief Build an environment block of the whole table.

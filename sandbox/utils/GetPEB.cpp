@@ -12,6 +12,16 @@
 // Pointer to 32-bit PEB_LDR_DATA is at offset 0x000C of 32-bit PEB
 #define GET_ADDR_OF_PEB NtCurrentPeb()
 
+// Offset of the environment pointer inside the process parameters. The
+// structure is not part of the headers of the SDK, so the offset is spelled out;
+// it is the one `RtlSetEnvironmentVar` of `ntdll` reads and writes (0x80 in a 64
+// bit process, 0x48 in a 32 bit one).
+#ifdef _WIN64
+#define PROCESS_PARAMETERS_ENVIRONMENT_OFFSET 0x80
+#else
+#define PROCESS_PARAMETERS_ENVIRONMENT_OFFSET 0x48
+#endif
+
 #ifdef _WIN64
 
 #define GET_PEB_LDR_DATA (*(PEB_LDR_DATA**)(GET_ADDR_OF_PEB + 0x18))
@@ -45,6 +55,18 @@ appbox::PEB appbox::GetPEB()
 #endif
 
     return p;
+}
+
+PWSTR* appbox::GetProcessEnvironmentSlot()
+{
+    const auto peb = reinterpret_cast<PPEB>(GET_ADDR_OF_PEB);
+    if (peb == nullptr || peb->ProcessParameters == nullptr)
+    {
+        return nullptr;
+    }
+
+    auto* parameters = reinterpret_cast<BYTE*>(peb->ProcessParameters);
+    return reinterpret_cast<PWSTR*>(parameters + PROCESS_PARAMETERS_ENVIRONMENT_OFFSET);
 }
 
 std::wstring appbox::GetImagePathFromPeb()

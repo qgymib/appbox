@@ -23,6 +23,8 @@ typedef NTSTATUS (*T_NtDeleteKey)(HANDLE KeyHandle);
  */
 static nlohmann::json ProbeRegDeleteKey_Entry(const nlohmann::json& data)
 {
+    using ModeKind = appbox::test::ProtocolRegDeleteKey::ModeKind;
+
     auto req = data.get<appbox::test::ProtocolRegDeleteKey::Req>();
 
     appbox::test::ProtocolRegDeleteKey::Rsp rsp;
@@ -36,7 +38,7 @@ static nlohmann::json ProbeRegDeleteKey_Entry(const nlohmann::json& data)
 
     const auto key_path = appbox::UTF8ToWide(req.Key);
 
-    if (req.Mode == "read_handle")
+    if (req.Mode == ModeKind::ReadHandle)
     {
         /*
          * A read access open is answered by the real registry (the read

@@ -17,11 +17,41 @@ struct ProtocolReparsePoint
         struct Item
         {
             /**
-             * Action of the item: `junction`, `symlink`, `set_tag`, `remove`,
-             * `read`, `attributes`, `full_attributes`, `read_text` or
-             * `remove_dir`.
+             * @brief Action of the item.
+             *
+             * - `Unknown` - the probe does not know the action and answers
+             *   `STATUS_INVALID_PARAMETER`. The reader falls back to it for a
+             *   token it does not know and it is the default of the member, so a
+             *   request without an action fails instead of acting on the path in
+             *   a way the case did not ask for.
+             * - `Junction` - create a junction with `FSCTL_SET_REPARSE_POINT`.
+             * - `Symlink` - create a symbolic link with `CreateSymbolicLinkW`.
+             * - `SetTag` - create a link whose tag the item selects.
+             * - `Remove` - remove the data of a link with
+             *   `FSCTL_DELETE_REPARSE_POINT`.
+             * - `Read` - read the data of a link with `FSCTL_GET_REPARSE_POINT`.
+             * - `Attributes` - read the attributes with `GetFileAttributesW`.
+             * - `FullAttributes` - read the attributes together with the
+             *   reparse point with `GetFileAttributesExW`.
+             * - `ReadText` - read the content of the file a link names.
+             * - `RemoveDir` - remove a directory with `RemoveDirectoryW`.
              */
-            std::string action;
+            enum class Action
+            {
+                Unknown,        ///< An action the probe does not know.
+                Junction,       ///< Create a junction.
+                Symlink,        ///< Create a symbolic link.
+                SetTag,         ///< Create a link whose tag the item selects.
+                Remove,         ///< Remove the data of a link.
+                Read,           ///< Read the data of a link.
+                Attributes,     ///< Read the attributes of the entry.
+                FullAttributes, ///< Read the attributes and the reparse point of the entry.
+                ReadText,       ///< Read the content of the file a link names.
+                RemoveDir       ///< Remove a directory.
+            };
+
+            /** Action of the item, see Action. */
+            Action action = Action::Unknown;
 
             /** View path the action acts on. */
             std::string path;
@@ -83,6 +113,27 @@ struct ProtocolReparsePoint
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, items)
     };
 };
+
+/**
+ * @brief The tokens of Action, which the protocol carries as text.
+ *
+ * The first entry carries no token: the reader falls back to it for a token it
+ * does not know and the writer spells it as `null`, so a token which the probe
+ * does not know is never taken for an action of the path.
+ */
+NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolReparsePoint::Req::Item::Action,
+                             {
+                                 { ProtocolReparsePoint::Req::Item::Action::Unknown,        nullptr           },
+                                 { ProtocolReparsePoint::Req::Item::Action::Junction,       "junction"        },
+                                 { ProtocolReparsePoint::Req::Item::Action::Symlink,        "symlink"         },
+                                 { ProtocolReparsePoint::Req::Item::Action::SetTag,         "set_tag"         },
+                                 { ProtocolReparsePoint::Req::Item::Action::Remove,         "remove"          },
+                                 { ProtocolReparsePoint::Req::Item::Action::Read,           "read"            },
+                                 { ProtocolReparsePoint::Req::Item::Action::Attributes,     "attributes"      },
+                                 { ProtocolReparsePoint::Req::Item::Action::FullAttributes, "full_attributes" },
+                                 { ProtocolReparsePoint::Req::Item::Action::ReadText,       "read_text"       },
+                                 { ProtocolReparsePoint::Req::Item::Action::RemoveDir,      "remove_dir"      },
+})
 
 /**
  * @brief Reparse point probe.

@@ -6,6 +6,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "utils/GetPEB.hpp"
 #include "utils/Log.hpp"
 #include "utils/VariableExpansion.hpp"
 #include "msg/Environment.hpp"
@@ -116,6 +117,36 @@ void ApplyModifications(const std::vector<appbox::environment::Modification>& mo
 }
 
 /**
+ * @brief Whether the current thread is inside PersistState().
+ *
+ * The document is built and sent from a hook, so a write the runtime of the
+ * application makes while the document is built or sent — the log of a failure
+ * writes to a file, for example — would enter the hook again. The nested call
+ * returns, and the record it made is part of the document of the outer call,
+ * which is built after the record and not before it.
+ */
+thread_local bool s_persisting = false;
+
+/**
+ * @brief Mark the thread as persisting the state while the call is running.
+ */
+struct PersistGuard
+{
+    PersistGuard()
+    {
+        s_persisting = true;
+    }
+
+    ~PersistGuard()
+    {
+        s_persisting = false;
+    }
+
+    PersistGuard(const PersistGuard&) = delete;
+    PersistGuard& operator=(const PersistGuard&) = delete;
+};
+
+/**
  * @brief Send the state of the sandbox to the launcher.
  *
  * The launcher owns the state directory of the sandbox and writes the document
@@ -129,6 +160,14 @@ void PersistState()
     {
         return;
     }
+
+    if (s_persisting)
+    {
+        /* The outer call sends the document which carries this record as well. */
+        return;
+    }
+
+    PersistGuard guard;
 
     try
     {
@@ -390,7 +429,7 @@ bool appbox::environment::Isolation::Remove(const std::wstring& name)
     return true;
 }
 
-void appbox::environment::Isolation::AssignBlock(const wchar_t* block)
+void appbox::environment::Isolation::AssignBlock(const wchar_t* block, std::size_t size_in_bytes)
 {
     if (appbox::sandbox == nullptr)
     {
@@ -398,19 +437,64 @@ void appbox::environment::Isolation::AssignBlock(const wchar_t* block)
     }
 
     /*
-     * The application replaced the whole environment, so the state is replaced
-     * as well: the block is the new environment and nothing of what the
-     * application did before is part of it any more.
+     * The block the application installed is the new environment of the process,
+     * so it replaces the table of the sandbox. The state records the difference
+     * between the block and the environment the sandbox composed, because that
+     * difference is what the next run has to apply on top of its own layers: a
+     * block which carries the environment of the process unchanged records
+     * nothing, and a variable the block dropped is a removal.
      */
-    appbox::sandbox->env_table.AssignBlock(block);
-    appbox::sandbox->env_state.Clear();
+    appbox::environment::Table installed;
+    installed.AssignBlock(block, size_in_bytes);
+
+    for (const auto& variable : installed.Entries())
+    {
+        if (variable.name.empty() || variable.name.find(L'=') != std::wstring::npos)
+        {
+            /* The state of the sandbox refuses such a name, see Store(). */
+            continue;
+        }
+
+        std::wstring composed;
+        if (!appbox::sandbox->env_table.Get(variable.name, composed) || composed != variable.value)
+        {
+            appbox::sandbox->env_state.Record(variable.name, variable.value);
+        }
+    }
 
     for (const auto& variable : appbox::sandbox->env_table.Entries())
     {
-        appbox::sandbox->env_state.Record(variable.name, variable.value);
+        if (variable.name.empty() || variable.name.find(L'=') != std::wstring::npos)
+        {
+            continue;
+        }
+
+        if (!installed.Contains(variable.name))
+        {
+            appbox::sandbox->env_state.RecordDeletion(variable.name);
+        }
     }
 
+    appbox::sandbox->env_table.AssignBlock(block, size_in_bytes);
+
     PersistState();
+}
+
+bool appbox::environment::IsProcessEnvironment(PWSTR* environment)
+{
+    if (environment == nullptr)
+    {
+        /* A null block names the environment of the process. */
+        return true;
+    }
+
+    /*
+     * The address of the environment pointer of the process parameters names the
+     * same environment: `RtlSetEnvironmentVar` compares the block it is given
+     * against that pointer and takes the lock of the process block when the two
+     * match, so the two spellings are one call.
+     */
+    return environment == appbox::GetProcessEnvironmentSlot();
 }
 
 void appbox::environment::Isolation::Clear()

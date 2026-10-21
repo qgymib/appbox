@@ -42,7 +42,7 @@ TEST_F(E2E_Reg, DeleteKey_WhiteoutHostKey)
 
     ProtocolRegDeleteKey::Req req;
     req.Key = appbox::WideToUTF8(subkey);
-    req.Mode = "reg";
+    req.Mode = ProtocolRegDeleteKey::ModeKind::Reg;
 
     const auto rsp = ProbeRegDeleteKey.Call(req, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();
     EXPECT_EQ(rsp.delete_code, static_cast<DWORD>(ERROR_SUCCESS));

@@ -59,19 +59,19 @@ TEST_F(E2E_Fs, ReparsePoint_UnknownTagIsForwarded)
     ProtocolReparsePoint::Req req;
 
     ProtocolReparsePoint::Req::Item create;
-    create.action = "set_tag";
+    create.action = ProtocolReparsePoint::Req::Item::Action::SetTag;
     create.path = appbox::WideToUTF8(folder + L"\\entry.txt");
     create.tag = kForeignTag;
     create.directory = false;
     req.items.push_back(create);
 
     ProtocolReparsePoint::Req::Item attributes;
-    attributes.action = "attributes";
+    attributes.action = ProtocolReparsePoint::Req::Item::Action::Attributes;
     attributes.path = appbox::WideToUTF8(folder + L"\\entry.txt");
     req.items.push_back(attributes);
 
     ProtocolReparsePoint::Req::Item read;
-    read.action = "read";
+    read.action = ProtocolReparsePoint::Req::Item::Action::Read;
     read.path = appbox::WideToUTF8(folder + L"\\entry.txt");
     req.items.push_back(read);
 

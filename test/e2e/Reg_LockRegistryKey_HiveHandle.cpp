@@ -53,8 +53,8 @@ TEST_F(E2E_Reg, LockRegistryKey_HiveHandle)
 
     ProtocolRegKeyApi::Req req;
     req.Key = appbox::WideToUTF8(subkey);
-    req.Api = "NtLockRegistryKey";
-    req.Mode = "hive_handle";
+    req.Api = ProtocolRegKeyApi::ApiKind::LockRegistryKey;
+    req.Mode = ProtocolRegKeyApi::ModeKind::HiveHandle;
 
     const auto rsp = ProbeRegKeyApi.Call(req, GetCWD(), config).get<ProtocolRegKeyApi::Rsp>();
     ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));

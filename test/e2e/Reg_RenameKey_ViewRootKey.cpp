@@ -71,7 +71,7 @@ TEST_F(E2E_Reg, RenameKey_ViewRootKey)
     req.Root = "HKEY_USERS";
     req.Key = appbox::WideToUTF8(sid); /* The root key of the view itself. */
     req.NewName = "HKCU_Renamed";
-    req.Mode = "hive_handle";
+    req.Mode = ProtocolRegRenameKey::ModeKind::HiveHandle;
 
     const auto rsp = ProbeRegRenameKey.Call(req, GetCWD(), config).get<ProtocolRegRenameKey::Rsp>();
     ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));

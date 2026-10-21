@@ -17,11 +17,26 @@ namespace appbox::test
  */
 struct ProtocolRegDeleteKey
 {
+    /**
+     * @brief Entry point the probe deletes through.
+     *
+     * - `Reg` - `RegDeleteKeyW`, which opens the key with the right to delete,
+     *   a write access which the isolation copies up into the hive for
+     *   `WriteCopy`. This is the default.
+     * - `ReadHandle` - `NtDeleteKey` on a handle which was opened read only,
+     *   which the read through answers with a handle of the real registry.
+     */
+    enum class ModeKind
+    {
+        Reg,       ///< `reg`, deletes through `RegDeleteKeyW`.
+        ReadHandle ///< `read_handle`, deletes through `NtDeleteKey`.
+    };
+
     struct Req
     {
-        std::string Root; /* Root key name, empty means HKEY_CURRENT_USER. */
-        std::string Key;  /* Key path relative to the root key. Encoding in UTF-8. */
-        std::string Mode; /* `reg` deletes through RegDeleteKeyW, `read_handle` through NtDeleteKey. */
+        std::string Root;                 /* Root key name, empty means HKEY_CURRENT_USER. */
+        std::string Key;                  /* Key path relative to the root key. Encoding in UTF-8. */
+        ModeKind    Mode = ModeKind::Reg; /* Entry point of the delete, see ModeKind. */
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Req, Root, Key, Mode)
     };
 
@@ -37,15 +52,24 @@ struct ProtocolRegDeleteKey
 };
 
 /**
+ * @brief The tokens of ModeKind, which the protocol carries as text.
+ *
+ * The first entry is the value the reader falls back to for a token it does not
+ * know, so an unknown token deletes through `RegDeleteKeyW`.
+ */
+NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolRegDeleteKey::ModeKind,
+                             {
+                                 { ProtocolRegDeleteKey::ModeKind::Reg,        "reg"         },
+                                 { ProtocolRegDeleteKey::ModeKind::ReadHandle, "read_handle" },
+})
+
+/**
  * @brief Delete key probe: delete a key of the view and report the view after
  *        the call.
  *
- * The `reg` mode deletes through `RegDeleteKeyW`, which opens the key with the
- * right to delete — a write access which the isolation copies up into the hive
- * for `WriteCopy`. The `read_handle` mode opens the key read only (which the
- * read through answers with a handle of the real registry) and calls
- * `NtDeleteKey` on that handle: the call must not reach the real registry, and
- * the delete code of the kernel is reported so a test can pin the behaviour.
+ * A `ReadHandle` request calls `NtDeleteKey` on a handle of the real registry:
+ * the call must not reach the host, and the delete code of the kernel is
+ * reported so a test can pin the behaviour.
  */
 extern Probe ProbeRegDeleteKey;
 

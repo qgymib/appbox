@@ -79,10 +79,10 @@ TEST_F(E2E_Fs, Link_LowerLayer)
     {
         ProtocolSetInformationFile::Req       req;
         ProtocolSetInformationFile::Req::Item item;
-        item.action = "link";
+        item.action = ProtocolSetInformationFile::Req::Item::Action::Link;
         item.source = appbox::WideToUTF8(Folder() + L"\\data.txt");
         item.target = appbox::WideToUTF8(Folder() + L"\\linked.txt");
-        item.access = "read";
+        item.access = ProtocolSetInformationFile::Req::Item::Access::Read;
         req.items.push_back(item);
 
         const auto rsp = ProbeSetInformationFile.Call(req, GetCWD(), config).get<ProtocolSetInformationFile::Rsp>();

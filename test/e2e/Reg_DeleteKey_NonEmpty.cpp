@@ -50,7 +50,7 @@ TEST_F(E2E_Reg, DeleteKey_NonEmpty)
     /* The key which still holds a visible sub key cannot be deleted. */
     ProtocolRegDeleteKey::Req blocked;
     blocked.Key = appbox::WideToUTF8(subkey);
-    blocked.Mode = "reg";
+    blocked.Mode = ProtocolRegDeleteKey::ModeKind::Reg;
 
     const auto blocked_rsp = ProbeRegDeleteKey.Call(blocked, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();
     EXPECT_EQ(blocked_rsp.delete_code, static_cast<DWORD>(ERROR_ACCESS_DENIED));
@@ -59,7 +59,7 @@ TEST_F(E2E_Reg, DeleteKey_NonEmpty)
     /* The sub key of the host is deleted inside the sandbox. */
     ProtocolRegDeleteKey::Req child;
     child.Key = appbox::WideToUTF8(subkey + L"\\HostChild");
-    child.Mode = "reg";
+    child.Mode = ProtocolRegDeleteKey::ModeKind::Reg;
 
     const auto child_rsp = ProbeRegDeleteKey.Call(child, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();
     EXPECT_EQ(child_rsp.delete_code, static_cast<DWORD>(ERROR_SUCCESS));

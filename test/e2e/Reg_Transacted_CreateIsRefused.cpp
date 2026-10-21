@@ -41,12 +41,12 @@ TEST_F(E2E_Reg, Transacted_CreateIsRefused)
     const std::string expected = "Transacted";
 
     ProtocolRegTransacted::Req req;
-    req.Api = "create";
-    req.Access = "write";
+    req.Api = ProtocolRegTransacted::ApiKind::Create;
+    req.Access = ProtocolRegTransacted::AccessKind::Write;
     req.Key = appbox::WideToUTF8(subkey);
     req.Value = "TestValue";
     req.Data = expected;
-    req.End = "commit";
+    req.End = ProtocolRegTransacted::EndKind::Commit;
 
     const auto rsp = ProbeRegTransacted.Call(req, GetCWD(), config).get<ProtocolRegTransacted::Rsp>();
     ASSERT_EQ(rsp.mount_code, static_cast<DWORD>(ERROR_SUCCESS));

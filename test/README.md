@@ -741,7 +741,8 @@ executable carries itself:
 * `test/unit/EnvironmentTable.cpp` — the private table of the environment
   isolation and the two documents the sandbox reads: the block of the host with
   its drive relative current directory, the names which are compared ignoring
-  the case, the order of the table, the round trip of a block, the block of the
+  the case, the order of the table, the round trip of a block, the read of a
+  block bounded by the length its caller declared, the block of the
   ANSI code page, the refusal of a malformed isolation file without a partial
   result, and the state with its one modification per variable.
 * `test/unit/VariableExpansion.cpp` — the `%APPBOX:<NAME>%` expansion the
@@ -1415,6 +1416,10 @@ machine the cases run on.
 | `Env_ModificationStaysInTheSandbox` | `Replace` | store the variable, remove a variable of the host, read both back | the stored value is read back, the removed variable is gone, and the environment of the test process still holds the values it set |
 | `Env_StateIsKeptAcrossRuns` | `Replace` | store the variable in one run, read it in the next one | the second run sees the stored value, which is what the state directory of the sandbox carries |
 | `Env_StateFileIsApplied` | – | read the variables while the state directory carries the document of an earlier run | the stored value is seen and the removed variable is gone |
+| `Env_RtlSetEnvironmentVariableOnTheProcessBlockIsKept` | `Replace` | store the variable through `RtlSetEnvironmentVariable` with the address of the environment pointer of the process parameters, then read it in the next run | the write is accepted and the second run sees it, so the sandbox recorded a call which names the environment of the process without a null block |
+| `Env_StringsWriteIsKept` | `Replace` | replace the whole environment with `SetEnvironmentStringsW` in one run, read the variable in the next one | the second run sees the value of the block, so a replacement which the Win32 entry point performs is recorded |
+| `Env_WholeBlockReplaceIsKept` | `Replace` | install a block of its own with `RtlSetCurrentEnvironment` in one run, read the variable in the next one | the second run sees the value of the block |
+| `Env_WholeBlockReplaceRemovesAVariable` | `Replace` for `APPBOX_ENV_LAYER` | replace the whole environment with a block which drops the variable of the row and carries another one, then read both in the next run | the variable the block added is seen, the variable the block dropped stays dropped, and the row of the archive does not bring it back |
 | `Env_VariableExpansion` | `Write Copy` + `Replace`, one row with `Prepend` and a value of the host | read variables whose values reference a known folder of this machine with `%APPBOX:<NAME>%`, a name the sandbox does not know and `%PATH%`, in the **64 bit** probe | the known references carry the real path of the folder of this machine (also in another spelling of the prefix and of the name, for the system folder of the machine, for the 64 bit program folders and for the 32 bit system folder), the merged row carries `<path>;<host>`, the unknown reference and the reference of the shell keep their spelling, and the block which enumerates the environment reports the expanded value |
 | `Env_VariableExpansion32` | `Write Copy` + `Replace` | read the variables which reference the redirected folders in the **32 bit** probe | `%APPBOX:ProgramFiles%` is `C:\Program Files (x86)` and `%APPBOX:ProgramFilesCommon%` is `C:\Program Files (x86)\Common Files`, `%APPBOX:ProgramFilesX64%` keeps its own spelling, `%APPBOX:ProgramFilesCommonX64%` is `C:\Program Files\Common Files`, and the two system folders name `System32` and `SysWOW64` like they do in a 64 bit process |
 | `Env_MalformedIsolationFile_FallsBack` | document which cannot be read | read the variable | the value of the host stays visible and the sandbox still runs |

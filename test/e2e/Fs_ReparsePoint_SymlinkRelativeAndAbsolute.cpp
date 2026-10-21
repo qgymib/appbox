@@ -71,35 +71,35 @@ TEST_F(E2E_Fs, ReparsePoint_SymlinkRelativeAndAbsolute)
     ProtocolReparsePoint::Req req;
 
     ProtocolReparsePoint::Req::Item relative;
-    relative.action = "symlink";
+    relative.action = ProtocolReparsePoint::Req::Item::Action::Symlink;
     relative.path = appbox::WideToUTF8(folder + L"\\relative_link");
     relative.target = "packed";
     relative.relative = true;
     req.items.push_back(relative);
 
     ProtocolReparsePoint::Req::Item read_relative;
-    read_relative.action = "read_text";
+    read_relative.action = ProtocolReparsePoint::Req::Item::Action::ReadText;
     read_relative.path = appbox::WideToUTF8(folder + L"\\relative_link\\data.txt");
     req.items.push_back(read_relative);
 
     ProtocolReparsePoint::Req::Item read_relative_data;
-    read_relative_data.action = "read";
+    read_relative_data.action = ProtocolReparsePoint::Req::Item::Action::Read;
     read_relative_data.path = appbox::WideToUTF8(folder + L"\\relative_link");
     req.items.push_back(read_relative_data);
 
     ProtocolReparsePoint::Req::Item absolute;
-    absolute.action = "symlink";
+    absolute.action = ProtocolReparsePoint::Req::Item::Action::Symlink;
     absolute.path = appbox::WideToUTF8(folder + L"\\absolute_link");
     absolute.target = appbox::WideToUTF8(folder + L"\\packed");
     req.items.push_back(absolute);
 
     ProtocolReparsePoint::Req::Item read_absolute;
-    read_absolute.action = "read_text";
+    read_absolute.action = ProtocolReparsePoint::Req::Item::Action::ReadText;
     read_absolute.path = appbox::WideToUTF8(folder + L"\\absolute_link\\data.txt");
     req.items.push_back(read_absolute);
 
     ProtocolReparsePoint::Req::Item read_absolute_data;
-    read_absolute_data.action = "read";
+    read_absolute_data.action = ProtocolReparsePoint::Req::Item::Action::Read;
     read_absolute_data.path = appbox::WideToUTF8(folder + L"\\absolute_link");
     req.items.push_back(read_absolute_data);
 

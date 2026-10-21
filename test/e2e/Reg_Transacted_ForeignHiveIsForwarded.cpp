@@ -106,11 +106,11 @@ TEST_F(E2E_Reg, Transacted_ForeignHiveIsForwarded)
     ProtocolRegTransacted::Req req;
     req.Hive = appbox::WideToUTF8(hive.path().wstring());
     req.Key = "AppBoxTransacted";
-    req.Api = "create";
-    req.Access = "write";
+    req.Api = ProtocolRegTransacted::ApiKind::Create;
+    req.Access = ProtocolRegTransacted::AccessKind::Write;
     req.Value = "TestValue";
     req.Data = "forwarded";
-    req.End = "commit";
+    req.End = ProtocolRegTransacted::EndKind::Commit;
 
     const auto rsp = ProbeRegTransacted.Call(req, GetCWD(), config).get<ProtocolRegTransacted::Rsp>();
     ASSERT_EQ(rsp.mount_code, static_cast<DWORD>(ERROR_SUCCESS));

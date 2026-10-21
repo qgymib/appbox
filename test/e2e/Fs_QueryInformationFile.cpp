@@ -42,13 +42,16 @@ std::wstring ExpectedName(const std::wstring& file)
     return (Folder() + L"\\" + file).substr(2);
 }
 
+/** @brief Access the file of one action is opened with. */
+using Mode = ProtocolQueryInformationFile::Req::Item::Mode;
+
 /**
  * @brief One file the case asks the sandbox to name.
  */
 struct QueryAction
 {
     std::wstring  file;
-    std::wstring  mode = L"read";
+    Mode          mode = Mode::Read;
     unsigned long length = 0;
 };
 
@@ -68,7 +71,7 @@ ProtocolQueryInformationFile::Rsp QueryInformationFile(const std::vector<QueryAc
     {
         ProtocolQueryInformationFile::Req::Item item;
         item.path = appbox::WideToUTF8(action.file);
-        item.mode = appbox::WideToUTF8(action.mode);
+        item.mode = action.mode;
         item.length = action.length;
         req.items.push_back(item);
     }
@@ -122,9 +125,9 @@ TEST_F(E2E_Fs, QueryInformationFile_ViewPath)
 
     const auto rsp = QueryInformationFile(
         {
-            { Folder() + L"\\data.txt", L"read"  },
-            { Folder() + L"\\data.txt", L"write" },
-            { Folder() + L"\\host.txt", L"read"  },
+            { Folder() + L"\\data.txt", Mode::Read  },
+            { Folder() + L"\\data.txt", Mode::Write },
+            { Folder() + L"\\host.txt", Mode::Read  },
     },
         GetCWD(), config);
     ASSERT_EQ(rsp.items.size(), static_cast<size_t>(3));
@@ -211,7 +214,7 @@ TEST_F(E2E_Fs, QueryInformationFile_SmallBuffer)
 
     const auto rsp = QueryInformationFile(
         {
-            { Folder() + L"\\data.txt", L"read", length }
+            { Folder() + L"\\data.txt", Mode::Read, length }
     },
         GetCWD(), config);
     ASSERT_EQ(rsp.items.size(), static_cast<size_t>(1));

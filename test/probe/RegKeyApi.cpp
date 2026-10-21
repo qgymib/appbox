@@ -5,6 +5,12 @@
 namespace
 {
 
+/** @brief Entry point the request calls. */
+using ApiKind = appbox::test::ProtocolRegKeyApi::ApiKind;
+
+/** @brief Layer of the handle the request opens. */
+using ModeKind = appbox::test::ProtocolRegKeyApi::ModeKind;
+
 /**
  * @brief Signature of the information setter of ntdll.
  */
@@ -37,22 +43,30 @@ uint64_t ReadWriteTime(HKEY key, DWORD& code)
 }
 
 /**
- * @brief Name of the entry point the request selects, null for an unknown one.
+ * @brief Name of the export the request calls.
+ *
+ * `NtSetInformationKey` is not part of the answer, because the probe calls it
+ * with an information class of its own instead of a bare handle.
+ *
+ * @param[in] api Entry point the request calls.
+ * @return The name of the export, null when the entry point takes more than a
+ *         handle or when the request calls no entry point.
  */
-const char* ApiNameOf(const std::string& api)
+const char* ApiNameOf(ApiKind api)
 {
-    if (api == "NtFlushKey")
+    switch (api)
     {
+    case ApiKind::FlushKey:
         return "NtFlushKey";
-    }
-    if (api == "NtCompressKey")
-    {
+    case ApiKind::CompressKey:
         return "NtCompressKey";
-    }
-    if (api == "NtLockRegistryKey")
-    {
+    case ApiKind::LockRegistryKey:
         return "NtLockRegistryKey";
+    case ApiKind::SetInformationKey:
+    case ApiKind::Unknown:
+        break;
     }
+
     return nullptr;
 }
 
@@ -75,7 +89,7 @@ static nlohmann::json ProbeRegKeyApi_Entry(const nlohmann::json& data)
     appbox::test::ProtocolRegKeyApi::Rsp rsp;
 
     const auto   key_path = appbox::UTF8ToWide(req.Key);
-    const REGSAM access = req.Mode == "hive_handle" ? (KEY_SET_VALUE | KEY_QUERY_VALUE) : KEY_READ;
+    const REGSAM access = req.Mode == ModeKind::HiveHandle ? (KEY_SET_VALUE | KEY_QUERY_VALUE) : KEY_READ;
 
     HKEY key = nullptr;
     rsp.open_code = RegOpenKeyExW(HKEY_CURRENT_USER, key_path.c_str(), 0, access, &key);
@@ -90,7 +104,7 @@ static nlohmann::json ProbeRegKeyApi_Entry(const nlohmann::json& data)
     auto* ntdll = GetModuleHandleW(L"ntdll.dll");
     if (ntdll != nullptr)
     {
-        if (req.Api == "NtSetInformationKey")
+        if (req.Api == ApiKind::SetInformationKey)
         {
             auto* fn = reinterpret_cast<T_NtSetInformationKey>(GetProcAddress(ntdll, "NtSetInformationKey"));
             if (fn != nullptr)

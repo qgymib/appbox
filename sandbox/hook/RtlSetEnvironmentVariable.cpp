@@ -12,14 +12,25 @@ T_RtlSetEnvironmentVariable sys_RtlSetEnvironmentVariable = nullptr;
  * `environment/Isolation.cpp`), so the call is forwarded: the operating system
  * writes the value into the block, which is what every reader sees, and the
  * modification is recorded afterwards, so it survives the end of the process.
- * A caller which passes a block of its own is forwarded without a record: such
- * a call changes a block of the caller and never the environment of the
- * process.
+ *
+ * The entry point takes the address of the block it writes. A null address is
+ * the environment of the process, and so is the address of the environment
+ * pointer of the process parameters: `RtlSetEnvironmentVar` of `ntdll` compares
+ * the block against that pointer and takes the lock of the process block when
+ * the two match. Both spellings therefore reach the environment of the process
+ * and both are recorded. A caller which brings a block of its own is forwarded
+ * without a record: such a call changes a block of the caller and never the
+ * environment of the process.
+ *
+ * A name of null is not a call which replaces the whole block: the exported
+ * entry point reads the counted name without checking it, so the call faults
+ * inside `ntdll` and never returns. The hook therefore records nothing for it.
  *
  * The entry point is hooked next to `SetEnvironmentVariableW` and
  * `SetEnvironmentVariableA`, because the runtime of the operating system does
- * not route every write through the exported reader: `kernelbase` calls an
- * implementation of its own, which a detour of the export never observes.
+ * not route every write through the exported entry point: `kernelbase` calls an
+ * implementation of its own (`RtlSetEnvironmentVar`), which a detour of the
+ * export never observes.
  *
  * A record which cannot be kept is not an error of the call: the block of the
  * process already carries the value, and only the next run would miss it, which
@@ -27,30 +38,14 @@ T_RtlSetEnvironmentVariable sys_RtlSetEnvironmentVariable = nullptr;
  */
 static NTSTATUS NTAPI Hook_RtlSetEnvironmentVariable(PWSTR* Environment, PUNICODE_STRING Name, PUNICODE_STRING Value)
 {
-    if (!appbox::environment::Isolation::IsEnabled() || Environment != nullptr)
+    if (!appbox::environment::Isolation::IsEnabled() || !appbox::environment::IsProcessEnvironment(Environment))
     {
         return sys_RtlSetEnvironmentVariable(Environment, Name, Value);
     }
 
     const NTSTATUS status = sys_RtlSetEnvironmentVariable(Environment, Name, Value);
-    if (!NT_SUCCESS(status))
+    if (!NT_SUCCESS(status) || Name == nullptr)
     {
-        return status;
-    }
-
-    if (Name == nullptr)
-    {
-        /*
-         * The whole environment is replaced by the block of the caller, which
-         * the operating system took over: the block of the process is the new
-         * environment and the record of the sandbox is replaced by it.
-         */
-        const LPWCH block = ::GetEnvironmentStringsW();
-        if (block != nullptr)
-        {
-            appbox::environment::Isolation::AssignBlock(block);
-            ::FreeEnvironmentStringsW(block);
-        }
         return status;
     }
 

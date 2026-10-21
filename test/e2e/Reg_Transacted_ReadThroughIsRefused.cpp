@@ -50,11 +50,11 @@ TEST_F(E2E_Reg, Transacted_ReadThroughIsRefused)
     ASSERT_TRUE(real_key.SetString(L"HostValue", L"host"));
 
     ProtocolRegTransacted::Req read_req;
-    read_req.Api = "open";
-    read_req.Access = "read";
+    read_req.Api = ProtocolRegTransacted::ApiKind::Open;
+    read_req.Access = ProtocolRegTransacted::AccessKind::Read;
     read_req.Key = appbox::WideToUTF8(subkey);
     read_req.Value = "HostValue";
-    read_req.End = "close";
+    read_req.End = ProtocolRegTransacted::EndKind::Close;
 
     const auto read_rsp = ProbeRegTransacted.Call(read_req, GetCWD(), config).get<ProtocolRegTransacted::Rsp>();
     ASSERT_EQ(read_rsp.mount_code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -67,12 +67,12 @@ TEST_F(E2E_Reg, Transacted_ReadThroughIsRefused)
     EXPECT_EQ(read_rsp.after, "host");
 
     ProtocolRegTransacted::Req write_req;
-    write_req.Api = "open_ex";
-    write_req.Access = "write";
+    write_req.Api = ProtocolRegTransacted::ApiKind::OpenEx;
+    write_req.Access = ProtocolRegTransacted::AccessKind::Write;
     write_req.Key = appbox::WideToUTF8(subkey);
     write_req.Value = "TestValue";
     write_req.Data = "sandbox";
-    write_req.End = "commit";
+    write_req.End = ProtocolRegTransacted::EndKind::Commit;
 
     const auto write_rsp = ProbeRegTransacted.Call(write_req, GetCWD(), config).get<ProtocolRegTransacted::Rsp>();
     ASSERT_EQ(write_rsp.mount_code, static_cast<DWORD>(ERROR_SUCCESS));

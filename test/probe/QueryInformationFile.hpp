@@ -16,11 +16,25 @@ struct ProtocolQueryInformationFile
     {
         struct Item
         {
+            /**
+             * @brief Access the file is opened with.
+             *
+             * - `Read` - `GENERIC_READ`, the default, which the isolation
+             *   answers with a handle of the layer the file is visible in.
+             * - `Write` - `GENERIC_READ | GENERIC_WRITE`, which copies the file
+             *   up into the layer of the sandbox.
+             */
+            enum class Mode
+            {
+                Read, ///< `GENERIC_READ`, the default.
+                Write ///< `GENERIC_READ | GENERIC_WRITE`.
+            };
+
             /** View path of the file to open. */
             std::string path;
 
-            /** Access of the open: `read` or `write`. */
-            std::string mode;
+            /** Access of the open, see Mode. */
+            Mode mode = Mode::Read;
 
             /**
              * Size of the buffer the name classes are asked with, zero asks
@@ -71,6 +85,18 @@ struct ProtocolQueryInformationFile
         NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Rsp, items)
     };
 };
+
+/**
+ * @brief The tokens of Mode, which the protocol carries as text.
+ *
+ * The first entry is the value the reader falls back to for a token it does not
+ * know, so an unknown token opens the file read only.
+ */
+NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolQueryInformationFile::Req::Item::Mode,
+                             {
+                                 { ProtocolQueryInformationFile::Req::Item::Mode::Read,  "read"  },
+                                 { ProtocolQueryInformationFile::Req::Item::Mode::Write, "write" },
+})
 
 /**
  * @brief `NtQueryInformationFile` probe.

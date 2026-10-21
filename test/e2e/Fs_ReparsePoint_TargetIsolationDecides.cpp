@@ -71,7 +71,9 @@ TEST_F(E2E_Fs, ReparsePoint_TargetIsolationDecides)
 
     ProtocolReparsePoint::Req req;
 
-    const auto add = [&req](const char* action, const std::wstring& path) {
+    using Action = ProtocolReparsePoint::Req::Item::Action;
+
+    const auto add = [&req](Action action, const std::wstring& path) {
         ProtocolReparsePoint::Req::Item item;
         item.action = action;
         item.path = appbox::WideToUTF8(path);
@@ -79,21 +81,21 @@ TEST_F(E2E_Fs, ReparsePoint_TargetIsolationDecides)
     };
 
     /* 0: the junction is an entry of the view which carries a reparse point. */
-    add("attributes", folder + L"\\link_visible");
+    add(Action::Attributes, folder + L"\\link_visible");
     /* 1: the second entry point of an attribute query reports the same entry. */
-    add("full_attributes", folder + L"\\link_visible");
+    add(Action::FullAttributes, folder + L"\\link_visible");
     /* 2: the data of the junction names the target. */
-    add("read", folder + L"\\link_visible");
+    add(Action::Read, folder + L"\\link_visible");
     /* 3: the target of the junction is visible itself. */
-    add("attributes", folder + L"\\visible");
+    add(Action::Attributes, folder + L"\\visible");
     /* 4: the file of the target is readable. */
-    add("read_text", folder + L"\\visible\\data.txt");
+    add(Action::ReadText, folder + L"\\visible\\data.txt");
     /* 5: the view resolves the junction and reaches the same file. */
-    add("read_text", folder + L"\\link_visible\\data.txt");
+    add(Action::ReadText, folder + L"\\link_visible\\data.txt");
     /* 6: the view resolves the junction whose target the isolation hides. */
-    add("read_text", folder + L"\\link_hidden\\data.txt");
+    add(Action::ReadText, folder + L"\\link_hidden\\data.txt");
     /* 7: the hidden folder is not visible itself either. */
-    add("attributes", folder + L"\\hidden");
+    add(Action::Attributes, folder + L"\\hidden");
 
     const auto rsp = ProbeReparsePoint.Call(req, GetCWD(), config).get<ProtocolReparsePoint::Rsp>();
     ASSERT_EQ(rsp.items.size(), static_cast<size_t>(8));

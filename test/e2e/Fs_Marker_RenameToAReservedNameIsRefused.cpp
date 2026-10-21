@@ -37,19 +37,25 @@ std::wstring FolderInOverlay(const std::wstring& cwd)
     return cwd + L"\\data\\filesystem\\" + GetKnownFolderPath(L"#USERPROFILE#", true) + L"\\" + kFolderName;
 }
 
+/** @brief Class of the call of one name the case asks for. */
+using Action = ProtocolSetInformationFile::Req::Item::Action;
+
+/** @brief Access the source of one name is opened with. */
+using Access = ProtocolSetInformationFile::Req::Item::Access;
+
 /**
  * @brief One name the case asks the sandbox to move or link an entry to.
  */
 struct SetNameAction
 {
-    /** Class of the call: `rename` or `link`. */
-    std::string action;
+    /** Class of the call, see Action. */
+    Action action = Action::Rename;
 
     /** Name the object is moved to or linked at. */
     std::wstring target;
 
-    /** Access the source is opened with. */
-    std::string access;
+    /** Access the source is opened with, see Access. */
+    Access access = Access::Delete;
 };
 
 /**
@@ -115,9 +121,9 @@ TEST_F(E2E_Fs, Marker_RenameToAReservedNameIsRefused)
     }));
 
     const std::vector<SetNameAction> actions = {
-        { "rename", FolderPath() + L"\\data.txt.$APPBOX_DELETE$",         "delete" },
-        { "rename", FolderPath() + L"\\hidden.$APPBOX_DELETE$\\file.txt", "delete" },
-        { "link",   FolderPath() + L"\\linked.$APPBOX_DELETE$",           "read"   },
+        { Action::Rename, FolderPath() + L"\\data.txt.$APPBOX_DELETE$",         Access::Delete },
+        { Action::Rename, FolderPath() + L"\\hidden.$APPBOX_DELETE$\\file.txt", Access::Delete },
+        { Action::Link,   FolderPath() + L"\\linked.$APPBOX_DELETE$",           Access::Read   },
     };
 
     const auto rsp = SetNames(actions, GetCWD(), config);

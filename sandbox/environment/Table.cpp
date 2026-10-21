@@ -134,27 +134,50 @@ std::vector<appbox::environment::Variable> appbox::environment::Table::Entries()
     return entries_;
 }
 
-void appbox::environment::Table::AssignBlock(const wchar_t* block)
+void appbox::environment::Table::AssignBlock(const wchar_t* block, std::size_t size_in_bytes)
 {
     std::vector<Variable> parsed;
 
-    if (block != nullptr)
-    {
-        const wchar_t* cursor = block;
-        while (*cursor != L'\0')
-        {
-            const std::wstring entry(cursor);
-            const std::size_t  separator = SeparatorOf(entry);
-            if (separator != std::wstring::npos)
-            {
-                Variable variable;
-                variable.name = entry.substr(0, separator);
-                variable.value = entry.substr(separator + 1);
-                parsed.push_back(std::move(variable));
-            }
+    /* The length counts bytes, so the block is walked in characters. */
+    const std::size_t available = size_in_bytes == 0 ? std::wstring::npos : size_in_bytes / sizeof(wchar_t);
 
-            cursor += entry.size() + 1;
+    std::size_t offset = 0;
+    while (block != nullptr)
+    {
+        if (available != std::wstring::npos && offset >= available)
+        {
+            break;
         }
+
+        const wchar_t* entry_begin = block + offset;
+        if (*entry_begin == L'\0')
+        {
+            break;
+        }
+
+        std::size_t length = 0;
+        while ((available == std::wstring::npos || offset + length < available) && entry_begin[length] != L'\0')
+        {
+            ++length;
+        }
+
+        if (available != std::wstring::npos && offset + length >= available)
+        {
+            /* The block ends without a terminator, so the last entry is incomplete. */
+            break;
+        }
+
+        const std::wstring entry(entry_begin, length);
+        const std::size_t  separator = SeparatorOf(entry);
+        if (separator != std::wstring::npos)
+        {
+            Variable variable;
+            variable.name = entry.substr(0, separator);
+            variable.value = entry.substr(separator + 1);
+            parsed.push_back(std::move(variable));
+        }
+
+        offset += length + 1;
     }
 
     std::lock_guard<std::mutex> guard(lock_);

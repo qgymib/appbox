@@ -94,13 +94,19 @@ public:
     /**
      * @brief Record a whole block the application installed.
      *
-     * The block is the new environment of the process, so it replaces the
-     * record of the sandbox as well: nothing of what the application did before
-     * is part of the environment any more.
+     * The block is the new environment of the process, so the table of the
+     * sandbox is replaced by it. What the state records is the difference
+     * between the block and the environment the sandbox composed: a variable the
+     * block carries with another value or with no value at all is recorded, and
+     * a variable the block dropped is recorded as a removal. A replacement which
+     * carries the environment of the process therefore records nothing, which is
+     * what keeps the environment of the host out of the state.
      *
      * @param[in] block The block to read, may be null for an empty environment.
+     * @param[in] size_in_bytes Length of the block in bytes, zero for a block
+     *                          which ends with a double null character.
      */
-    static void AssignBlock(const wchar_t* block);
+    static void AssignBlock(const wchar_t* block, std::size_t size_in_bytes = 0);
 
     /**
      * @brief Record that the application dropped every variable.
@@ -140,6 +146,21 @@ bool AnsiToWide(const std::string& text, std::wstring& out);
  *         this process while it cannot be adjusted.
  */
 std::string BuildChildInjectData();
+
+/**
+ * @brief Whether a writer names the environment of the process.
+ *
+ * `RtlSetEnvironmentVariable` takes the address of the block it writes. A null
+ * address names the environment of the process, and so does the address of the
+ * environment pointer of the process parameters: the entry point of `ntdll`
+ * compares the block it is given against that pointer and takes the lock of the
+ * process block when the two match, which is what makes the two spellings the
+ * same call.
+ *
+ * @param[in] environment The block the caller named, may be null.
+ * @return true when the call writes the environment of the process.
+ */
+bool IsProcessEnvironment(PWSTR* environment);
 
 /**
  * @brief Read the text of a counted unicode string.

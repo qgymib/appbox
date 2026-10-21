@@ -181,6 +181,10 @@ bool BuildViewPath(const std::string& root, const std::wstring& key, std::wstrin
  */
 static nlohmann::json ProbeRegTransacted_Entry(const nlohmann::json& data)
 {
+    using AccessKind = appbox::test::ProtocolRegTransacted::AccessKind;
+    using ApiKind = appbox::test::ProtocolRegTransacted::ApiKind;
+    using EndKind = appbox::test::ProtocolRegTransacted::EndKind;
+
     auto req = data.get<appbox::test::ProtocolRegTransacted::Req>();
 
     appbox::test::ProtocolRegTransacted::Rsp rsp;
@@ -246,19 +250,18 @@ static nlohmann::json ProbeRegTransacted_Entry(const nlohmann::json& data)
     }
     rsp.tx_code = ERROR_SUCCESS;
 
-    const ACCESS_MASK access = req.Access == "read" ? KEY_READ : KEY_ALL_ACCESS;
+    const ACCESS_MASK access = req.Access == AccessKind::Read ? KEY_READ : KEY_ALL_ACCESS;
 
     HANDLE key = nullptr;
-    if (req.Api == "open_ex")
+    switch (req.Api)
     {
+    case ApiKind::OpenEx:
         rsp.call_code = static_cast<DWORD>(api.open_transacted_ex(&key, access, &oa, 0, transaction));
-    }
-    else if (req.Api == "open")
-    {
+        break;
+    case ApiKind::Open:
         rsp.call_code = static_cast<DWORD>(api.open_transacted(&key, access, &oa, transaction));
-    }
-    else
-    {
+        break;
+    case ApiKind::Create: {
         ULONG disposition = 0;
         rsp.call_code = static_cast<DWORD>(
             api.create_transacted(&key, access, &oa, 0, nullptr, REG_OPTION_NON_VOLATILE, transaction, &disposition));
@@ -266,6 +269,8 @@ static nlohmann::json ProbeRegTransacted_Entry(const nlohmann::json& data)
         {
             rsp.disposition = disposition;
         }
+        break;
+    }
     }
 
     if (key != nullptr)
@@ -288,18 +293,18 @@ static nlohmann::json ProbeRegTransacted_Entry(const nlohmann::json& data)
         RegCloseKey(registry_key);
     }
 
-    if (req.End == "commit")
+    switch (req.End)
     {
+    case EndKind::Commit:
         rsp.end_code = api.commit_transaction(transaction) ? ERROR_SUCCESS : GetLastError();
-    }
-    else if (req.End == "rollback")
-    {
+        break;
+    case EndKind::Rollback:
         rsp.end_code = api.rollback_transaction(transaction) ? ERROR_SUCCESS : GetLastError();
-    }
-    else
-    {
+        break;
+    case EndKind::Close:
         /* Closing the last handle of a transaction commits it. */
         rsp.end_code = CloseHandle(transaction) ? ERROR_SUCCESS : GetLastError();
+        break;
     }
 
     if (req.ReadAfter)

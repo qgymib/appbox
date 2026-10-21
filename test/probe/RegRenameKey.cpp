@@ -117,6 +117,8 @@ void DumpSubKeyNames(HKEY root, const std::wstring& key_path, std::vector<std::s
  */
 static nlohmann::json ProbeRegRenameKey_Entry(const nlohmann::json& data)
 {
+    using ModeKind = appbox::test::ProtocolRegRenameKey::ModeKind;
+
     auto req = data.get<appbox::test::ProtocolRegRenameKey::Req>();
 
     appbox::test::ProtocolRegRenameKey::Rsp rsp;
@@ -136,7 +138,7 @@ static nlohmann::json ProbeRegRenameKey_Entry(const nlohmann::json& data)
      * so the write access of the hive mode is the one a caller needs for a
      * rename.
      */
-    const REGSAM access = req.Mode == "hive_handle" ? (KEY_WRITE | KEY_QUERY_VALUE) : KEY_READ;
+    const REGSAM access = req.Mode == ModeKind::HiveHandle ? (KEY_WRITE | KEY_QUERY_VALUE) : KEY_READ;
 
     HKEY key = nullptr;
     rsp.open_code = RegOpenKeyExW(root, key_path.c_str(), 0, access, &key);

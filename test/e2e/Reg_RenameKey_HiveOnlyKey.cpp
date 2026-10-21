@@ -63,7 +63,7 @@ TEST_F(E2E_Reg, RenameKey_HiveOnlyKey)
     ProtocolRegRenameKey::Req req;
     req.Key = appbox::WideToUTF8(subkey);
     req.NewName = appbox::WideToUTF8(new_name);
-    req.Mode = "hive_handle";
+    req.Mode = ProtocolRegRenameKey::ModeKind::HiveHandle;
 
     const auto rsp = ProbeRegRenameKey.Call(req, GetCWD(), config).get<ProtocolRegRenameKey::Rsp>();
     ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));

@@ -67,11 +67,11 @@ ProtocolSetInformationFile::Rsp Rename(const std::vector<RenameAction>& actions,
     for (const auto& action : actions)
     {
         ProtocolSetInformationFile::Req::Item item;
-        item.action = "rename";
+        item.action = ProtocolSetInformationFile::Req::Item::Action::Rename;
         item.source = appbox::WideToUTF8(action.source);
         item.target = appbox::WideToUTF8(action.target);
         item.rootDirectory = appbox::WideToUTF8(action.rootDirectory);
-        item.access = "delete";
+        item.access = ProtocolSetInformationFile::Req::Item::Access::Delete;
         item.replaceIfExists = action.replaceIfExists;
         req.items.push_back(item);
     }

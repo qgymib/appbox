@@ -105,6 +105,29 @@ TEST(Unit_EnvironmentTable, KeepsTheDriveCurrentDirectoryOfTheHost)
     EXPECT_EQ(value, L"C:\\work");
 }
 
+TEST(Unit_EnvironmentTable, ReadsABlockBoundedByItsLength)
+{
+    /*
+     * `RtlSetEnvironmentStrings` receives the length of the block from its
+     * caller, so a block which is not terminated has to be read up to its end
+     * instead of running past the buffer: the entry which is cut by the length
+     * is dropped, and the entries before it are kept.
+     */
+    appbox::environment::Table table;
+    const std::wstring         block = MakeBlock({ L"A=1", L"B=2" });
+
+    /* The length covers the first entry and half of the second one. */
+    const std::size_t length = (std::wstring(L"A=1").size() + 1 + 2) * sizeof(wchar_t);
+    table.AssignBlock(block.c_str(), length);
+
+    EXPECT_EQ(table.Count(), 1u);
+
+    std::wstring value;
+    EXPECT_TRUE(table.Get(L"A", value));
+    EXPECT_EQ(value, L"1");
+    EXPECT_FALSE(table.Get(L"B", value));
+}
+
 TEST(Unit_EnvironmentTable, NamesAreComparedIgnoringTheCase)
 {
     appbox::environment::Table table;

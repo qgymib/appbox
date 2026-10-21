@@ -55,6 +55,9 @@ typedef VOID (*T_RtlInitUnicodeStringProbe)(
 );
 /* clang-format on */
 
+/** @brief Action of one item of the request. */
+using Action = appbox::test::ProtocolReparsePoint::Req::Item::Action;
+
 /** The probe opens the object of a link without following it. */
 static const ULONG kOpenLinkOptions = FILE_OPEN_REPARSE_POINT | FILE_SYNCHRONOUS_IO_NONALERT;
 
@@ -557,40 +560,33 @@ static nlohmann::json ProbeReparsePoint_Entry(const nlohmann::json& data)
             continue;
         }
 
-        if (item.action == "junction")
+        switch (item.action)
         {
+        case Action::Junction:
             CreateJunction(api, item, result);
-        }
-        else if (item.action == "symlink")
-        {
+            break;
+        case Action::Symlink:
             CreateSymbolicLink(item, result);
-        }
-        else if (item.action == "set_tag")
-        {
+            break;
+        case Action::SetTag:
             CreateTaggedObject(api, item, result);
-        }
-        else if (item.action == "remove")
-        {
+            break;
+        case Action::Remove:
             RemoveReparsePoint(api, item, result);
-        }
-        else if (item.action == "read")
-        {
+            break;
+        case Action::Read:
             ReadReparsePoint(api, item, result);
-        }
-        else if (item.action == "attributes")
-        {
+            break;
+        case Action::Attributes:
             ReadAttributes(item, result);
-        }
-        else if (item.action == "full_attributes")
-        {
+            break;
+        case Action::FullAttributes:
             ReadFullAttributes(item, result);
-        }
-        else if (item.action == "read_text")
-        {
+            break;
+        case Action::ReadText:
             ReadText(api, item, result);
-        }
-        else if (item.action == "remove_dir")
-        {
+            break;
+        case Action::RemoveDir:
             if (RemoveDirectoryW(appbox::UTF8ToWide(item.path).c_str()))
             {
                 result.status = STATUS_SUCCESS;
@@ -600,10 +596,10 @@ static nlohmann::json ProbeReparsePoint_Entry(const nlohmann::json& data)
                 result.code = GetLastError();
                 result.status = STATUS_UNSUCCESSFUL;
             }
-        }
-        else
-        {
+            break;
+        case Action::Unknown:
             result.status = static_cast<long>(STATUS_INVALID_PARAMETER);
+            break;
         }
 
         rsp.items.push_back(result);
