@@ -419,6 +419,18 @@ the font table of a sandboxed process: see
 These rules constrain every hooked API; the implementation lives in
 `sandbox/filesystem/` and `sandbox/hook/`.
 
+* **The folder above a path decides whether the path exists.** A path is looked up
+  component by component in every layer, and a folder which the view does not hold
+  ends the walk: a name below such a folder is answered `Path Not Found`, which is
+  what makes a folder a marker hides hide its content. The lookup of a query stops
+  at the first layer which holds the entry, so the folder is resolved on its own
+  when that walk did not reach it (`ResolveViewPath()` in
+  `sandbox/filesystem/QueryPath.cpp`). The root of a layer is the case which needs
+  it: the layer is mounted *at* the folder, so no layer of the walk holds the folder
+  above it while the view does. With the layer of the profile mounted at
+  `C:\Users\<user>`, a query of that directory reports the directory, so a caller
+  which names it as the working directory of a child is answered —
+  `E2E_Fs.ChildProcessParameters_LayerRootAsWorkingDirectory` pins that.
 * **Modifications land in the upper layer.** An object that exists only in a
   read-only layer and is opened for modification is **copied up** into the upper
   layer first; the read-only layers are never written. A path whose isolation is

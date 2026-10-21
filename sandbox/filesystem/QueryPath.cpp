@@ -2,6 +2,7 @@
 #include "utils/ConvertToFullNtPath.hpp"
 #include "utils/Log.hpp"
 #include "utils/MappingAsDosNtPath.hpp"
+#include "filesystem/DirName.hpp"
 #include "filesystem/MarkerName.hpp"
 #include "Resolve.hpp"
 #include "QueryPath.hpp"
@@ -90,6 +91,24 @@ appbox::filesystem::QueryPathResult appbox::filesystem::ResolveViewPath(const st
         result.outcome = QueryPathResult::Outcome::NotFound;
         result.status = expanded_status;
         return result;
+    }
+
+    /*
+     * The search stops at the first layer which holds the entry, so a hit ends
+     * the walk before the layer which holds the folder above the entry is
+     * looked at. The folder decides whether the path exists in the view at all,
+     * because a folder a marker hides hides its content, so it is resolved on
+     * its own when the walk did not reach it. The root of a layer is the case
+     * which needs it: the layer is mounted at the folder itself, so no layer of
+     * the walk holds the folder above it, while the view does.
+     */
+    if (!resolve_result->bParentExist && resolve_result->status == ResolveResult::Status::Exists)
+    {
+        const std::wstring parent = DirName(resolve_result->viewPath);
+        if (!parent.empty() && parent != resolve_result->viewPath)
+        {
+            resolve_result->bParentExist = Resolve(parent, ResolveOption{})->status == ResolveResult::Status::Exists;
+        }
     }
 
     return QueryPathFromResolve(*resolve_result);

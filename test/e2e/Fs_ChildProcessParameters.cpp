@@ -167,3 +167,40 @@ TEST_F(E2E_Fs, ChildProcessParameters_InheritedFromALayer)
 
     ASSERT_TRUE(tree.Verify());
 }
+
+/**
+ * Condition:
+ * 1. The probe of the run exists inside the profile of the view, and the view
+ *    holds the profile as the **root** of its layer, so the layer itself holds
+ *    no folder above the profile.
+ * 2. A sandboxed probe names that directory as the working directory of a
+ *    child, through both entry points of a creation.
+ *
+ * Expected:
+ * 1. The child is created and sandboxed through both entry points: a query of
+ *    the directory reports the directory of the view, so the Win32 creation
+ *    code finds the working directory it was given even though the layer of
+ *    the profile is mounted at that directory.
+ * 2. The image path of the child is the path of the view and not the path of
+ *    the layer.
+ * 3. The child reports the working directory of the view.
+ */
+TEST_F(E2E_Fs, ChildProcessParameters_LayerRootAsWorkingDirectory)
+{
+    auto tree = BuildTree(GetCWD());
+    auto launcher_config = tree.Build();
+
+    const std::wstring profile = GetKnownFolderPath(L"#USERPROFILE#", false);
+    const std::wstring image = profile + L"\\" + kProbeName;
+
+    for (const auto api : { LaunchApi::CreateProcess, LaunchApi::RtlCreateUserProcess })
+    {
+        ProtocolLaunchProcess::Req req;
+        req.FileName = appbox::WideToUTF8(image);
+        req.CurrentDirectory = appbox::WideToUTF8(profile);
+
+        ExpectChildParameters(GetCWD(), launcher_config, api, req, image, profile);
+    }
+
+    ASSERT_TRUE(tree.Verify());
+}

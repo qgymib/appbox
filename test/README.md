@@ -974,7 +974,11 @@ directory of the layer which backs the profile and pins that the child reports
 the working directory of the view, so the sandbox maps the path of a layer back
 into the view. Both cases run the creation through `CreateProcessW` and through
 `RtlCreateUserProcess`, and both pin that the module of the sandbox is loaded
-into the child.
+into the child. `ChildProcessParameters_LayerRootAsWorkingDirectory` names the
+root of that layer as the working directory of the child, so the case pins that
+the query of the directory reports it even though the layer is mounted at it:
+the child of both entry points is created, is sandboxed and reports the
+directory of the view.
 
 The cases which exercise the isolation modes of the workspace write the
 isolation file of the case into the filesystem domain of the resources
