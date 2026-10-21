@@ -18,7 +18,7 @@ struct ThreadLocal
     bool disable_NtQueryObject_hook = false;
 
     /**
-     * @brief Whether the current thread is inside the CreateProcessInternalW
+     * @brief Whether the current thread is inside the NtCreateUserProcess
      *        hook.
      *
      * The cross-bitness injection of Detours starts a helper process of its own
@@ -29,7 +29,7 @@ struct ThreadLocal
      * creation which is injected again would start another helper, until the
      * stack overflows.
      */
-    bool disable_CreateProcessInternalW_hook = false;
+    bool disable_NtCreateUserProcess_hook = false;
 };
 
 struct HookRecord

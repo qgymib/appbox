@@ -1,6 +1,7 @@
 #include "sandbox/utils/WinAPI.h" /* Must be included before any other headers. */
 #include <CLI/CLI.hpp>
 #include "probe/__init__.hpp"
+#include "probe/ParamCheck.hpp"
 #include "probe/RegChildProcess.hpp"
 
 /**
@@ -22,10 +23,11 @@ int wmain(int argc, wchar_t* argv[])
     appbox::test::ProbeInit(app);
 
     /*
-     * The worker a sandboxed probe starts as a child process of its own. It is
-     * a subcommand of this executable, so the sandbox injects the same module
-     * into it.
+     * The workers a sandboxed probe starts as a child process of its own. They
+     * are subcommands of this executable, so the sandbox injects the same
+     * module into them.
      */
+    appbox::test::ParamCheckInit(app);
     appbox::test::RegChildProcessInit(app);
 
     CLI11_PARSE(app, argc, argv);

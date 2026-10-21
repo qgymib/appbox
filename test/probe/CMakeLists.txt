@@ -50,6 +50,7 @@ add_executable(${probe_name}
     "ListDir.cpp"
     "ListDirNt.cpp"
     "LoadedModules.cpp"
+    "ParamCheck.cpp"
     "QueryAttributes.cpp"
     "QueryFullAttributes.cpp"
     "QueryInformationByName.cpp"

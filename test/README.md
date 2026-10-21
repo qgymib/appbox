@@ -938,9 +938,14 @@ comment.
 | `QueryInformationByName_LowerLayer` | – | `data.txt` | query the information of `data.txt` with `NtQueryInformationByName` and `FileStatInformation` | success, a regular file with the size of the packed content is reported |
 | `QueryInformationByName_NonExists` | – | `other.txt` | query the information of a missing file and of a file below a missing folder | failure with `File Not Found` and `Path Not Found` |
 
-Six cases are not part of the matrices above:
+Eight cases are not part of the matrices above:
 `test/e2e/Fs_LaunchProcess_FromLower.cpp` starts an executable which only a
-lower layer holds, `test/e2e/Fs_ListDir_UserPresetLayers.cpp` mounts one layer
+lower layer holds, `test/e2e/Fs_LaunchProcess_ThroughNtCreateUserProcess.cpp`
+starts the same executable through `RtlCreateUserProcess`, which reaches
+`NtCreateUserProcess` without passing the Win32 creation code, and
+`test/e2e/Fs_ChildProcessParameters.cpp` starts the probe of the run from the
+view and pins the parameters of the child, which the next paragraph describes.
+`test/e2e/Fs_ListDir_UserPresetLayers.cpp` mounts one layer
 per folder below `Current User Directory` (`#Documents#`, `#Desktop#`,
 `#AppData#`, `#LocalAppData#`, `#LocalAppDataLow#`, `#Downloads#`,
 `#Favorites#`, `#Music#`, `#Pictures#`, `#StartMenu#`, `#Programs#`,
@@ -958,6 +963,18 @@ program files folders (`#ProgramFiles#`, `#ProgramFilesX86#`,
 `#ProgramFilesCommonX86#`), where the 32 bit folder is a sibling of the 64 bit
 one. The last five cases include that the file of one layer is not visible in
 the folder of the other one.
+
+`test/e2e/Fs_ChildProcessParameters.cpp` starts the probe of the run from the
+profile of the view with the probe command `paramcheck`, which reports what its
+own process parameters carry through its exit code (`ParamCheckBit` in
+`test/probe/ParamCheck.hpp`): `ChildProcessParameters_OfTheView` pins that the
+image path of the child is the path of the view and not the path of the layer,
+and `ChildProcessParameters_InheritedFromALayer` puts the parent into the
+directory of the layer which backs the profile and pins that the child reports
+the working directory of the view, so the sandbox maps the path of a layer back
+into the view. Both cases run the creation through `CreateProcessW` and through
+`RtlCreateUserProcess`, and both pin that the module of the sandbox is loaded
+into the child.
 
 The cases which exercise the isolation modes of the workspace write the
 isolation file of the case into the filesystem domain of the resources
@@ -1910,7 +1927,8 @@ They are documented in their own header comments.
   `ListDir`, `ListDirNt`, `ReadFileFull`), plus the probes of the remaining
   cases (`LaunchProcess`, `QueryAttributes`, `QueryFullAttributes`,
   `QueryInformationByName`, `QueryInformationFile`, `SetInformationFile`,
-  `ConsoleWindow`).
+  `ConsoleWindow`), the workers a sandboxed probe starts as child processes of
+  its own (`ParamCheck`, `RegChildProcess`).
   `ListDirNt` is a thin adapter over `test/utils/NtDirectoryQuery.*`, the shared
   enumeration of a directory: the probe opens a directory with `NtOpenFile` or,
   when the request asks for it, with `CreateFileW`, and enumerates it with
@@ -1938,6 +1956,20 @@ They are documented in their own header comments.
   points which act on a handle are pinned directly as well. The probes answer one
   item per question of their request, which keeps the number of calls into the
   sandbox low.
+* `test/probe/LaunchProcess.*` — a probe which starts an executable of the view
+  and reports the error code of the creation and the exit code of the child. The
+  request names the entry point of the creation (`LaunchApi`): `CreateProcess`
+  runs the whole Win32 creation code, while `RtlCreateUserProcess` builds the
+  parameters of the child with `RtlCreateProcessParametersEx` and reaches
+  `NtCreateUserProcess` without passing it. The request may name the working
+  directory of the child (`CurrentDirectory`) and the working directory the
+  probe itself takes first (`ParentCurrentDirectory`), which is how a case
+  controls the directory a child inherits.
+* `test/probe/ParamCheck.*` — the worker of the process parameter cases: it
+  compares the image path and the working directory of its own process
+  parameters with the values of its command line, checks that the module of the
+  sandbox is loaded into the process, and reports every observation as one bit
+  of its exit code (`ParamCheckBit`).
 * `test/probe/RegWriteValue.cpp` / `RegReadValue.cpp` — the operations
   executed inside the sandbox; both address the key through a root key of the
   view, so a case can pin that two roots name the same key.
@@ -1985,8 +2017,9 @@ They are documented in their own header comments.
   the startup file a probe process was started for, which `StartupMarker()`
   returns.
 * `test/probe/main.cpp` — the entry point of the probe executable: the command
-  line of the probe (`probe --probe_pipe … --probe_key …`), the `regchild`
-  worker of the registry cases and the MinGW wrapper of the entry point.
+  line of the probe (`probe --probe_pipe … --probe_key …`), the `paramcheck`
+  worker of the process parameter cases, the `regchild` worker of the registry
+  cases and the MinGW wrapper of the entry point.
 
 ## Tracer tests
 

@@ -46,6 +46,18 @@ PWSTR* GetProcessEnvironmentSlot();
  */
 std::wstring GetImagePathFromPeb();
 
+/**
+ * @brief Working directory of this process.
+ *
+ * The directory is read from the process environment block for the same reason
+ * the image path is: the value is the one the process reports, and the read
+ * needs no entry point of the system.
+ *
+ * @return The working directory of the process, empty when the block does not
+ *         hold one.
+ */
+std::wstring GetCurrentDirectoryFromPeb();
+
 } // namespace appbox
 
 #endif

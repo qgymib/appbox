@@ -284,10 +284,25 @@ names and the rules of the expansion are documented in
 A process which the packaged application starts receives the view of its parent:
 the environment block of the parent **is** the composed environment, so a caller
 which inherits the environment of its parent hands the view over without a block
-of its own, and the hook of `CreateProcessInternalW` only marks the child so the
+of its own, and the hook of `NtCreateUserProcess` only marks the child so the
 configuration is not applied to it a second time. A value the merge modes join
 would be joined twice otherwise, because the environment of the child is the
 composed view of the parent and not the environment of the host.
+
+The creation is intercepted at the system call boundary
+(`sandbox/hook/NtCreateUserProcess.cpp`), so a child the application creates
+through `CreateProcessW`, through `RtlCreateUserProcess` or through a call of
+`NtCreateUserProcess` of its own is injected alike. The hook resolves the image
+path of the view into the layer which holds the file, injects the module of the
+target bit size, and hands the configuration of the child over as the payload of
+the injection.
+
+The parameters of the child carry the values of the view as well: the image path
+the child reports is the path of the view and not the path of the layer, and a
+working directory which names a layer is mapped back into the view
+(`appbox::process_parameters`). Both rewrites happen in the parameters of the
+caller for the duration of the call and are restored afterwards, so the caller
+never observes them.
 
 The launcher starts the relay process, which starts the packaged application, so
 every sandboxed process of a run is a child of a sandboxed process: the
@@ -295,11 +310,11 @@ end-to-end cases below pin the hand over of the environment with the value they
 read, which is the composed one.
 
 A child of the other bit size is a child as well, and the creation of one reads
-the temporary directory of the parent: the compatibility query of
-`CreateProcessInternalW` asks `GetTempPathW` for it and compares the answer with
-the image of the child. The read is answered by the operating system from the
-block of the process, which is the composed environment, and the sandbox has no
-detour on that path at all. The three cases of
+the temporary directory of the parent: the compatibility query of the creation
+code asks `GetTempPathW` for it and compares the answer with the image of the
+child. The read is answered by the operating system from the block of the
+process, which is the composed environment, and the sandbox has no detour on that
+path at all. The three cases of
 `test/e2e/Reg_TwoProcesses_CrossBitness.cpp` pin the pair of bit sizes.
 
 ### State and reset
@@ -352,10 +367,10 @@ process.
    succeeds with a length of zero, and an enumeration lists one and not the
    other.
 3. **A caller which brings its own environment block is not composed.** The hook
-   of `CreateProcessInternalW` hands a block of the caller over as it was
-   written, and the child receives the configuration of its parent with the flag
-   which says that its environment is composed already
-   (`sandbox/hook/CreateProcessInternalW.cpp`, `BuildChildInjectData()`). The
+   of `NtCreateUserProcess` hands a block of the caller over as it was written,
+   and the child receives the configuration of its parent with the flag which
+   says that its environment is composed already
+   (`sandbox/hook/NtCreateUserProcess.cpp`, `BuildChildInjectData()`). The
    rows of the archive and of the patch packages are therefore not applied to
    such a child either, and a caller which builds the block out of the values of
    the host — out of the block of its own process, or out of
@@ -418,16 +433,17 @@ the state of the sandbox. The points below are the ones which matter.
    registry isolation reports for the keys of the profile. A caller which hands
    that block to a child hands it over as it was written, which is the point 3
    of the first group.
-2. **The process creation below `CreateProcessInternalW`.**
-    `NtCreateUserProcess` and `RtlCreateUserProcess` are not hooked, and neither
-    is `RtlCreateProcessParametersEx`, which builds the parameters of a process
-    — the environment among them — for a caller which creates the process
-    itself. A process which the runtime creates through them does not pass the
-    hook of `CreateProcessInternalW`, so it is not injected: it inherits the
-    block of its parent, which is the composed environment, but it is not
-    sandboxed. The same holds for a child which `CreateProcessAsUserW`,
-    `CreateProcessWithTokenW` or `CreateProcessWithLogonW` creates without
-    passing the hooked entry point.
+2. **A process the operating system starts on behalf of the application.**
+   Every creation of a process ends in `NtCreateUserProcess`, which the sandbox
+   hooks, so a child of the packaged application is injected and composed
+   whatever entry point it was created through — `CreateProcessW`,
+   `RtlCreateUserProcess`, `CreateProcessAsUserW`, `CreateProcessWithTokenW` and
+   `CreateProcessWithLogonW` included. What the hook does not observe is a
+   process which is started for the application by another process of the
+   system, which is point 10 of the first group. A caller which builds the block
+   of a child with `RtlCreateProcessParametersEx` is not composed either: the
+   hook hands the block over as it was written, which is the point 3 of the
+   first group.
 
 ## Tests
 

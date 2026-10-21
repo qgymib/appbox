@@ -22,6 +22,16 @@
 #define PROCESS_PARAMETERS_ENVIRONMENT_OFFSET 0x48
 #endif
 
+// Offset of the current directory inside the process parameters. The member is
+// the `CURDIR` record of the structure, whose `DosPath` string comes first, so
+// the offset is the one of the record (0x38 in a 64 bit process, 0x24 in a 32
+// bit one).
+#ifdef _WIN64
+#define PROCESS_PARAMETERS_CURRENT_DIRECTORY_OFFSET 0x38
+#else
+#define PROCESS_PARAMETERS_CURRENT_DIRECTORY_OFFSET 0x24
+#endif
+
 #ifdef _WIN64
 
 #define GET_PEB_LDR_DATA (*(PEB_LDR_DATA**)(GET_ADDR_OF_PEB + 0x18))
@@ -85,4 +95,24 @@ std::wstring appbox::GetImagePathFromPeb()
 
     /* The buffer is counted, so it is read by its length and never as a text. */
     return std::wstring(name.Buffer, static_cast<std::size_t>(name.Length) / sizeof(wchar_t));
+}
+
+std::wstring appbox::GetCurrentDirectoryFromPeb()
+{
+    const auto peb = reinterpret_cast<PPEB>(GET_ADDR_OF_PEB);
+    if (peb == nullptr || peb->ProcessParameters == nullptr)
+    {
+        return {};
+    }
+
+    const auto* parameters = reinterpret_cast<const BYTE*>(peb->ProcessParameters);
+    const auto* directory =
+        reinterpret_cast<const UNICODE_STRING*>(parameters + PROCESS_PARAMETERS_CURRENT_DIRECTORY_OFFSET);
+    if (directory->Buffer == nullptr || directory->Length == 0)
+    {
+        return {};
+    }
+
+    /* The buffer is counted, so it is read by its length and never as a text. */
+    return std::wstring(directory->Buffer, static_cast<std::size_t>(directory->Length) / sizeof(wchar_t));
 }

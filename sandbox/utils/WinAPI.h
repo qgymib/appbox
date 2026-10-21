@@ -792,6 +792,59 @@ typedef struct _RTL_USER_PROCESS_PARAMETERS
     UNICODE_STRING CommandLine;
 } RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
 
+/*
+ * The attribute list a caller hands to `NtCreateUserProcess`. Every entry names
+ * an attribute of the process which is created; the entry of the image name
+ * carries the buffer of the path and its length in bytes, which is the entry a
+ * sandbox rewrites when the image of the view lives in a layer.
+ *
+ * The flags below are the ones the kernel decodes out of the attribute number:
+ * the number itself is the low 16 bits, and a caller marks an attribute as an
+ * input or as one of the thread of the process with the bits above it.
+ */
+#define PS_ATTRIBUTE_NUMBER_MASK   0x0000ffff
+#define PS_ATTRIBUTE_THREAD        0x00010000
+#define PS_ATTRIBUTE_INPUT         0x00020000
+#define PS_ATTRIBUTE_ADDITIVE      0x00040000
+
+/** The image of the process, `PsAttributeImageName` with the input flag. */
+#define PS_ATTRIBUTE_IMAGE_NAME    (5 | PS_ATTRIBUTE_INPUT)
+
+typedef struct _PS_ATTRIBUTE
+{
+    ULONG_PTR Attribute;
+    SIZE_T    Size;
+    union {
+        ULONG_PTR Value;
+        PVOID     ValuePtr;
+    };
+    PSIZE_T ReturnLength;
+} PS_ATTRIBUTE, *PPS_ATTRIBUTE;
+
+/**
+ * @brief The attributes of a process creation.
+ *
+ * `TotalLength` covers the header and every entry, so a caller which walks the
+ * list bounds the walk by it instead of trusting the count of the entries.
+ */
+typedef struct _PS_ATTRIBUTE_LIST
+{
+    SIZE_T       TotalLength;
+    PS_ATTRIBUTE Attributes[1];
+} PS_ATTRIBUTE_LIST, *PPS_ATTRIBUTE_LIST;
+
+/**
+ * @brief The record which carries the state of a creation.
+ *
+ * The sandbox passes the record through without reading it, so only the leading
+ * members are declared here.
+ */
+typedef struct _PS_CREATE_INFO
+{
+    SIZE_T Size;
+    ULONG  State;
+} PS_CREATE_INFO, *PPS_CREATE_INFO;
+
 typedef struct _PEB
 {
     BYTE                         Reserved1[2];

@@ -4,13 +4,13 @@
 #include "utils/GetPEB.hpp"
 #include "utils/NameResolution.hpp"
 #include "utils/ProxyHook.hpp"
-#include "hook/CreateProcessInternalW.hpp"
 #include "hook/LdrQueryImageFileExecutionOptionsEx.hpp"
 #include "hook/NtClose.hpp"
 #include "hook/NtCompressKey.hpp"
 #include "hook/NtCreateFile.hpp"
 #include "hook/NtCreateKey.hpp"
 #include "hook/NtCreateKeyTransacted.hpp"
+#include "hook/NtCreateUserProcess.hpp"
 #include "hook/NtCurrentTeb.hpp"
 #include "hook/NtDeleteFile.hpp"
 #include "hook/NtDeleteKey.hpp"
@@ -77,7 +77,6 @@
 static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookCloseSocket,
     &appbox::HookConnect,
-    &appbox::HookCreateProcessInternalW,
     &appbox::HookDnsQueryA,
     &appbox::HookDnsQueryUTF8,
     &appbox::HookDnsQueryW,
@@ -91,6 +90,7 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtCreateFile,
     &appbox::HookNtCreateKey,
     &appbox::HookNtCreateKeyTransacted,
+    &appbox::HookNtCreateUserProcess,
     &appbox::HookNtCurrentTeb,
     &appbox::HookNtDeleteFile,
     &appbox::HookNtDeleteKey,
