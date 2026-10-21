@@ -70,7 +70,7 @@ TEST_F(E2E_Patch, BrokenPackageIsSkipped)
     }
 
     /* The broken package left no cache entry behind, the good one did. */
-    const auto cache = GetCWD() / appbox::layout::kCacheDirNameW;
+    const auto cache = GetCWD() / appbox::layout::kStateDirNameW / appbox::layout::kCacheDirNameW;
     EXPECT_FALSE(std::filesystem::exists(cache / L"00-bad"));
     EXPECT_TRUE(std::filesystem::exists(cache / L"01-good" / appbox::layout::kPatchDigestFileNameW));
 

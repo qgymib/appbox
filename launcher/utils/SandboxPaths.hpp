@@ -20,9 +20,10 @@ namespace appbox
  * directory of the launcher program itself unless the configuration was given
  * with `--X-AppBox-ConfigFile`.
  *
- * The patch packages of the user and the cache the launcher extracts them into
- * are resolved the same way: the user creates `patch` next to the launcher and
- * the launcher creates `cache` as soon as that directory holds a package.
+ * The patch packages of the user are resolved the same way: the user creates
+ * `patch` next to the launcher, and the launcher extracts a package into
+ * `data/cache`, which is the cache directory of the state directory it creates
+ * as soon as that directory holds a package.
  */
 struct SandboxPaths
 {
@@ -40,7 +41,8 @@ struct SandboxPaths
         paths.app = (root / layout::kAppDirNameW).wstring();
         paths.state = (root / layout::kStateDirNameW).wstring();
         paths.patch = (root / layout::kPatchDirNameW).wstring();
-        paths.cache = (root / layout::kCacheDirNameW).wstring();
+        /* The constant is relative to the directory of the launcher. */
+        paths.cache = (root / layout::kStateCacheRelative).wstring();
         return paths;
     }
 
@@ -377,7 +379,7 @@ struct SandboxPaths
     std::wstring app;   /* Absolute path of the read-only resource root. */
     std::wstring state; /* Absolute path of the writable state root. */
     std::wstring patch; /* Absolute path of the directory of the patch packages. */
-    std::wstring cache; /* Absolute path of the directory of the extracted packages. */
+    std::wstring cache; /* Absolute path of the extracted packages inside the state root. */
 };
 
 } // namespace appbox

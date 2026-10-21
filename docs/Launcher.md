@@ -20,7 +20,7 @@ them as the command of the shell.
 
 | Option | Value | Behavior |
 | --- | --- | --- |
-| `--X-AppBox-ConfigFile` | Path of a configuration file | Resolve the run with the given file instead of `<launcher>.exe.json` beside the launcher. The layout of the sandbox is resolved against the directory of that file, so `app`, `data`, `patch` and `cache` are looked for beside it. |
+| `--X-AppBox-ConfigFile` | Path of a configuration file | Resolve the run with the given file instead of `<launcher>.exe.json` beside the launcher. The layout of the sandbox is resolved against the directory of that file, so `app`, `data` and `patch` are looked for beside it; the extracted patch packages live in `data/cache`. |
 | `--X-AppBox-LogLevel` | `trace`, `debug`, `info`, `warn`, `err`, `critical` or `off` | Level of the log files of the run (see [Logging](#logging)). A run which names no level writes no log file at all, which is the default. |
 | `--X-AppBox-LogDir` | Directory | Directory the log files of the run are written into. A relative path is resolved against the current directory. Default: the `log` directory beside the launcher. |
 | `--X-AppBox-Startup` | Trigger of a startup file | Start the startup file with that trigger instead of the files which are marked for auto start. A trigger no startup file carries refuses the run. |

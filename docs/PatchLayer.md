@@ -9,10 +9,10 @@ the `patch` directory is applied on top of them in ascending name order.
 > **Implementation status**: the `Patch (ZIP)` project type of the packer and
 > the patch package it writes are implemented, and the launcher consumes all four
 > domains of the packages of the `patch` directory: it validates every package
-> against the `cache` directory, mounts the filesystem layers of a package on
-> top of the layers of `app`, merges the hive of a package into the read-only
-> image of the run and hands the isolation files of the four domains to the
-> sandbox, which merges them in layer order.
+> against the `cache` directory of the state directory, mounts the filesystem
+> layers of a package on top of the layers of `app`, merges the hive of a package
+> into the read-only image of the run and hands the isolation files of the four
+> domains to the sandbox, which merges them in layer order.
 
 ## Patch package
 
@@ -49,13 +49,14 @@ project only.
 ├── <startup>.exe            launcher payload of the standalone archive
 ├── <startup>.exe.json       launcher configuration of the standalone archive
 ├── app/                     read-only resources, the base image of the sandbox
-├── cache/                   extracted patches, created by the launcher
-│   ├── 00-foo/
-│   │   ├── filesystem/...   extracted resources of the package
-│   │   └── md5.txt          digest of the package they were extracted from
-│   └── 01-bar/
-│       └── md5.txt
 ├── data/                    writable state of the sandbox, created by the launcher
+│   ├── cache/               extracted patches, created by the launcher
+│   │   ├── 00-foo/
+│   │   │   ├── filesystem/...   extracted resources of the package
+│   │   │   └── md5.txt          digest of the package they were extracted from
+│   │   └── 01-bar/
+│   │       └── md5.txt
+│   └── ...                  the state of the sandbox itself, see SandboxLayout.hpp
 └── patch/                   patch packages, created by the user
     ├── 00-foo.zip
     └── 01-bar.zip
@@ -63,24 +64,25 @@ project only.
 
 - `patch` is created by the user. A package only takes effect while it is
   inside that directory, next to the launcher of the standalone archive.
-- `cache` is created by the launcher as soon as the `patch` directory holds at
-  least one package. Neither directory travels in the archive: the packer writes
-  the resources only.
+- `data` is created by the launcher at run time, and its `cache` directory as
+  soon as the `patch` directory holds at least one package. Neither `data` nor
+  `patch` travels in the archive: the packer writes the resources only.
 - The patches of the directory are applied in ascending name order of their file
   name (an ASCII comparison), so `00-foo.zip` is applied before `01-bar.zip`.
   The file names are the order of the layers and nothing else: a package may be
   replaced as long as its name keeps its place in that order.
 - The cache entry of a package is its file name without the extension, so
-  `00-foo.zip` is extracted into `cache/00-foo`. Two packages which only differ
-  in the case of their extension would share an entry, so the launcher logs the
-  second one and skips it.
+  `00-foo.zip` is extracted into `data/cache/00-foo`. Two packages which only
+  differ in the case of their extension would share an entry, so the launcher
+  logs the second one and skips it.
 - The digest of the package an entry was extracted from is recorded in
-  `cache/<name>/md5.txt`, and the file is the last file the launcher writes into
-  the entry: an entry whose digest is missing or does not match the package is
-  dropped and extracted again, so a run which was interrupted half way cannot
-  look like a complete extraction.
-- Deleting `cache` only costs the extraction of the next run. The launcher does
-  not delete the entry of a package which the user removed from `patch`: the
+  `data/cache/<name>/md5.txt`, and the file is the last file the launcher writes
+  into the entry: an entry whose digest is missing or does not match the package
+  is dropped and extracted again, so a run which was interrupted half way
+  cannot look like a complete extraction.
+- Deleting `data/cache` only costs the extraction of the next run, while
+  deleting `data` drops the state of the sandbox as well. The launcher does not
+  delete the entry of a package which the user removed from `patch`: the
   directory holds what the runs so far extracted, and deleting it resets that.
 - `app` carries the injection modules the launcher injects (`app/sandbox32.dll`
   and `app/sandbox64.dll`) beside the four domains, so the modules belong to the
@@ -220,7 +222,7 @@ run
    ascending ASCII order, and ignores a directory which does not exist or holds
    no package;
 2. computes the MD5 digest of a package and compares it with the digest
-   recorded in `cache/<name>/md5.txt`, so a package which was replaced is
+   recorded in `data/cache/<name>/md5.txt`, so a package which was replaced is
    extracted again and an unchanged package is reused;
 3. extracts a package whose cache entry is missing or stale, mounts the layers
    of its `filesystem` directory before the layers of `app` and merges its
@@ -260,8 +262,8 @@ after it, and the sandbox applies the list in that order.
   The digest of a package of a few megabytes costs milliseconds, and it cannot
   go stale when a package is replaced by one of the same size and the same write
   time.
-- **Atomic cache entries.** A package is extracted into `cache/<name>.tmp` and
-  the directory is renamed into `cache/<name>` only when the extraction
+- **Atomic cache entries.** A package is extracted into `data/cache/<name>.tmp`
+  and the directory is renamed into `data/cache/<name>` only when the extraction
   finished, so a run which is interrupted half way cannot leave a directory
   which looks complete. The digest is written as the last file of the staging
   directory, which makes it the second marker of a complete extraction.

@@ -61,8 +61,8 @@ std::string ReadPatchFile(const std::wstring& folder, const std::filesystem::pat
  * 1. `00-foo.zip` carries the file of the case with the content `one`.
  * 2. The sandbox runs four times: with the package as it is, after a file was
  *    placed inside its cache entry, after the package was replaced with one
- *    which carries the content `two` and after the cache directory was
- *    deleted.
+ *    which carries the content `two` and after the cache directory below the
+ *    state directory was deleted.
  *
  * Expected:
  * 1. The first run reads `one` and records the digest of the package in its
@@ -94,7 +94,8 @@ TEST_F(E2E_Patch, CacheIsReusedAndRefreshed)
     ASSERT_TRUE(WritePackage(package, "one"));
 
     const auto folder = GetKnownFolderPath(L"#USERPROFILE#", false);
-    const auto cache_entry = GetCWD() / appbox::layout::kCacheDirNameW / L"00-foo";
+    const auto cache = GetCWD() / appbox::layout::kStateDirNameW / appbox::layout::kCacheDirNameW;
+    const auto cache_entry = cache / L"00-foo";
     const auto digest_file = cache_entry / appbox::layout::kPatchDigestFileNameW;
     const auto marker = cache_entry / L"marker.txt";
 
@@ -127,7 +128,7 @@ TEST_F(E2E_Patch, CacheIsReusedAndRefreshed)
     /* A run whose cache was deleted extracts the package again. */
     {
         std::error_code ec;
-        ASSERT_GT(std::filesystem::remove_all(GetCWD() / appbox::layout::kCacheDirNameW, ec), 0u);
+        ASSERT_GT(std::filesystem::remove_all(cache, ec), 0u);
         ASSERT_FALSE(ec);
     }
     EXPECT_EQ(ReadPatchFile(folder, GetCWD(), config), "two");

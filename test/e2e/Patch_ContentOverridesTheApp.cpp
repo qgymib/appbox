@@ -67,7 +67,9 @@ std::wstring VirtualPathOf(const wchar_t* name)
  * 2. The file of the archive and the file of the first package stay readable,
  *    because a package overrides the resources it carries and not the whole
  *    layer below it.
- * 3. Every package was extracted into the cache of the run.
+ * 3. Every package was extracted into the cache of the run, which lives below the
+ *    state directory of the sandbox, and no cache directory was created next to
+ *    the launcher.
  * 4. The resources of the application are untouched.
  */
 TEST_F(E2E_Patch, ContentOverridesTheApp)
@@ -120,13 +122,16 @@ TEST_F(E2E_Patch, ContentOverridesTheApp)
         EXPECT_TRUE(HoldsFile(rsp, kFirstPackageName));
     }
 
-    /* Every package was extracted into its cache entry. */
+    /* Every package was extracted into its cache entry below the state directory. */
     {
-        const auto entry = GetCWD() / appbox::layout::kCacheDirNameW / L"00-foo";
+        const auto entry = GetCWD() / appbox::layout::kStateDirNameW / appbox::layout::kCacheDirNameW / L"00-foo";
         EXPECT_TRUE(std::filesystem::exists(entry / appbox::layout::kPatchDigestFileNameW));
         EXPECT_TRUE(
             std::filesystem::exists(entry / appbox::layout::kFilesystemDirNameW / L"#USERPROFILE#" / kSharedName));
     }
+
+    /* The launcher creates no cache directory next to itself. */
+    EXPECT_FALSE(std::filesystem::exists(GetCWD() / appbox::layout::kCacheDirNameW));
 
     /* The resources of the application are untouched. */
     ASSERT_TRUE(tree.Verify());

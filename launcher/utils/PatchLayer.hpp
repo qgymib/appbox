@@ -110,7 +110,8 @@ struct PatchLayer
  * The digest of a package decides whether its cache entry is still valid: a
  * package whose digest is recorded in its cache entry is reused as it is,
  * every other package is extracted into the cache again. The cache directory
- * is created as soon as the patch directory holds at least one package.
+ * lives below the state directory of the sandbox, and it is created as soon as
+ * the patch directory holds at least one package.
  *
  * A missing patch directory is not an error: a run without patches is a run
  * without layers above the resources of the archive.

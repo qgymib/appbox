@@ -56,6 +56,7 @@ namespace appbox
  *                                      packages, rebuilt at every start
  * data/environment/state.json          environment variables the packaged
  *                                      application changed inside the sandbox
+ * data/cache/00-foo/...                extracted patch package, see below
  * ```
  *
  * The registry of a run is a view of two sandbox hives and the real registry:
@@ -68,16 +69,19 @@ namespace appbox
  *
  * A patch package is consumed next to those directories: the user creates
  * `patch` and drops the packages into it, the launcher extracts a package into
- * `cache` to reuse the extraction of the runs which follow.
+ * the `cache` directory of the state to reuse the extraction of the runs which
+ * follow.
  *
  * ```
  * patch/00-foo.zip                     patch package, created by the user
- * cache/00-foo/filesystem/...          extracted package, created by the launcher
- * cache/00-foo/md5.txt                 digest of the extracted package
+ * data/cache/00-foo/filesystem/...     extracted package, created by the launcher
+ * data/cache/00-foo/md5.txt            digest of the extracted package
  * ```
  *
- * Neither directory travels in the archive, and deleting `cache` only costs
- * the extraction of the next run.
+ * Neither `patch` nor the state directory travels in the archive. The cache
+ * lives inside the state, so deleting the state directory drops the sandbox
+ * state and the extractions at once, while deleting only `data/cache` costs the
+ * extraction of the next run.
  *
  * The names live in `common/` because the packer, the launcher and the tests
  * share them: the packer builds the entry names of the archive, the launcher
@@ -184,10 +188,11 @@ inline constexpr const char* kPatchDirName = "patch";
 /**
  * @brief Name of the directory which carries the extracted patch packages.
  *
- * The directory is created by the launcher as soon as the patch directory holds
- * at least one package. Every package has a directory of its own inside it,
- * which holds the extracted resources and the digest of the package they were
- * extracted from.
+ * The directory lives below the state directory, because an extraction is state
+ * the launcher creates at run time and not a resource of the archive. It is
+ * created as soon as the patch directory holds at least one package. Every
+ * package has a directory of its own inside it, which holds the extracted
+ * resources and the digest of the package they were extracted from.
  */
 inline constexpr const char* kCacheDirName = "cache";
 
@@ -379,6 +384,18 @@ inline constexpr const char* kStateRegistryImageRelative = "data/registry/image/
  * resets the environment of the sandbox to the state of the archive.
  */
 inline constexpr const char* kStateEnvironmentRelative = "data/environment/state.json";
+
+/**
+ * @brief Extracted patch packages, relative to the directory of the launcher.
+ *
+ * The directory lives inside the state directory, so the state of the sandbox
+ * and the extractions of its patch packages are reset together: deleting `data`
+ * drops both, while deleting only `data/cache` costs the extraction of the next
+ * run. The launcher creates the directory as soon as the patch directory holds
+ * at least one package, and every package owns the entry named after its file
+ * name without the extension.
+ */
+inline constexpr const char* kStateCacheRelative = "data/cache";
 
 } // namespace layout
 

@@ -278,7 +278,8 @@ std::vector<appbox::PatchLayer> appbox::LoadPatchLayers(const SandboxPaths&     
     /*
      * The cache exists while the patch directory holds a package, so a user
      * who wants to reset the extraction deletes the directory instead of the
-     * single entries.
+     * single entries. It lives below the state directory, so deleting `data`
+     * resets the extraction together with the rest of the state.
      */
     std::filesystem::create_directories(paths.cache, ec);
     if (ec)

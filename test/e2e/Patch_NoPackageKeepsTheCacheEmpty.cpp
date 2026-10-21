@@ -28,8 +28,8 @@ constexpr wchar_t kName[] = L"AppBoxTest_Patch.NoPackage.txt";
  * Expected:
  * 1. The read returns the content of the archive, because a file without the
  *    extension of a package is not applied.
- * 2. The cache directory was not created, because the launcher only creates it
- *    while the patch directory holds a package.
+ * 2. The cache directory below the state directory was not created, because the
+ *    launcher only creates it while the patch directory holds a package.
  */
 TEST_F(E2E_Patch, NoPackageKeepsTheCacheEmpty)
 {
@@ -60,7 +60,7 @@ TEST_F(E2E_Patch, NoPackageKeepsTheCacheEmpty)
         EXPECT_EQ(rsp.data, "app");
     }
 
-    EXPECT_FALSE(std::filesystem::exists(GetCWD() / appbox::layout::kCacheDirNameW));
+    EXPECT_FALSE(std::filesystem::exists(GetCWD() / appbox::layout::kStateDirNameW / appbox::layout::kCacheDirNameW));
 
     /* The resources of the application are untouched. */
     ASSERT_TRUE(tree.Verify());
