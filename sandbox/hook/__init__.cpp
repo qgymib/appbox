@@ -52,9 +52,15 @@
 #include "hook/GetAddrInfoW.hpp"
 #include "hook/getaddrinfo.hpp"
 #include "hook/gethostbyname.hpp"
+#include "hook/getpeername.hpp"
 #include "hook/closesocket.hpp"
 #include "hook/connect.hpp"
+#include "hook/recv.hpp"
 #include "hook/recvfrom.hpp"
+#include "hook/send.hpp"
+#include "hook/WSAIoctl.hpp"
+#include "hook/WSARecv.hpp"
+#include "hook/WSASend.hpp"
 #include "hook/RtlCompareUnicodeString.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
 #include "hook/RtlSetCurrentEnvironment.hpp"
@@ -84,6 +90,7 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookGetAddrInfoExW,
     &appbox::HookGetAddrInfoW,
     &appbox::HookGetHostByName,
+    &appbox::HookGetPeerName,
     &appbox::HookLdrQueryImageFileExecutionOptionsEx,
     &appbox::HookNtClose,
     &appbox::HookNtCompressKey,
@@ -125,18 +132,23 @@ static const appbox::HookRecord* s_hooks[] = {
     &appbox::HookNtSetInformationKey,
     &appbox::HookNtSetValueKey,
     &appbox::HookNtWriteFile,
+    &appbox::HookRecv,
     &appbox::HookRecvFrom,
     &appbox::HookRtlCompareUnicodeString,
     &appbox::HookRtlInitUnicodeString,
     &appbox::HookRtlSetCurrentEnvironment,
     &appbox::HookRtlSetEnvironmentStrings,
     &appbox::HookRtlSetEnvironmentVariable,
+    &appbox::HookSend,
     &appbox::HookSendTo,
     &appbox::HookSetEnvironmentVariableA,
     &appbox::HookSetEnvironmentVariableW,
     &appbox::HookSetProcessMitigationPolicy,
     &appbox::HookWSAConnect,
+    &appbox::HookWSAIoctl,
+    &appbox::HookWSARecv,
     &appbox::HookWSARecvFrom,
+    &appbox::HookWSASend,
     &appbox::HookWSASendTo,
 };
 

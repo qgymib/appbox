@@ -3,6 +3,9 @@
 #include "utils/Log.hpp"
 #include "hook/closesocket.hpp"
 #include "hook/connect.hpp"
+#include "hook/recv.hpp"
+#include "hook/recvfrom.hpp"
+#include "hook/send.hpp"
 #include "hook/sendto.hpp"
 #include "Sandbox.hpp"
 #include <cstring>
@@ -215,9 +218,16 @@ void appbox::network::InstallRawSocketApi()
     RawSocketApi api;
     api.connect = sys_connect;
     api.sendto = sys_sendto;
+    api.recvfrom = sys_recvfrom;
     api.closesocket = sys_closesocket;
-    api.send = reinterpret_cast<int(WSAAPI*)(SOCKET, const char*, int, int)>(GetProcAddress(ws2_32, "send"));
-    api.recv = reinterpret_cast<int(WSAAPI*)(SOCKET, char*, int, int)>(GetProcAddress(ws2_32, "recv"));
+    /*
+     * The entry points of a call the sandbox hooks are the ones the hooks saved,
+     * which carry the trampoline to the original code once the hooks are
+     * attached: a pointer resolved here would name the hook itself and the
+     * proxy would carry its own traffic.
+     */
+    api.send = sys_send;
+    api.recv = sys_recv;
     api.getsockopt =
         reinterpret_cast<int(WSAAPI*)(SOCKET, int, int, char*, int*)>(GetProcAddress(ws2_32, "getsockopt"));
     api.socket = reinterpret_cast<SOCKET(WSAAPI*)(int, int, int)>(GetProcAddress(ws2_32, "socket"));

@@ -27,8 +27,13 @@ struct ProtocolSocketTraffic
         TcpEcho,               ///< Connect, send a payload and read the echo.
         TcpConnect,            ///< Connect and report the result only.
         TcpConnectNonBlocking, ///< Connect on a non-blocking socket and report the mode afterwards.
+        TcpConnectEx,          ///< Connect through the extension function of the socket API.
+        TcpPeerName,           ///< Connect and report the address the socket names as its peer.
         UdpEcho,               ///< Send a datagram and read the answer.
         UdpSendOnly,           ///< Send a datagram without waiting for an answer.
+        UdpConnectedEcho,      ///< Connect a datagram socket, then send and receive on it.
+        UdpSendMsg,            ///< Send and receive a datagram through the message functions.
+        UdpOverlappedEcho,     ///< Send and receive a datagram as overlapped operations.
     };
 
     /**
@@ -95,11 +100,16 @@ struct ProtocolSocketTraffic
         std::string source;
 
         /**
+         * @brief Address the socket names as its peer, `address:port`.
+         */
+        std::string peer;
+
+        /**
          * @brief Whether the socket was still non-blocking after a connection.
          */
         bool nonblocking = false;
 
-        NLOHMANN_DEFINE_TYPE_INTRUSIVE(Result, code, error, sent, received, source, nonblocking)
+        NLOHMANN_DEFINE_TYPE_INTRUSIVE(Result, code, error, sent, received, source, peer, nonblocking)
     };
 
     /**
@@ -131,12 +141,17 @@ struct ProtocolSocketTraffic
  */
 NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolSocketTraffic::Operation,
                              {
-                                 { ProtocolSocketTraffic::Operation::TcpEcho,               "tcp_echo"      },
-                                 { ProtocolSocketTraffic::Operation::TcpConnect,            "tcp_connect"   },
+                                 { ProtocolSocketTraffic::Operation::TcpEcho,               "tcp_echo"            },
+                                 { ProtocolSocketTraffic::Operation::TcpConnect,            "tcp_connect"         },
                                  { ProtocolSocketTraffic::Operation::TcpConnectNonBlocking,
-                                  "tcp_connect_non_blocking"                                                },
-                                 { ProtocolSocketTraffic::Operation::UdpEcho,               "udp_echo"      },
-                                 { ProtocolSocketTraffic::Operation::UdpSendOnly,           "udp_send_only" },
+                                  "tcp_connect_non_blocking"                                                      },
+                                 { ProtocolSocketTraffic::Operation::TcpConnectEx,          "tcp_connect_ex"      },
+                                 { ProtocolSocketTraffic::Operation::TcpPeerName,           "tcp_peer_name"       },
+                                 { ProtocolSocketTraffic::Operation::UdpEcho,               "udp_echo"            },
+                                 { ProtocolSocketTraffic::Operation::UdpSendOnly,           "udp_send_only"       },
+                                 { ProtocolSocketTraffic::Operation::UdpConnectedEcho,      "udp_connected_echo"  },
+                                 { ProtocolSocketTraffic::Operation::UdpSendMsg,            "udp_send_msg"        },
+                                 { ProtocolSocketTraffic::Operation::UdpOverlappedEcho,     "udp_overlapped_echo" },
 })
 
 /**

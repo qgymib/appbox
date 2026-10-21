@@ -36,6 +36,11 @@ struct RawSocketApi
     int(WSAAPI* sendto)(SOCKET, const char*, int, int, const sockaddr*, int) = nullptr;
 
     /**
+     * @brief Original recvfrom(), used to read the relay of an association.
+     */
+    int(WSAAPI* recvfrom)(SOCKET, char*, int, int, sockaddr*, int*) = nullptr;
+
+    /**
      * @brief Original closesocket(), used to release a control connection.
      */
     int(WSAAPI* closesocket)(SOCKET) = nullptr;
@@ -167,6 +172,73 @@ public:
     SocketKind KindOf(SOCKET socket);
 
     /**
+     * @brief Record the address a socket is connected to.
+     *
+     * The address is the one the application asked for, and not the one of the
+     * server of the proxy: it is what `getpeername` reports back, so the proxy
+     * stays invisible to the application.
+     *
+     * @param[in] socket The socket to record.
+     * @param[in] peer Address and port of the target.
+     */
+    void SetPeer(SOCKET socket, const socks5::Endpoint& peer);
+
+    /**
+     * @brief Read the address a socket is connected to.
+     * @param[in] socket The socket to inspect.
+     * @param[out] peer Address and port of the target, untouched on failure.
+     * @return true when the socket is connected to an address the proxy knows.
+     */
+    bool PeerOf(SOCKET socket, socks5::Endpoint& peer) const;
+
+    /**
+     * @brief Connect a datagram socket to a target.
+     *
+     * A datagram socket is connected to an address of its own stack only: the
+     * protocol of the proxy has no connection for a datagram, so the address is
+     * recorded and the socket is left untouched. The association of the socket
+     * is opened by the first datagram it sends.
+     *
+     * @param[in] socket The socket to connect.
+     * @param[in] target Address and port the application asked for.
+     * @return 0 on success, `SOCKET_ERROR` on failure with the last error set.
+     */
+    int ConnectDatagram(SOCKET socket, const socks5::Endpoint& target);
+
+    /**
+     * @brief Read a datagram of an association and unwrap it.
+     *
+     * The datagram is read into a buffer of the calling thread which has room
+     * for the header of the protocol as well, so a payload which fills the
+     * buffers of the application still fits the message.
+     *
+     * @param[in] socket The socket to read.
+     * @param[in] buffers Buffers of the application.
+     * @param[in] count Number of the buffers of the application.
+     * @param[out] source Address the payload was sent to, untouched on failure.
+     * @param[in] deadline Tick count the call has to finish before.
+     * @return The number of the payload bytes which were delivered, or
+     *         `SOCKET_ERROR` on failure with the last error set.
+     */
+    int ReceiveDatagram(SOCKET socket, const WSABUF* buffers, std::size_t count, socks5::Endpoint& source,
+                        DWORD deadline);
+
+    /**
+     * @brief Send bytes over a socket which the proxy connected.
+     *
+     * The call is used by a connection which carries a payload of its own, and
+     * it reaches the stack through the entry points the hooks saved, so the
+     * traffic of the proxy never passes the hooks again.
+     *
+     * @param[in] socket The socket to send with.
+     * @param[in] data Bytes to send.
+     * @param[in] size Number of the bytes to send.
+     * @param[out] sent Number of the bytes which were sent.
+     * @return true when every byte was sent.
+     */
+    bool SendStream(SOCKET socket, const char* data, int size, int& sent);
+
+    /**
      * @brief Whether the proxy carries the datagrams of a socket.
      * @param[in] socket The socket to inspect.
      * @return true when UDP is configured and the socket is a datagram socket.
@@ -266,6 +338,16 @@ private:
          * @brief Relay the datagrams of the association are sent to.
          */
         socks5::Endpoint relay;
+
+        /**
+         * @brief Whether the address the socket is connected to is known.
+         */
+        bool peer_known = false;
+
+        /**
+         * @brief Address the socket is connected to, as the application named it.
+         */
+        socks5::Endpoint peer;
     };
 
     /**

@@ -18,7 +18,7 @@ T_connect sys_connect = nullptr;
 static int WSAAPI Hook_connect(SOCKET s, const sockaddr* name, int namelen)
 {
     appbox::network::Proxy* proxy = appbox::network::ProxyOfProcess();
-    if (proxy == nullptr || !proxy->ProxiesTcp())
+    if (proxy == nullptr || (!proxy->ProxiesTcp() && !proxy->ProxiesUdp()))
     {
         return sys_connect(s, name, namelen);
     }
@@ -26,15 +26,25 @@ static int WSAAPI Hook_connect(SOCKET s, const sockaddr* name, int namelen)
     if (proxy->KindOf(s) != appbox::network::SocketKind::Stream)
     {
         /*
-         * A connected datagram socket sends with send() instead of sendto(),
-         * which is not a call the sandbox carries.
+         * The protocol of the proxy has no connection for a datagram, so the
+         * address of a datagram socket is recorded by the engine and the
+         * socket is left untouched: the datagrams it sends and receives are
+         * carried by the association of the socket, which is what a program
+         * which connects a datagram socket and then uses send() and recv()
+         * relies on.
          */
-        LOG_W("the connection of a datagram socket keeps the direct path");
-        return sys_connect(s, name, namelen);
+        appbox::network::socks5::Endpoint target;
+        if (!proxy->ProxiesUdp() || name == nullptr || !appbox::network::EndpointFromSockaddr(name, namelen, target))
+        {
+            LOG_W("the connection of a datagram socket keeps the direct path");
+            return sys_connect(s, name, namelen);
+        }
+
+        return proxy->ConnectDatagram(s, target);
     }
 
     appbox::network::socks5::Endpoint target;
-    if (!appbox::network::EndpointFromSockaddr(name, namelen, target))
+    if (!proxy->ProxiesTcp() || name == nullptr || !appbox::network::EndpointFromSockaddr(name, namelen, target))
     {
         LOG_W("the address of a connection cannot be carried by the proxy");
         return sys_connect(s, name, namelen);

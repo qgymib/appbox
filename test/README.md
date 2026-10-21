@@ -1393,6 +1393,11 @@ isolation file as the server of the proxy.
 | `Net_Proxy_UnreachableServerFailsTheConnect` | TCP on, pointing at a free port | connect to the echo server | the call fails and the echo server never accepted a connection, so the sandbox does not fall back to the direct path |
 | `Net_Proxy_NonBlockingSocketIsProxied` | TCP on | connect on a non-blocking socket | the call succeeds and the socket is still non-blocking afterwards |
 | `Net_Proxy_MalformedConfigurationFallsBack` | a `proxy` member whose port carries a leading zero | connect to the echo server | the call reaches the echo server and the server of the proxy received nothing |
+| `Net_Proxy_ConnectExIsCarriedByTheProxy` | TCP on | connect through the extension function the socket API hands out for `WSAID_CONNECTEX`, then echo a payload | the payload comes back, and the server of the proxy received a `CONNECT` request which names the echo server |
+| `Net_Proxy_ConnectedUdpSocketIsCarriedByTheProxy` | UDP on | connect a datagram socket, then `send` and `recv` | the payload comes back, and the echo server saw the datagram come from the relay of the association |
+| `Net_Proxy_SendMsgIsCarriedByTheProxy` | UDP on | send and receive through the message functions of the socket API | the payload comes back with the echo server as its source, and the echo server saw the relay |
+| `Net_Proxy_OverlappedDatagramIsCarriedByTheProxy` | UDP on | send and receive a datagram as overlapped operations | both operations complete, the payload comes back with the echo server as its source, and the echo server saw the relay |
+| `Net_Proxy_PeerNameIsTheTarget` | TCP on | connect to the echo server, then `getpeername` | the address the socket reports is the echo server and not the server of the proxy |
 
 | Case | Redirections | Question | Expected |
 | --- | --- | --- | --- |

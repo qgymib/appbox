@@ -97,19 +97,54 @@ stop redirecting the name resolution.
 The proxy of the workspace is applied by the same module, from the `proxy`
 member of the isolation file. The engine (`sandbox/network/Proxy.*`) holds the
 configuration and the per-socket state, the protocol itself is implemented by
-`sandbox/network/Socks5.*`, and the hooks of the socket API call it:
+`sandbox/network/Socks5.*`, the functions which have no import library are
+implemented by `sandbox/network/Extensions.*`, and the completion of an
+operation the sandbox performs itself is `sandbox/network/Completion.*`. The
+hooks of the socket API call them:
 
 | Hook | Behaviour |
 | --- | --- |
-| `ws2_32!connect`, `ws2_32!WSAConnect` | A stream socket is connected to the server of the proxy and the handshake is performed before the call returns, so the socket is connected to the target when the application gets the control back. |
+| `ws2_32!connect`, `ws2_32!WSAConnect` | A stream socket is connected to the server of the proxy and the handshake is performed before the call returns, so the socket is connected to the target when the application gets the control back. A datagram socket is not connected at all: the target is recorded and the socket keeps its own stack, because the protocol has no connection for a datagram. |
+| `ws2_32!send`, `ws2_32!WSASend` | A datagram of a connected datagram socket is wrapped by the protocol and sent to the relay of the association. A stream socket keeps the path of the host, because its bytes already reach the target through the connection the proxy made. |
+| `ws2_32!recv`, `ws2_32!WSARecv` | A datagram which came from the relay is unwrapped and handed over as the payload of the connected socket. |
 | `ws2_32!sendto`, `ws2_32!WSASendTo` | A datagram of a datagram socket is wrapped by the protocol and sent to the relay of the association of the socket. |
 | `ws2_32!recvfrom`, `ws2_32!WSARecvFrom` | A datagram which came from the relay is unwrapped and reported with the address the payload was sent to. |
+| `ws2_32!WSAIoctl` | The answer to `SIO_GET_EXTENSION_FUNCTION_POINTER` for `WSAID_CONNECTEX`, `WSAID_WSASENDMSG` and `WSAID_WSARECVMSG` is replaced by the function of the sandbox. |
+| `ws2_32!getpeername` | A socket the proxy connected reports the address the application asked for, and not the address of the server of the proxy. |
 | `ws2_32!closesocket` | The state of the socket is released with the socket. |
 
 **TCP** is carried by the handshake of the protocol; **UDP** is carried by one
 association per datagram socket, which is opened by its first datagram and
 reused by every datagram which follows, so a socket which talks to several
-targets carries them all through the one relay the server granted it.
+targets carries them all through the one relay the server granted it. A
+datagram socket which is connected is carried as well, because the address it
+was connected to is the target of every datagram it sends.
+
+### The functions which have no import library
+
+`ConnectEx`, `WSASendMsg` and `WSARecvMsg` are not exported by a library an
+application links against: it asks `WSAIoctl` for their addresses with the
+identifier of the extension. A hook of the export therefore cannot reach them,
+so the sandbox answers the question instead and hands out its own
+implementation. The call reaches the system first, which keeps the answer of
+the host for every other extension, and only the three the proxy carries are
+replaced.
+
+### An operation the sandbox performs itself
+
+The payload of a datagram of the protocol is not the payload of the
+application, so an operation which the application makes as an overlapped one
+cannot be handed to the stack: the stack would read the message of the protocol
+into the buffers of the application, or would need a buffer which outlives the
+call. The sandbox therefore performs the operation and reports its result the
+way the stack would have reported it:
+
+| Kind | Behaviour |
+| --- | --- |
+| Overlapped send | The datagram is sent before the call returns, and the result is written into the `OVERLAPPED` of the application. |
+| Overlapped receive | The operation is queued, and the worker of the sandbox waits for the datagram of the relay and fills the buffers of the application when it arrives. |
+| Completion | `Internal` and `InternalHigh` are written, the event of the operation is signalled, and a completion packet is queued to the completion port of the socket when it has one. |
+| Return | The call reports `WSA_IO_PENDING`, which is the shape a caller of an overlapped operation expects: it waits for the completion, and the completion is always delivered. |
 
 Key constraints of the design:
 
@@ -123,6 +158,10 @@ Key constraints of the design:
   application with the error of the protocol, and the connection is never
   carried directly: an application can never believe that it is proxied while it
   is not.
+* **A socket the proxy carries never reaches the host directly.** Every entry
+  point of a datagram socket of a carried kind is answered by the sandbox, so a
+  datagram cannot leave the process on the path of the host while the proxy is
+  enabled.
 * **Relation to the redirections.** The target of a request is the address the
   application asked for, so a name the `DNS` page redirects is resolved to the
   redirect address before the proxy sees it, and the proxy connects to that
@@ -168,23 +207,23 @@ the NSI device, so there is no kernel level entry point which carries the
 queried name; the user mode entry points of the two libraries are the closest
 layer which does.
 
+The proxy is on the same layer for a reason of its own: the address a request
+carries is the address the application asked for, and a program spells that
+address at the entry points of `ws2_32` and not at the device. A socket control
+request on `\Device\Afd` carries the address the stack built, after the
+redirections of the workspace were applied and after the address family was
+chosen, and it does not carry the call the application made: a connection and a
+datagram look the same at that layer, and a socket which the proxy has to leave
+alone cannot be told from one it has to carry. The same boundary is where the
+product of the same kind draws its line: the runtime of Turbo Studio hooks the
+exports of `ws2_32` and not the device, and the only `NtDeviceIoControlFile`
+hook it carries serves a device of its own (see
+[TurboStudioAnalysis.md](TurboStudioAnalysis.md)).
+
 ## Tests
 
-The end-to-end cases of the domain run the real launcher with a probe process
-inside the sandbox. The cases of the layers of a run which applies patch
-packages are:
-
-- `test/e2e/Patch_NetworkDnsOfTheLastLayerWins.cpp` — a redirection of a
-  package overrides the redirection of the archive, the later package overrides
-  the earlier one, and a hostname no later file lists keeps the entry below it.
-- `test/e2e/Patch_NetworkProxyOfTheLastLayerWins.cpp` — the proxy of the last
-  package which names one carries the traffic, and the proxy below it is not
-  used in parallel.
-- `test/e2e/Patch_NetworkProxyBelowIsKept.cpp` — a package whose document names
-  no proxy keeps the proxy of the archive.
-- `test/e2e/Patch_BrokenNetworkResourcesAreSkipped.cpp` — a package which
-  carries a malformed network document is skipped, so the layers below and above
-  it stay in place.
+The unit tests and the end-to-end cases of the network isolation are listed in
+[test/README.md](../test/README.md).
 
 ## Known gaps and limitations
 
@@ -193,13 +232,6 @@ packages are:
 - A question which asks for a record type other than an address keeps the
   resolution of the host.
 - `GetAddrInfoExW` is redirected for its synchronous form only.
-- A datagram socket which is connected (`connect` on a datagram socket, then
-  `send`) keeps the path of the host: the sandbox carries the datagram entry
-  points (`sendto`, `WSASendTo`) and not `send`.
-- A datagram which is sent or received as an overlapped operation keeps the path
-  of the host: the message of the protocol is built in the buffer of the sandbox,
-  which the stack reads after the call returned.
-- `WSASendMsg` and `WSARecvMsg` are not carried by the proxy.
 - A request never carries a name: the sandbox sends the address the application
   asked for, so a name is resolved inside the process and not at the server of
   the proxy.
@@ -208,3 +240,16 @@ packages are:
 - A socket which the application creates before the sandbox is injected cannot
   be carried, because the state of a socket is built by the calls the sandbox
   sees.
+- `getsockname` keeps the answer of the host, so the local address of a socket
+  the proxy carries is the one of its connection to the server.
+- The control data of a message is not synthesized: a message which is received
+  through `WSARecvMsg` reports no control data.
+- An overlapped operation which the sandbox completes reports a failure as
+  `STATUS_UNSUCCESSFUL`, because the error of the operation is not translated
+  into the status the stack would have reported.
+- The worker of the sandbox serves a bounded number of receives at once, and a
+  receive beyond that number fails with `WSAENOBUFS`.
+- A synchronous receive waits at most thirty seconds, or the receive timeout of
+  the socket when it is set.
+- The completion port of a socket is read for every completion, which is a
+  system call per overlapped operation.

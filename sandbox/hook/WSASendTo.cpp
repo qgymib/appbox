@@ -1,6 +1,7 @@
 #include "utils/Winsock.hpp" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "utils/ProxyHook.hpp"
+#include "network/Completion.hpp"
 #include "WSASendTo.hpp"
 
 T_WSASendTo sys_WSASendTo = nullptr;
@@ -28,13 +29,6 @@ static int WSAAPI Hook_WSASendTo(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCou
                              lpCompletionRoutine);
     }
 
-    if (lpOverlapped != nullptr)
-    {
-        LOG_W("an overlapped datagram keeps the direct path");
-        return sys_WSASendTo(s, lpBuffers, dwBufferCount, lpNumberOfBytesSent, dwFlags, lpTo, iTolen, lpOverlapped,
-                             lpCompletionRoutine);
-    }
-
     appbox::network::socks5::Endpoint target;
     if (!appbox::network::EndpointFromSockaddr(lpTo, iTolen, target))
     {
@@ -46,6 +40,18 @@ static int WSAAPI Hook_WSASendTo(SOCKET s, LPWSABUF lpBuffers, DWORD dwBufferCou
     const int sent = proxy->SendDatagram(s, target, lpBuffers, dwBufferCount);
     if (sent == SOCKET_ERROR)
     {
+        return SOCKET_ERROR;
+    }
+
+    if (lpOverlapped != nullptr)
+    {
+        /*
+         * The payload of the protocol is not the payload of the application, so
+         * the datagram is sent by the sandbox and the operation is reported the
+         * way the stack would have reported it.
+         */
+        appbox::network::CompleteOverlapped(s, lpOverlapped, static_cast<DWORD>(sent), 0);
+        WSASetLastError(WSA_IO_PENDING);
         return SOCKET_ERROR;
     }
 

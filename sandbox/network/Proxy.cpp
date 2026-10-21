@@ -654,6 +654,7 @@ int appbox::network::Proxy::ConnectTcp(SOCKET socket, const socks5::Endpoint& ta
         {
             return SOCKET_ERROR;
         }
+        SetPeer(socket, target);
         return 0;
     }
 
@@ -669,6 +670,7 @@ int appbox::network::Proxy::ConnectTcp(SOCKET socket, const socks5::Endpoint& ta
         return SOCKET_ERROR;
     }
 
+    SetPeer(socket, target);
     LOG_D("the connection to {}:{} is carried by the proxy", target.host, target.port);
     return 0;
 }
@@ -824,4 +826,173 @@ int appbox::network::Proxy::SendDatagram(SOCKET socket, const socks5::Endpoint& 
 
     /* The caller expects the number of the payload bytes it handed over. */
     return static_cast<int>(payload_size);
+}
+
+void appbox::network::Proxy::SetPeer(SOCKET socket, const socks5::Endpoint& peer)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    SocketState&                state = sockets_[socket];
+    state.peer = peer;
+    state.peer_known = true;
+}
+
+bool appbox::network::Proxy::PeerOf(SOCKET socket, socks5::Endpoint& peer) const
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto                  it = sockets_.find(socket);
+    if (it == sockets_.end() || !it->second.peer_known)
+    {
+        return false;
+    }
+    peer = it->second.peer;
+    return true;
+}
+
+int appbox::network::Proxy::ConnectDatagram(SOCKET socket, const socks5::Endpoint& target)
+{
+    /*
+     * The protocol of the proxy has no connection for a datagram: the address
+     * is kept by the socket of the application, and the association of the
+     * socket is opened by the first datagram it sends.
+     */
+    SetPeer(socket, target);
+    LOG_D("the datagram socket is connected to {}:{} and carried by the relay", target.host, target.port);
+    return 0;
+}
+
+int appbox::network::Proxy::ReceiveDatagram(SOCKET socket, const WSABUF* buffers, std::size_t count,
+                                            socks5::Endpoint& source, DWORD deadline)
+{
+    if (buffers == nullptr || count == 0)
+    {
+        WSASetLastError(WSAEFAULT);
+        return SOCKET_ERROR;
+    }
+
+    /* A datagram of the relay is only received once the association is open. */
+    socks5::Endpoint relay;
+    if (!OpenAssociation(socket, relay))
+    {
+        return SOCKET_ERROR;
+    }
+
+    /* A socket which waits for a datagram for a time of its own is honoured. */
+    DWORD receive_timeout = 0;
+    int   receive_timeout_size = sizeof(receive_timeout);
+    if (raw_.getsockopt != nullptr &&
+        raw_.getsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<char*>(&receive_timeout),
+                        &receive_timeout_size) == 0 &&
+        receive_timeout != 0)
+    {
+        const DWORD local = GetTickCount() + receive_timeout;
+        if (local < deadline)
+        {
+            deadline = local;
+        }
+    }
+
+    std::size_t room = 0;
+    for (std::size_t index = 0; index < count; ++index)
+    {
+        room += buffers[index].len;
+    }
+
+    /* The datagram is read with room for the header of the protocol. */
+    std::vector<std::uint8_t>& scratch = IncomingBuffer();
+    const std::size_t          capacity = room + socks5::kMaxUdpHeaderSize;
+    scratch.resize(capacity);
+
+    sockaddr_storage from;
+    int              from_length = sizeof(from);
+    ZeroMemory(&from, sizeof(from));
+
+    int read = SOCKET_ERROR;
+    for (;;)
+    {
+        read = raw_.recvfrom(socket, reinterpret_cast<char*>(scratch.data()), static_cast<int>(capacity), 0,
+                             reinterpret_cast<sockaddr*>(&from), &from_length);
+        if (read != SOCKET_ERROR)
+        {
+            break;
+        }
+        if (WSAGetLastError() != WSAEWOULDBLOCK)
+        {
+            return SOCKET_ERROR;
+        }
+        if (!WaitFor(socket, false, deadline))
+        {
+            return SOCKET_ERROR;
+        }
+        from_length = sizeof(from);
+    }
+
+    socks5::Endpoint sender;
+    const bool       from_relay = EndpointFromSockaddr(reinterpret_cast<const sockaddr*>(&from), from_length, sender) &&
+                                  IsRelayOf(socket, sender);
+
+    const std::uint8_t* payload = scratch.data();
+    std::size_t         payload_size = static_cast<std::size_t>(read);
+    if (from_relay)
+    {
+        socks5::Endpoint origin;
+        if (!socks5::ParseUdpDatagram(scratch.data(), static_cast<std::size_t>(read), origin, payload, payload_size))
+        {
+            LOG_W("a datagram of the relay of the proxy is not a datagram of the protocol");
+            WSASetLastError(WSAEMSGSIZE);
+            return SOCKET_ERROR;
+        }
+        source = origin;
+    }
+    else
+    {
+        /* A datagram which did not come from the relay is delivered as it is. */
+        source = sender;
+    }
+
+    std::size_t copied = 0;
+    for (std::size_t index = 0; index < count && copied < payload_size; ++index)
+    {
+        if (buffers[index].buf == nullptr)
+        {
+            continue;
+        }
+        const std::size_t available = buffers[index].len;
+        const std::size_t take = (payload_size - copied) < available ? (payload_size - copied) : available;
+        if (take != 0)
+        {
+            std::memcpy(buffers[index].buf, payload + copied, take);
+        }
+        copied += take;
+    }
+
+    if (payload_size > copied)
+    {
+        /* The datagram is longer than the buffers of the application. */
+        WSASetLastError(WSAEMSGSIZE);
+        return SOCKET_ERROR;
+    }
+
+    return static_cast<int>(copied);
+}
+
+bool appbox::network::Proxy::SendStream(SOCKET socket, const char* data, int size, int& sent)
+{
+    sent = 0;
+    if (size <= 0)
+    {
+        return true;
+    }
+    if (raw_.send == nullptr)
+    {
+        WSASetLastError(WSAENOTSOCK);
+        return false;
+    }
+
+    const DWORD deadline = GetTickCount() + kHandshakeTimeoutMs;
+    if (!SendAll(socket, reinterpret_cast<const std::uint8_t*>(data), static_cast<std::size_t>(size), deadline))
+    {
+        return false;
+    }
+    sent = size;
+    return true;
 }
