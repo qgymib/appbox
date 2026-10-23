@@ -13,6 +13,7 @@
 #include <wx/sizer.h>
 #include <wx/splitter.h>
 #include <wx/srchctrl.h>
+#include <wx/utils.h>
 #include <algorithm>
 #include <chrono>
 #include <cwctype>
@@ -36,6 +37,12 @@ const int kMenuAddStartupFile = wxNewId();
 
 /** Context menu command: set the isolation mode of a tree node. */
 const int kMenuIsolation = wxNewId();
+
+/** Context menu command: expand the subtree of a tree node. */
+const int kMenuExpandAll = wxNewId();
+
+/** Context menu command: collapse the subtree of a tree node. */
+const int kMenuCollapseAll = wxNewId();
 
 /** Minimum width of the tree pane. */
 constexpr int kTreePaneWidth = 260;
@@ -222,6 +229,8 @@ FilesystemPanel::FilesystemPanel(wxWindow* parent, appbox::PackModel& model,
     Bind(wxEVT_MENU, &FilesystemPanel::OnAddFolder, this, kMenuImportFolder);
     Bind(wxEVT_MENU, &FilesystemPanel::OnTreeDeleteNode, this, kMenuDelete);
     Bind(wxEVT_MENU, &FilesystemPanel::OnTreeIsolation, this, kMenuIsolation);
+    Bind(wxEVT_MENU, &FilesystemPanel::OnTreeExpandAll, this, kMenuExpandAll);
+    Bind(wxEVT_MENU, &FilesystemPanel::OnTreeCollapseAll, this, kMenuCollapseAll);
     Bind(wxEVT_MENU, &FilesystemPanel::OnSetStartupFile, this, kMenuSetStartupFile);
     Bind(wxEVT_MENU, &FilesystemPanel::OnAddToStartupFileList, this, kMenuAddStartupFile);
 
@@ -406,11 +415,26 @@ wxTreeItemId FilesystemPanel::AppendPreset(const wxTreeItemId& parent, const app
 wxTreeItemId FilesystemPanel::AppendVirtualDirectory(const wxTreeItemId& parent, const std::string& preset_id,
                                                      const std::wstring& path)
 {
+    appbox::TreeFolder folder;
+    folder.preset_id = preset_id;
+    folder.virtual_dir = path;
+    folder.display_name = LeafName(path);
+
+    /* The folders below the folder are listed on demand, see PopulateNode(). */
+    return AppendFolderItem(parent, preset_id, folder, false);
+}
+
+wxTreeItemId FilesystemPanel::AppendFolderItem(const wxTreeItemId& parent, const std::string& preset_id,
+                                               const appbox::TreeFolder& folder, bool populated)
+{
     auto* data = new TreeNode();
     data->preset_id = preset_id;
-    data->virtual_dir = path;
+    data->import_name = folder.import_name;
+    data->relative_dir = folder.relative_dir;
+    data->virtual_dir = folder.virtual_dir;
+    data->populated = populated;
 
-    const auto item = tree_->AppendItem(parent, LeafName(path), 0, -1, data);
+    const auto item = tree_->AppendItem(parent, folder.display_name, 0, -1, data);
 
     /* The folders below the folder are listed on demand, see PopulateNode(). */
     tree_->SetItemHasChildren(item);
@@ -420,70 +444,116 @@ wxTreeItemId FilesystemPanel::AppendVirtualDirectory(const wxTreeItemId& parent,
 void FilesystemPanel::PopulateNode(const wxTreeItemId& item)
 {
     auto* node = static_cast<TreeNode*>(tree_->GetItemData(item));
-    if (node == nullptr || node->populated)
-    {
-        return;
-    }
-
-    /*
-     * The container holds the preset directories and a preset directory holds
-     * the fixed entries of the tree, so only the folders of the view below
-     * them are listed here: an imported folder, a folder below an import and a
-     * folder the user created.
-     */
-    if (node->preset_id.empty() || (node->import_name.empty() && node->virtual_dir.empty()))
+    if (node == nullptr || node->populated || !IsFolderNode(*node))
     {
         return;
     }
     node->populated = true;
 
     /*
-     * The host folder of the node is the one the tooltip of the tree shows as
-     * well, so the mapping of the model is used instead of composing the path
-     * here. A folder the user created maps to no host folder, so only an
-     * imported folder and a folder below one are listed from the host.
+     * The pack model lists the folders of the view below the node, so the items
+     * of the node carry the order and the spelling the recursive expansion of
+     * the tree uses as well, see appbox::ChildFoldersOf().
      */
-    if (!node->import_name.empty())
+    for (const auto& folder : appbox::ChildFoldersOf(model_, ToTreeFolder(*node)))
     {
-        std::wstring host_path;
-        if (model_.HostFolderPath(node->preset_id, node->import_name, node->relative_dir, host_path) &&
-            !host_path.empty())
+        AppendFolderItem(item, node->preset_id, folder, false);
+    }
+}
+
+void FilesystemPanel::ExpandSubtree(const wxTreeItemId& item, std::size_t depth)
+{
+    auto* node = static_cast<TreeNode*>(tree_->GetItemData(item));
+    if (node == nullptr)
+    {
+        return;
+    }
+
+    /*
+     * The folders below a folder node are listed on demand, so the whole
+     * subtree is built in one pass instead of level by level: every entry the
+     * model reports carries the index of the folder it hangs below, which is
+     * the item that was built for that folder. The depth limit and the order of
+     * the items therefore come from the model and not from the widget.
+     */
+    if (IsFolderNode(*node) && !node->populated && depth < appbox::kMaxTreeExpandDepth)
+    {
+        node->populated = true;
+
+        const auto entries = appbox::SubtreeFoldersOf(model_, ToTreeFolder(*node), appbox::kMaxTreeExpandDepth - depth);
+
+        std::vector<wxTreeItemId> items;
+        items.reserve(entries.size() + 1);
+
+        /* The item of the command is the first item of the list it holds. */
+        items.push_back(item);
+        for (const auto& entry : entries)
         {
-            const auto folder = std::filesystem::path(host_path);
+            const auto parent = entry.parent == appbox::kTreeRootParent ? item : items[entry.parent + 1];
+            items.push_back(AppendFolderItem(parent, node->preset_id, entry.folder, true));
+        }
 
-            std::vector<std::wstring> subfolders;
-            std::error_code           ec;
-            for (auto it = std::filesystem::directory_iterator(folder, ec); it != std::filesystem::directory_iterator();
-                 it.increment(ec))
-            {
-                if (ec)
-                {
-                    break;
-                }
-                if (it->is_directory(ec) && !ec)
-                {
-                    subfolders.push_back(it->path().filename().wstring());
-                }
-            }
+        /* The items are opened in the order they were built, so a parent is
+         * opened before its children. */
+        for (const auto& built : items)
+        {
+            tree_->Expand(built);
+        }
+        return;
+    }
 
-            std::sort(subfolders.begin(), subfolders.end());
-            for (const auto& name : subfolders)
-            {
-                auto* child = new TreeNode();
-                child->preset_id = node->preset_id;
-                child->import_name = node->import_name;
-                child->relative_dir = node->relative_dir.empty() ? name : node->relative_dir + L"\\" + name;
+    /*
+     * The container and the preset directories carry the fixed entries of the
+     * tree already, and a folder which was listed before keeps the items it
+     * got, so their children are walked and expanded instead.
+     */
+    PopulateNode(item);
+    tree_->Expand(item);
 
-                const auto child_item = tree_->AppendItem(item, name, 0, -1, child);
-                tree_->SetItemHasChildren(child_item);
-            }
+    if (depth >= appbox::kMaxTreeExpandDepth)
+    {
+        return;
+    }
+
+    wxTreeItemIdValue cookie = nullptr;
+    for (auto child = tree_->GetFirstChild(item, cookie); child.IsOk(); child = tree_->GetNextChild(item, cookie))
+    {
+        ExpandSubtree(child, depth + 1);
+    }
+}
+
+void FilesystemPanel::CollapseSubtree(const wxTreeItemId& item)
+{
+    /*
+     * The items below the node are collected before the tree is collapsed, and
+     * the collection is a stack rather than a recursion: the levels the user
+     * opened by hand are not bounded by the depth limit of the expansion.
+     */
+    std::vector<wxTreeItemId> items;
+    std::vector<wxTreeItemId> pending{ item };
+    while (!pending.empty())
+    {
+        const auto current = pending.back();
+        pending.pop_back();
+        items.push_back(current);
+
+        wxTreeItemIdValue cookie = nullptr;
+        for (auto child = tree_->GetFirstChild(current, cookie); child.IsOk();
+             child = tree_->GetNextChild(current, cookie))
+        {
+            pending.push_back(child);
         }
     }
 
-    /* The folders the user created below the directory come after the host content. */
-    for (const auto& directory : model_.VirtualDirectoriesOf(node->preset_id, NodeDirectoryPath(*node)))
+    /*
+     * The children are collapsed before their parent, because a collapsed
+     * parent hides the items which still have to be collapsed. The items
+     * themselves are kept, so a later expansion does not read the host folder a
+     * second time.
+     */
+    for (auto it = items.rbegin(); it != items.rend(); ++it)
     {
-        AppendVirtualDirectory(item, node->preset_id, directory.target_dir);
+        tree_->Collapse(*it);
     }
 }
 
@@ -859,6 +929,21 @@ std::wstring FilesystemPanel::NodeDirectoryPath(const TreeNode& node)
     }
 
     return appbox::JoinViewPath(node.import_name, node.relative_dir);
+}
+
+appbox::TreeFolder FilesystemPanel::ToTreeFolder(const TreeNode& node)
+{
+    appbox::TreeFolder folder;
+    folder.preset_id = node.preset_id;
+    folder.import_name = node.import_name;
+    folder.relative_dir = node.relative_dir;
+    folder.virtual_dir = node.virtual_dir;
+    return folder;
+}
+
+bool FilesystemPanel::IsFolderNode(const TreeNode& node)
+{
+    return !node.preset_id.empty() && (!node.import_name.empty() || !node.virtual_dir.empty());
 }
 
 std::wstring FilesystemPanel::DirectoryPathOf(const RowInfo& row)
@@ -1584,12 +1669,24 @@ void FilesystemPanel::OnTreeItemContextMenu(wxTreeEvent& event)
     tree_->SelectItem(item);
 
     /*
+     * The recursive commands come first, because they change the shape of the
+     * tree itself: `Expand` lists the folders which were not listed yet and
+     * opens every node below the item, `Collapse` closes them and keeps the
+     * items. A node without children has no subtree to act on, so both items
+     * are greyed out for it.
+     */
+    wxMenu     menu;
+    const bool has_children = tree_->ItemHasChildren(item);
+    menu.Append(kMenuExpandAll, "Expand")->Enable(has_children);
+    menu.Append(kMenuCollapseAll, "Collapse")->Enable(has_children);
+    menu.AppendSeparator();
+
+    /*
      * The isolation mode of every node is set through the dialog: the
      * container is the root of the view, whose mode decides the paths no other
      * entry covers, while the other nodes carry the mode of the folder they
      * name.
      */
-    wxMenu menu;
     menu.Append(kMenuIsolation, "Isolation Mode...");
 
     if (!node->preset_id.empty() && node->import_name.empty())
@@ -1731,6 +1828,35 @@ void FilesystemPanel::OnTreeIsolation(wxCommandEvent&)
     }
 
     EditIsolation(*node);
+}
+
+void FilesystemPanel::OnTreeExpandAll(wxCommandEvent&)
+{
+    const auto selection = tree_->GetSelection();
+    if (!selection.IsOk())
+    {
+        return;
+    }
+
+    /*
+     * The host folder of a large import is listed during the command, so the
+     * cursor tells the user that the workspace is busy and the tree is frozen
+     * until the items are built, which keeps it from painting every level the
+     * walk adds.
+     */
+    const wxBusyCursor busy;
+    tree_->Freeze();
+    ExpandSubtree(selection, 0);
+    tree_->Thaw();
+}
+
+void FilesystemPanel::OnTreeCollapseAll(wxCommandEvent&)
+{
+    const auto selection = tree_->GetSelection();
+    if (selection.IsOk())
+    {
+        CollapseSubtree(selection);
+    }
 }
 
 void FilesystemPanel::OnAddFiles(wxCommandEvent&)

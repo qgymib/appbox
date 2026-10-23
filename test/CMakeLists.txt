@@ -38,6 +38,7 @@ add_executable(AppBoxTests
     "unit/ExpandKnownFolder.cpp"
     "unit/FilesystemIsolation.cpp"
     "unit/FilesystemMarker.cpp"
+    "unit/FilesystemTree.cpp"
     "unit/GetExecutableDir.cpp"
     "unit/HiveMerge.cpp"
     "unit/KnownFolderReference.cpp"
@@ -382,6 +383,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EtwEventDecoder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemTree.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/KnownFolderReference.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/NetworkIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/NetworkModel.cpp

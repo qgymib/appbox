@@ -616,6 +616,15 @@ The unit tests of the packer:
   packer spells them against the macros of the sandbox, which is what keeps the
   two spellings from drifting apart while the packer must not include a header of
   the injection module.
+* `test/unit/FilesystemTree.cpp` — the folders which hang below one node of the
+  filesystem tree, which is what the tree of the workspace builds its items
+  from: the host subfolders sorted before the folders the user created, the
+  order the folders were created in, the empty answer for the container and for
+  a preset directory, the folders the user created below an import whose host
+  folder is gone, the created folders below a folder the user created, the
+  depth first walk of a subtree with the parent index of every folder, and the
+  depth limit of the walk, which keeps a host folder that was imported by
+  mistake from being followed as deep as it goes.
 * `test/unit/RegistryModel.cpp` — the model of the packer, including the
   mode of a single row, the explicit recursion of the isolation dialog and the
   mode of the container of the tree, which reaches the five preset root keys

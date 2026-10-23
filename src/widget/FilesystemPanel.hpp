@@ -5,6 +5,7 @@
 #include <wx/dataview.h>
 #include <wx/treectrl.h>
 #include "core/FilesystemIsolationModel.hpp"
+#include "core/FilesystemTree.hpp"
 #include "core/PackModel.hpp"
 #include <string>
 #include <vector>
@@ -65,6 +66,19 @@ class wxSearchCtrl;
  * parent, so the command is offered for every node but the container: a top
  * level preset directory moves to the container like a nested one moves to the
  * preset it hangs below.
+ *
+ * The context menu of the tree carries the `Expand` and `Collapse` commands,
+ * which reach the whole subtree of the node they are picked for instead of one
+ * level at a time. `Expand` lists the folders which were not listed yet and
+ * opens every node below the picked one, while `Collapse` closes them and keeps
+ * the items it already built, so a second `Expand` reads the host filesystem
+ * again only for the folders which were never listed. Both commands are
+ * greyed out for a node without children.
+ *
+ * The subfolders below a node are listed on demand, so the recursion of
+ * `Expand` asks the pack model for them, see appbox::ChildFoldersOf(). The walk
+ * stops at appbox::kMaxTreeExpandDepth levels below the picked node, because a
+ * host folder which was imported by mistake can hold a tree of any size.
  *
  */
 class FilesystemPanel : public wxPanel
@@ -272,6 +286,27 @@ private:
                                         const std::wstring& path);
 
     /**
+     * @brief Append one folder the pack model reports below a node.
+     *
+     * The item carries the location the model returned, so a later expansion of
+     * the item lists the folders below it. The item is marked as one which
+     * holds children, like AppendVirtualDirectory() marks a folder the user
+     * created, and it is marked as populated when the caller already built the
+     * folders below it, which keeps the expansion event from listing them a
+     * second time.
+     *
+     * @param[in] parent Item which holds the folder.
+     * @param[in] preset_id Identifier of the owning preset directory.
+     * @param[in] folder Location and name of the folder, see
+     *            appbox::ChildFoldersOf().
+     * @param[in] populated Whether the folders below the folder were built
+     *            already.
+     * @return The item of the folder.
+     */
+    wxTreeItemId AppendFolderItem(const wxTreeItemId& parent, const std::string& preset_id,
+                                  const appbox::TreeFolder& folder, bool populated);
+
+    /**
      * @brief Append the subfolders of one directory node.
      *
      * The host subfolders of the directory are appended first, because they
@@ -282,6 +317,37 @@ private:
      * @param[in] item Tree item holding TreeNode data.
      */
     void PopulateNode(const wxTreeItemId& item);
+
+    /**
+     * @brief Expand one node and every node below it.
+     *
+     * The folders below a folder node are listed on demand, so the subtree is
+     * built in one pass from the pack model instead of level by level, see
+     * appbox::SubtreeFoldersOf(). The container and the preset directories
+     * carry the fixed entries of the tree already, so their children are walked
+     * and expanded instead.
+     *
+     * The walk stops at appbox::kMaxTreeExpandDepth levels below the node it
+     * started at, which is the guard against a host folder that was imported by
+     * mistake.
+     *
+     * @param[in] item Item to expand.
+     * @param[in] depth Number of levels between the node the command started at
+     *            and the item, zero for the item of the command.
+     */
+    void ExpandSubtree(const wxTreeItemId& item, std::size_t depth);
+
+    /**
+     * @brief Collapse one node and every node below it.
+     *
+     * The items below the node are kept, so a later expansion shows them again
+     * without listing the host folders a second time. The children are
+     * collapsed before their parent, because a collapsed parent would hide the
+     * items which still have to be collapsed.
+     *
+     * @param[in] item Item to collapse.
+     */
+    void CollapseSubtree(const wxTreeItemId& item);
 
     /**
      * @brief Refresh the file list for the selected tree node.
@@ -447,6 +513,31 @@ private:
      * @return The path relative to the preset directory.
      */
     static std::wstring NodeDirectoryPath(const TreeNode& node);
+
+    /**
+     * @brief Get the location of a tree node as the pack model describes it.
+     *
+     * The location is the client data of the item without the flag which tells
+     * whether the folders below the node were listed already, so it is what the
+     * core asks for when it lists the folders below the node.
+     *
+     * @param[in] node Data of the tree node.
+     * @return The location of the node.
+     */
+    static appbox::TreeFolder ToTreeFolder(const TreeNode& node);
+
+    /**
+     * @brief Whether the pack model lists the subfolders of a node.
+     *
+     * The container holds the preset directories and a preset directory holds
+     * the fixed entries of the tree, so the model lists the folders below
+     * neither of them: only an imported folder, a folder below an import and a
+     * folder the user created are listed.
+     *
+     * @param[in] node Data of the tree node.
+     * @return true when the folders below the node come from the model.
+     */
+    static bool IsFolderNode(const TreeNode& node);
 
     /**
      * @brief Get the directory a row of a created folder names.
@@ -615,10 +706,12 @@ private:
     /**
      * @brief Show the context menu of a tree item.
      *
-     * Every item offers the isolation dialog, which reaches the container as
-     * well, and the delete command, which is greyed out for the nodes the view
-     * may not remove. The command which imports a folder is offered for the
-     * items which carry the preset directory it works on.
+     * Every item offers the commands which expand and collapse the subtree of
+     * the item, which are greyed out for a node without children, and the
+     * isolation dialog, which reaches the container as well. The delete
+     * command is greyed out for the nodes the view may not remove. The command
+     * which imports a folder is offered for the items which carry the preset
+     * directory it works on.
      *
      * @param[in] event Tree context menu event.
      */
@@ -671,6 +764,23 @@ private:
      * @param[in] event Command event.
      */
     void OnTreeIsolation(wxCommandEvent& event);
+
+    /**
+     * @brief Expand the selected tree node and every node below it.
+     *
+     * The tree is frozen while the items are built and the cursor shows that
+     * the workspace is busy, because a large host folder is listed during the
+     * command and the items would otherwise be painted one by one.
+     *
+     * @param[in] event Command event.
+     */
+    void OnTreeExpandAll(wxCommandEvent& event);
+
+    /**
+     * @brief Collapse the selected tree node and every node below it.
+     * @param[in] event Command event.
+     */
+    void OnTreeCollapseAll(wxCommandEvent& event);
 
     /**
      * @brief Move the tree selection to the parent folder.
