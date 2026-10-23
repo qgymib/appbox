@@ -84,9 +84,7 @@ packed application stays correct on a machine whose folders are somewhere else â
 the `Documents` and `Desktop` folder of a user are redirected into OneDrive on
 many installations, for example.
 
-A reference is spelled `%APPBOX:<NAME>%`. The prefix `APPBOX:` and the name are
-compared ignoring the case, so `%appbox:documents%` names the same folder as
-`%APPBOX:Documents%` does.
+A reference is spelled `%APPBOX:<NAME>%`:
 
 | Name | Example path |
 | --- | --- |
@@ -178,6 +176,11 @@ The rules of the expansion:
 * A reference whose name is not listed, a reference without the `APPBOX:` prefix
   (a `%PATH%` reference belongs to the shell), a reference without a closing `%`
   and a lone `%` keep their own spelling.
+* A reference which is spelled with another case keeps its own spelling as well,
+  because the prefix and the name are compared by code unit. A value which names
+  a variable the sandbox does not know is reported in the log, and a value which
+  differs from the table in case alone is reported with the spelling of the
+  table, so a mistyped reference is easy to find.
 * An expansion is never resolved again: the text a reference was replaced with is
   copied as it is.
 * The expansion belongs to the reader. The environment of the sandbox is

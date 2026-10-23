@@ -97,6 +97,10 @@ struct Sandbox
      * value is read, which is what gives every process the folders of its own
      * bitness: the table of a 32 bit process names another folder for
      * `%APPBOX:ProgramFiles%` than the table of a 64 bit one.
+     *
+     * The prefix and the name of a reference are compared with the table by
+     * code unit, so a reference is expanded in the spelling the packer writes
+     * alone and a reference which differs in case keeps its own spelling.
      */
     std::vector<VariableMapping> variables;
 

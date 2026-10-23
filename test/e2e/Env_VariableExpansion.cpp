@@ -15,8 +15,8 @@ using namespace appbox::test;
  * Condition:
  * 1. The host holds `APPBOX_ENV_EXPAND_PREPEND=host`.
  * 2. The isolation file lists variables whose values reference a known folder
- *    of this machine with `%APPBOX:<NAME>%`, in the canonical spelling and in
- *    another one of the prefix and of the name.
+ *    of this machine with `%APPBOX:<NAME>%`, in the canonical spelling, with
+ *    another case of the prefix and with another case of the name.
  * 3. One of them is merged in front of the value of the host, one references a
  *    name the sandbox does not know, one references a `%NAME%` variable of the
  *    shell and one references the system folder of the machine, which the
@@ -28,7 +28,9 @@ using namespace appbox::test;
  *    of this machine, so the archive stays correct on a machine whose folders
  *    are somewhere else.
  * 2. The merge joins the expanded text with the value of the host.
- * 3. The unknown reference and the reference of the shell keep their spelling.
+ * 3. The unknown reference, the reference of the shell and the two references
+ *    which are spelled with another case keep their spelling, because the
+ *    prefix and the name are compared with the case of the table.
  * 4. The block which enumerates the environment carries the expanded value.
  */
 TEST_F(E2E_Env, VariableExpansion)
@@ -53,35 +55,37 @@ TEST_F(E2E_Env, VariableExpansion)
 
     ASSERT_TRUE(WriteEnvironmentIsolationFile(
         GetCWD(), {
-                      { L"APPBOX_ENV_EXPAND_DOCUMENTS",  L"%APPBOX:Documents%\\Foo\\Bar",
-                       appbox::EnvironmentIsolation::WriteCopy,                                                                           appbox::EnvironmentMergeMode::Replace, L""  },
-                      { L"APPBOX_ENV_EXPAND_CASE",       L"%appbox:documents%\\Foo",             appbox::EnvironmentIsolation::WriteCopy,
-                       appbox::EnvironmentMergeMode::Replace,                                                                                                                    L""  },
-                      { L"APPBOX_ENV_EXPAND_PROFILE",    L"%APPBOX:USERPROFILE%\\Foo",
-                       appbox::EnvironmentIsolation::WriteCopy,                                                                           appbox::EnvironmentMergeMode::Replace, L""  },
-                      { L"APPBOX_ENV_EXPAND_PREPEND",    L"%APPBOX:Documents%\\Foo",
-                       appbox::EnvironmentIsolation::WriteCopy,                                                                           appbox::EnvironmentMergeMode::Prepend, L";" },
-                      { L"APPBOX_ENV_EXPAND_UNKNOWN",    L"%APPBOX:Unknown%\\Foo",               appbox::EnvironmentIsolation::WriteCopy,
-                       appbox::EnvironmentMergeMode::Replace,                                                                                                                    L""  },
-                      { L"APPBOX_ENV_EXPAND_SHELL",      L"%PATH%",                              appbox::EnvironmentIsolation::WriteCopy,
-                       appbox::EnvironmentMergeMode::Replace,                                                                                                                    L""  },
-                      { L"APPBOX_ENV_EXPAND_WINDOWS",    L"%APPBOX:Windows%\\Foo",               appbox::EnvironmentIsolation::WriteCopy,
-                       appbox::EnvironmentMergeMode::Replace,                                                                                                                    L""  },
-                      { L"APPBOX_ENV_EXPAND_PROGRAMS",   L"%APPBOX:ProgramFiles%\\Foo",
-                       appbox::EnvironmentIsolation::WriteCopy,                                                                           appbox::EnvironmentMergeMode::Replace, L""  },
-                      { L"APPBOX_ENV_EXPAND_PROGRAMS64", L"%APPBOX:ProgramFilesX64%\\Foo",
-                       appbox::EnvironmentIsolation::WriteCopy,                                                                           appbox::EnvironmentMergeMode::Replace, L""  },
-                      { L"APPBOX_ENV_EXPAND_COMMON64",   L"%APPBOX:ProgramFilesCommonX64%\\Foo",
-                       appbox::EnvironmentIsolation::WriteCopy,                                                                           appbox::EnvironmentMergeMode::Replace, L""  },
-                      { L"APPBOX_ENV_EXPAND_SYSTEMX86",  L"%APPBOX:SystemX86%\\Foo",
-                       appbox::EnvironmentIsolation::WriteCopy,                                                                           appbox::EnvironmentMergeMode::Replace, L""  }
+                      { L"APPBOX_ENV_EXPAND_DOCUMENTS",   L"%APPBOX:Documents%\\Foo\\Bar",
+                       appbox::EnvironmentIsolation::WriteCopy,                                                                            appbox::EnvironmentMergeMode::Replace, L""  },
+                      { L"APPBOX_ENV_EXPAND_PREFIX_CASE", L"%appbox:documents%\\Foo",
+                       appbox::EnvironmentIsolation::WriteCopy,                                                                            appbox::EnvironmentMergeMode::Replace, L""  },
+                      { L"APPBOX_ENV_EXPAND_PROFILE",     L"%APPBOX:USERPROFILE%\\Foo",
+                       appbox::EnvironmentIsolation::WriteCopy,                                                                            appbox::EnvironmentMergeMode::Replace, L""  },
+                      { L"APPBOX_ENV_EXPAND_PREPEND",     L"%APPBOX:Documents%\\Foo",
+                       appbox::EnvironmentIsolation::WriteCopy,                                                                            appbox::EnvironmentMergeMode::Prepend, L";" },
+                      { L"APPBOX_ENV_EXPAND_UNKNOWN",     L"%APPBOX:Unknown%\\Foo",               appbox::EnvironmentIsolation::WriteCopy,
+                       appbox::EnvironmentMergeMode::Replace,                                                                                                                     L""  },
+                      { L"APPBOX_ENV_EXPAND_SHELL",       L"%PATH%",                              appbox::EnvironmentIsolation::WriteCopy,
+                       appbox::EnvironmentMergeMode::Replace,                                                                                                                     L""  },
+                      { L"APPBOX_ENV_EXPAND_WINDOWS",     L"%APPBOX:Windows%\\Foo",               appbox::EnvironmentIsolation::WriteCopy,
+                       appbox::EnvironmentMergeMode::Replace,                                                                                                                     L""  },
+                      { L"APPBOX_ENV_EXPAND_PROGRAMS",    L"%APPBOX:ProgramFiles%\\Foo",
+                       appbox::EnvironmentIsolation::WriteCopy,                                                                            appbox::EnvironmentMergeMode::Replace, L""  },
+                      { L"APPBOX_ENV_EXPAND_PROGRAMS64",  L"%APPBOX:ProgramFilesX64%\\Foo",
+                       appbox::EnvironmentIsolation::WriteCopy,                                                                            appbox::EnvironmentMergeMode::Replace, L""  },
+                      { L"APPBOX_ENV_EXPAND_COMMON64",    L"%APPBOX:ProgramFilesCommonX64%\\Foo",
+                       appbox::EnvironmentIsolation::WriteCopy,                                                                            appbox::EnvironmentMergeMode::Replace, L""  },
+                      { L"APPBOX_ENV_EXPAND_SYSTEMX86",   L"%APPBOX:SystemX86%\\Foo",
+                       appbox::EnvironmentIsolation::WriteCopy,                                                                            appbox::EnvironmentMergeMode::Replace, L""  },
+                      { L"APPBOX_ENV_EXPAND_NAME_CASE",   L"%APPBOX:documents%\\Foo",
+                       appbox::EnvironmentIsolation::WriteCopy,                                                                            appbox::EnvironmentMergeMode::Replace, L""  }
     }));
 
     ProtocolEnvironmentRead::Req req;
-    req.names = { "APPBOX_ENV_EXPAND_DOCUMENTS", "APPBOX_ENV_EXPAND_CASE",     "APPBOX_ENV_EXPAND_PROFILE",
-                  "APPBOX_ENV_EXPAND_PREPEND",   "APPBOX_ENV_EXPAND_UNKNOWN",  "APPBOX_ENV_EXPAND_SHELL",
-                  "APPBOX_ENV_EXPAND_WINDOWS",   "APPBOX_ENV_EXPAND_PROGRAMS", "APPBOX_ENV_EXPAND_PROGRAMS64",
-                  "APPBOX_ENV_EXPAND_COMMON64",  "APPBOX_ENV_EXPAND_SYSTEMX86" };
+    req.names = { "APPBOX_ENV_EXPAND_DOCUMENTS", "APPBOX_ENV_EXPAND_PREFIX_CASE", "APPBOX_ENV_EXPAND_PROFILE",
+                  "APPBOX_ENV_EXPAND_PREPEND",   "APPBOX_ENV_EXPAND_UNKNOWN",     "APPBOX_ENV_EXPAND_SHELL",
+                  "APPBOX_ENV_EXPAND_WINDOWS",   "APPBOX_ENV_EXPAND_PROGRAMS",    "APPBOX_ENV_EXPAND_PROGRAMS64",
+                  "APPBOX_ENV_EXPAND_COMMON64",  "APPBOX_ENV_EXPAND_SYSTEMX86",   "APPBOX_ENV_EXPAND_NAME_CASE" };
 
     const auto rsp = ProbeEnvironmentRead.Call(req, GetCWD(), config).get<ProtocolEnvironmentRead::Rsp>();
     ASSERT_EQ(rsp.values.size(), req.names.size());
@@ -89,7 +93,12 @@ TEST_F(E2E_Env, VariableExpansion)
 
     EXPECT_TRUE(rsp.found[0]);
     EXPECT_EQ(rsp.values[0], appbox::WideToUTF8(documents + L"\\Foo\\Bar"));
-    EXPECT_EQ(rsp.values[1], appbox::WideToUTF8(documents + L"\\Foo"));
+
+    /*
+     * The prefix and the name are compared with the case of the table, so a
+     * reference which is spelled with another case keeps its own spelling.
+     */
+    EXPECT_EQ(rsp.values[1], "%appbox:documents%\\Foo");
     EXPECT_EQ(rsp.values[2], appbox::WideToUTF8(profile + L"\\Foo"));
 
     /* The value of the host is joined behind the expanded text of the row. */
@@ -117,6 +126,9 @@ TEST_F(E2E_Env, VariableExpansion)
     /* The 32 bit system folder is reachable from a 64 bit process as well. */
     EXPECT_TRUE(rsp.found[10]);
     EXPECT_EQ(rsp.values[10], appbox::WideToUTF8(system_x86 + L"\\Foo"));
+
+    /* A name which is spelled with another case is kept like an unknown one. */
+    EXPECT_EQ(rsp.values[11], "%APPBOX:documents%\\Foo");
 
     /* The ANSI entry point and the block which enumerates report the same view. */
     EXPECT_EQ(rsp.ansi_values[0], rsp.values[0]);

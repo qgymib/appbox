@@ -431,6 +431,11 @@ and a process of a later run of the same state directory. Nothing a process read
 reaches the files of the sandbox, which is what keeps the view of one process
 from deciding the view of another one.
 
+The prefix and the name of a reference are compared with the table by code unit,
+so the case matters: a value which is spelled with another case is served
+exactly as the hive holds it, like a value which names a variable the table does
+not list, and the read reports the spelling of the table in the log.
+
 The expansion covers the string types of the registry only: `REG_SZ`,
 `REG_EXPAND_SZ` and `REG_MULTI_SZ`, whose every item is expanded on its own.
 `REG_DWORD`, `REG_BINARY` and every other type keep their bytes, even when they

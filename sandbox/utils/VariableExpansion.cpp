@@ -13,10 +13,38 @@ namespace
 {
 
 /**
+ * @brief Whether two texts are the same, compared by code unit.
+ *
+ * The comparison is the ordinal one of the operating system, which compares the
+ * case of the characters as well, so a reference is expanded in the spelling of
+ * the table alone.
+ *
+ * @param[in] left Left text.
+ * @param[in] right Right text.
+ * @return true when both texts are spelled the same way.
+ */
+bool EqualsOrdinal(std::wstring_view left, std::wstring_view right)
+{
+    if (left.size() != right.size())
+    {
+        return false;
+    }
+
+    if (left.empty())
+    {
+        return true;
+    }
+
+    return ::CompareStringOrdinal(left.data(), static_cast<int>(left.size()), right.data(),
+                                  static_cast<int>(right.size()), FALSE) == CSTR_EQUAL;
+}
+
+/**
  * @brief Whether two texts are the same, ignoring the case.
  *
- * The comparison is the ordinal one of the operating system, which is the
- * comparison the registry and the environment of a process use.
+ * The comparison never decides whether a reference is expanded: it only tells a
+ * reference which is spelled with another case apart from a name the table does
+ * not list, so the log names the reason a reference was kept.
  *
  * @param[in] left Left text.
  * @param[in] right Right text.
@@ -39,6 +67,17 @@ bool EqualsIgnoreCase(std::wstring_view left, std::wstring_view right)
 }
 
 /**
+ * @brief Whether a text starts with a prefix, compared by code unit.
+ * @param[in] text Text to inspect.
+ * @param[in] prefix Prefix to look for.
+ * @return true when the text starts with the prefix.
+ */
+bool StartsWith(std::wstring_view text, std::wstring_view prefix)
+{
+    return text.size() >= prefix.size() && EqualsOrdinal(text.substr(0, prefix.size()), prefix);
+}
+
+/**
  * @brief Whether a text starts with a prefix, ignoring the case.
  * @param[in] text Text to inspect.
  * @param[in] prefix Prefix to look for.
@@ -51,12 +90,41 @@ bool StartsWithIgnoreCase(std::wstring_view text, std::wstring_view prefix)
 
 /**
  * @brief Find the variable a name references.
+ *
+ * The name of a reference is compared with the name of the table by code unit,
+ * so a reference is expanded in the spelling the packer writes alone.
+ *
  * @param[in] name Name of a reference, without the `%APPBOX:` prefix.
  * @param[in] variables Variables the sandbox knows.
  * @return The variable, null when the name is not listed.
  */
 const appbox::VariableMapping* FindVariable(std::wstring_view                           name,
                                             const std::vector<appbox::VariableMapping>& variables)
+{
+    for (const auto& variable : variables)
+    {
+        if (EqualsOrdinal(variable.name, name))
+        {
+            return &variable;
+        }
+    }
+
+    return nullptr;
+}
+
+/**
+ * @brief Find the variable a name references, ignoring the case.
+ *
+ * The lookup never expands a reference: it tells a name which is spelled with
+ * another case apart from a name the table does not list, so the log names the
+ * reason a reference was kept.
+ *
+ * @param[in] name Name of a reference, without the `%APPBOX:` prefix.
+ * @param[in] variables Variables the sandbox knows.
+ * @return The variable, null when no name of the table differs in case alone.
+ */
+const appbox::VariableMapping* FindVariableIgnoreCase(std::wstring_view                           name,
+                                                      const std::vector<appbox::VariableMapping>& variables)
 {
     for (const auto& variable : variables)
     {
@@ -159,9 +227,19 @@ std::wstring appbox::ExpandVariables(std::wstring_view text, const std::vector<V
         }
 
         const std::wstring_view reference = text.substr(index + 1, end - index - 1);
-        if (!StartsWithIgnoreCase(reference, kVariablePrefix))
+        if (!StartsWith(reference, kVariablePrefix))
         {
-            /* A `%NAME%` reference belongs to the shell, not to the sandbox. */
+            /*
+             * A `%NAME%` reference belongs to the shell, not to the sandbox, and
+             * so does a reference whose prefix is spelled with another case:
+             * only the prefix of the table introduces a variable.
+             */
+            if (StartsWithIgnoreCase(reference, kVariablePrefix))
+            {
+                LOG_W("the value references '{}', whose prefix is not spelled 'APPBOX:', the reference is kept",
+                      WideToUTF8(std::wstring(reference)));
+            }
+
             result.append(text.substr(index, end - index + 1));
             index = end + 1;
             continue;
@@ -173,10 +251,23 @@ std::wstring appbox::ExpandVariables(std::wstring_view text, const std::vector<V
         {
             /*
              * A reference the configuration does not list keeps its own
-             * spelling, like an unknown `%NAME%` reference of the shell does.
+             * spelling, like an unknown `%NAME%` reference of the shell does. A
+             * name which is spelled with another case is kept alike; the log
+             * names the spelling of the table so a mistyped reference is easy
+             * to find.
              */
-            LOG_W("the value references the variable '{}', which the sandbox does not know, the reference is kept",
-                  WideToUTF8(std::wstring(name)));
+            const VariableMapping* other_case = FindVariableIgnoreCase(name, variables);
+            if (other_case != nullptr)
+            {
+                LOG_W("the value references the variable '{}', which the table spells '{}', the reference is kept",
+                      WideToUTF8(std::wstring(name)), WideToUTF8(other_case->name));
+            }
+            else
+            {
+                LOG_W("the value references the variable '{}', which the sandbox does not know, the reference is kept",
+                      WideToUTF8(std::wstring(name)));
+            }
+
             result.append(text.substr(index, end - index + 1));
             index = end + 1;
             continue;

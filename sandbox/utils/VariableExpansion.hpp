@@ -34,9 +34,9 @@ struct VariableMapping
     /**
      * @brief Name of the variable without the `%APPBOX:` prefix.
      *
-     * The name of a reference is compared with this name ignoring the case,
-     * because the layer keys of the packer are spelled in different cases
-     * (`ProgramFiles` next to `USERPROFILE`).
+     * The name of a reference is compared with this name by code unit, so the
+     * case matters: `ProgramFiles` and `ProgramFilesX64` are the layer keys the
+     * packer writes, and `programfiles` names no variable at all.
      */
     std::wstring name;
 
@@ -53,6 +53,10 @@ struct VariableMapping
  * reference whose name starts with this prefix names a variable of the
  * sandbox, so a value which carries `%PATH%` keeps it for the expansion of the
  * operating system.
+ *
+ * The prefix is compared by code unit, so it is spelled `APPBOX:` in upper
+ * case; another spelling (`appbox:`) names no variable of the sandbox and keeps
+ * the reference as it is.
  */
 inline constexpr std::wstring_view kVariablePrefix = L"APPBOX:";
 
@@ -86,6 +90,12 @@ std::vector<VariableMapping> SelectVariables(const std::vector<SandboxVariable>&
  * whose name is not listed, a lone `%`, a reference without a closing `%` and
  * a reference without the prefix keep their own spelling, which is what the
  * operating system does with a `%NAME%` reference it cannot resolve.
+ *
+ * The prefix and the name are compared by code unit, so the case of a reference
+ * has to match the table: `%APPBOX:ProgramFiles%` is expanded, while
+ * `%appbox:ProgramFiles%` and `%APPBOX:programfiles%` keep their spelling like
+ * a name the table does not list. Both are reported in the log, because a
+ * mistyped reference is otherwise hard to find in an archive.
  *
  * The function is free of the sandbox singleton: the caller passes the table,
  * so the rules are unit testable on their own.

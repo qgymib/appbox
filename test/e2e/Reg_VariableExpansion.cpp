@@ -77,8 +77,9 @@ std::string Hex(const std::vector<BYTE>& data)
  * 1. The packed hive of the resources holds a `REG_SZ`, a `REG_EXPAND_SZ` and
  *    a `REG_MULTI_SZ` value whose text references a known folder of this
  *    machine with `%APPBOX:<NAME>%`, a second `REG_SZ` value which references
- *    the system folder of the machine, plus a `REG_DWORD` and a `REG_BINARY`
- *    value whose bytes spell the same reference.
+ *    the system folder of the machine, a third one whose reference is spelled
+ *    with another case, plus a `REG_DWORD` and a `REG_BINARY` value whose bytes
+ *    spell the same reference.
  * 2. The sandboxed application reads every value of the key.
  *
  * Expected:
@@ -87,7 +88,9 @@ std::string Hex(const std::vector<BYTE>& data)
  *    its own.
  * 2. The types which carry no text keep their bytes, so only the string types
  *    of the registry carry a reference.
- * 3. The hive of the resources is byte identical afterwards: the archive keeps
+ * 3. A reference which is spelled with another case keeps its own spelling,
+ *    because the prefix and the name are compared with the case of the table.
+ * 4. The hive of the resources is byte identical afterwards: the archive keeps
  *    the reference and the expansion happens while the sandbox runs.
  */
 TEST_F(E2E_Reg, VariableExpansion)
@@ -114,6 +117,7 @@ TEST_F(E2E_Reg, VariableExpansion)
     builder.SetValue(key, L"Sz", REG_SZ, StringData(L"%APPBOX:Documents%\\Foo\\Bar"));
     builder.SetValue(key, L"ExpandSz", REG_EXPAND_SZ, StringData(L"%APPBOX:USERPROFILE%\\Foo"));
     builder.SetValue(key, L"System32Sz", REG_SZ, StringData(L"%APPBOX:System32%\\Foo"));
+    builder.SetValue(key, L"CaseSz", REG_SZ, StringData(L"%appbox:documents%\\Foo"));
     builder.SetValue(key, L"MultiSz", REG_MULTI_SZ,
                      MultiStringData(std::vector<std::wstring>{ L"%APPBOX:Documents%\\Foo", L"plain" }));
     builder.SetValue(key, L"Dword", REG_DWORD, std::vector<BYTE>{ 0x78, 0x56, 0x34, 0x12 });
@@ -132,7 +136,7 @@ TEST_F(E2E_Reg, VariableExpansion)
 
     ProtocolRegReadValues::Req req;
     req.Key = appbox::WideToUTF8(subkey);
-    req.Values = { "Sz", "ExpandSz", "MultiSz", "Dword", "Binary", "System32Sz" };
+    req.Values = { "Sz", "ExpandSz", "MultiSz", "Dword", "Binary", "System32Sz", "CaseSz" };
 
     const auto rsp = ProbeRegReadValues.Call(req, GetCWD(), config).get<ProtocolRegReadValues::Rsp>();
     ASSERT_EQ(rsp.values.size(), req.Values.size());
@@ -167,6 +171,10 @@ TEST_F(E2E_Reg, VariableExpansion)
     /* The system folder of the machine is referenced like every other folder. */
     EXPECT_EQ(rsp.values[5].type, static_cast<DWORD>(REG_SZ));
     EXPECT_EQ(rsp.values[5].text, appbox::WideToUTF8(system32 + L"\\Foo"));
+
+    /* A reference which is spelled with another case keeps its spelling. */
+    EXPECT_EQ(rsp.values[6].type, static_cast<DWORD>(REG_SZ));
+    EXPECT_EQ(rsp.values[6].text, "%appbox:documents%\\Foo");
 
     /* The resources of the archive are read-only and keep the reference. */
     std::vector<uint8_t> packed_after;

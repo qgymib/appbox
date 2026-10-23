@@ -747,7 +747,9 @@ executable carries itself:
   result, and the state with its one modification per variable.
 * `test/unit/VariableExpansion.cpp` — the `%APPBOX:<NAME>%` expansion the
   sandbox applies to the values of the workspace: a known reference, the case
-  insensitive prefix and name, several references of one text, a name which is
+  sensitive prefix and name (a reference which is spelled with another case
+  keeps its own spelling), the spelling of the table which is expanded, several
+  references of one text, a name which is
   not listed, a `%NAME%` reference of the shell, a reference without a closing
   `%`, a lone `%` and `%%`, an empty text and an empty table, and the fact that
   an expansion is never resolved again. The registry side pins the three string
@@ -1257,9 +1259,11 @@ sandboxed process creates.
   `REG_SZ` which references the system folder of the machine, the
   `REG_EXPAND_SZ` and every item of a `REG_MULTI_SZ` value, while a `REG_DWORD`
   and a `REG_BINARY` value whose bytes spell the same reference keep their own
-  bytes. The hive of the resources is byte identical afterwards, so the archive
-  keeps the reference and the expansion happens while the sandbox answers the
-  read.
+  bytes. A `REG_SZ` whose reference is spelled with another case is served
+  exactly as the hive holds it, because the prefix and the name are compared by
+  code unit. The hive of the resources is byte identical afterwards, so the
+  archive keeps the reference and the expansion happens while the sandbox
+  answers the read.
 * `test/e2e/Reg_VariableExpansion32.cpp` — the same hive read by the **32 bit**
   probe: `%APPBOX:ProgramFiles%` is `C:\Program Files (x86)` and
   `%APPBOX:ProgramFilesCommon%` is `C:\Program Files (x86)\Common Files`, the
@@ -1446,7 +1450,7 @@ machine the cases run on.
 | `Env_StringsWriteIsKept` | `Replace` | replace the whole environment with `SetEnvironmentStringsW` in one run, read the variable in the next one | the second run sees the value of the block, so a replacement which the Win32 entry point performs is recorded |
 | `Env_WholeBlockReplaceIsKept` | `Replace` | install a block of its own with `RtlSetCurrentEnvironment` in one run, read the variable in the next one | the second run sees the value of the block |
 | `Env_WholeBlockReplaceRemovesAVariable` | `Replace` for `APPBOX_ENV_LAYER` | replace the whole environment with a block which drops the variable of the row and carries another one, then read both in the next run | the variable the block added is seen, the variable the block dropped stays dropped, and the row of the archive does not bring it back |
-| `Env_VariableExpansion` | `Write Copy` + `Replace`, one row with `Prepend` and a value of the host | read variables whose values reference a known folder of this machine with `%APPBOX:<NAME>%`, a name the sandbox does not know and `%PATH%`, in the **64 bit** probe | the known references carry the real path of the folder of this machine (also in another spelling of the prefix and of the name, for the system folder of the machine, for the 64 bit program folders and for the 32 bit system folder), the merged row carries `<path>;<host>`, the unknown reference and the reference of the shell keep their spelling, and the block which enumerates the environment reports the expanded value |
+| `Env_VariableExpansion` | `Write Copy` + `Replace`, one row with `Prepend` and a value of the host | read variables whose values reference a known folder of this machine with `%APPBOX:<NAME>%`, a name the sandbox does not know, a reference whose prefix and a reference whose name are spelled with another case, and `%PATH%`, in the **64 bit** probe | the known references carry the real path of the folder of this machine (for the system folder of the machine, for the 64 bit program folders and for the 32 bit system folder), the merged row carries `<path>;<host>`, the unknown reference, the two references which differ in case and the reference of the shell keep their spelling, and the block which enumerates the environment reports the expanded value |
 | `Env_VariableExpansion32` | `Write Copy` + `Replace` | read the variables which reference the redirected folders in the **32 bit** probe | `%APPBOX:ProgramFiles%` is `C:\Program Files (x86)` and `%APPBOX:ProgramFilesCommon%` is `C:\Program Files (x86)\Common Files`, `%APPBOX:ProgramFilesX64%` keeps its own spelling, `%APPBOX:ProgramFilesCommonX64%` is `C:\Program Files\Common Files`, and the two system folders name `System32` and `SysWOW64` like they do in a 64 bit process |
 | `Env_MalformedIsolationFile_FallsBack` | document which cannot be read | read the variable | the value of the host stays visible and the sandbox still runs |
 

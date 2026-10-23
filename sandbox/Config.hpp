@@ -38,7 +38,8 @@ struct SandboxVariable
      * @brief Name of the variable without the `%APPBOX:` prefix.
      *
      * For example `"ProgramFiles"`. The sandbox compares the name of a
-     * reference of a value with this name ignoring the case.
+     * reference of a value with this name by code unit, so the case of a
+     * reference has to match this spelling.
      *
      * @note encoding in UTF-8
      */

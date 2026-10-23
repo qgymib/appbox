@@ -274,6 +274,12 @@ injected into (`appbox::SelectVariables()`): `%APPBOX:ProgramFiles%` is
 `C:\Program Files (x86)` in a 32 bit application, and a folder which does not
 exist for such a process (`ProgramFilesX64`) keeps its own spelling there.
 
+The prefix and the name of a reference are compared with the table by code unit,
+so the case matters: `%APPBOX:ProgramFiles%` is expanded, while
+`%appbox:ProgramFiles%` and `%APPBOX:programfiles%` keep their own spelling like
+a name the table does not list, and the log reports the spelling the table
+carries.
+
 Only the values of the archive are expanded: the modifications of the state
 file are applied as the application spelled them. The syntax, the supported
 names and the rules of the expansion are documented in

@@ -81,15 +81,28 @@ TEST(Unit_VariableExpansion, KnownReferenceIsReplaced)
 }
 
 /**
- * @brief The prefix and the name of a reference are compared ignoring the
- *        case, because the layer keys of the packer are spelled in different
- *        cases.
+ * @brief The prefix and the name of a reference are compared with the case of
+ *        the table, so a reference which is spelled with another case keeps its
+ *        own spelling, exactly like a reference to a name the table does not
+ *        list.
  */
-TEST(Unit_VariableExpansion, PrefixAndNameIgnoreTheCase)
+TEST(Unit_VariableExpansion, PrefixAndNameAreCaseSensitive)
 {
-    EXPECT_EQ(ExpandVariables(L"%appbox:programfiles%", Table()), L"C:\\Program Files");
-    EXPECT_EQ(ExpandVariables(L"%APPBOX:userprofile%", Table()), L"C:\\Users\\appbox");
-    EXPECT_EQ(ExpandVariables(L"%AppBox:Documents%", Table()), L"C:\\Users\\appbox\\Documents");
+    EXPECT_EQ(ExpandVariables(L"%appbox:ProgramFiles%", Table()), L"%appbox:ProgramFiles%");
+    EXPECT_EQ(ExpandVariables(L"%AppBox:Documents%", Table()), L"%AppBox:Documents%");
+    EXPECT_EQ(ExpandVariables(L"%APPBOX:programfiles%", Table()), L"%APPBOX:programfiles%");
+    EXPECT_EQ(ExpandVariables(L"%APPBOX:userprofile%", Table()), L"%APPBOX:userprofile%");
+}
+
+/**
+ * @brief A name which the table spells in upper case is expanded in that
+ *        spelling alone, which is the spelling the packer writes.
+ */
+TEST(Unit_VariableExpansion, TheSpellingOfTheTableIsExpanded)
+{
+    EXPECT_EQ(ExpandVariables(L"%APPBOX:ProgramFiles%", Table()), L"C:\\Program Files");
+    EXPECT_EQ(ExpandVariables(L"%APPBOX:USERPROFILE%", Table()), L"C:\\Users\\appbox");
+    EXPECT_EQ(ExpandVariables(L"%APPBOX:Documents%", Table()), L"C:\\Users\\appbox\\Documents");
 }
 
 TEST(Unit_VariableExpansion, SeveralReferencesAreReplaced)
@@ -156,6 +169,16 @@ TEST(Unit_VariableExpansion, RegSzKeepsTheTerminator)
 {
     EXPECT_EQ(ExpandRegistryValueData(REG_SZ, Bytes(Terminated(L"%APPBOX:Documents%")), Table()),
               Bytes(Terminated(L"C:\\Users\\appbox\\Documents")));
+}
+
+/**
+ * @brief The registry side compares the case as well, so a value which spells
+ *        the reference with another case is served as it is stored.
+ */
+TEST(Unit_VariableExpansion, RegSzKeepsAReferenceSpelledWithAnotherCase)
+{
+    const std::vector<BYTE> data = Bytes(Terminated(L"%appbox:documents%\\x"));
+    EXPECT_EQ(ExpandRegistryValueData(REG_SZ, data, Table()), data);
 }
 
 TEST(Unit_VariableExpansion, RegExpandSzIsExpanded)
