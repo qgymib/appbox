@@ -4,6 +4,7 @@
 #include "SandboxLayout.hpp"
 #include "WString.hpp"
 #include "Config.hpp"
+#include "utils/ProbePath.hpp"
 #include <nlohmann/json.hpp>
 #include <zip.h>
 #include <chrono>
@@ -97,20 +98,50 @@ std::filesystem::path MakeFolder(const std::filesystem::path& parent, const std:
     return folder;
 }
 
+/** Number of attempts of a verification read of a freshly written image. */
+constexpr int kVersionReadAttempts = 40;
+
+/** Wait between two attempts of a verification read, in milliseconds. */
+constexpr DWORD kVersionReadDelayMs = 50;
+
 /**
- * @brief Get the path of the running test executable.
+ * @brief Read the version information of an image, tolerating a busy image.
  *
- * The executable stands in for the launcher payload and for the main program
- * of a session, because both have to be PE images for the resource patches of
- * a pack run to be applied.
+ * The version API opens the image again, and an image which was written moments
+ * ago can be unavailable to that open while a file system filter - the on
+ * access scanner of an antivirus product for example - still inspects it: the
+ * API then reports the file as missing instead of answering with the
+ * information of the image. A pack run tolerates the very same window for the
+ * images it patches (see `kUpdateAttempts` of `src/core/PeResourcePatch.hpp`),
+ * so a case which verifies an image it just wrote repeats the read instead of
+ * failing at once.
  *
- * @return The path of the test executable.
+ * The repetition is bounded and the reason of the last attempt is reported, so
+ * a genuine failure - an image which carries no version resource at all, for
+ * example - still fails the caller.
+ *
+ * @param[in] path Host path of the image.
+ * @param[out] info The version information which was read.
+ * @param[out] error Reason of the last attempt on failure, empty on success.
+ * @return true when the information was read.
  */
-std::wstring SelfPath()
+bool ReadVersionInfoEventually(const std::wstring& path, appbox::ApplicationVersionInfo& info, std::string& error)
 {
-    std::vector<wchar_t> buffer(32768, L'\0');
-    const auto           length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-    return std::wstring(buffer.data(), length);
+    for (int attempt = 0; attempt < kVersionReadAttempts; ++attempt)
+    {
+        if (attempt > 0)
+        {
+            Sleep(kVersionReadDelayMs);
+        }
+
+        if (appbox::ReadApplicationMetadata(path, info, error))
+        {
+            error.clear();
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
@@ -1520,16 +1551,24 @@ TEST(Unit_PackService, PackWritesTheFilePropertiesOfTheMainProgram)
     TempDir temp;
 
     /*
-     * The test executable stands in for the main program of the session and
-     * for the launcher payload: both have to be PE images, because the pack run
-     * patches the resources of the payload.
+     * A program image stands in for the main program of the session and for the
+     * launcher payload: both have to be PE images, because the pack run patches
+     * the resources of the payload. The probe of the suite is used instead of
+     * the test executable: the case copies, packs and extracts the image, and a
+     * 30 MB image keeps the file system of the case busy for seconds, which is
+     * exactly the window an on access scanner interferes in. The probe is built
+     * without a resource script, so it carries neither a version resource nor an
+     * icon, just like the test executable.
      */
+    const auto image = appbox::test::ProbePath(appbox::test::ProbeBitness::Bit64);
+    ASSERT_FALSE(image.empty()) << "the run was started without the path of the 64 bit probe";
+
     const auto my_app = temp.Get() / L"MyApp";
     std::filesystem::create_directories(my_app);
     const auto program = my_app / L"app.exe";
-    ASSERT_TRUE(CopyFileW(SelfPath().c_str(), program.c_str(), FALSE) != FALSE);
+    ASSERT_TRUE(CopyFileW(image.c_str(), program.c_str(), FALSE) != FALSE);
 
-    const auto payload = ReadAllBytes(SelfPath());
+    const auto payload = ReadAllBytes(image);
     ASSERT_FALSE(payload.empty());
 
     /* The main program carries the file properties the launcher inherits. */
@@ -1574,8 +1613,13 @@ TEST(Unit_PackService, PackWritesTheFilePropertiesOfTheMainProgram)
     const auto extracted = temp.Get() / L"extracted";
     ASSERT_EQ(appbox::ExtractArchive(zip_path.wstring(), extracted.wstring()), "");
 
+    /*
+     * The image is read back through the version API of Windows, which opens it
+     * again: the image was written moments ago, so the read tolerates the window
+     * in which a file system filter still inspects it.
+     */
     appbox::ApplicationVersionInfo read;
-    ASSERT_TRUE(appbox::ReadApplicationMetadata((extracted / L"app.exe").wstring(), read, error)) << error;
+    ASSERT_TRUE(ReadVersionInfoEventually((extracted / L"app.exe").wstring(), read, error)) << error;
 
     /* The fields of the source program travel into the launcher of the archive. */
     const auto* description = appbox::FindMetadataValue(read.fields, appbox::metadata_field::kFileDescription);
