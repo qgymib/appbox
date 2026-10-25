@@ -84,7 +84,14 @@ struct LauncherStartupScreen
  * The layout of the archive is a fixed convention (`common/SandboxLayout.hpp`):
  * `app` carries the read-only resources of the application, `data` carries the
  * state of the sandbox and is created at run time. Neither of them is named by
- * the configuration, so the file only describes what the launcher starts.
+ * the configuration, so the document only describes what the launcher starts.
+ *
+ * The packer serializes the structure as UTF-8 JSON and writes it into the
+ * launcher payload as the RCDATA resource `IDR_APPBOX_LAUNCHER_CONFIG` of
+ * `launcher/EmbeddedResourceIds.h`; the launcher reads that resource at run time
+ * instead of a file beside itself. The encoding is fixed: the document is written
+ * without a byte order mark and non-ASCII characters are stored as their UTF-8
+ * bytes.
  */
 struct LauncherConfig
 {

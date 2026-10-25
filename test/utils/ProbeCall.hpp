@@ -215,6 +215,47 @@ StartupRun ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launch
                            bool startup_screen = false, const LogRun& log = {}, bool use_configured_executable = false);
 
 /**
+ * @brief Run a launcher program whose configuration is embedded in its image.
+ *
+ * The program is started without `--X-AppBox-ConfigFile`, so the run reads the
+ * configuration resource of its own executable, which is the way a packed
+ * archive runs. The probe arguments are passed as the remaining command line of
+ * the launcher, which appends them to the arguments of every startup file.
+ *
+ * @param[in] cwd The current working directory.
+ * @param[in] launcher_path Path of the launcher program to run.
+ * @param[in] trigger Trigger passed with `--X-AppBox-Startup`, empty to let
+ *                    the launcher start the auto start files.
+ * @param[in] marker Marker passed to the probe processes, empty to omit it.
+ * @param[in] log The log options of the run, see LogRun.
+ * @return The reports of the started startup files and the exit code of the
+ *         launcher.
+ */
+StartupRun ProbeStartupRunEmbedded(const std::wstring& cwd, const std::wstring& launcher_path,
+                                   const std::string& trigger = "", const std::string& marker = "",
+                                   const LogRun& log = {});
+
+/**
+ * @brief Run a launcher program with an explicit configuration file.
+ *
+ * The program is started with `--X-AppBox-ConfigFile`, which overrides the
+ * configuration embedded in its image. The call exists for the cases which pin
+ * that the override still wins over the embedded configuration.
+ *
+ * @param[in] cwd The current working directory.
+ * @param[in] launcher_path Path of the launcher program to run.
+ * @param[in] launcher_config The launcher configuration of the run.
+ * @param[in] trigger Trigger passed with `--X-AppBox-Startup`, empty to let
+ *                    the launcher start the auto start files.
+ * @param[in] log The log options of the run, see LogRun.
+ * @return The reports of the started startup files and the exit code of the
+ *         launcher.
+ */
+StartupRun ProbeStartupRunConfigFile(const std::wstring& cwd, const std::wstring& launcher_path,
+                                     const LauncherConfig& launcher_config, const std::string& trigger = "",
+                                     const LogRun& log = {});
+
+/**
  * @brief Result of a run which starts the programs of its configuration.
  */
 struct ProgramRun

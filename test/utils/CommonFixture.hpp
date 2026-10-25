@@ -18,22 +18,6 @@ public:
     ~CommonFixture() override;
 
     /**
-     * @brief Skip the case when the run cannot start the sandbox.
-     *
-     * Every case starts the real launcher, which injects the sandbox injection
-     * modules of the resource root of the case into the probe executable of the
-     * case: a run which was started without the modules cannot run a case, so
-     * the cases skip themselves instead of failing.
-     *
-     * The probe executables are not part of this check: a run which was started
-     * without them is refused before the first case, see
-     * `appbox::test::ValidateProbePaths()`.
-     *
-     * @see appbox::test::SandboxModulesAvailable()
-     */
-    void SetUp() override;
-
-    /**
      * @brief Get the path of the CWD directory.
      * @return The path of the CWD directory.
      */

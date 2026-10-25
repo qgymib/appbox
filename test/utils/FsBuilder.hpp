@@ -60,13 +60,14 @@ struct FsDir : FsNode
  * sandbox may modify and the resource root `app` carries what it must not
  * touch, both with the `filesystem` subdirectory which carries their content.
  *
- * The sandbox injection modules are written by the builder instead of being
- * declared by the case: they belong to the fixed layout of the sandbox like
- * the isolation files, because every case which starts the launcher needs them.
+ * The sandbox injection modules are not part of the layout a case declares:
+ * the launcher carries them as resources of its own executable and releases
+ * them into the cache directory of the state at every start.
  *
  * The launcher configuration carries no path at all: the launcher resolves `app`
- * and `data` against the directory of its configuration file, which is the
- * working directory of the case.
+ * and `data` against the directory of its configuration, which is the working
+ * directory of the case (the directory of the launcher program, or of the file
+ * a case passes with `--X-AppBox-ConfigFile`).
  */
 struct FsRoot
 {

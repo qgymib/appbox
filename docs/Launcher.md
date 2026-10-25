@@ -1,11 +1,11 @@
 # Launcher
 
 `AppBoxLauncher.exe` is the program a packed archive starts: a program without a
-window of its own which resolves the configuration beside itself, prepares the
-sandbox of the packaged application and starts the programs the configuration
-names. The launcher creates every program itself and injects the sandbox module
-into it, so the process tree of a run is the launcher and the programs it
-started. The launcher is the part of an archive which a user can drive from a
+window of its own which reads the configuration embedded in its own image,
+prepares the sandbox of the packaged application and starts the programs the
+configuration names. The launcher creates every program itself and injects the
+sandbox module into it, so the process tree of a run is the launcher and the
+programs it started. The launcher is the part of an archive which a user can drive from a
 command line, so this document describes its command line options and the log
 files a run writes.
 
@@ -20,7 +20,7 @@ them as the command of the shell.
 
 | Option | Value | Behavior |
 | --- | --- | --- |
-| `--X-AppBox-ConfigFile` | Path of a configuration file | Resolve the run with the given file instead of `<launcher>.exe.json` beside the launcher. The layout of the sandbox is resolved against the directory of that file, so `app`, `data` and `patch` are looked for beside it; the extracted patch packages live in `data/cache`. |
+| `--X-AppBox-ConfigFile` | Path of a configuration file | Resolve the run with the given file instead of the configuration resource embedded in the launcher. The layout of the sandbox is resolved against the directory of that file, so `app`, `data` and `patch` are looked for beside it; the released sandbox modules and the extracted patch packages live in `data/cache`. |
 | `--X-AppBox-LogLevel` | `trace`, `debug`, `info`, `warn`, `err`, `critical` or `off` | Level of the log files of the run (see [Logging](#logging)). A run which names no level writes no log file at all, which is the default. |
 | `--X-AppBox-LogDir` | Directory | Directory the log files of the run are written into. A relative path is resolved against the current directory. Default: the `log` directory beside the launcher. |
 | `--X-AppBox-Startup` | Trigger of a startup file | Start the startup file with that trigger instead of the files which are marked for auto start. A trigger no startup file carries refuses the run. |
@@ -31,6 +31,21 @@ auto start; a configuration without such a file refuses the run, because the
 sandbox would start nothing. The exit code of the launcher is the exit code of
 the run: the first non zero exit code of the programs it started, and zero when
 every program exited with zero.
+
+## Sandbox modules
+
+The launcher carries the two sandbox injection modules (`sandbox32.dll` and
+`sandbox64.dll`) as RCDATA resources of its own executable. Every start releases
+them into `data/cache` of the sandbox before the runtime is created: the files
+are created or truncated and written again, without a digest and without
+comparing their content with the embedded modules, so a run always injects the
+modules of the launcher it was started from.
+
+A module which another run already loaded cannot be truncated by Windows. When
+that sharing conflict is the only failure and the file which is already there
+has the size of the embedded module, the launcher logs a warning and injects the
+existing file. Every other failure, such as a cache directory which cannot be
+created, refuses the run with a non zero exit code before any program starts.
 
 ## Startup files
 
@@ -63,7 +78,7 @@ only a part of the application.
 The file name of the first startup file names the launcher of the archive. The
 entry always carries the `.exe` extension, because the launcher is a program
 image: a session whose first startup file is `run.bat` produces the launcher
-entry `run.exe` and the configuration `run.exe.json`.
+entry `run.exe`.
 
 ### Locating the image of a startup file
 
@@ -89,6 +104,23 @@ sees:
 A startup file whose image no layer and no host path holds refuses the run: the
 launcher reports the reason (missing, hidden by a marker or hidden by the
 isolation) and exits with a non zero code without starting a program.
+
+## Configuration
+
+The packer serializes the run configuration as UTF-8 JSON and writes it into the
+launcher payload as the RCDATA resource `IDR_APPBOX_LAUNCHER_CONFIG` of
+`launcher/EmbeddedResourceIds.h`. The launcher reads that resource from its own
+executable at every start, so the extracted program carries its configuration
+itself: no file beside the launcher can go missing or describe a different
+application, and renaming the extracted program changes nothing. The document is
+written without a byte order mark and keeps characters outside ASCII as their
+UTF-8 bytes.
+
+A launcher which was not packed, such as `AppBoxLauncher.exe` of a build tree,
+carries no configuration resource and refuses the run with a non zero exit code.
+The `--X-AppBox-ConfigFile` option overrides the embedded configuration; a run
+which names it reads the given file instead and resolves the sandbox layout
+against the directory of that file.
 
 ## Logging
 

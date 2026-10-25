@@ -6,6 +6,7 @@
 #include <vector>
 #include "sandbox/Config.hpp"
 #include "RemoteServer.hpp"
+#include "utils/SandboxModules.hpp"
 #include "utils/SandboxPaths.hpp"
 #include "utils/StartupLayout.hpp"
 #include "Config.hpp"
@@ -48,6 +49,7 @@ struct AppBoxLauncher
 {
     appbox::LauncherConfig                      launcher_config; /* Launcher configuration */
     appbox::SandboxPaths                        sandbox_paths;   /* Layout of the sandbox */
+    appbox::SandboxModulePaths                  sandbox_modules; /* Released injection modules */
     AppBoxLauncherRuntime::Ptr                  runtime;         /* Runtime information */
     std::vector<const appbox::LauncherStartup*> startups;        /* Startup files to run */
     std::string                                 startup_error;   /* Error which refuses the run */

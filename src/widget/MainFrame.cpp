@@ -13,13 +13,13 @@
 #include "DebugPanel.hpp"
 #include "core/ActionThrottle.hpp"
 #include "core/BuildReport.hpp"
-#include "core/EmbeddedResource.hpp"
+#include "EmbeddedResource.hpp"
 #include "core/EmbeddedResourceIds.h"
 #include "core/PackService.hpp"
 #include "core/PresetDirectory.hpp"
 #include "core/ProjectFile.hpp"
 #include "core/RegFile.hpp"
-#include "core/ZipReader.hpp"
+#include "ZipReader.hpp"
 #include "WString.hpp"
 #include <wx/artprov.h>
 #include <wx/filedlg.h>
@@ -1176,32 +1176,24 @@ void MainFrame::StartPack(bool run_after)
     }
 
     /*
-     * The payloads of a standalone archive are the resources of this
-     * executable: the launcher program and the two sandbox injection modules,
-     * which the archive carries below `app`. A patch package holds none of
-     * them, so its payloads stay empty.
+     * The payload of a standalone archive is the resource of this executable:
+     * the launcher program, which carries the two sandbox injection modules as
+     * resources of its own. A patch package holds no launcher, so its payload
+     * stays empty.
      */
     appbox::PackPayloads payloads;
     if (standalone)
     {
         std::string      error;
         std::string_view launcher;
-        std::string_view sandbox32;
-        std::string_view sandbox64;
-        if (!appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_LAUNCHER, launcher, error) ||
-            !appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_SANDBOX32, sandbox32, error) ||
-            !appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_SANDBOX64, sandbox64, error))
+        if (!appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_LAUNCHER, launcher, error))
         {
-            wxMessageBox("The embedded payloads are unavailable: " + error, "Build", wxOK | wxICON_ERROR, this);
+            wxMessageBox("The embedded launcher is unavailable: " + error, "Build", wxOK | wxICON_ERROR, this);
             return;
         }
 
         payloads.launcher_bytes = launcher.data();
         payloads.launcher_size = launcher.size();
-        payloads.sandbox32_bytes = sandbox32.data();
-        payloads.sandbox32_size = sandbox32.size();
-        payloads.sandbox64_bytes = sandbox64.data();
-        payloads.sandbox64_size = sandbox64.size();
     }
 
     /*
@@ -1270,6 +1262,16 @@ void MainFrame::StartPack(bool run_after)
             return !this->pack_cancelled_.load();
         };
 
+        /*
+         * The extraction reports its own progress, so it is carried into the
+         * build report the dialog renders: extracting is the second stage of a
+         * `Build and Run` run and continues the bar of the packing stage.
+         */
+        const auto extract_progress = [&report_progress](const appbox::ExtractProgress& report) {
+            return report_progress(
+                appbox::BuildProgress{ appbox::BuildStage::Extracting, report.done, report.total, report.current });
+        };
+
         PackOutcome outcome;
         if (project_type == appbox::ProjectType::Patch)
         {
@@ -1300,8 +1302,12 @@ void MainFrame::StartPack(bool run_after)
         if (outcome.error.empty() && run_after)
         {
             const auto folder = std::filesystem::temp_directory_path() / UniqueExtractFolder();
-            outcome.error = appbox::ExtractArchive(zip_wide, folder.wstring(), report_progress);
-            if (outcome.error.empty())
+            const auto extract_error = appbox::ExtractArchive(zip_wide, folder.wstring(), extract_progress);
+            if (extract_error != appbox::ZIPREADER_SUCCESS)
+            {
+                outcome.error = appbox::ZipReaderErrorMessage(extract_error);
+            }
+            else
             {
                 outcome.extract_dir = folder.wstring();
             }
@@ -1373,7 +1379,8 @@ void MainFrame::OnPackFinished(wxThreadEvent& event)
     std::string result_error;
     wxString    final_status;
 
-    if (outcome.error == appbox::kBuildCancelledError)
+    if (outcome.error == appbox::kBuildCancelledError ||
+        outcome.error == appbox::ZipReaderErrorMessage(appbox::ZIPREADER_CANCELLED))
     {
         result = appbox::BuildOutcome::Cancelled;
     }

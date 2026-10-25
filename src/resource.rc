@@ -20,12 +20,14 @@
 // the default frame icon.
 IDI_ICON1 ICON DISCARDABLE "../docs/icon.ico"
 
-// The payloads a pack run needs: the launcher program and the two sandbox
-// injection modules, declared as RCDATA resources of this executable. The
-// identifiers are shared with the code which reads the payloads back, and the
-// statements themselves live in a file which CMake generates at configure time,
-// because the payloads are build products of this build tree and are named with
-// an absolute path (see the `Payloads embedded as Windows resources` section of
-// the top level CMakeLists.txt).
+// The payload a pack run needs: the launcher program, declared as an RCDATA
+// resource of this executable. The identifier is declared in the header of the
+// packer and used by the code which reads the payload back, and the statement
+// itself lives in a file which CMake generates at configure time, because the
+// payload is a build product of this build tree and is named with an absolute
+// path (see the `Payloads embedded as Windows resources` section of the top
+// level CMakeLists.txt). The launcher numbers the resources of its own
+// executable independently, so the packer neither embeds nor writes the two
+// sandbox injection modules it carries.
 #include "core/EmbeddedResourceIds.h"
 #include "EmbeddedResources.generated.rc"

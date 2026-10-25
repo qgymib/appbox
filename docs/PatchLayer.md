@@ -19,9 +19,9 @@ the `patch` directory is applied on top of them in ascending name order.
 A patch package is a zip archive written by the `Patch (ZIP)` project type of
 the `Project Type` box of the packer. It holds the very same resource tree a
 standalone archive keeps below `app`, rooted at the archive root instead: the
-launcher program, its configuration, the two sandbox injection modules and the
-`app` directory itself do not travel, because a patch is applied by the launcher
-of a standalone archive and not started on its own.
+launcher program, the configuration it carries and the `app` directory itself do
+not travel, because a patch is applied by the launcher of a standalone archive
+and not started on its own.
 
 ```
 <patch>.zip
@@ -46,8 +46,8 @@ project only.
 
 ```
 .
-├── <startup>.exe            launcher payload of the standalone archive
-├── <startup>.exe.json       launcher configuration of the standalone archive
+├── <startup>.exe            launcher payload of the standalone archive, carries
+│                            the configuration as an RCDATA resource
 ├── app/                     read-only resources, the base image of the sandbox
 ├── data/                    writable state of the sandbox, created by the launcher
 │   ├── cache/               extracted patches, created by the launcher
@@ -80,19 +80,19 @@ project only.
   into the entry: an entry whose digest is missing or does not match the package
   is dropped and extracted again, so a run which was interrupted half way
   cannot look like a complete extraction.
-- Deleting `data/cache` only costs the extraction of the next run, while
-  deleting `data` drops the state of the sandbox as well. The launcher does not
-  delete the entry of a package which the user removed from `patch`: the
-  directory holds what the runs so far extracted, and deleting it resets that.
-- `app` carries the injection modules the launcher injects (`app/sandbox32.dll`
-  and `app/sandbox64.dll`) beside the four domains, so the modules belong to the
-  archive which is started. A patch package carries none of them: a package
-  never replaces the modules of the archive it is applied to.
-- `app` carries the startup image of the session as well
-  (`app/startup/splash.<extension>`, see
-  [Startup Screen](StartupScreen.md)). A patch package cannot name one, because
-  the launcher configuration which names the image lives in the archive which is
-  started.
+- Deleting `data/cache` only costs the release of the sandbox modules and the
+  extraction of the next run, while deleting `data` drops the state of the
+  sandbox as well. The launcher does not delete the entry of a package which the
+  user removed from `patch`: the directory holds what the runs so far extracted,
+  and deleting it resets that.
+- `app` carries the four domains and, when the session sets one, the startup
+  image of the session (`app/startup/splash.<extension>`, see
+  [Startup Screen](StartupScreen.md)). A patch package cannot name an image,
+  because the launcher configuration which names the image is a resource of the
+  launcher in the archive which is started.
+- The launcher carries the two sandbox injection modules as resources of its own
+  executable and releases them into `data/cache` at every start, so neither the
+  archive nor a patch package carries a module file.
 
 ## Merge rules
 
@@ -218,7 +218,7 @@ in the run.
 The launcher consumes the `patch` directory of the standalone archive it starts. A
 run
 
-1. enumerates `patch/*.zip` next to its configuration file, sorted by name in
+1. enumerates `patch/*.zip` next to the launcher program, sorted by name in
    ascending ASCII order, and ignores a directory which does not exist or holds
    no package;
 2. computes the MD5 digest of a package and compares it with the digest
@@ -297,7 +297,7 @@ after it, and the sandbox applies the list in that order.
   because the sandbox has no default mode to fall back to.
 - **The launcher reads the packages of the archive.** A patch package is written
   by the `ZipWriter` of the packer, so the launcher extracts it with the
-  `ExtractArchive` of `src/core/ZipReader.cpp`, which is the read half of the
+  `ExtractArchive` of `common/ZipReader.hpp`, which is the read half of the
   same layout: the entry names of a package are sanitized by the very rules the
   packer writes them with.
 - **The sandbox merges the four domains, not the launcher.** A domain travels as

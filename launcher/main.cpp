@@ -10,22 +10,24 @@
 #include <spdlog/spdlog.h>
 #include <cctype>
 #include <cstddef>
-#include <filesystem>
-#include <fstream>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <base64.hpp>
+#include "EmbeddedResource.hpp"
 #include "sandbox/utils/Defines.hpp"
 #include "utils/CommandLineOptions.hpp"
 #include "utils/GetExecutableDir.hpp"
 #include "utils/ProcessJob.hpp"
+#include "utils/SandboxModules.hpp"
 #include "utils/Shell.hpp"
 #include "utils/KnownFolder.hpp"
 #include "utils/VersionInfo.hpp"
 #include "utils/ViewPathResolver.hpp"
 #include "utils/WinCall.hpp"
+#include "EmbeddedResourceIds.h"
 #include "Launcher.hpp"
 #include "Splash.hpp"
 #include "WString.hpp"
@@ -390,8 +392,8 @@ static DWORD MainLauncher(std::unique_ptr<appbox::SplashScreen>& splash)
  *
  * The resources of the packed application and the state of the sandbox live in
  * the fixed directories of `common/SandboxLayout.hpp`, resolved against the
- * directory of the configuration: the directory of the launcher program itself
- * unless a configuration file was given on the command line.
+ * directory of the launcher program itself unless a configuration file was
+ * given on the command line.
  *
  * @param[in] config_dir Directory which holds the configuration, empty to use
  *                       the directory of the launcher program.
@@ -403,53 +405,53 @@ static void ResolveSandboxPaths(const std::wstring& config_dir)
 }
 
 /**
- * @brief Refuse a run whose sandbox injection modules are missing.
+ * @brief Release the sandbox injection modules of the run.
  *
- * The modules are resources of the archive and the launcher injects them from
- * `app` instead of writing a copy into the state directory (see
- * `common/SandboxLayout.hpp`), so a run without them cannot sandbox anything:
- * the check happens before the runtime is created, which reports the missing
- * path instead of failing while the application is started.
+ * The modules are resources of the launcher executable which every run writes
+ * into the cache directory of the sandbox (see `common/SandboxLayout.hpp`).
+ * The release happens before the runtime is created, so a failure refuses the
+ * run before anything starts instead of failing while the application is
+ * already being started.
  *
- * @param[out] error Description of the first module which was not found, left
- *                   untouched when both modules exist.
+ * An error which another preparation step already reported is kept: the run is
+ * refused for that reason and the modules are not needed at all.
+ *
+ * @param[out] error Description of the failure, left untouched when the
+ *                   modules were already prepared by another step.
  */
-static void CheckSandboxModules(std::string& error)
+static void PrepareSandboxModules(std::string& error)
 {
-    const auto& paths = LauncherApp().sandbox_paths;
-
-    const std::wstring modules[] = { paths.Sandbox32Dll(), paths.Sandbox64Dll() };
-    for (const auto& module : modules)
+    if (!error.empty())
     {
-        std::error_code ec;
-        if (!std::filesystem::is_regular_file(module, ec))
-        {
-            error = "the sandbox injection module was not found: " + appbox::WideToUTF8(module);
-            return;
-        }
+        return;
     }
+
+    appbox::ReleaseSandboxModules(LauncherApp().sandbox_paths.cache, LauncherApp().sandbox_modules, error);
 }
 
 static void LoadConfig()
 {
     /*
-     * The configuration file is named after the executable itself and lives
-     * beside it, so an executable `foo.exe` loads `foo.exe.json` from its own
-     * directory. No fallback name is tried: a missing configuration file is
-     * reported as an error.
+     * The configuration is a resource of the launcher executable itself, which
+     * the packer wrote into the payload: the extracted program carries its own
+     * configuration, so no file beside it can go missing or describe a
+     * different application. The resource is UTF-8 JSON without a byte order
+     * mark (see `launcher/Config.hpp`).
+     *
+     * No fallback is tried: a launcher which was not packed carries no
+     * configuration resource, and the run is refused instead of starting
+     * nothing.
      */
-    auto dir = appbox::GetExecutableDir();
-    auto path = appbox::DefaultConfigPathForExecutable(appbox::GetExecutablePath());
-
-    std::ifstream f{ std::filesystem::path(path) };
-    if (!f.is_open())
+    std::string_view payload;
+    std::string      error;
+    if (!appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_LAUNCHER_CONFIG, payload, error))
     {
-        throw std::runtime_error("the launcher configuration file was not found: " + appbox::WideToUTF8(path));
+        throw std::runtime_error("the launcher configuration is unavailable: " + error);
     }
 
-    nlohmann::json j_cfg = nlohmann::json::parse(f);
+    nlohmann::json j_cfg = nlohmann::json::parse(payload.begin(), payload.end());
     LauncherApp().launcher_config = j_cfg;
-    ResolveSandboxPaths(dir);
+    ResolveSandboxPaths({});
 }
 
 static void FinializeCommandArgs(const appbox::CommandLineOptions& opt)
@@ -542,10 +544,11 @@ static DWORD RunLauncher()
 
         /*
          * A run without the injection modules cannot sandbox anything: the
+         * modules are released into the cache directory of the sandbox, and a
          * failure is reported by the block below the startup selection, which
          * turns it into a non zero exit code and starts nothing.
          */
-        CheckSandboxModules(LauncherApp().startup_error);
+        PrepareSandboxModules(LauncherApp().startup_error);
 
         /*
          * The screen is shown before the runtime of the run is created, which

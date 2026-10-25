@@ -3,6 +3,7 @@
 #include "EnvironmentIsolationFile.hpp"
 #include "FilesystemIsolationFile.hpp"
 #include "FilesystemMarker.hpp"
+#include "LauncherConfigResource.hpp"
 #include "NetworkIsolationFile.hpp"
 #include "PresetDirectory.hpp"
 #include "RegistryHive.hpp"
@@ -12,7 +13,6 @@
 #include "ZipWriter.hpp"
 #include "Config.hpp"
 #include "WString.hpp"
-#include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <algorithm>
 #include <filesystem>
@@ -678,14 +678,6 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
     {
         return "the embedded launcher payload is empty";
     }
-    if (payloads.sandbox32_bytes == nullptr || payloads.sandbox32_size == 0)
-    {
-        return "the embedded 32 bit sandbox module is empty";
-    }
-    if (payloads.sandbox64_bytes == nullptr || payloads.sandbox64_size == 0)
-    {
-        return "the embedded 64 bit sandbox module is empty";
-    }
 
     /*
      * The startup image is read while the archive is written, so a session
@@ -727,6 +719,43 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         if (launcher_entry.empty())
         {
             return "no startup file selected";
+        }
+
+        /*
+         * Launcher configuration: the layout of the archive is a fixed
+         * convention, so the document only carries what the launcher starts
+         * and how it presents the run. Every executable path starts with the
+         * layer key token of its preset, which the launcher expands.
+         */
+        LauncherConfig config;
+
+        /*
+         * The startup screen of the session: the flag decides whether the
+         * launcher opens a window of its own while it prepares the sandbox,
+         * and the image names the entry below `app` it presents. A session
+         * which sets no image names none, so the launcher shows the name of
+         * the application and the progress of the run only.
+         */
+        config.startup.screen = startup.enabled;
+        config.startup.image = StartupImageEntryName(startup.image);
+
+        for (const auto& file : model.StartupFiles())
+        {
+            PresetDirectory owner;
+            if (!FindPresetDirectory(file.preset_id, owner))
+            {
+                return "the preset of a startup file no longer exists";
+            }
+
+            auto launch = std::filesystem::path(owner.layer_key);
+            launch /= file.import_name;
+            launch /= file.relative_path;
+
+            LauncherStartup launcher_startup;
+            launcher_startup.trigger = WideToUTF8(file.trigger);
+            launcher_startup.auto_start = file.auto_start;
+            launcher_startup.executable = WideToUTF8(launch.wstring());
+            config.startups.push_back(std::move(launcher_startup));
         }
 
         /*
@@ -778,54 +807,29 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
             }
         }
 
+        /*
+         * The run configuration is a resource of the payload as well. It is
+         * written last, after the icon and the version information, so a
+         * resource update of those patches cannot drop it. A failure is fatal:
+         * a launcher without its configuration cannot start the application.
+         */
+        {
+            const void* const base = payload_image.empty() ? payloads.launcher_bytes : payload_image.data();
+            const auto        base_size = payload_image.empty() ? payloads.launcher_size : payload_image.size();
+
+            std::string config_error;
+            auto        embedded = EmbedLauncherConfig(base, base_size, BuildLauncherConfigJson(config), config_error);
+            if (embedded.empty())
+            {
+                return "the launcher configuration cannot be embedded: " + config_error;
+            }
+
+            payload_image = std::move(embedded);
+        }
+
         const void* const payload = payload_image.empty() ? payloads.launcher_bytes : payload_image.data();
         const auto        payload_size = payload_image.empty() ? payloads.launcher_size : payload_image.size();
         if (!writer.AddFileBuffer(launcher_entry, payload, payload_size, error))
-        {
-            return error;
-        }
-
-        /*
-         * Launcher configuration: the layout of the archive is a fixed
-         * convention, so the file only carries the startup files and the
-         * environment of the packaged application. Every executable path
-         * starts with the layer key token of its preset, which the launcher
-         * expands. The config file carries the name of the launcher executable,
-         * which loads `<own file name>.json` from its own directory.
-         */
-        LauncherConfig config;
-
-        /*
-         * The startup screen of the session: the flag decides whether the
-         * launcher opens a window of its own while it prepares the sandbox,
-         * and the image names the entry below `app` it presents. A session
-         * which sets no image names none, so the launcher shows the name of
-         * the application and the progress of the run only.
-         */
-        config.startup.screen = startup.enabled;
-        config.startup.image = StartupImageEntryName(startup.image);
-
-        for (const auto& file : model.StartupFiles())
-        {
-            PresetDirectory owner;
-            if (!FindPresetDirectory(file.preset_id, owner))
-            {
-                return "the preset of a startup file no longer exists";
-            }
-
-            auto launch = std::filesystem::path(owner.layer_key);
-            launch /= file.import_name;
-            launch /= file.relative_path;
-
-            LauncherStartup launcher_startup;
-            launcher_startup.trigger = WideToUTF8(file.trigger);
-            launcher_startup.auto_start = file.auto_start;
-            launcher_startup.executable = WideToUTF8(launch.wstring());
-            config.startups.push_back(std::move(launcher_startup));
-        }
-
-        const auto json = nlohmann::json(config).dump(2);
-        if (!writer.AddFileBuffer(launcher_entry + ".json", json.data(), json.size(), error))
         {
             return error;
         }
@@ -842,24 +846,6 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         error = WriteResourceTree(writer, layout::kAppDirName, model, registry, isolation, network, environment, total,
                                   progress);
         if (!error.empty())
-        {
-            return error;
-        }
-
-        /*
-         * The sandbox injection modules are resources of the archive, so they
-         * land beside the four isolation domains instead of in the state
-         * directory of the sandbox: the launcher injects the module of the
-         * bitness of the process it starts from `app`, which keeps a run of the
-         * extracted archive from copying a module of its own.
-         */
-        if (!writer.AddFileBuffer(ResourceEntry(layout::kAppDirName, layout::kSandbox32DllName),
-                                  payloads.sandbox32_bytes, payloads.sandbox32_size, error))
-        {
-            return error;
-        }
-        if (!writer.AddFileBuffer(ResourceEntry(layout::kAppDirName, layout::kSandbox64DllName),
-                                  payloads.sandbox64_bytes, payloads.sandbox64_size, error))
         {
             return error;
         }

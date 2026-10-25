@@ -6,7 +6,7 @@ The repository has one test executable, registered with CTest in
 | CTest entry | Mode | What it runs |
 | --- | --- | --- |
 | `AppBoxUnitTests` | `--mode=unit` | The in-process unit tests below `test/unit`. They do not start the launcher and do not inject the sandbox DLL, so they run on their own in about a minute. |
-| `AppBoxTests` | `--mode=e2e` | The end-to-end cases below `test/e2e`. Every case owns a private working directory, writes the artifacts of the sandbox it runs and drives a probe process through the real launcher. |
+| `AppBoxE2ETests` | `--mode=e2e` | The end-to-end cases below `test/e2e`. Every case owns a private working directory, writes the artifacts of the sandbox it runs and drives a probe process through the real launcher. |
 
 Both entries run the same executable and only differ in the range of the run,
 so a failure of one side is still reported on its own. `--mode=all` runs both
@@ -41,11 +41,12 @@ executables the build installed below `resource/probe`
 
 A test executable which is started by hand needs those arguments as well:
 without the launcher the end-to-end cases cannot start it, without the modules the
-cases skip themselves (see `appbox::test::CommonFixture::SetUp()`), and without the
-packer the unit test of the embedded resources skips itself. A run which was
-started without one of the two probes is refused before the first case (see
-`appbox::test::ValidateProbePaths()`): the probe is the program a case runs inside
-the sandbox, so a missing probe reports a failure instead of skipped cases.
+unit tests which compare the embedded resources with the build tree skip
+themselves, and without the packer that unit test skips itself as well. A run
+which was started without one of the two probes is refused before the first case
+(see `appbox::test::ValidateProbePaths()`): the probe is the program a case runs
+inside the sandbox, so a missing probe reports a failure instead of skipped
+cases.
 
 Two end-to-end cases need the `SeBackupPrivilege` of the process, because
 `RegSaveKeyW` / `RegSaveKeyExW` reach `NtSaveKey` / `NtSaveKeyEx`, which the
@@ -70,7 +71,7 @@ variable counterpart:
 | Option | Environment variable | Meaning |
 | --- | --- | --- |
 | `--launcher` | `APPBOX_TEST_LAUNCHER` | Path of the launcher executable the cases start. |
-| `--sandbox32` | `APPBOX_TEST_SANDBOX32` | Path of the 32 bit sandbox injection module the cases put into the resource root of their directory. |
+| `--sandbox32` | `APPBOX_TEST_SANDBOX32` | Path of the 32 bit sandbox injection module the unit tests compare with the resource of the launcher. |
 | `--sandbox64` | `APPBOX_TEST_SANDBOX64` | Path of the 64 bit sandbox injection module. |
 | `--probe32` | `APPBOX_TEST_PROBE32` | Path of the 32 bit probe executable, which runs the operations of a case inside a 32 bit process. |
 | `--probe64` | `APPBOX_TEST_PROBE64` | Path of the 64 bit probe executable, which is the probe of a case unless it asks for the 32 bit one. |
@@ -307,7 +308,7 @@ which died is the first one to open:
 | `test/utils/Coredump.*` | The coredump writer: the full memory dump of a process, the walk of a process tree and the termination of its processes. |
 | `test/utils/CommandLine.*` | The command line and the environment of a run, which the coredump writer reads before GoogleTest and CLI11 look at them. |
 | `test/utils/LauncherPath.hpp` | The launcher path of a run: `LauncherPath()` answers the `--launcher` value of the configuration. |
-| `test/utils/SandboxDll.hpp` | The injection modules of a run: `Sandbox32DllPath()` and `Sandbox64DllPath()` answer the `--sandbox32` and `--sandbox64` values, and `SandboxModulesAvailable()` tells whether the run can start the launcher at all. |
+| `test/utils/SandboxDll.hpp` | The injection modules of a run: `Sandbox32DllPath()` and `Sandbox64DllPath()` answer the `--sandbox32` and `--sandbox64` values, and `SandboxModulesAvailable()` tells whether the unit tests can compare the embedded modules with the build tree. |
 | `test/utils/ProbePath.hpp` | The probe executables of a run: `ProbePath(ProbeBitness)` answers the path of the 32 bit or of the 64 bit probe. A run which cannot find both is refused before the first case, see `ValidateProbePaths()`. |
 | `test/utils/RegChildExitCode.*` | The exit code bits of the registry worker (`regchild`) and their description; the worker itself is a subcommand of the probe executable. |
 | `test/Test.cpp` / `test/Test.hpp` | The configuration of the run: `--launcher`, `--sandbox32`, `--sandbox64`, `--probe32`, `--probe64`, `--packer`, `--log-level`, `--mode`, `--no-cleanup`, the timeout options, the prefixes which tell the mode of a suite, the guard which keeps the prefix and the directory of a suite together, the mode filter and the check of the probe executables. |
@@ -433,17 +434,23 @@ The unit tests of the packer:
   level, the order of the scale, the default level of a session, and the mapping
   between the entries of the box and the enumeration, including the fallback of
   an index which is outside of the box.
-* `test/unit/EmbeddedResource.cpp` — the payloads the packer carries as RCDATA
-  resources of its own executable: the launcher program and the two sandbox
-  injection modules are read from the executable opened as a data file and
-  compared byte for byte with the files of the build tree they were embedded
-  from, and a resource which an executable does not carry is reported instead of
-  being handed out as an empty payload. The suite is the only automated coverage
-  of the resource script of the build.
+* `test/unit/EmbeddedResource.cpp` — the payloads the executables carry as RCDATA
+  resources of their own, with the identifiers of every executable numbered
+  independently from 101: the packer carries the launcher program as its only
+  RCDATA resource, while the base launcher carries as its only RCDATA resources
+  the two modules which every run releases into `data/cache`; the packer adds
+  the configuration resource (`IDR_APPBOX_LAUNCHER_CONFIG`) to the payload at
+  pack time. Every
+  payload is read from the executable opened as a data file and compared byte for
+  byte with the
+  files of the build tree they were embedded from, the identifier set of every
+  executable is checked as a whole, and a resource which an executable does not
+  carry is reported instead of being handed out as an empty payload. The suite
+  is the only automated coverage of the two resource scripts of the build.
 * `test/unit/PackService.cpp` — the archive carries the hive, the isolation
   file of the registry, the isolation file of the filesystem workspace, the
   isolation file of the network workspace, the isolation file of the
-  environment workspace, the two sandbox injection modules below `app` and, for
+  environment workspace and, for
   a session which sets one, the startup image of the launcher, which the
   configuration names and which the progress total counts like every other
   entry which does not come from an import; the run refuses a session whose
@@ -453,10 +460,9 @@ The unit tests of the packer:
   session inherits from with the fields the user edited applied on top of them,
   and the launcher entry is named after the first startup file and always carries
   the `.exe` extension, so a session whose first startup file is a script writes
-  the launcher as `<name of the script>.exe` beside its configuration;
+  the launcher as `<name of the script>.exe` with its configuration embedded;
   the patch package carries the very same resources
-  rooted at the archive root, without the launcher, without the injection modules
-  and without an `app`
+  rooted at the archive root, without the launcher and without an `app`
   directory, and needs neither a startup file nor the payloads, which is
   what the patch cases of the suite pin: the root layout, the layer tree, the
   registry artifacts, the imported files, the folders the user created inside
@@ -474,6 +480,14 @@ The unit tests of the packer:
   written as well, in both products, and the markers are part of the total the
   progress reports announce, so the bar of a `Build and Run` run does not
   overrun while the archive is extracted.
+* `test/unit/LauncherConfigResource.cpp` — the run configuration as a resource
+  of the launcher payload: the document is UTF-8 JSON without a byte order mark
+  and keeps characters outside ASCII as their UTF-8 bytes instead of `\uXXXX`
+  escapes, the packer writes it as RCDATA `IDR_APPBOX_LAUNCHER_CONFIG` and the
+  launcher reads it back, a second pack run replaces the earlier resource instead
+  of appending a copy, and a payload which is not a PE image or a configuration
+  which is empty is refused with a reason instead of producing an archive which
+  cannot run.
 * `test/unit/PackModel.cpp` — the editable model of a packer session: the
   import of a host folder and of individual files, the rules of the import
   names and of the startable files (a program, a batch file, a command script and
@@ -1492,6 +1506,22 @@ family is not installed before it runs.
 | `Font_AddFontResourceEx_ViewPath` | add the file of the view with `AddFontResourceExW(path of the view, FR_PRIVATE, 0)`, while the file is not a file of the font folder of the host | the call reports the font, so the sandbox resolved the path of the view to the file of the layer: the font driver of the system opens the file without passing the file hooks |
 | `Font_HostIsNotModified` | run the sandbox, then check the host and the font table of the test process | the font folder of the host carries no file of the layer, the font registry of the host carries no entry of the font, and the family is gone once the sandboxed process ended |
 
+### Launcher embedded configuration cases
+
+The embedded configuration cases (`test/e2e/Launcher_EmbeddedConfig.cpp`) pack a
+session which starts the 64 bit probe as `MyApp\app.exe` with the launcher of the
+suite, extract the archive and remove the import folder, so the extracted launcher
+is the only source of the image. Every case is documented in its own header
+comment.
+
+| Case | Steps | Expected |
+| --- | --- | --- |
+| `EmbeddedConfigurationStartsTheApplication` | run the extracted launcher without `--X-AppBox-ConfigFile` | the launcher reads the configuration resource of its own image, the probe reports the marker and the launcher exits with zero, while no `<launcher>.json` exists beside the program |
+| `ConfigurationBesideTheLauncherIsIgnored` | write a configuration without a startup file beside the extracted launcher and run it | the file is ignored, the embedded configuration starts the application and the launcher exits with zero |
+| `MissingConfigurationResourceRefusesTheRun` | run the bare launcher of the suite, which was not packed | the launcher refuses the run with a non zero exit code and starts no probe |
+| `Utf8ConfigurationRoundTrips` | pack a session whose trigger and marker are non-ASCII and start the trigger | the resource carries the UTF-8 bytes instead of `\uXXXX` escapes, the launcher selects the startup file and the probe reports the non-ASCII marker |
+| `ConfigFileOptionOverridesTheEmbeddedConfiguration` | run the extracted launcher with `--X-AppBox-ConfigFile` and a configuration whose startup file has another trigger | the override wins over the embedded configuration and its startup file runs |
+
 ### Launcher startup cases
 
 The startup cases (`test/e2e/Launcher_Startup.cpp`) describe three startup files in
@@ -1661,33 +1691,33 @@ tell which hive the sandbox mounted.
 
 ### Launcher sandbox module cases
 
-The module cases (`test/e2e/Launcher_MissingSandboxDll.cpp` and
-`test/e2e/Launcher_SandboxDllFromTheApp.cpp`) pin the contract of the injection
-modules: they are resources of the archive below `app`, so the launcher injects
-them from there and writes no copy into the state directory, and a run without
-them is refused before anything starts. The harness links the modules of the run
-into the resource root of every case, so a case which describes a run without
-them removes them again.
+The module cases (`test/e2e/Launcher_SandboxModules.cpp`) pin the contract of the
+injection modules: the launcher carries them as RCDATA resources of its own
+executable and releases them into `data/cache` at every start, so the archive
+and a patch package carry no module file. The release always writes the embedded
+modules, without a digest and without comparing their content with the files
+which are already there.
 
 | Case | Steps | Expected |
 | --- | --- | --- |
-| `MissingSandboxDll.BothModulesAreMissing` | the resource root carries neither module, the configuration holds an auto start file | the launcher reports the module which is missing, starts nothing and exits with a non zero code |
-| `MissingSandboxDll.The32BitModuleIsMissing` | the resource root carries the 64 bit module only | the run is refused as well, because a packaged application may start a 32 bit process which has to be injected |
-| `SandboxDllFromTheApp.TheRunInjectsFromTheResourceRoot` | the resource root carries both modules, the state root is empty | the startup file runs inside the sandbox, so the modules of the resource root were injected, and the state root carries no module afterwards |
+| `SandboxModules.EveryRunReleasesTheModulesIntoTheCache` | the cache directory does not exist, the configuration holds an auto start file | the startup file runs inside the sandbox, `data/cache` carries `sandbox32.dll` and `sandbox64.dll` byte for byte like the build products, and the resource root carries no module |
+| `SandboxModules.ALeftOverModuleIsReplaced` | the cache directory carries two files with the names of the modules and content which is not a module | the run replaces both files with the embedded modules before the injection, and the startup file still runs |
+| `SandboxModules.ALoadedModuleIsReused` | a first run released both modules, then both cached files are held open for reading without write sharing | the launcher cannot truncate the files, reuses them because their size matches the embedded modules, and starts the startup file |
+| `SandboxModules.AnUncreatableCacheRefusesTheRun` | `data/cache` is a regular file, so the directory cannot be created | the launcher refuses the run, starts nothing and exits with a non zero code |
 
 ### Launcher runtime library case
 
 The case (`test/e2e/Launcher_NoVcRuntime.cpp`) runs the probe inside the sandbox
 and asks it for the modules its process has loaded with the probe
 `test/probe/LoadedModules.*`: the list carries the modules of the probe, the
-injection modules of the resource root and every module they depend on, so it
-tells whether a sandboxed process needs the runtime library of the toolchain.
+released sandbox modules below `data/cache` and every module they depend on, so
+it tells whether a sandboxed process needs the runtime library of the toolchain.
 The case is the runtime side of the promise of `cmake/StaticRuntime.cmake`,
 whose static side `test/unit/StaticRuntime.cpp` pins on the files of the build.
 
 | Case | Steps | Expected |
 | --- | --- | --- |
-| `TheSandboxedProcessLoadsNoVcRuntime` | the resource root carries both injection modules, the configuration holds no startup file, so the launcher starts the probe once | the module list carries `sandbox64.dll`, which proves that the probe reported from inside the sandbox, and no module the Visual C++ Redistributable installs, so the sandboxed process needs no redistributable |
+| `TheSandboxedProcessLoadsNoVcRuntime` | the launcher releases both injection modules into `data/cache`, the configuration holds no startup file, so the launcher starts the probe once | the module list carries `sandbox64.dll`, which proves that the probe reported from inside the sandbox, and no module the Visual C++ Redistributable installs, so the sandboxed process needs no redistributable |
 
 The case checks the list against `IsVcRedistributableModule()`, not against the
 strict `IsVcRuntimeModule()` of the import tables: the modules of Windows which a
@@ -1718,7 +1748,7 @@ header comment.
 | `MergeOfTheLastLayerWins` | the host holds the file of the folder; the archive isolates the folder with `Full` and `01-bar.zip` names the same path with `Merge` | the write reaches the file of the host filesystem, so the mode of the package replaced the mode of the archive and the file carries the new content |
 | `CacheIsReusedAndRefreshed` | four runs: with the package as it is, with a file placed inside its cache entry, after the package was replaced and after the cache directory below the state directory was deleted | the first run reads `one` and records the digest of the package, the second run reads `one` and keeps the placed file, so the extraction was reused, the third run reads `two` and drops the placed file, so a package whose digest changed is extracted again, and the fourth run reads `two` as well and extracts the package again, so deleting the cache only costs the extraction |
 | `BrokenPackageIsSkipped` | `00-bad.zip` is not an archive and `01-good.zip` carries the file of the case | the read returns the content of the good package, the run succeeds, and the package which cannot be read left no cache entry behind |
-| `NoPackageKeepsTheCacheEmpty` | the user created the `patch` directory, but it holds a file which is not a package | the read returns the content of the archive, and the `data/cache` directory was not created |
+| `NoPackageLeavesNoCacheEntry` | the user created the `patch` directory, but it holds a file which is not a package | the read returns the content of the archive, and `data/cache` carries the two released sandbox modules only, because no package was extracted |
 | `RegistryHiveOfTheLastLayerWins` | the hive of `app` carries the values `Value` and `Kept` of a key; `00-foo.zip` overrides `Value` and adds `Added`, `01-bar.zip` overrides `Value` and adds `AddedByBar` | `Value` is the value of `01-bar.zip`, because the hives of the packages are applied in ascending order, `Added` is the value of `00-foo.zip`, `Kept` is the value of the archive, and the hive of the resources is byte identical to the one the case built |
 | `RegistryIsolationModeOfTheLastLayerWins` | the hive of `app` holds the key with the values `Own` and `Packed` and hides `Packed`, so the content of the value lives in the hidden store of the hive; the real HKCU holds `HostA` and `HostB` of the same key; `01-bar.zip` marks the key `Full` and the value `Packed` `Full` | `HostA` and `HostB` do not exist, because the mode of the package hides the key of the host with everything below it, which is the mode of the last layer; `Own` is the value of the archive; `Packed` is the content of the archive which the package made visible again, which is the materialization the launcher runs for the package; the real key is untouched |
 | `RegistryWithoutResourcesKeepsTheApp` | `00-foo.zip` carries a file of the filesystem domain and no resource of the registry domain at all | the value and the mode of the archive stay the value and the mode of the run, and the hive of the resources is byte identical to the one the case built |
@@ -1798,11 +1828,13 @@ They are documented in their own header comments.
 * `test/utils/FsBuilder.*` — declarative tree builder. `FsRoot(root, {dirs})`
   materializes the directories of the case and returns the `LauncherConfig` of the case,
   which carries no path: the launcher resolves the state directory `data` and the resource
-  directory `app` against the directory of its configuration file, which is the working
-  directory of the case. The resource directories are named after the known folder token
-  (`app\filesystem\#USERPROFILE#`) so that `MapBaseFS` resolves them. The builder also
-  links the sandbox injection modules of the run into the resource root of the case,
-  because every case which starts the launcher needs them there, and writes the registry
+  directory `app` against the directory of its configuration, which is the working
+  directory of the case (the directory of the launcher program, or of the file a case
+  passes with `--X-AppBox-ConfigFile`). The resource directories are named after the known folder token
+  (`app\filesystem\#USERPROFILE#`) so that `MapBaseFS` resolves them. The launcher
+  carries the sandbox injection modules as resources of its own executable and
+  releases them into `data/cache`, so the builder writes no module, and it writes
+  the registry
   isolation file of a case which declares no registry domain: the sandbox refuses a run
   whose archive carries no isolation file, so the builder writes the five root keys of
   the view with the mode `Write Copy` — which keeps the entries of the host visible and
@@ -1811,14 +1843,13 @@ They are documented in their own header comments.
   sandbox. A case which declares its own registry domain, with the `FsRoot` content or
   with the `HiveBuilder`, keeps it. `Verify()` re-reads
   everything a case declared and fails if the content changed; the isolation files which
-  the helpers of the suite write, the registry domain and the injection modules are not
+  the helpers of the suite write and the registry domain are not
   part of the declared content.
-* `test/utils/CommonFixture.*` — gives every case a private working directory, and
-  skips the case when the run provided no sandbox injection modules, because the launcher
-  of a case cannot inject anything without them.
+* `test/utils/CommonFixture.*` — gives every case a private working directory.
 * `test/utils/SandboxDll.hpp` — the injection modules of a run:
   `Sandbox32DllPath()` and `Sandbox64DllPath()` answer the paths of the run and
-  `SandboxModulesAvailable()` tells whether both of them exist.
+  `SandboxModulesAvailable()` tells whether both of them exist, which is what the
+  unit tests compare with the resources of the launcher.
 * `test/utils/ModuleList.hpp` — the module list checks of the runtime
   independence cases: `IsVcRuntimeModule()` reports whether a module name is a
   runtime library of the C++ toolchain (`VCRUNTIME`, `MSVCP`, `CONCRT`,

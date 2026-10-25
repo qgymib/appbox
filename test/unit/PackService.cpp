@@ -1,9 +1,11 @@
 #include <gtest/gtest.h>
+#include "src/core/PeResourcePatch.hpp"
 #include "src/core/PackService.hpp"
-#include "src/core/ZipReader.hpp"
+#include "ZipReader.hpp"
 #include "SandboxLayout.hpp"
 #include "WString.hpp"
 #include "Config.hpp"
+#include "utils/LauncherConfigReader.hpp"
 #include "utils/ProbePath.hpp"
 #include <nlohmann/json.hpp>
 #include <zip.h>
@@ -232,6 +234,30 @@ std::string ReadEntry(zip_t* archive, const char* name)
 }
 
 /**
+ * @brief Read the raw JSON document of the configuration embedded in a launcher
+ *        entry of an archive.
+ *
+ * @param[in] launcher The launcher entry.
+ * @param[out] json The UTF-8 JSON document, empty on failure.
+ * @param[out] error Description of the failure, empty on success.
+ * @return true when the document was read.
+ */
+bool ReadLauncherConfigJsonFromEntry(const std::string& launcher, std::string& json, std::string& error)
+{
+    json.clear();
+    error.clear();
+
+    const auto                               path = appbox::pe_resource::TemporaryPath(L"AppBox-Test-PackService");
+    const appbox::pe_resource::TemporaryFile file(path);
+    if (!appbox::pe_resource::WriteFileBytes(path, launcher.data(), launcher.size(), error))
+    {
+        return false;
+    }
+
+    return appbox::test::ReadLauncherConfigJson(path.wstring(), json, error);
+}
+
+/**
  * @brief Open a zip archive for reading.
  * @param[in] path Archive path.
  * @return The archive, nullptr on failure.
@@ -332,34 +358,31 @@ std::string CompressibleContent(std::size_t size)
     return content;
 }
 
-/** Payload the fake launcher of a case carries. */
-constexpr char kFakeLauncher[] = "FAKE-LAUNCHER";
-
-/** Payload the fake 32 bit sandbox injection module of a case carries. */
-constexpr char kFakeSandbox32[] = "FAKE-SANDBOX32";
-
-/** Payload the fake 64 bit sandbox injection module of a case carries. */
-constexpr char kFakeSandbox64[] = "FAKE-SANDBOX64";
-
 /**
  * @brief Build the payloads of a standalone pack run.
  *
- * The payloads of the packer are resources of its own executable, so a case
- * hands over bytes of its own instead of reading a real launcher. The strings
- * live in the static storage of the test executable, so the byte ranges of the
- * returned structure stay valid for the whole run.
+ * The pack run embeds the run configuration as a resource of the launcher
+ * payload, so the payload has to be a real program image. The probe of the
+ * suite stands in for the launcher: it is a small PE image, unlike the test
+ * executable, which keeps the file system of a case busy for seconds. The bytes
+ * live in the static storage of the test executable, so the range of the
+ * returned structure stays valid for the whole run.
+ *
+ * The two sandbox injection modules are not part of the structure: the launcher
+ * carries them as resources of its own executable.
  *
  * @return The payloads of a standalone pack run.
  */
 appbox::PackPayloads FakePayloads()
 {
+    static const std::vector<char> launcher = [] {
+        const auto path = appbox::test::ProbePath(appbox::test::ProbeBitness::Bit64);
+        return path.empty() ? std::vector<char>() : ReadAllBytes(path);
+    }();
+
     appbox::PackPayloads payloads;
-    payloads.launcher_bytes = kFakeLauncher;
-    payloads.launcher_size = sizeof(kFakeLauncher) - 1;
-    payloads.sandbox32_bytes = kFakeSandbox32;
-    payloads.sandbox32_size = sizeof(kFakeSandbox32) - 1;
-    payloads.sandbox64_bytes = kFakeSandbox64;
-    payloads.sandbox64_size = sizeof(kFakeSandbox64) - 1;
+    payloads.launcher_bytes = launcher.data();
+    payloads.launcher_size = launcher.size();
     return payloads;
 }
 
@@ -427,43 +450,6 @@ TEST(Unit_PackService, PackRequiresLauncherBytes)
     EXPECT_NE(result.find("launcher payload"), std::string::npos);
 }
 
-TEST(Unit_PackService, PackRequiresTheSandboxModules)
-{
-    TempDir    temp;
-    const auto my_app = temp.Get() / L"MyApp";
-    MakeFile(my_app, L"app.exe", "EXE");
-
-    appbox::PackModel     model;
-    appbox::RegistryModel registry;
-    std::string           error;
-    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
-    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
-
-    /*
-     * The archive carries the injection modules of the build which produced the
-     * packer, so a run without them would write a package the launcher refuses.
-     */
-    const auto zip_path = temp.Get() / L"no-module.zip";
-
-    auto missing32 = FakePayloads();
-    missing32.sandbox32_bytes = nullptr;
-    missing32.sandbox32_size = 0;
-    const auto result32 =
-        appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                     appbox::EnvironmentModel(), appbox::ApplicationMetadata(), appbox::StartupScreen{}, missing32,
-                     appbox::CompressionLevel::Normal, zip_path.wstring(), nullptr);
-    EXPECT_NE(result32.find("32 bit sandbox module"), std::string::npos);
-
-    auto missing64 = FakePayloads();
-    missing64.sandbox64_bytes = nullptr;
-    missing64.sandbox64_size = 0;
-    const auto result64 =
-        appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
-                     appbox::EnvironmentModel(), appbox::ApplicationMetadata(), appbox::StartupScreen{}, missing64,
-                     appbox::CompressionLevel::Normal, zip_path.wstring(), nullptr);
-    EXPECT_NE(result64.find("64 bit sandbox module"), std::string::npos);
-}
-
 TEST(Unit_PackService, PackProducesLauncherConfigurationAndLayers)
 {
     TempDir    program_files;
@@ -493,29 +479,32 @@ TEST(Unit_PackService, PackProducesLauncherConfigurationAndLayers)
 
     /* The launcher payload is embedded under the name of the main program. */
     EXPECT_EQ(appbox::LauncherEntryName(model), L"app.exe");
-    EXPECT_EQ(ReadEntry(archive, "app.exe"), "FAKE-LAUNCHER");
+    const auto launcher_entry = ReadEntry(archive, "app.exe");
+    ASSERT_FALSE(launcher_entry.empty());
+    EXPECT_EQ(launcher_entry.substr(0, 2), "MZ");
 
     /* The archive carries a single naming, the launcher name is gone. */
     EXPECT_EQ(zip_name_locate(archive, "AppBoxLauncher.exe", 0), -1);
     EXPECT_EQ(zip_name_locate(archive, "AppBoxLauncher.json", 0), -1);
 
     /*
-     * The sandbox injection modules travel in the resource root of the archive,
-     * so the extracted application is sandboxed from there and the launcher
-     * writes no module of its own.
+     * The sandbox injection modules are resources of the launcher payload and
+     * not entries of the archive: the launcher releases them into the cache
+     * directory of the sandbox at every start.
      */
     const auto sandbox32_entry = std::string(appbox::layout::kAppDirName) + "/" + appbox::layout::kSandbox32DllName;
     const auto sandbox64_entry = std::string(appbox::layout::kAppDirName) + "/" + appbox::layout::kSandbox64DllName;
-    EXPECT_EQ(ReadEntry(archive, sandbox32_entry.c_str()), kFakeSandbox32);
-    EXPECT_EQ(ReadEntry(archive, sandbox64_entry.c_str()), kFakeSandbox64);
+    EXPECT_EQ(zip_name_locate(archive, sandbox32_entry.c_str(), 0), -1);
+    EXPECT_EQ(zip_name_locate(archive, sandbox64_entry.c_str(), 0), -1);
 
     /*
      * The configuration carries the startup files only: the layout of the archive
      * is the fixed convention of `common/SandboxLayout.hpp`, so the file names
      * neither the resources nor the state of the sandbox.
      */
-    const auto json_text = ReadEntry(archive, "app.exe.json");
-    ASSERT_FALSE(json_text.empty());
+    std::string json_text;
+    std::string config_error;
+    ASSERT_TRUE(ReadLauncherConfigJsonFromEntry(launcher_entry, json_text, config_error)) << config_error;
     const auto document = nlohmann::json::parse(json_text);
     EXPECT_FALSE(document.contains("base_fs"));
     EXPECT_FALSE(document.contains("overlay_fs"));
@@ -594,8 +583,11 @@ TEST(Unit_PackService, PackWritesTheStartupImageOfTheSession)
     EXPECT_EQ(ReadEntry(archive, "app/startup/splash.png"), "PNG-CONTENT");
 
     /* The configuration names the entry the launcher decodes. */
-    const auto json_text = ReadEntry(archive, "app.exe.json");
-    ASSERT_FALSE(json_text.empty());
+    const auto launcher_entry = ReadEntry(archive, "app.exe");
+    ASSERT_FALSE(launcher_entry.empty());
+    std::string json_text;
+    std::string config_error;
+    ASSERT_TRUE(ReadLauncherConfigJsonFromEntry(launcher_entry, json_text, config_error)) << config_error;
     const auto config = nlohmann::json::parse(json_text).get<appbox::LauncherConfig>();
     EXPECT_TRUE(config.startup.screen);
     EXPECT_EQ(config.startup.image, "startup/splash.png");
@@ -636,8 +628,11 @@ TEST(Unit_PackService, PackWithoutAStartupImageWritesNoFile)
     EXPECT_EQ(zip_name_locate(archive, "app/startup/", 0), -1);
 
     /* The flag of the session travels all the same. */
-    const auto json_text = ReadEntry(archive, "app.exe.json");
-    ASSERT_FALSE(json_text.empty());
+    const auto launcher_entry = ReadEntry(archive, "app.exe");
+    ASSERT_FALSE(launcher_entry.empty());
+    std::string json_text;
+    std::string config_error;
+    ASSERT_TRUE(ReadLauncherConfigJsonFromEntry(launcher_entry, json_text, config_error)) << config_error;
     const auto config = nlohmann::json::parse(json_text).get<appbox::LauncherConfig>();
     EXPECT_FALSE(config.startup.screen);
     EXPECT_TRUE(config.startup.image.empty());
@@ -1001,10 +996,13 @@ TEST(Unit_PackService, LauncherEntryNameDropsTheDirectoryOfTheStartupFile)
     zip_t*           archive = closer.archive;
     ASSERT_NE(archive, nullptr);
 
-    EXPECT_EQ(ReadEntry(archive, "tool.exe"), "FAKE-LAUNCHER");
+    const auto launcher_entry = ReadEntry(archive, "tool.exe");
+    ASSERT_FALSE(launcher_entry.empty());
+    EXPECT_EQ(launcher_entry.substr(0, 2), "MZ");
 
-    const auto json_text = ReadEntry(archive, "tool.exe.json");
-    ASSERT_FALSE(json_text.empty());
+    std::string json_text;
+    std::string config_error;
+    ASSERT_TRUE(ReadLauncherConfigJsonFromEntry(launcher_entry, json_text, config_error)) << config_error;
     const auto config = nlohmann::json::parse(json_text).get<appbox::LauncherConfig>();
     ASSERT_EQ(config.startups.size(), static_cast<std::size_t>(1));
     EXPECT_EQ(config.startups[0].executable, "#ProgramFiles#\\MyApp\\bin\\tool.exe");
@@ -1039,8 +1037,11 @@ TEST(Unit_PackService, LauncherEntryNameFollowsTheFirstStartupFile)
     zip_t*           archive = closer.archive;
     ASSERT_NE(archive, nullptr);
 
-    const auto json_text = ReadEntry(archive, "second.exe.json");
-    ASSERT_FALSE(json_text.empty());
+    const auto launcher_entry = ReadEntry(archive, "second.exe");
+    ASSERT_FALSE(launcher_entry.empty());
+    std::string json_text;
+    std::string config_error;
+    ASSERT_TRUE(ReadLauncherConfigJsonFromEntry(launcher_entry, json_text, config_error)) << config_error;
     const auto config = nlohmann::json::parse(json_text).get<appbox::LauncherConfig>();
 
     /* Every startup file is written in the order of the model. */
@@ -1084,15 +1085,18 @@ TEST(Unit_PackService, LauncherEntryNameReplacesTheExtensionOfAScript)
     ASSERT_NE(archive, nullptr);
 
     /* The name of the script itself is gone from the root of the archive. */
-    EXPECT_EQ(ReadEntry(archive, "deploy.exe"), "FAKE-LAUNCHER");
+    const auto launcher_entry = ReadEntry(archive, "deploy.exe");
+    ASSERT_FALSE(launcher_entry.empty());
+    EXPECT_EQ(launcher_entry.substr(0, 2), "MZ");
     EXPECT_EQ(zip_name_locate(archive, "deploy.ps1", 0), -1);
 
     /* The scripts keep their place below the layer tree of the archive. */
     EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/bin/deploy.ps1"), "PS1");
     EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/run.bat"), "BAT");
 
-    const auto json_text = ReadEntry(archive, "deploy.exe.json");
-    ASSERT_FALSE(json_text.empty());
+    std::string json_text;
+    std::string config_error;
+    ASSERT_TRUE(ReadLauncherConfigJsonFromEntry(launcher_entry, json_text, config_error)) << config_error;
     const auto config = nlohmann::json::parse(json_text).get<appbox::LauncherConfig>();
     ASSERT_EQ(config.startups.size(), static_cast<std::size_t>(2));
     EXPECT_EQ(config.startups[0].executable, "#ProgramFiles#\\MyApp\\bin\\deploy.ps1");
@@ -1611,7 +1615,7 @@ TEST(Unit_PackService, PackWritesTheFilePropertiesOfTheMainProgram)
               "");
 
     const auto extracted = temp.Get() / L"extracted";
-    ASSERT_EQ(appbox::ExtractArchive(zip_path.wstring(), extracted.wstring()), "");
+    ASSERT_EQ(appbox::ExtractArchive(zip_path.wstring(), extracted.wstring()), appbox::ZIPREADER_SUCCESS);
 
     /*
      * The image is read back through the version API of Windows, which opens it

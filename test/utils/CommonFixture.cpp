@@ -1,6 +1,5 @@
 #include "utils/CWD.hpp"
 #include "utils/ProbePath.hpp"
-#include "utils/SandboxDll.hpp"
 #include "utils/TestLog.hpp"
 #include "CommonFixture.hpp"
 
@@ -21,14 +20,6 @@ appbox::test::CommonFixture::CommonFixture()
      * directory which holds no file is not part of the artifact of a run.
      */
     appbox::test::SetCaseLogDirectory(data_->cwd_->cwd_);
-}
-
-void appbox::test::CommonFixture::SetUp()
-{
-    if (!appbox::test::SandboxModulesAvailable())
-    {
-        GTEST_SKIP() << "the sandbox injection modules are unavailable: pass --sandbox32= and --sandbox64=";
-    }
 }
 
 appbox::test::CommonFixture::~CommonFixture()

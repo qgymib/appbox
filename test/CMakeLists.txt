@@ -39,8 +39,8 @@ add_executable(AppBoxTests
     "unit/FilesystemIsolation.cpp"
     "unit/FilesystemMarker.cpp"
     "unit/FilesystemTree.cpp"
-    "unit/GetExecutableDir.cpp"
     "unit/HiveMerge.cpp"
+    "unit/LauncherConfigResource.cpp"
     "unit/KnownFolderReference.cpp"
     "unit/HookTransaction.cpp"
     "unit/IsolationDocument.cpp"
@@ -191,16 +191,16 @@ add_executable(AppBoxTests
     "e2e/Fs_Whiteout_FileNotFound.cpp"
     "e2e/Fs_Whiteout_FolderHidesSubtree.cpp"
     "e2e/Fs_WriteLowerLayerFile_CopyUp.cpp"
+    "e2e/Launcher_EmbeddedConfig.cpp"
     "e2e/Launcher_HideConsole.cpp"
     "e2e/Launcher_Log.cpp"
-    "e2e/Launcher_MissingSandboxDll.cpp"
     "e2e/Launcher_NoVcRuntime.cpp"
     "e2e/Launcher_ProcessChain.cpp"
     "e2e/Launcher_RegistryImageFollowsTheApp.cpp"
     "e2e/Launcher_RegistryStateIsKept.cpp"
     "e2e/Launcher_RegistryStateIsReset.cpp"
     "e2e/Launcher_RegistryStateIsSeeded.cpp"
-    "e2e/Launcher_SandboxDllFromTheApp.cpp"
+    "e2e/Launcher_SandboxModules.cpp"
     "e2e/Launcher_Shell.cpp"
     "e2e/Launcher_Startup.cpp"
     "e2e/Launcher_StartupImage.cpp"
@@ -238,7 +238,7 @@ add_executable(AppBoxTests
     "e2e/Patch_NetworkDnsOfTheLastLayerWins.cpp"
     "e2e/Patch_NetworkProxyBelowIsKept.cpp"
     "e2e/Patch_NetworkProxyOfTheLastLayerWins.cpp"
-    "e2e/Patch_NoPackageKeepsTheCacheEmpty.cpp"
+    "e2e/Patch_NoPackageLeavesNoCacheEntry.cpp"
     "e2e/Patch_RegistryHiveOfTheLastLayerWins.cpp"
     "e2e/Patch_RegistryIsolationModeOfTheLastLayerWins.cpp"
     "e2e/Patch_RegistryStateBelowThePatchIsKept.cpp"
@@ -331,6 +331,7 @@ add_executable(AppBoxTests
     "utils/FsBuilder.cpp"
     "utils/FsIsolationBuilder.cpp"
     "utils/HiveBuilder.cpp"
+    "utils/LauncherConfigReader.cpp"
     "utils/NameResolutionProbe.cpp"
     "utils/NetworkIsolationBuilder.cpp"
     "utils/NtDirectoryQuery.cpp"
@@ -377,7 +378,6 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/BuildReport.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/CaptureWizardModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/CompressionLevel.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EmbeddedResource.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EtwEventDecoder.cpp
@@ -385,6 +385,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemTree.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/KnownFolderReference.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/LauncherConfigResource.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/NetworkIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/NetworkModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackModel.cpp
@@ -405,7 +406,6 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/SnapshotStore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/StartupScreen.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/StartupTree.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipReader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipWriter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/ModuleTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/environment/Configuration.cpp
@@ -618,7 +618,7 @@ add_test(NAME AppBoxUnitTests
         --mode=unit
 )
 
-add_test(NAME AppBoxTests
+add_test(NAME AppBoxE2ETests
     COMMAND AppBoxTests
         --launcher=$<TARGET_FILE:AppBoxLauncher>
         --sandbox32=${APPBOX_RESOURCE_SANDBOX32}

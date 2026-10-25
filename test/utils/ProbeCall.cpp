@@ -259,20 +259,36 @@ static appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& confi
  * @param[in] log The log options of the run, see LogRun.
  * @param[out] launcher_pid Process id of the launcher which was started, may be
  *                          null.
+ * @param[in] executable_path Path of the launcher program to run, empty to use
+ *                            the launcher of the test configuration.
+ * @param[in] pass_config_file Whether the run names the configuration file
+ *                             with `--X-AppBox-ConfigFile`. A case which runs
+ *                             a launcher with an embedded configuration clears
+ *                             the flag.
  * @return The exit code of the launcher.
  */
 static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& config,
                          const std::vector<std::wstring>& args, const appbox::test::LogRun& log,
-                         std::uint32_t* launcher_pid = nullptr)
+                         std::uint32_t* launcher_pid = nullptr, const std::wstring& executable_path = std::wstring(),
+                         bool pass_config_file = true)
 {
-    std::filesystem::path cfg_path;
-    {
-        nlohmann::json j_config = config;
-        auto           data = j_config.dump(2);
+    const auto& launcher_path = executable_path.empty() ? appbox::test::config.launcher_path : executable_path;
 
-        cfg_path = std::filesystem::path(cwd) / "config.json";
-        std::ofstream ofs(cfg_path, std::ios::binary | std::ios::trunc);
-        ofs.write(data.data(), data.size());
+    std::vector<std::wstring> full_args;
+    if (pass_config_file)
+    {
+        std::filesystem::path cfg_path;
+        {
+            nlohmann::json j_config = config;
+            auto           data = j_config.dump(2);
+
+            cfg_path = std::filesystem::path(cwd) / "config.json";
+            std::ofstream ofs(cfg_path, std::ios::binary | std::ios::trunc);
+            ofs.write(data.data(), data.size());
+        }
+
+        full_args.push_back(L"--X-AppBox-ConfigFile");
+        full_args.push_back(cfg_path.wstring());
     }
 
     /*
@@ -281,8 +297,6 @@ static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& 
      * launcher program. A case which checks the log options of the launcher
      * itself leaves an option out or changes its value.
      */
-    std::vector<std::wstring> full_args = { L"--X-AppBox-ConfigFile", cfg_path.wstring() };
-
     if (log.pass_level)
     {
         full_args.push_back(L"--X-AppBox-LogLevel");
@@ -298,7 +312,7 @@ static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& 
 
     full_args.insert(full_args.end(), args.begin(), args.end());
 
-    auto cmd = appbox::BuildCommandLine(appbox::test::config.launcher_path, full_args);
+    auto cmd = appbox::BuildCommandLine(launcher_path, full_args);
 
     STARTUPINFOW startup_info;
     ZeroMemory(&startup_info, sizeof(startup_info));
@@ -307,8 +321,8 @@ static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& 
     PROCESS_INFORMATION process_info;
     ZeroMemory(&process_info, sizeof(process_info));
 
-    if (!CreateProcessW(appbox::test::config.launcher_path.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr,
-                        nullptr, &startup_info, &process_info))
+    if (!CreateProcessW(launcher_path.c_str(), cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup_info,
+                        &process_info))
     {
         auto msg = fmt::format("CreateProcessW failed: {}", GetLastError());
         SPDLOG_ERROR(msg);
@@ -354,9 +368,8 @@ static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& 
  *                          null.
  * @return The exit code of the launcher.
  */
-static DWORD RunLauncherForProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config,
-                                 const std::string& trigger, const appbox::test::LogRun& log,
-                                 std::uint32_t* launcher_pid = nullptr)
+static std::vector<std::wstring> ProbeArgs(const std::string& key, const std::string& trigger,
+                                           const std::string& marker = std::string())
 {
     std::vector<std::wstring> args;
     if (!trigger.empty())
@@ -365,13 +378,31 @@ static DWORD RunLauncherForProbe(const std::string& key, const std::wstring& cwd
         args.push_back(CLI::widen(trigger));
     }
 
+    /*
+     * The marker is a global option of the probe, so it has to precede the
+     * probe subcommand: the launcher appends these arguments to the arguments
+     * of every startup file, and the command line parser of the probe reads a
+     * parent option before it enters the subcommand.
+     */
+    if (!marker.empty())
+    {
+        args.push_back(L"--startup_marker");
+        args.push_back(CLI::widen(marker));
+    }
+
     args.push_back(L"probe");
     args.push_back(L"--probe_pipe");
     args.push_back(CLI::widen(s_probe_srv->pipe_path));
     args.push_back(L"--probe_key");
     args.push_back(CLI::widen(key));
+    return args;
+}
 
-    return RunLauncher(cwd, config, args, log, launcher_pid);
+static DWORD RunLauncherForProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config,
+                                 const std::string& trigger, const appbox::test::LogRun& log,
+                                 std::uint32_t* launcher_pid = nullptr)
+{
+    return RunLauncher(cwd, config, ProbeArgs(key, trigger), log, launcher_pid);
 }
 
 /**
@@ -459,6 +490,36 @@ nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::
     return key.ctx->result;
 }
 
+/**
+ * @brief Collect the reports the probe processes of a run sent.
+ * @param[in] key Probe key of the run.
+ * @param[in,out] run Run to fill.
+ */
+static void CollectStartupResults(const ProbeKey& key, appbox::test::StartupRun& run)
+{
+    std::lock_guard<std::mutex> lock(key.ctx->result_mutex);
+    for (const auto& result : key.ctx->results)
+    {
+        const auto marker = result.find("marker");
+        if (marker != result.end() && marker->is_string())
+        {
+            run.started.push_back(marker->get<std::string>());
+        }
+
+        appbox::test::StartupReport report;
+        if (marker != result.end() && marker->is_string())
+        {
+            report.marker = marker->get<std::string>();
+        }
+        report.pid = result.value("pid", 0u);
+        report.parent_pid = result.value("parent_pid", 0u);
+        report.module_path = result.value("module_path", std::string());
+        run.reports.push_back(std::move(report));
+    }
+
+    std::sort(run.started.begin(), run.started.end());
+}
+
 appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launcher_config,
                                                        const std::string& trigger, bool startup_screen,
                                                        const LogRun& log, bool use_configured_executable)
@@ -474,30 +535,44 @@ appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, 
     StartupRun run;
     run.exit_code =
         static_cast<std::uint32_t>(RunLauncherForProbe(key.key, cwd, copy_config, trigger, log, &run.launcher_pid));
+    CollectStartupResults(key, run);
+    return run;
+}
 
-    {
-        std::lock_guard<std::mutex> lock(key.ctx->result_mutex);
-        for (const auto& result : key.ctx->results)
-        {
-            const auto marker = result.find("marker");
-            if (marker != result.end() && marker->is_string())
-            {
-                run.started.push_back(marker->get<std::string>());
-            }
+appbox::test::StartupRun appbox::test::ProbeStartupRunEmbedded(const std::wstring& cwd,
+                                                               const std::wstring& launcher_path,
+                                                               const std::string& trigger, const std::string& marker,
+                                                               const LogRun& log)
+{
+    static std::once_flag once;
+    std::call_once(once, InitProbeServer);
 
-            StartupReport report;
-            if (marker != result.end() && marker->is_string())
-            {
-                report.marker = marker->get<std::string>();
-            }
-            report.pid = result.value("pid", 0u);
-            report.parent_pid = result.value("parent_pid", 0u);
-            report.module_path = result.value("module_path", std::string());
-            run.reports.push_back(std::move(report));
-        }
-    }
+    ProbeKey key("StartupStarted", nlohmann::json::object());
 
-    std::sort(run.started.begin(), run.started.end());
+    StartupRun run;
+    run.exit_code =
+        static_cast<std::uint32_t>(RunLauncher(cwd, appbox::LauncherConfig{}, ProbeArgs(key.key, trigger, marker), log,
+                                               &run.launcher_pid, launcher_path, false));
+    CollectStartupResults(key, run);
+    return run;
+}
+
+appbox::test::StartupRun appbox::test::ProbeStartupRunConfigFile(const std::wstring&   cwd,
+                                                                 const std::wstring&   launcher_path,
+                                                                 const LauncherConfig& launcher_config,
+                                                                 const std::string& trigger, const LogRun& log)
+{
+    static std::once_flag once;
+    std::call_once(once, InitProbeServer);
+
+    auto copy_config = OverrideConfig(launcher_config, ProbePath(ProbeBitness::Bit64));
+
+    ProbeKey key("StartupStarted", nlohmann::json::object());
+
+    StartupRun run;
+    run.exit_code = static_cast<std::uint32_t>(
+        RunLauncher(cwd, copy_config, ProbeArgs(key.key, trigger), log, &run.launcher_pid, launcher_path, true));
+    CollectStartupResults(key, run);
     return run;
 }
 

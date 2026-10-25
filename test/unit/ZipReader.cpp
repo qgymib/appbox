@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "src/core/ZipReader.hpp"
+#include "ZipReader.hpp"
 #include "src/core/ZipWriter.hpp"
 #include "WString.hpp"
 #include <zip.h>
@@ -140,7 +140,7 @@ TEST(Unit_ZipReader, ExtractsArchiveWrittenByZipWriter)
     }
 
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring());
-    EXPECT_EQ(result, "") << result;
+    EXPECT_EQ(result, appbox::ZIPREADER_SUCCESS);
 
     const auto root = dest / L"app" / L"filesystem" / L"#ProgramFiles#" / L"MyApp";
     EXPECT_EQ(ReadFile(root / L"app.exe"), "EXE");
@@ -162,7 +162,7 @@ TEST(Unit_ZipReader, CreatesTheDestinationFolder)
     }
 
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring());
-    EXPECT_EQ(result, "") << result;
+    EXPECT_EQ(result, appbox::ZIPREADER_SUCCESS);
     EXPECT_EQ(ReadFile(dest / L"note.txt"), "NOTE");
 }
 
@@ -172,7 +172,7 @@ TEST(Unit_ZipReader, ReportsMissingArchive)
     const auto missing = temp.Get() / L"missing.zip";
 
     const auto result = appbox::ExtractArchive(missing.wstring(), (temp.Get() / L"out").wstring());
-    EXPECT_FALSE(result.empty());
+    EXPECT_NE(result, appbox::ZIPREADER_SUCCESS);
 }
 
 TEST(Unit_ZipReader, RejectsParentReferenceEntry)
@@ -184,7 +184,7 @@ TEST(Unit_ZipReader, RejectsParentReferenceEntry)
     const auto dest = temp.Get() / L"dest";
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring());
 
-    EXPECT_FALSE(result.empty());
+    EXPECT_NE(result, appbox::ZIPREADER_SUCCESS);
     EXPECT_FALSE(std::filesystem::exists(temp.Get() / L"escaped.txt"));
     EXPECT_FALSE(std::filesystem::exists(dest.parent_path() / L"escaped.txt"));
 }
@@ -198,7 +198,7 @@ TEST(Unit_ZipReader, RejectsAbsoluteEntry)
     const auto dest = temp.Get() / L"dest";
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring());
 
-    EXPECT_FALSE(result.empty());
+    EXPECT_NE(result, appbox::ZIPREADER_SUCCESS);
     EXPECT_FALSE(std::filesystem::exists(dest / L"escaped.txt"));
 }
 
@@ -222,7 +222,7 @@ TEST(Unit_ZipReader, OverwritesExistingFiles)
     }
 
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring());
-    EXPECT_EQ(result, "") << result;
+    EXPECT_EQ(result, appbox::ZIPREADER_SUCCESS);
     EXPECT_EQ(ReadFile(dest / L"app" / L"config.ini"), "NEW");
 }
 
@@ -251,19 +251,18 @@ TEST(Unit_ZipReader, ReportsEveryExtractedFile)
         ASSERT_TRUE(writer.Close(error)) << error;
     }
 
-    std::vector<appbox::BuildProgress> reports;
-    const auto                         progress = [&reports](const appbox::BuildProgress& report) {
+    std::vector<appbox::ExtractProgress> reports;
+    const auto                           progress = [&reports](const appbox::ExtractProgress& report) {
         reports.emplace_back(report);
         return true;
     };
 
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring(), progress);
-    EXPECT_EQ(result, "") << result;
+    EXPECT_EQ(result, appbox::ZIPREADER_SUCCESS);
 
     ASSERT_FALSE(reports.empty());
 
-    /* The run opens with the stage report before the first entry is written. */
-    EXPECT_EQ(reports.front().stage, appbox::BuildStage::Extracting);
+    /* The run opens with the report which carries the total before the first entry is written. */
     EXPECT_EQ(reports.front().done, static_cast<std::size_t>(0));
     EXPECT_EQ(reports.front().total, static_cast<std::size_t>(4));
     EXPECT_TRUE(reports.front().current.empty());
@@ -276,7 +275,6 @@ TEST(Unit_ZipReader, ReportsEveryExtractedFile)
     std::size_t            seen = 0;
     for (const auto& report : reports)
     {
-        EXPECT_EQ(report.stage, appbox::BuildStage::Extracting);
         EXPECT_EQ(report.total, static_cast<std::size_t>(4));
         EXPECT_GE(report.done, seen);
         seen = report.done;
@@ -311,7 +309,7 @@ TEST(Unit_ZipReader, ExtractCanBeCancelled)
     }
 
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring(),
-                                               [](const appbox::BuildProgress&) { return false; });
-    EXPECT_EQ(result, appbox::kBuildCancelledError);
+                                               [](const appbox::ExtractProgress&) { return false; });
+    EXPECT_EQ(result, appbox::ZIPREADER_CANCELLED);
     EXPECT_FALSE(std::filesystem::exists(dest / L"note.txt"));
 }

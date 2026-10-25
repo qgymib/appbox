@@ -23,7 +23,9 @@ namespace appbox
  * The patch packages of the user are resolved the same way: the user creates
  * `patch` next to the launcher, and the launcher extracts a package into
  * `data/cache`, which is the cache directory of the state directory it creates
- * as soon as that directory holds a package.
+ * as soon as that directory holds a package. The same cache directory carries
+ * the two sandbox injection modules the launcher releases from its own
+ * resources at every start.
  */
 struct SandboxPaths
 {
@@ -139,28 +141,6 @@ struct SandboxPaths
     std::wstring EnvironmentIsolationFile() const
     {
         return (std::filesystem::path(app) / layout::kEnvironmentDirNameW / layout::kIsolationFileNameW).wstring();
-    }
-
-    /**
-     * @brief 32 bit sandbox injection module of the archive.
-     *
-     * The module travels in the read-only resources of the archive and the
-     * launcher injects it from there, so a run writes no module of its own.
-     *
-     * @return The path of the module inside the resource root.
-     */
-    std::wstring Sandbox32Dll() const
-    {
-        return (std::filesystem::path(app) / layout::kSandbox32DllNameW).wstring();
-    }
-
-    /**
-     * @brief 64 bit sandbox injection module of the archive.
-     * @return The path of the module inside the resource root.
-     */
-    std::wstring Sandbox64Dll() const
-    {
-        return (std::filesystem::path(app) / layout::kSandbox64DllNameW).wstring();
     }
 
     /**
@@ -379,7 +359,7 @@ struct SandboxPaths
     std::wstring app;   /* Absolute path of the read-only resource root. */
     std::wstring state; /* Absolute path of the writable state root. */
     std::wstring patch; /* Absolute path of the directory of the patch packages. */
-    std::wstring cache; /* Absolute path of the extracted packages inside the state root. */
+    std::wstring cache; /* Absolute path of the cache inside the state root: released modules and extracted packages. */
 };
 
 } // namespace appbox

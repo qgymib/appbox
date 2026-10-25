@@ -31,16 +31,3 @@ std::wstring appbox::GetExecutableName()
     auto path = GetExecutablePath();
     return std::filesystem::path(path).stem();
 }
-
-std::wstring appbox::GetExecutableFileName()
-{
-    auto path = GetExecutablePath();
-    return std::filesystem::path(path).filename();
-}
-
-std::wstring appbox::DefaultConfigPathForExecutable(const std::wstring& executable_path)
-{
-    std::filesystem::path path(executable_path);
-    path += L".json";
-    return path.wstring();
-}

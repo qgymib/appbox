@@ -13,7 +13,7 @@
 #include <gtest/gtest.h>
 #include "src/core/ApplicationIcon.hpp"
 #include "src/core/PackService.hpp"
-#include "src/core/ZipReader.hpp"
+#include "ZipReader.hpp"
 #include "utils/LauncherPath.hpp"
 #include <chrono>
 #include <cstdint>
@@ -676,20 +676,9 @@ TEST(Unit_ApplicationIcon, PackWritesTheIconOfTheStartupFile)
     const auto payload = ReadAllBytes(SelfPath());
     ASSERT_FALSE(payload.empty());
 
-    /*
-     * The case describes the icon of the launcher entry, so the injection modules
-     * only have to be present for the run.
-     */
-    constexpr char kSandbox32[] = "SANDBOX32";
-    constexpr char kSandbox64[] = "SANDBOX64";
-
     appbox::PackPayloads payloads;
     payloads.launcher_bytes = payload.data();
     payloads.launcher_size = payload.size();
-    payloads.sandbox32_bytes = kSandbox32;
-    payloads.sandbox32_size = sizeof(kSandbox32) - 1;
-    payloads.sandbox64_bytes = kSandbox64;
-    payloads.sandbox64_size = sizeof(kSandbox64) - 1;
 
     const auto                  zip_path = temp.Get() / L"out.zip";
     const appbox::RegistryModel registry;
@@ -699,7 +688,7 @@ TEST(Unit_ApplicationIcon, PackWritesTheIconOfTheStartupFile)
               "");
 
     const auto extracted = temp.Get() / L"extracted";
-    ASSERT_EQ(appbox::ExtractArchive(zip_path.wstring(), extracted.wstring()), "");
+    ASSERT_EQ(appbox::ExtractArchive(zip_path.wstring(), extracted.wstring()), appbox::ZIPREADER_SUCCESS);
 
     /* The extracted program carries the icon of the packaged application. */
     const auto entry = extracted / L"app.exe";

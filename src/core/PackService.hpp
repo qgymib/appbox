@@ -19,18 +19,25 @@ namespace appbox
 /**
  * @brief Number of archive entries which do not come from an import.
  *
- * The launcher payload, the launcher configuration, the two sandbox injection
- * modules below `app`, the two registry artifacts (the hive and the isolation
+ * The launcher payload, the two registry artifacts (the hive and the isolation
  * file), the isolation file of the filesystem workspace, the isolation file of
  * the network workspace and the isolation file of the environment workspace.
  * The pack run and the extraction of a `Build and Run` run report the same
  * total, so both count this constant instead of a literal.
  *
- * The startup image of a session is not part of the constant, because it is
- * written only while the session sets one: the count both sides use is
+ * The launcher configuration is not part of the constant: the packer embeds it
+ * as a resource of the launcher payload, so it travels with the payload and not
+ * as an entry of its own.
+ *
+ * The two sandbox injection modules are not part of the constant either: the
+ * launcher carries them as resources of its own executable and releases them
+ * into `data/cache` at every start.
+ *
+ * The startup image of a session is not part of the constant either, because it
+ * is written only while the session sets one: the count both sides use is
  * NonContentArchiveEntryCount(), which adds it to this constant.
  */
-inline constexpr std::size_t kNonContentArchiveEntries = 9;
+inline constexpr std::size_t kNonContentArchiveEntries = 6;
 
 /**
  * @brief Count the archive entries which do not come from an import.
@@ -51,13 +58,13 @@ std::size_t NonContentArchiveEntryCount(const StartupScreen& startup);
  * @brief Number of patch archive entries which do not come from an import.
  *
  * A patch package carries the resources of a standalone archive without the
- * program which starts it: the launcher payload, the launcher configuration and
- * the two sandbox injection modules do not travel, so the count is four below
+ * program which starts it: the launcher payload, and with it the embedded
+ * configuration, does not travel, so the count is one below
  * kNonContentArchiveEntries. What remains is the two registry artifacts (the
- * hive and the isolation file) and the isolation file of the filesystem, of
- * the network and of the environment workspace. The patch run and the
- * extraction of a `Build and Run` run of a standalone archive report the same
- * total for their own kind, so both count a constant instead of a literal.
+ * hive and the isolation file) and the isolation file of the filesystem, of the
+ * network and of the environment workspace. The patch run and the extraction of
+ * a `Build and Run` run of a standalone archive report the same total for their
+ * own kind, so both count a constant instead of a literal.
  */
 inline constexpr std::size_t kNonContentPatchEntries = 5;
 
@@ -93,9 +100,9 @@ std::size_t ContentFileCount(const PackModel& model);
  * named `foo.exe` (optionally inside a subdirectory of the imported folder)
  * produces the launcher entry `foo.exe`. The entry always carries the `.exe`
  * extension, because the payload is a program image: a first startup file named
- * `run.bat` produces the launcher entry `run.exe`. The launcher resolves its
- * configuration as `<own file name>.json` beside itself, so the archive entry of
- * the configuration is `<launcher entry>.json`, e.g. `foo.exe.json`.
+ * `run.bat` produces the launcher entry `run.exe`. The launcher carries its
+ * configuration as an RCDATA resource of the payload, so the archive has no
+ * separate entry for it.
  *
  * @param[in] model The pack model.
  * @return The file name of the launcher entry, empty when the model has no
@@ -106,23 +113,20 @@ std::wstring LauncherEntryName(const PackModel& model);
 /**
  * @brief Payloads a pack run writes into the archive beside the resources.
  *
- * A standalone archive carries the launcher program and the two sandbox
- * injection modules of the build which produced it. The packer reads them from
- * its own resources (see `src/core/EmbeddedResource.hpp`), so they reach the
- * run as byte ranges instead of file paths; the caller which read them keeps
- * them alive for the whole run.
+ * A standalone archive carries the launcher program of the build which
+ * produced it. The packer reads it from its own resources (see
+ * `common/EmbeddedResource.hpp`), so it reaches the run as a byte range
+ * instead of a file path; the caller which read it keeps it alive for the whole
+ * run. The launcher carries the two sandbox injection modules as resources of
+ * its own executable, so the archive needs no payload for them.
  *
- * A patch package carries none of the three, so a run of `PackPatch()` needs
- * no payload at all.
+ * A patch package carries no launcher, so a run of `PackPatch()` needs no
+ * payload at all.
  */
 struct PackPayloads
 {
-    const void* launcher_bytes = nullptr;  /*!< The launcher program. */
-    std::size_t launcher_size = 0;         /*!< Size of the launcher program in bytes. */
-    const void* sandbox32_bytes = nullptr; /*!< The 32 bit sandbox injection module. */
-    std::size_t sandbox32_size = 0;        /*!< Size of the 32 bit module in bytes. */
-    const void* sandbox64_bytes = nullptr; /*!< The 64 bit sandbox injection module. */
-    std::size_t sandbox64_size = 0;        /*!< Size of the 64 bit module in bytes. */
+    const void* launcher_bytes = nullptr; /*!< The launcher program. */
+    std::size_t launcher_size = 0;        /*!< Size of the launcher program in bytes. */
 };
 
 /**
@@ -138,8 +142,6 @@ struct PackPayloads
  * <launcher entry name>                  launcher payload (payloads.launcher_bytes)
  * <launcher entry name>.json             startups[] = { trigger, auto_start,
  *                                        executable = <layer key>\<import>\<file> }
- * app/sandbox32.dll                      injected sandbox DLL (32 bit)
- * app/sandbox64.dll                      injected sandbox DLL (64 bit)
  * app/startup/splash.png                 startup image of the session (optional)
  * app/filesystem/isolation.json          isolation modes of the filesystem
  * app/filesystem/<layer key>/<import>/... imported folder content
@@ -255,8 +257,9 @@ struct PackPayloads
  *                    launcher configuration names it; a session which sets no
  *                    image packs a launcher which shows the name of the
  *                    application and the progress of the run only.
- * @param[in] payloads Embedded launcher program and sandbox injection modules,
- *                     written beside the resources of the archive.
+ * @param[in] payloads Embedded launcher program, written into the archive root;
+ *                     the sandbox injection modules are resources of that
+ *                     launcher and do not travel separately.
  * @param[in] compression Compression level of the file entries of the archive:
  *                        `StoreOnly` writes them without any compression, a
  *                        level above it deflates them and keeps the smaller of
@@ -277,8 +280,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
  *
  * The archive holds the very same resource tree a standalone archive keeps
  * below `app`, rooted at the archive root instead: the launcher program, its
- * configuration, the two sandbox injection modules and the `app` directory
- * itself do not travel. The package is
+ * configuration and the `app` directory itself do not travel. The package is
  * meant to be dropped into the `patch` directory next to the launcher of a
  * standalone archive, which merges every patch of that directory in ascending
  * name order on top of the resources of `app`, so a later package overrides an

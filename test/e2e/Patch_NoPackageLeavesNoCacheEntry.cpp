@@ -6,6 +6,7 @@
 #include "SandboxLayout.hpp"
 #include "WString.hpp"
 #include <filesystem>
+#include <set>
 #include <string>
 
 typedef appbox::test::CommonFixture E2E_Patch;
@@ -28,10 +29,11 @@ constexpr wchar_t kName[] = L"AppBoxTest_Patch.NoPackage.txt";
  * Expected:
  * 1. The read returns the content of the archive, because a file without the
  *    extension of a package is not applied.
- * 2. The cache directory below the state directory was not created, because the
- *    launcher only creates it while the patch directory holds a package.
+ * 2. The cache directory below the state directory carries the two sandbox
+ *    modules the launcher releases at every start and nothing else, because the
+ *    patch directory holds no package to extract.
  */
-TEST_F(E2E_Patch, NoPackageKeepsTheCacheEmpty)
+TEST_F(E2E_Patch, NoPackageLeavesNoCacheEntry)
 {
     /* clang-format off */
     auto tree = FsRoot(GetCWD(), {
@@ -60,7 +62,21 @@ TEST_F(E2E_Patch, NoPackageKeepsTheCacheEmpty)
         EXPECT_EQ(rsp.data, "app");
     }
 
-    EXPECT_FALSE(std::filesystem::exists(GetCWD() / appbox::layout::kStateDirNameW / appbox::layout::kCacheDirNameW));
+    /*
+     * The launcher released the modules of the run, so the cache directory
+     * exists, but no package was extracted into it.
+     */
+    const auto cache = GetCWD() / appbox::layout::kStateDirNameW / appbox::layout::kCacheDirNameW;
+    ASSERT_TRUE(std::filesystem::is_directory(cache));
+
+    std::set<std::wstring> entries;
+    for (const auto& entry : std::filesystem::directory_iterator(cache))
+    {
+        entries.insert(entry.path().filename().wstring());
+    }
+
+    const std::set<std::wstring> released = { appbox::layout::kSandbox32DllNameW, appbox::layout::kSandbox64DllNameW };
+    EXPECT_EQ(entries, released);
 
     /* The resources of the application are untouched. */
     ASSERT_TRUE(tree.Verify());

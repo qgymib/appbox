@@ -7,17 +7,17 @@ namespace appbox
 /**
  * @brief Layout of a packed application and of the sandbox it runs in.
  *
- * A packed archive carries the launcher program, its configuration and the
- * read-only resources of the packaged application below `app`. The writable
- * state of the sandbox never travels in the archive: the launcher creates the
- * `data` directory at run time, next to `app`, so deleting it resets the
+ * A packed archive carries the launcher program, which carries the run
+ * configuration as a resource of its own image, and the read-only resources of
+ * the packaged application below `app`. The writable state of the sandbox never
+ * travels in the archive: the launcher creates the
+ * `data` directory at run time, next to `app`, releases the sandbox injection
+ * modules into `data/cache` and keeps the state there, so deleting it resets the
  * sandbox to the state the archive was packed with.
  *
  * ```
- * <startup>.exe                        launcher payload
- * <startup>.exe.json                   launcher configuration
- * app/sandbox32.dll                    injected sandbox DLL (32 bit)
- * app/sandbox64.dll                    injected sandbox DLL (64 bit)
+ * <startup>.exe                        launcher payload, carries the
+ *                                      configuration as an RCDATA resource
  * app/startup/splash.png               startup image of the launcher (optional)
  * app/filesystem/isolation.json        isolation modes of the filesystem
  * app/filesystem/<layer key>/...       imported content (read-only layers)
@@ -25,15 +25,21 @@ namespace appbox
  * app/registry/isolation.json          isolation modes of the registry
  * app/network/isolation.json           DNS redirections and proxy
  * app/environment/isolation.json       environment variables of the workspace
+ * data/cache/sandbox32.dll             released sandbox DLL (32 bit)
+ * data/cache/sandbox64.dll             released sandbox DLL (64 bit)
+ * data/cache/<package>/...             extracted patch package (optional)
  * ```
  *
+ * The launcher carries the two sandbox injection modules as resources of its
+ * own executable and releases them into `data/cache` at every start, so neither
+ * the archive nor a patch package carries a module file.
+ *
  * A patch package carries the very same resources without the program which
- * starts them: the launcher program, its configuration, the two sandbox
- * injection modules and the `app` directory itself do not travel, so the tree
- * of `app` is rooted at the archive root instead. The
- * package is dropped into the `patch` directory next to the launcher of a
- * standalone archive, which merges every patch of that directory in ascending
- * name order on top of the resources of `app`.
+ * starts them: the launcher program, the configuration it carries and the `app`
+ * directory itself do not travel, so the tree of `app` is rooted at the archive
+ * root instead. The package is dropped into the `patch` directory next to the
+ * launcher of a standalone archive, which merges every patch of that directory
+ * in ascending name order on top of the resources of `app`.
  *
  * ```
  * filesystem/isolation.json            isolation modes of the filesystem
@@ -45,7 +51,7 @@ namespace appbox
  * ```
  *
  * Everything below `app` is read-only while the sandbox runs, and the launcher
- * only creates the writable state directory `data` at run time:
+ * creates the writable state directory `data` at run time:
  *
  * ```
  * data/filesystem/...                  upper layer of the sandbox
@@ -56,6 +62,8 @@ namespace appbox
  *                                      packages, rebuilt at every start
  * data/environment/state.json          environment variables the packaged
  *                                      application changed inside the sandbox
+ * data/cache/sandbox32.dll             released sandbox module (32 bit)
+ * data/cache/sandbox64.dll             released sandbox module (64 bit)
  * data/cache/00-foo/...                extracted patch package, see below
  * ```
  *
@@ -80,13 +88,13 @@ namespace appbox
  *
  * Neither `patch` nor the state directory travels in the archive. The cache
  * lives inside the state, so deleting the state directory drops the sandbox
- * state and the extractions at once, while deleting only `data/cache` costs the
- * extraction of the next run.
+ * state, the released modules and the extractions at once, while deleting only
+ * `data/cache` costs the release and the extraction of the next run.
  *
  * The names live in `common/` because the packer, the launcher and the tests
  * share them: the packer builds the entry names of the archive, the launcher
- * resolves the paths below the directory of its configuration file, and the
- * tests materialize the same layout on disk.
+ * resolves the paths below the directory of its program, and the tests
+ * materialize the same layout on disk.
  */
 namespace layout
 {
@@ -142,16 +150,16 @@ inline constexpr const char* kStartupDirName = "startup";
 inline constexpr const char* kStartupImageBaseName = "splash";
 
 /**
- * @brief Name of the 32 bit sandbox injection module below `app`.
+ * @brief Name of the 32 bit sandbox injection module below `data/cache`.
  *
- * The module is a resource of the archive and not a state of the sandbox: it
- * travels in `app` and the launcher injects it from there, so a run of the
- * extracted archive copies no module of its own.
+ * The module is a resource of the launcher executable: the launcher releases it
+ * into the cache directory of the sandbox at every start and injects it from
+ * there, so neither the archive nor a patch package carries the file.
  */
 inline constexpr const char* kSandbox32DllName = "sandbox32.dll";
 
 /**
- * @brief Name of the 64 bit sandbox injection module below `app`.
+ * @brief Name of the 64 bit sandbox injection module below `data/cache`.
  */
 inline constexpr const char* kSandbox64DllName = "sandbox64.dll";
 
@@ -390,10 +398,10 @@ inline constexpr const char* kStateEnvironmentRelative = "data/environment/state
  *
  * The directory lives inside the state directory, so the state of the sandbox
  * and the extractions of its patch packages are reset together: deleting `data`
- * drops both, while deleting only `data/cache` costs the extraction of the next
- * run. The launcher creates the directory as soon as the patch directory holds
- * at least one package, and every package owns the entry named after its file
- * name without the extension.
+ * drops both, while deleting only `data/cache` costs the release of the sandbox
+ * modules and the extraction of the next run. The launcher creates the directory
+ * at every start for the two released sandbox modules, and every patch package
+ * owns the entry named after its file name without the extension.
  */
 inline constexpr const char* kStateCacheRelative = "data/cache";
 

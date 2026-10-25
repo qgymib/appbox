@@ -493,12 +493,12 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const
     }
 
     /*
-     * The injection modules are resources of the archive and the sandbox is
-     * injected from there, so a run writes no module of its own: the state
-     * directory keeps carrying what the sandbox really modifies.
+     * The injection modules are resources of the launcher which the run
+     * released into the cache directory before the runtime was created, so
+     * the sandbox is injected from the files of that run.
      */
-    this->inject_data.sandbox32_dos_path = appbox::WideToUTF8(paths.Sandbox32Dll());
-    this->inject_data.sandbox64_dos_path = appbox::WideToUTF8(paths.Sandbox64Dll());
+    this->inject_data.sandbox32_dos_path = appbox::WideToUTF8(LauncherApp().sandbox_modules.sandbox32_dll);
+    this->inject_data.sandbox64_dos_path = appbox::WideToUTF8(LauncherApp().sandbox_modules.sandbox64_dll);
 
     ReportStartupStage(appbox::StartupStage::MountingSandbox, 0.8);
 

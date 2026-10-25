@@ -345,10 +345,8 @@ time, next to `app`, so deleting it resets the sandbox to the state the archive
 carries:
 
 ```
-<startup file name>                    embedded launcher payload
-<startup file name>.json               startup configuration
-app/sandbox32.dll                      injected sandbox module (32 bit)
-app/sandbox64.dll                      injected sandbox module (64 bit)
+<startup file name>                    embedded launcher payload, carries the
+                                       startup configuration as a resource
 app/startup/splash.<extension>         startup image of the session (optional)
 app/filesystem/isolation.json          isolation modes of the filesystem workspace
 app/filesystem/<layer key>/<import>/... imported folder content
@@ -358,7 +356,14 @@ app/registry/user.hiv                  virtual registry of the workspace
 app/registry/isolation.json            isolation modes of the registry
 app/network/isolation.json             network configuration of the workspace
 app/environment/isolation.json         environment variables of the workspace
+data/cache/sandbox32.dll               released sandbox module (32 bit)
+data/cache/sandbox64.dll               released sandbox module (64 bit)
+data/cache/<package>/...               extracted patch package (optional)
 ```
+
+The launcher carries the two sandbox injection modules as resources of its own
+executable and releases them into `data/cache` at every start, so neither the
+archive nor a patch package carries a module file.
 
 A folder which was created in the workspace travels as a directory entry of the
 layer of its preset directory, so a preset directory whose folders are the only
@@ -378,9 +383,9 @@ applied on top of the archive: the layers and the isolation modes of a package
 override the resources it carries and keep the resources it does not carry (see
 [Patch Layers](PatchLayer.md)).
 
-The launcher resolves its configuration as `<own file name>.json` in its own
-directory, so renaming the extracted launcher program requires renaming the
-configuration file as well. Running the extracted launcher program shows the
+The launcher reads its configuration from an RCDATA resource of its own image,
+which the packer wrote at pack time, so renaming the extracted launcher program
+changes nothing. Running the extracted launcher program shows the
 imported folders at their preset locations (`#ProgramFiles#\<import>`,
 `#ProgramFilesCommon#\<import>`, `#ProgramFilesX86#\<import>`,
 `#ProgramFilesCommonX86#\<import>`, `#USERPROFILE#\<import>`,

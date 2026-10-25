@@ -123,14 +123,16 @@ add_custom_target(appbox_build_info
 ###############################################################################
 # Payloads embedded as Windows resources
 #
-# The packer carries the launcher program and the two sandbox injection modules
-# as RCDATA resources of its own executable, so a pack run needs no file beside
-# the executable. The three payloads are build products of this build tree, so
-# the resource script which names them cannot be checked in: it is generated
-# here from cmake/EmbeddedResources.rc.in, with the absolute path of every
-# payload substituted for its placeholder. src/resource.rc includes the
-# generated script, so the payloads are compiled into the one resource script
-# of the target.
+# The packer carries the launcher program as an RCDATA resource of its own
+# executable, so a pack run needs no launcher file beside it. The launcher in
+# turn carries the two sandbox injection modules as its own RCDATA resources, so
+# an extracted archive needs no module file either. Both payloads are build
+# products of this build tree, so the resource scripts which name them cannot be
+# checked in: they are generated from cmake/EmbeddedResources.rc.in and
+# cmake/LauncherResources.rc.in, with the absolute path of every payload
+# substituted for its placeholder. src/resource.rc and launcher/resource.rc
+# include the generated scripts, so the payloads are compiled into the resource
+# script of the target which carries them.
 #
 # The resource compiler reads the backslash of a Windows path as an escape
 # character inside a string literal, so every separator is doubled before the
@@ -147,8 +149,6 @@ function(appbox_escape_resource_path out_var path)
 endfunction()
 
 appbox_escape_resource_path(APPBOX_RESOURCE_LAUNCHER_RC "${APPBOX_RESOURCE_LAUNCHER}")
-appbox_escape_resource_path(APPBOX_RESOURCE_SANDBOX32_RC "${APPBOX_RESOURCE_SANDBOX32}")
-appbox_escape_resource_path(APPBOX_RESOURCE_SANDBOX64_RC "${APPBOX_RESOURCE_SANDBOX64}")
 
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbeddedResources.rc.in"
@@ -179,7 +179,6 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/BuildReport.cpp"
     "${APPBOX_SOURCE_DIR}/core/CaptureWizardModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/CompressionLevel.cpp"
-    "${APPBOX_SOURCE_DIR}/core/EmbeddedResource.cpp"
     "${APPBOX_SOURCE_DIR}/core/EnvironmentIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/EnvironmentModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/EtwEventDecoder.cpp"
@@ -187,6 +186,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/FilesystemIsolationModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/FilesystemTree.cpp"
     "${APPBOX_SOURCE_DIR}/core/KnownFolderReference.cpp"
+    "${APPBOX_SOURCE_DIR}/core/LauncherConfigResource.cpp"
     "${APPBOX_SOURCE_DIR}/core/NetworkIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/NetworkModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/PackModel.cpp"
@@ -208,7 +208,6 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/StartupScreen.cpp"
     "${APPBOX_SOURCE_DIR}/core/StartupTree.cpp"
     "${APPBOX_SOURCE_DIR}/core/TracerModel.cpp"
-    "${APPBOX_SOURCE_DIR}/core/ZipReader.cpp"
     "${APPBOX_SOURCE_DIR}/core/ZipWriter.cpp"
     "${APPBOX_SOURCE_DIR}/tracer/ArmPlan.cpp"
     "${APPBOX_SOURCE_DIR}/tracer/Category.cpp"
@@ -258,6 +257,7 @@ target_include_directories(AppBox
         "${APPBOX_SOURCE_DIR}"
         "${CMAKE_CURRENT_SOURCE_DIR}/launcher"
         "${APPBOX_GENERATED_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 target_compile_features(AppBox

@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <vector>
 #include "utils/ReadFileFull.hpp"
-#include "utils/SandboxDll.hpp"
 #include "RegistryIsolation.hpp"
 #include "SandboxLayout.hpp"
 #include "FsBuilder.hpp"
@@ -98,77 +97,17 @@ static void WriteDefaultRegistryIsolation(const std::filesystem::path& root)
  *
  * A case declares the content of its directories, but not the entries which
  * the harness writes into them: the isolation files which the helpers of the
- * suite create in the domain directories, the registry domain which carries the
- * hive and the isolation file of the case, and the sandbox injection modules
- * which WriteSandboxModules() links into the resource root. The verification
- * skips those entries while it counts the content of a directory, so a case
- * only has to declare what it really describes.
+ * suite create in the domain directories and the registry domain which carries
+ * the hive and the isolation file of the case. The verification skips those
+ * entries while it counts the content of a directory, so a case only has to
+ * declare what it really describes.
  *
  * @param[in] name Name of the entry.
  * @return true when the entry is not part of the declared content.
  */
 static bool IsLayoutEntry(const std::wstring& name)
 {
-    return name == appbox::layout::kIsolationFileNameW || name == appbox::layout::kRegistryDirNameW ||
-           name == appbox::layout::kSandbox32DllNameW || name == appbox::layout::kSandbox64DllNameW;
-}
-
-/**
- * @brief Put the sandbox injection modules into the resource root of a case.
- *
- * The modules are resources of a packed archive: the launcher injects them from
- * `app` and keeps no copy of its own, so every case which starts the launcher
- * needs the real modules in its resource root. They are linked instead of
- * being copied, because a case only needs the files to be there and the
- * modules are megabytes large.
- *
- * @param[in] root Root directory of the case.
- * @return true when both modules are in place, false when the run provided no
- *         modules or they cannot be placed.
- */
-static bool WriteSandboxModules(const std::filesystem::path& root)
-{
-    if (!appbox::test::SandboxModulesAvailable())
-    {
-        return false;
-    }
-
-    const std::filesystem::path app(root / appbox::layout::kAppDirNameW);
-    std::error_code             ec;
-    std::filesystem::create_directories(app, ec);
-    if (ec)
-    {
-        return false;
-    }
-
-    const std::pair<std::wstring, const wchar_t*> modules[] = {
-        { appbox::test::Sandbox32DllPath(), appbox::layout::kSandbox32DllNameW },
-        { appbox::test::Sandbox64DllPath(), appbox::layout::kSandbox64DllNameW },
-    };
-
-    for (const auto& module : modules)
-    {
-        const auto destination = app / module.second;
-
-        ec.clear();
-        std::filesystem::remove(destination, ec);
-
-        ec.clear();
-        std::filesystem::create_hard_link(module.first, destination, ec);
-        if (ec)
-        {
-            /* A destination on another volume cannot be linked, so it is copied. */
-            ec.clear();
-            std::filesystem::copy_file(module.first, destination, std::filesystem::copy_options::overwrite_existing,
-                                       ec);
-            if (ec)
-            {
-                return false;
-            }
-        }
-    }
-
-    return true;
+    return name == appbox::layout::kIsolationFileNameW || name == appbox::layout::kRegistryDirNameW;
 }
 
 /**
@@ -398,9 +337,6 @@ appbox::LauncherConfig appbox::test::FsRoot::Build() const
         node->Build(data_->root_);
     }
 
-    /* The modules every case needs, see WriteSandboxModules(). */
-    WriteSandboxModules(data_->root_);
-
     /* The registry isolation file of a case which declares no registry domain,
      * see WriteDefaultRegistryIsolation(). */
     WriteDefaultRegistryIsolation(data_->root_);
@@ -409,8 +345,9 @@ appbox::LauncherConfig appbox::test::FsRoot::Build() const
      * The layout of the sandbox is a fixed convention which the case spells
      * out itself, so the launcher configuration carries no path at all: the
      * launcher resolves the state root and the resource root against the
-     * directory of its configuration file, which is the working directory of
-     * the case.
+     * directory of its configuration, which is the working directory of the
+     * case (the directory of the launcher program, or of the file a case passes
+     * with `--X-AppBox-ConfigFile`).
      */
     return appbox::LauncherConfig{};
 }

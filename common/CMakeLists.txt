@@ -36,3 +36,12 @@ target_link_libraries(${PROJECT_NAME} INTERFACE nlohmann_json::nlohmann_json)
 
 find_package(spdlog REQUIRED)
 target_link_libraries(${PROJECT_NAME} INTERFACE spdlog::spdlog)
+
+# Extraction of a zip archive. The reader is header-only, so the library of
+# libzip is part of the interface of this target: every consumer which includes
+# ZipReader.hpp gets the headers and the library of libzip. zlib must be
+# configured before libzip, because the libzip build performs its own
+# find_package(ZLIB 1.1.2 REQUIRED) and reuses the already configured target.
+find_package(ZLIB REQUIRED)
+find_package(libzip REQUIRED)
+target_link_libraries(${PROJECT_NAME} INTERFACE libzip::zip)

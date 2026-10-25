@@ -2,7 +2,6 @@
 #include "utils/CommonFixture.hpp"
 #include "utils/LauncherPath.hpp"
 #include "utils/RealFsFolder.hpp"
-#include "utils/SandboxDll.hpp"
 #include "utils/SnapshotFile.hpp"
 #include "utils/TestKnownFolder.hpp"
 #include "src/core/PackService.hpp"
@@ -10,7 +9,7 @@
 #include "src/core/SnapshotCapture.hpp"
 #include "src/core/SnapshotDiff.hpp"
 #include "src/core/SnapshotStore.hpp"
-#include "src/core/ZipReader.hpp"
+#include "ZipReader.hpp"
 #include "WString.hpp"
 #include <algorithm>
 #include <chrono>
@@ -154,24 +153,18 @@ TEST_F(E2E_Snapshot, CapturedFolderTravelsIntoTheArchive)
 
     /* The session is packed and extracted into the directory of the case. */
     const auto launcher_bytes = ReadFileBytes(launcher);
-    const auto sandbox32_bytes = ReadFileBytes(Sandbox32DllPath());
-    const auto sandbox64_bytes = ReadFileBytes(Sandbox64DllPath());
     ASSERT_FALSE(launcher_bytes.empty());
 
     appbox::PackPayloads payloads;
     payloads.launcher_bytes = launcher_bytes.data();
     payloads.launcher_size = launcher_bytes.size();
-    payloads.sandbox32_bytes = sandbox32_bytes.data();
-    payloads.sandbox32_size = sandbox32_bytes.size();
-    payloads.sandbox64_bytes = sandbox64_bytes.data();
-    payloads.sandbox64_size = sandbox64_bytes.size();
 
     const auto zip_path = GetCWD() / (name + L".zip");
     ASSERT_EQ(appbox::Pack(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(), environment,
                            appbox::ApplicationMetadata(), appbox::StartupScreen{}, payloads,
                            appbox::CompressionLevel::Normal, zip_path.wstring(), nullptr),
               "");
-    ASSERT_EQ(appbox::ExtractArchive(zip_path.wstring(), GetCWDString()), "");
+    ASSERT_EQ(appbox::ExtractArchive(zip_path.wstring(), GetCWDString()), appbox::ZIPREADER_SUCCESS);
 
     /*
      * The layer of the archive carries the file the installation wrote at the

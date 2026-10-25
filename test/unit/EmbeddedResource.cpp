@@ -1,10 +1,13 @@
 #include "sandbox/utils/WinAPI.h" /* Must be included before any other headers. */
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <filesystem>
 #include <string>
 #include <string_view>
-#include "src/core/EmbeddedResource.hpp"
+#include <vector>
+#include "EmbeddedResource.hpp"
 #include "src/core/EmbeddedResourceIds.h"
+#include "launcher/EmbeddedResourceIds.h"
 #include "utils/LauncherPath.hpp"
 #include "utils/ReadFileFull.hpp"
 #include "utils/SandboxDll.hpp"
@@ -81,6 +84,44 @@ std::string ReadFile(const std::wstring& path)
 }
 
 /**
+ * @brief Collect the numeric identifiers of the RCDATA resources of a module.
+ *
+ * Every executable numbers the resources it carries on its own, so an
+ * identifier only means something in the module which declares it. The set of
+ * identifiers is what tells the resources of one executable from those of
+ * another: a payload of the packer is read with an identifier of the packer, a
+ * payload of the launcher with one of the launcher, and neither identifier is
+ * looked up in the other executable.
+ *
+ * @param[in] module Module which carries the resources.
+ * @return The identifiers in ascending order, empty when the module cannot be
+ *         enumerated.
+ */
+std::vector<int> RcdataResourceIds(void* module)
+{
+    std::vector<int> ids;
+
+    const auto collect = [](HMODULE, LPCWSTR, LPWSTR name, LONG_PTR parameter) -> BOOL {
+        if (IS_INTRESOURCE(name))
+        {
+            auto* collected = reinterpret_cast<std::vector<int>*>(parameter);
+            collected->push_back(static_cast<int>(reinterpret_cast<ULONG_PTR>(name)));
+        }
+        return TRUE;
+    };
+
+    const auto instance = static_cast<HMODULE>(module);
+    const auto type = reinterpret_cast<LPCWSTR>(RT_RCDATA);
+    if (!EnumResourceNamesW(instance, type, collect, reinterpret_cast<LONG_PTR>(&ids)))
+    {
+        return {};
+    }
+
+    std::sort(ids.begin(), ids.end());
+    return ids;
+}
+
+/**
  * @brief Compare one payload of the packer with the file it was built from.
  *
  * The sizes are compared before the content, because a failure which prints two
@@ -101,41 +142,63 @@ void ExpectPayloadMatchesFile(const std::string_view& payload, const std::wstrin
 
 /**
  * Condition:
- * 1. The packer of the build carries the launcher program and the two sandbox
- *    injection modules as RCDATA resources.
- * 2. The resources are read with the module opened as a data file, which is the
- *    lookup the packer performs at run time.
+ * 1. Every executable of the build numbers the RCDATA resources it carries on
+ *    its own, starting at 101.
+ * 2. The packer of the build carries the launcher program as its only RCDATA
+ *    resource.
+ * 3. The launcher of the build carries the two sandbox injection modules as its
+ *    only RCDATA resources.
+ * 4. The resources are read with the module opened as a data file, which is the
+ *    lookup the packer and the launcher perform at run time.
  *
  * Expected:
- * 1. Every payload is byte for byte the file of the build tree it was embedded
- *    from, so the archive of a pack run carries the modules of this build.
+ * 1. The RCDATA identifier set of the packer is exactly the launcher payload,
+ *    and that payload is byte for byte the launcher file of the build tree.
+ * 2. The RCDATA identifier set of the launcher is exactly the two modules, and
+ *    every module is byte for byte the module file of the build tree.
  */
 TEST(Unit_EmbeddedResource, PayloadsMatchTheBuildTree)
 {
+    if (!appbox::test::SandboxModulesAvailable())
+    {
+        GTEST_SKIP() << "the sandbox injection modules are unavailable: pass --sandbox32= and --sandbox64=";
+    }
+
     const auto& packer = appbox::test::config.packer_path;
     if (packer.empty())
     {
         GTEST_SKIP() << "the packer is unavailable: pass --packer=";
     }
 
-    DataFileModule module(packer);
-    ASSERT_NE(module.get(), nullptr) << appbox::WideToUTF8(packer);
-
     std::string      error;
     std::string_view payload;
 
-    ASSERT_TRUE(appbox::ReadEmbeddedResource(module.get(), IDR_APPBOX_SANDBOX32, payload, error)) << error;
-    ExpectPayloadMatchesFile(payload, appbox::test::Sandbox32DllPath());
+    {
+        DataFileModule module(packer);
+        ASSERT_NE(module.get(), nullptr) << appbox::WideToUTF8(packer);
 
-    ASSERT_TRUE(appbox::ReadEmbeddedResource(module.get(), IDR_APPBOX_SANDBOX64, payload, error)) << error;
-    ExpectPayloadMatchesFile(payload, appbox::test::Sandbox64DllPath());
+        EXPECT_EQ(RcdataResourceIds(module.get()), (std::vector<int>{ IDR_APPBOX_LAUNCHER }))
+            << "the packer has an unexpected RCDATA resource";
 
-    /*
-     * The embedded launcher is the launcher of this build, which is the program the
-     * end-to-end cases start.
-     */
-    ASSERT_TRUE(appbox::ReadEmbeddedResource(module.get(), IDR_APPBOX_LAUNCHER, payload, error)) << error;
-    ExpectPayloadMatchesFile(payload, appbox::test::LauncherPath());
+        /* The packer carries the launcher program of this build. */
+        ASSERT_TRUE(appbox::ReadEmbeddedResource(module.get(), IDR_APPBOX_LAUNCHER, payload, error)) << error;
+        ExpectPayloadMatchesFile(payload, appbox::test::LauncherPath());
+    }
+
+    {
+        const auto&    launcher = appbox::test::LauncherPath();
+        DataFileModule module(launcher);
+        ASSERT_NE(module.get(), nullptr) << appbox::WideToUTF8(launcher);
+
+        EXPECT_EQ(RcdataResourceIds(module.get()), (std::vector<int>{ IDR_APPBOX_SANDBOX32, IDR_APPBOX_SANDBOX64 }))
+            << "the launcher has an unexpected RCDATA resource";
+
+        ASSERT_TRUE(appbox::ReadEmbeddedResource(module.get(), IDR_APPBOX_SANDBOX32, payload, error)) << error;
+        ExpectPayloadMatchesFile(payload, appbox::test::Sandbox32DllPath());
+
+        ASSERT_TRUE(appbox::ReadEmbeddedResource(module.get(), IDR_APPBOX_SANDBOX64, payload, error)) << error;
+        ExpectPayloadMatchesFile(payload, appbox::test::Sandbox64DllPath());
+    }
 }
 
 /**

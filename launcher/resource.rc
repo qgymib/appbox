@@ -15,3 +15,13 @@
 // Explorer shows the icon of the packaged application for the extracted
 // program while this group stays the icon of the launcher.
 IDI_ICON1 ICON DISCARDABLE "../docs/icon.ico"
+
+// The two sandbox injection modules the launcher releases into the cache
+// directory of the sandbox at every start, declared as RCDATA resources of
+// this executable. The identifiers are declared in the header of the launcher
+// and used by the code which reads them back, and the statements themselves
+// live in a file which CMake generates at configure time, because the modules
+// are build products of this build tree (see launcher/EmbeddedResourceIds.h,
+// cmake/LauncherResources.rc.in and launcher/CMakeLists.txt).
+#include "EmbeddedResourceIds.h"
+#include "LauncherResources.generated.rc"

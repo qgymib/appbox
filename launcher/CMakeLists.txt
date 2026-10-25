@@ -13,6 +13,7 @@ add_executable(${PROJECT_NAME} WIN32
     "utils/Md5.cpp"
     "utils/PatchLayer.cpp"
     "utils/ProcessJob.cpp"
+    "utils/SandboxModules.cpp"
     "utils/Shell.cpp"
     "utils/StartupImage.cpp"
     "utils/StartupLayout.cpp"
@@ -23,12 +24,6 @@ add_executable(${PROJECT_NAME} WIN32
     "Splash.cpp"
     "main.cpp"
     "resource.rc"
-
-    # The reader half of the archive layout of the packer. The launcher reads
-    # the patch packages of the user with it, so a package is extracted with
-    # the very same rules the packer writes it with, including the rejection
-    # of entry names which would escape the destination folder.
-    "${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ZipReader.cpp"
 
     # The resolver of the view. A startup file names a path of the sandbox
     # view, which usually exists in the layers of the archive only, so the
@@ -51,7 +46,9 @@ target_include_directories(${PROJECT_NAME}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/..
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
         ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox
+        ${APPBOX_GENERATED_DIR}
 )
 
 target_compile_features(${PROJECT_NAME}
@@ -63,6 +60,39 @@ target_compile_features(${PROJECT_NAME}
 # of <windows.h> out of the code, which is what the wx header did before the
 # launcher stopped using wxWidgets.
 target_compile_definitions(${PROJECT_NAME} PRIVATE NOMINMAX)
+
+###############################################################################
+# Payloads embedded as Windows resources
+#
+# The launcher carries the two sandbox injection modules as RCDATA resources of
+# its own executable, so an extracted archive needs no module beside it. The
+# modules are build products, so the resource script which names them is
+# generated here from cmake/LauncherResources.rc.in, with the absolute path of
+# every module substituted for its placeholder. launcher/resource.rc includes
+# the generated script.
+#
+# The resource compiler reads the backslash of a Windows path as an escape
+# character inside a string literal, so every separator is doubled before the
+# path is substituted.
+###############################################################################
+appbox_escape_resource_path(APPBOX_RESOURCE_SANDBOX32_RC "${APPBOX_RESOURCE_SANDBOX32}")
+appbox_escape_resource_path(APPBOX_RESOURCE_SANDBOX64_RC "${APPBOX_RESOURCE_SANDBOX64}")
+
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/LauncherResources.rc.in"
+    "${APPBOX_GENERATED_DIR}/LauncherResources.generated.rc"
+    @ONLY
+)
+
+# The modules have to exist before the resource compiler reads them. A Visual
+# Studio generator records them as inputs of the resource compiler, so a module
+# which changes recompiles the resource script on its own. The other generators
+# take the dependency from the source file property instead.
+add_dependencies(${PROJECT_NAME} sandbox_x86_build sandbox_x64_build)
+set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/resource.rc"
+    PROPERTIES
+        OBJECT_DEPENDS "${APPBOX_RESOURCE_SANDBOX32};${APPBOX_RESOURCE_SANDBOX64}"
+)
 
 ###############################################################################
 # Dependency
@@ -103,13 +133,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE windowscodecs ole32 msimg32)
 
 # Digest of a patch package (BCryptOpenAlgorithmProvider and friends).
 target_link_libraries(${PROJECT_NAME} PRIVATE bcrypt)
-
-# Extraction of a patch package. zlib must be configured before libzip: the
-# libzip build performs its own find_package(ZLIB 1.1.2 REQUIRED) which reuses
-# the already configured target.
-find_package(ZLIB REQUIRED)
-find_package(libzip REQUIRED)
-target_link_libraries(${PROJECT_NAME} PRIVATE libzip::zip)
 
 ###############################################################################
 # Export for the packer
