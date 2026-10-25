@@ -122,6 +122,13 @@ The `--X-AppBox-ConfigFile` option overrides the embedded configuration; a run
 which names it reads the given file instead and resolves the sandbox layout
 against the directory of that file.
 
+The payload carries a second resource as well: `IDR_APPBOX_STARTUP_IMAGE`,
+written when the session sets a startup image. The launcher reads it from its own
+executable and decodes the bytes from memory, so no file beside it is opened for
+the screen either. A payload without the resource is the normal case of a session
+without an image, which shows the name of the application and the progress of the
+run only (see [Startup Screen](StartupScreen.md)).
+
 ## Logging
 
 **A run writes no log file unless it asks for one.** Without

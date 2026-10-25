@@ -8,17 +8,18 @@ namespace appbox
  * @brief Layout of a packed application and of the sandbox it runs in.
  *
  * A packed archive carries the launcher program, which carries the run
- * configuration as a resource of its own image, and the read-only resources of
- * the packaged application below `app`. The writable state of the sandbox never
- * travels in the archive: the launcher creates the
+ * configuration and, when the session sets one, the startup image as RCDATA
+ * resources of its own image, and the read-only resources of the packaged
+ * application below `app`. The writable state of the sandbox never travels in
+ * the archive: the launcher creates the
  * `data` directory at run time, next to `app`, releases the sandbox injection
  * modules into `data/cache` and keeps the state there, so deleting it resets the
  * sandbox to the state the archive was packed with.
  *
  * ```
  * <startup>.exe                        launcher payload, carries the
- *                                      configuration as an RCDATA resource
- * app/startup/splash.png               startup image of the launcher (optional)
+ *                                      configuration and the startup image as
+ *                                      RCDATA resources
  * app/filesystem/isolation.json        isolation modes of the filesystem
  * app/filesystem/<layer key>/...       imported content (read-only layers)
  * app/registry/user.hiv                virtual registry of the workspace
@@ -130,26 +131,6 @@ inline constexpr const char* kNetworkDirName = "network";
 inline constexpr const char* kEnvironmentDirName = "environment";
 
 /**
- * @brief Name of the startup directory below `app`.
- *
- * The directory carries the startup screen of the packaged application, which
- * the launcher shows while it prepares the sandbox. It is a resource of the
- * archive and never a state of the sandbox: the launcher only reads it, so the
- * file is never copied into the state directory.
- */
-inline constexpr const char* kStartupDirName = "startup";
-
-/**
- * @brief Base name of the startup image below the startup directory.
- *
- * The image is stored under the base name with the extension of the file the
- * user selected, e.g. `splash.png`, so the launcher configuration can name the
- * image of the session without a second name for every supported format. A
- * session which sets no startup image carries no file of this name at all.
- */
-inline constexpr const char* kStartupImageBaseName = "splash";
-
-/**
  * @brief Name of the 32 bit sandbox injection module below `data/cache`.
  *
  * The module is a resource of the launcher executable: the launcher releases it
@@ -244,12 +225,6 @@ inline constexpr const wchar_t* kNetworkDirNameW = L"network";
 
 /** @brief Wide spelling of kEnvironmentDirName. */
 inline constexpr const wchar_t* kEnvironmentDirNameW = L"environment";
-
-/** @brief Wide spelling of kStartupDirName. */
-inline constexpr const wchar_t* kStartupDirNameW = L"startup";
-
-/** @brief Wide spelling of kStartupImageBaseName. */
-inline constexpr const wchar_t* kStartupImageBaseNameW = L"splash";
 
 /** @brief Wide spelling of kSandbox32DllName. */
 inline constexpr const wchar_t* kSandbox32DllNameW = L"sandbox32.dll";

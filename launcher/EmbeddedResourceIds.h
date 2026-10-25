@@ -22,12 +22,12 @@
  * which CMake turns into a resource script of the target (see
  * `launcher/resource.rc`), and declared by that script.
  *
- * The run configuration is different: the packer writes it into the launcher
- * payload at pack time (see `src/core/LauncherConfigResource.cpp`), so the
- * resource script of the launcher does not declare it. Its identifier is
- * nevertheless declared here, so the packer which writes the payload and the
- * launcher which reads it back agree on the number without either of them
- * spelling it out.
+ * The run configuration and the startup image are different: the packer writes
+ * them into the launcher payload at pack time (see
+ * `src/core/LauncherResources.cpp`), so the resource script of the launcher does
+ * not declare them. Their identifiers are nevertheless declared here, so the
+ * packer which writes the payload and the launcher which reads it back agree on
+ * the numbers without either of them spelling them out.
  *
  * A payload which is added to the launcher later has to use the next free
  * number.
@@ -41,5 +41,8 @@
 
 /** @brief The run configuration the packer writes into the launcher payload. */
 #define IDR_APPBOX_LAUNCHER_CONFIG 103
+
+/** @brief The startup image of the session, embedded by the packer. */
+#define IDR_APPBOX_STARTUP_IMAGE 104
 
 #endif // APPBOX_LAUNCHER_EMBEDDED_RESOURCE_IDS_H

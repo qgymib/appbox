@@ -1,13 +1,31 @@
 #include <gtest/gtest.h>
 #include "Splash.hpp"
+#include "utils/ReadFileFull.hpp"
 #include "utils/RealFsFolder.hpp"
 #include "utils/TestBitmap.hpp"
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace
 {
+
+/**
+ * @brief Read a file into the bytes the screen decodes.
+ *
+ * The screen decodes the bytes of a resource of the launcher, so the cases read
+ * the files they write instead of naming them.
+ *
+ * @param[in] path Host path of the file.
+ * @param[out] data The bytes of the file, empty on failure.
+ * @return true when the file was read.
+ */
+bool ReadBytes(const std::wstring& path, std::string& data)
+{
+    data.clear();
+    return appbox::test::ReadFileFull(path, data) == 0;
+}
 
 /**
  * @brief Read one pixel of a window.
@@ -111,7 +129,10 @@ TEST(Unit_Splash, TheScreenShowsTheNameTheImageAndTheBar)
     const appbox::test::RealFsFolder folder(L"#USERPROFILE#", L"appbox-splash-window");
     ASSERT_TRUE(appbox::test::WriteTestBitmap(folder.Get() / L"logo.bmp", 8, 4, 200, 100, 50));
 
-    appbox::SplashScreen screen(true, L"My Application", (folder.Get() / L"logo.bmp").wstring());
+    std::string bytes;
+    ASSERT_TRUE(ReadBytes((folder.Get() / L"logo.bmp").wstring(), bytes));
+
+    appbox::SplashScreen screen(true, L"My Application", bytes);
     ASSERT_TRUE(screen.IsOpen());
 
     const HWND window = screen.Window();
@@ -142,7 +163,7 @@ TEST(Unit_Splash, TheScreenShowsTheNameTheImageAndTheBar)
 
 TEST(Unit_Splash, TheBarAdvancesTowardsTheReportedProgress)
 {
-    appbox::SplashScreen screen(true, L"My Application", std::wstring());
+    appbox::SplashScreen screen(true, L"My Application", std::string_view());
     ASSERT_TRUE(screen.IsOpen());
 
     const auto& layout = screen.Layout();
@@ -163,7 +184,7 @@ TEST(Unit_Splash, TheBarAdvancesTowardsTheReportedProgress)
 
 TEST(Unit_Splash, AScreenWithoutAnImageKeepsTheNameAndTheBar)
 {
-    appbox::SplashScreen screen(true, L"My Application", L"");
+    appbox::SplashScreen screen(true, L"My Application", std::string_view());
     ASSERT_TRUE(screen.IsOpen());
 
     EXPECT_EQ(screen.Layout().image_width, 0);
@@ -178,10 +199,7 @@ TEST(Unit_Splash, AScreenWithoutAnImageKeepsTheNameAndTheBar)
 
 TEST(Unit_Splash, AnImageWhichCannotBeDecodedLeavesTheScreenUsable)
 {
-    const appbox::test::RealFsFolder folder(L"#USERPROFILE#", L"appbox-splash-broken");
-    ASSERT_TRUE(folder.WriteFile(L"logo.png", "this is not an image at all"));
-
-    appbox::SplashScreen screen(true, L"My Application", (folder.Get() / L"logo.png").wstring());
+    appbox::SplashScreen screen(true, L"My Application", "this is not an image at all");
 
     /* The run continues with the name and the progress only. */
     ASSERT_TRUE(screen.IsOpen());
@@ -193,7 +211,7 @@ TEST(Unit_Splash, AnImageWhichCannotBeDecodedLeavesTheScreenUsable)
 
 TEST(Unit_Splash, AScreenWhichIsTurnedOffIsANoOp)
 {
-    appbox::SplashScreen screen(false, L"My Application", std::wstring());
+    appbox::SplashScreen screen(false, L"My Application", std::string_view());
 
     EXPECT_FALSE(screen.IsOpen());
     EXPECT_EQ(screen.Window(), nullptr);
@@ -208,7 +226,7 @@ TEST(Unit_Splash, AScreenWhichIsTurnedOffIsANoOp)
 
 TEST(Unit_Splash, ClosingTwiceKeepsTheScreenClosed)
 {
-    appbox::SplashScreen screen(true, L"My Application", std::wstring());
+    appbox::SplashScreen screen(true, L"My Application", std::string_view());
     ASSERT_TRUE(screen.IsOpen());
 
     screen.Close();

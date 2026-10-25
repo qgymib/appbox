@@ -208,11 +208,16 @@ struct StartupRun
  *                    which checks how the launcher locates the image of a
  *                    startup file sets it, because replacing the executable
  *                    would replace the very path the case describes.
+ * @param[in] launcher_path Program to run instead of the launcher of the test
+ *                    configuration, empty to run the configured launcher. A
+ *                    case which verifies a resource of the launcher itself
+ *                    passes a patched copy of it.
  * @return The reports of the started startup files and the exit code of the
  *         launcher.
  */
 StartupRun ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launcher_config, const std::string& trigger,
-                           bool startup_screen = false, const LogRun& log = {}, bool use_configured_executable = false);
+                           bool startup_screen = false, const LogRun& log = {}, bool use_configured_executable = false,
+                           const std::wstring& launcher_path = std::wstring());
 
 /**
  * @brief Run a launcher program whose configuration is embedded in its image.

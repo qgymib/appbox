@@ -1,6 +1,6 @@
 #include "src/core/PeResourcePatch.hpp"
 #include <gtest/gtest.h>
-#include "src/core/LauncherConfigResource.hpp"
+#include "src/core/LauncherResources.hpp"
 #include "EmbeddedResource.hpp"
 #include "launcher/Config.hpp"
 #include "launcher/EmbeddedResourceIds.h"
@@ -10,6 +10,7 @@
 #include "Test.hpp"
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -43,29 +44,34 @@ std::vector<char> ProbePayload()
 /** Counter of the resources a callback enumerated. */
 struct ResourceNameCount
 {
-    int count = 0;
+    int config = 0;
+    int image = 0;
 };
 
 /**
- * @brief Count the resources which carry the identifier of the configuration.
+ * @brief Count the resources which carry the identifiers of the launcher.
  */
-BOOL CALLBACK CountConfigResource(HMODULE, LPCWSTR, LPWSTR name, LONG_PTR param)
+BOOL CALLBACK CountLauncherResource(HMODULE, LPCWSTR, LPWSTR name, LONG_PTR param)
 {
-    if (reinterpret_cast<ULONG_PTR>(name) == static_cast<ULONG_PTR>(IDR_APPBOX_LAUNCHER_CONFIG))
+    const auto id = reinterpret_cast<ULONG_PTR>(name);
+    if (id == static_cast<ULONG_PTR>(IDR_APPBOX_LAUNCHER_CONFIG))
     {
-        ++reinterpret_cast<ResourceNameCount*>(param)->count;
+        ++reinterpret_cast<ResourceNameCount*>(param)->config;
+    }
+    if (id == static_cast<ULONG_PTR>(IDR_APPBOX_STARTUP_IMAGE))
+    {
+        ++reinterpret_cast<ResourceNameCount*>(param)->image;
     }
     return TRUE;
 }
 
 } // namespace
 
-TEST(Unit_LauncherConfigResource, BuildsUtf8JsonWithoutBom)
+TEST(Unit_LauncherResources, BuildsUtf8JsonWithoutBom)
 {
     appbox::LauncherConfig config;
     config.hide_console = true;
     config.startup.screen = false;
-    config.startup.image = u8"启动/splash.png";
 
     appbox::LauncherStartup startup;
     startup.trigger = u8"启动";
@@ -88,16 +94,18 @@ TEST(Unit_LauncherConfigResource, BuildsUtf8JsonWithoutBom)
     const auto parsed = nlohmann::json::parse(json).get<appbox::LauncherConfig>();
     EXPECT_TRUE(parsed.hide_console);
     EXPECT_FALSE(parsed.startup.screen);
-    EXPECT_EQ(parsed.startup.image, u8"启动/splash.png");
     ASSERT_EQ(parsed.startups.size(), static_cast<std::size_t>(1));
     EXPECT_EQ(parsed.startups[0].trigger, u8"启动");
     EXPECT_TRUE(parsed.startups[0].auto_start);
     EXPECT_EQ(parsed.startups[0].executable, u8"#ProgramFiles#\\应用\\app.exe");
     ASSERT_EQ(parsed.startups[0].arguments.size(), static_cast<std::size_t>(1));
     EXPECT_EQ(parsed.startups[0].arguments[0], u8"--标记=值");
+
+    /* The startup image is not part of the document: it is a resource of its own. */
+    EXPECT_EQ(json.find("\"image\""), std::string::npos);
 }
 
-TEST(Unit_LauncherConfigResource, EmbedsTheConfigurationAsTheResource)
+TEST(Unit_LauncherResources, EmbedsTheConfigurationAsTheResource)
 {
     const auto payload = ProbePayload();
     ASSERT_FALSE(payload.empty()) << "the 64 bit probe is unavailable";
@@ -111,7 +119,8 @@ TEST(Unit_LauncherConfigResource, EmbedsTheConfigurationAsTheResource)
     const auto json = appbox::BuildLauncherConfigJson(config);
 
     std::string error;
-    const auto  patched = appbox::EmbedLauncherConfig(payload.data(), payload.size(), json, error);
+    const auto  patched =
+        appbox::EmbedLauncherResources(payload.data(), payload.size(), json, std::string_view(), error);
     ASSERT_FALSE(patched.empty()) << error;
 
     const auto                               path = appbox::pe_resource::TemporaryPath(L"AppBox-Test-LauncherConfig");
@@ -129,7 +138,36 @@ TEST(Unit_LauncherConfigResource, EmbedsTheConfigurationAsTheResource)
     EXPECT_EQ(parsed.startups[0].executable, "#ProgramFiles#\\MyApp\\app.exe");
 }
 
-TEST(Unit_LauncherConfigResource, ReplacesAnEarlierConfiguration)
+TEST(Unit_LauncherResources, EmbedsTheStartupImageAsTheResource)
+{
+    const auto payload = ProbePayload();
+    ASSERT_FALSE(payload.empty()) << "the 64 bit probe is unavailable";
+
+    appbox::LauncherConfig config;
+
+    /* A distinctive payload: the bytes of a real image are not needed here. */
+    const std::string image = "\x89PNG\r\n\x1a\n-image";
+
+    std::string error;
+    const auto  patched = appbox::EmbedLauncherResources(payload.data(), payload.size(),
+                                                         appbox::BuildLauncherConfigJson(config), image, error);
+    ASSERT_FALSE(patched.empty()) << error;
+
+    const auto                               path = appbox::pe_resource::TemporaryPath(L"AppBox-Test-LauncherImage");
+    const appbox::pe_resource::TemporaryFile file(path);
+    ASSERT_TRUE(appbox::pe_resource::WriteFileBytes(path, patched.data(), patched.size(), error)) << error;
+
+    std::string bytes;
+    ASSERT_TRUE(appbox::test::ReadLauncherResource(path.wstring(), IDR_APPBOX_STARTUP_IMAGE, bytes, error)) << error;
+    EXPECT_EQ(bytes, image);
+
+    /* The configuration is written by the same update session. */
+    appbox::LauncherConfig parsed;
+    ASSERT_TRUE(appbox::test::ReadLauncherConfig(path.wstring(), parsed, error)) << error;
+    EXPECT_TRUE(parsed.startup.screen);
+}
+
+TEST(Unit_LauncherResources, ReplacesAnEarlierConfiguration)
 {
     const auto payload = ProbePayload();
     ASSERT_FALSE(payload.empty()) << "the 64 bit probe is unavailable";
@@ -145,12 +183,12 @@ TEST(Unit_LauncherConfigResource, ReplacesAnEarlierConfiguration)
     second_config.startups.push_back(second_startup);
 
     std::string error;
-    const auto  first = appbox::EmbedLauncherConfig(payload.data(), payload.size(),
-                                                    appbox::BuildLauncherConfigJson(first_config), error);
+    const auto  first = appbox::EmbedLauncherResources(
+        payload.data(), payload.size(), appbox::BuildLauncherConfigJson(first_config), std::string_view(), error);
     ASSERT_FALSE(first.empty()) << error;
 
-    const auto second =
-        appbox::EmbedLauncherConfig(first.data(), first.size(), appbox::BuildLauncherConfigJson(second_config), error);
+    const auto second = appbox::EmbedLauncherResources(
+        first.data(), first.size(), appbox::BuildLauncherConfigJson(second_config), std::string_view(), error);
     ASSERT_FALSE(second.empty()) << error;
 
     const auto                               path = appbox::pe_resource::TemporaryPath(L"AppBox-Test-LauncherConfig");
@@ -166,8 +204,9 @@ TEST(Unit_LauncherConfigResource, ReplacesAnEarlierConfiguration)
     {
         const appbox::pe_resource::LoadedImage image(module);
         ResourceNameCount                      count;
-        ASSERT_TRUE(EnumResourceNamesW(module, RT_RCDATA, CountConfigResource, reinterpret_cast<LONG_PTR>(&count)));
-        EXPECT_EQ(count.count, 1);
+        ASSERT_TRUE(EnumResourceNamesW(module, RT_RCDATA, CountLauncherResource, reinterpret_cast<LONG_PTR>(&count)));
+        EXPECT_EQ(count.config, 1);
+        EXPECT_EQ(count.image, 0);
     }
 
     appbox::LauncherConfig parsed;
@@ -176,21 +215,21 @@ TEST(Unit_LauncherConfigResource, ReplacesAnEarlierConfiguration)
     EXPECT_EQ(parsed.startups[0].trigger, "second");
 }
 
-TEST(Unit_LauncherConfigResource, RefusesAPayloadWhichIsNotAnImage)
+TEST(Unit_LauncherResources, RefusesAPayloadWhichIsNotAnImage)
 {
     std::string error;
-    const auto  patched = appbox::EmbedLauncherConfig("NOT-A-PE-IMAGE", 14, "{}", error);
+    const auto  patched = appbox::EmbedLauncherResources("NOT-A-PE-IMAGE", 14, "{}", std::string_view(), error);
     EXPECT_TRUE(patched.empty());
     EXPECT_NE(error.find("PE"), std::string::npos);
 }
 
-TEST(Unit_LauncherConfigResource, RefusesAnEmptyConfiguration)
+TEST(Unit_LauncherResources, RefusesAnEmptyConfiguration)
 {
     const auto payload = ProbePayload();
     ASSERT_FALSE(payload.empty()) << "the 64 bit probe is unavailable";
 
     std::string error;
-    const auto  patched = appbox::EmbedLauncherConfig(payload.data(), payload.size(), "", error);
+    const auto  patched = appbox::EmbedLauncherResources(payload.data(), payload.size(), "", std::string_view(), error);
     EXPECT_TRUE(patched.empty());
     EXPECT_NE(error.find("empty"), std::string::npos);
 }

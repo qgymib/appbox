@@ -47,7 +47,8 @@ project only.
 ```
 .
 ├── <startup>.exe            launcher payload of the standalone archive, carries
-│                            the configuration as an RCDATA resource
+│                            the configuration and the startup image as RCDATA
+│                            resources
 ├── app/                     read-only resources, the base image of the sandbox
 ├── data/                    writable state of the sandbox, created by the launcher
 │   ├── cache/               extracted patches, created by the launcher
@@ -85,11 +86,11 @@ project only.
   sandbox as well. The launcher does not delete the entry of a package which the
   user removed from `patch`: the directory holds what the runs so far extracted,
   and deleting it resets that.
-- `app` carries the four domains and, when the session sets one, the startup
-  image of the session (`app/startup/splash.<extension>`, see
-  [Startup Screen](StartupScreen.md)). A patch package cannot name an image,
-  because the launcher configuration which names the image is a resource of the
-  launcher in the archive which is started.
+- `app` carries the four domains. The startup image of a session is not part of
+  them: the packer embeds it into the payload of the standalone launcher as an
+  RCDATA resource (see [Startup Screen](StartupScreen.md)), so the archive
+  carries no `app/startup` entry, and a patch package cannot replace the image
+  because it carries no launcher at all.
 - The launcher carries the two sandbox injection modules as resources of its own
   executable and releases them into `data/cache` at every start, so neither the
   archive nor a patch package carries a module file.

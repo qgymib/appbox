@@ -1202,12 +1202,7 @@ void MainFrame::StartPack(bool run_after)
      * import, so the packing stage reports this count and the extracting stage
      * of a `Build and Run` run reports the very same number of file entries.
      */
-    /*
-     * A patch package carries no launcher, so the startup image of the session
-     * is an entry of a standalone archive only.
-     */
-    const auto non_content =
-        standalone ? appbox::NonContentArchiveEntryCount(startup_screen_) : appbox::kNonContentPatchEntries;
+    const auto non_content = standalone ? appbox::kNonContentArchiveEntries : appbox::kNonContentPatchEntries;
     const auto total = non_content + appbox::ContentFileCount(model_);
     const auto planned = run_after ? total * 2 : total;
     const auto range = static_cast<int>(std::min<std::size_t>(planned, std::numeric_limits<int>::max()));

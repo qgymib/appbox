@@ -1,7 +1,9 @@
 #include "StartupImage.hpp"
 #include <wincodec.h>
 #include <cstddef>
+#include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace
@@ -163,13 +165,13 @@ private:
 };
 
 /**
- * @brief Decode an image file into a device independent bitmap.
- * @param[in] path Path of the image file.
+ * @brief Decode the bytes of an image resource into a device independent bitmap.
+ * @param[in] data Bytes of the image resource.
  * @param[out] image The decoded image.
  * @param[out] error Description of the failure, empty on success.
  * @return true when the image was decoded.
  */
-bool DecodeImage(const std::wstring& path, appbox::StartupImage& image, std::string& error)
+bool DecodeImage(std::string_view data, appbox::StartupImage& image, std::string& error)
 {
     ComHolder<IWICImagingFactory> factory;
     HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(factory.Put()));
@@ -179,9 +181,31 @@ bool DecodeImage(const std::wstring& path, appbox::StartupImage& image, std::str
         return false;
     }
 
+    /*
+     * The bytes are handed to the decoder through a stream instead of a file:
+     * the image is a resource of the launcher executable, so there is no file
+     * to name and the decoder sniffs the container from the bytes themselves.
+     * The component writes nothing to the buffer, so the cast of the read-only
+     * bytes is safe.
+     */
+    ComHolder<IWICStream> stream;
+    hr = factory->CreateStream(stream.Put());
+    if (FAILED(hr))
+    {
+        error = "the startup image cannot be read: 0x" + Hex(hr);
+        return false;
+    }
+
+    hr = stream->InitializeFromMemory(const_cast<BYTE*>(reinterpret_cast<const BYTE*>(data.data())),
+                                      static_cast<DWORD>(data.size()));
+    if (FAILED(hr))
+    {
+        error = "the startup image cannot be read: 0x" + Hex(hr);
+        return false;
+    }
+
     ComHolder<IWICBitmapDecoder> decoder;
-    hr = factory->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnLoad,
-                                            decoder.Put());
+    hr = factory->CreateDecoderFromStream(stream.Get(), nullptr, WICDecodeMetadataCacheOnLoad, decoder.Put());
     if (FAILED(hr))
     {
         error = "the startup image cannot be read: 0x" + Hex(hr);
@@ -314,13 +338,25 @@ void StartupImage::Reset()
     height = 0;
 }
 
-bool LoadStartupImage(const std::wstring& path, StartupImage& image, std::string& error)
+bool LoadStartupImage(std::string_view data, StartupImage& image, std::string& error)
 {
     error.clear();
 
-    if (path.empty())
+    if (data.empty())
     {
         error = "no startup image was given";
+        return false;
+    }
+
+    /*
+     * The decoder hands the size of the buffer to the imaging component as a
+     * DWORD, so data which does not fit that is refused instead of being
+     * truncated into a broken image. The parentheses keep the `max` macro of
+     * `<windows.h>` out of the call.
+     */
+    if (data.size() > (std::numeric_limits<DWORD>::max)())
+    {
+        error = "the startup image is too large to be decoded";
         return false;
     }
 
@@ -331,7 +367,7 @@ bool LoadStartupImage(const std::wstring& path, StartupImage& image, std::string
         return false;
     }
 
-    return DecodeImage(path, image, error);
+    return DecodeImage(data, image, error);
 }
 
 } // namespace appbox

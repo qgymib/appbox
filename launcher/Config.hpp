@@ -49,9 +49,13 @@ struct LauncherStartup
  * name and the progress only, and a session which turns the screen off shows
  * nothing at all.
  *
- * The name is not part of the configuration: the launcher reads it from the
- * version resource the packer wrote into itself, so it always matches the file
- * properties the shell shows for the extracted program.
+ * Neither the name nor the image is part of the document: the launcher reads the
+ * name from the version resource the packer wrote into itself, so it always
+ * matches the file properties the shell shows for the extracted program, and the
+ * image is the RCDATA resource `IDR_APPBOX_STARTUP_IMAGE` of
+ * `launcher/EmbeddedResourceIds.h`, which the packer embeds at pack time. A
+ * payload without that resource shows the screen with the name and the progress
+ * only.
  */
 struct LauncherStartupScreen
 {
@@ -65,17 +69,7 @@ struct LauncherStartupScreen
      */
     bool screen = true;
 
-    /**
-     * @brief Startup image of the session, relative to the resource root.
-     *
-     * The image is written below `app` by the packer, so the path names an
-     * entry of the resource root, e.g. `startup/splash.png`. It is empty while
-     * the session sets no image, which makes the launcher show the name and
-     * the progress only.
-     */
-    std::string image;
-
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LauncherStartupScreen, screen, image)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LauncherStartupScreen, screen)
 };
 
 /**

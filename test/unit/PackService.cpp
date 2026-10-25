@@ -5,6 +5,7 @@
 #include "SandboxLayout.hpp"
 #include "WString.hpp"
 #include "Config.hpp"
+#include "launcher/EmbeddedResourceIds.h"
 #include "utils/LauncherConfigReader.hpp"
 #include "utils/ProbePath.hpp"
 #include <nlohmann/json.hpp>
@@ -234,6 +235,30 @@ std::string ReadEntry(zip_t* archive, const char* name)
 }
 
 /**
+ * @brief Read a resource embedded in a launcher entry of an archive.
+ *
+ * @param[in] launcher The launcher entry.
+ * @param[in] resource_id Identifier of the resource in that launcher.
+ * @param[out] bytes The payload of the resource, empty on failure.
+ * @param[out] error Description of the failure, empty on success.
+ * @return true when the resource was read.
+ */
+bool ReadLauncherResourceFromEntry(const std::string& launcher, int resource_id, std::string& bytes, std::string& error)
+{
+    bytes.clear();
+    error.clear();
+
+    const auto                               path = appbox::pe_resource::TemporaryPath(L"AppBox-Test-PackService");
+    const appbox::pe_resource::TemporaryFile file(path);
+    if (!appbox::pe_resource::WriteFileBytes(path, launcher.data(), launcher.size(), error))
+    {
+        return false;
+    }
+
+    return appbox::test::ReadLauncherResource(path.wstring(), resource_id, bytes, error);
+}
+
+/**
  * @brief Read the raw JSON document of the configuration embedded in a launcher
  *        entry of an archive.
  *
@@ -244,17 +269,7 @@ std::string ReadEntry(zip_t* archive, const char* name)
  */
 bool ReadLauncherConfigJsonFromEntry(const std::string& launcher, std::string& json, std::string& error)
 {
-    json.clear();
-    error.clear();
-
-    const auto                               path = appbox::pe_resource::TemporaryPath(L"AppBox-Test-PackService");
-    const appbox::pe_resource::TemporaryFile file(path);
-    if (!appbox::pe_resource::WriteFileBytes(path, launcher.data(), launcher.size(), error))
-    {
-        return false;
-    }
-
-    return appbox::test::ReadLauncherConfigJson(path.wstring(), json, error);
+    return ReadLauncherResourceFromEntry(launcher, IDR_APPBOX_LAUNCHER_CONFIG, json, error);
 }
 
 /**
@@ -515,9 +530,8 @@ TEST(Unit_PackService, PackProducesLauncherConfigurationAndLayers)
     EXPECT_EQ(config.startups[0].executable, "#ProgramFiles#\\MyApp\\app.exe");
     EXPECT_TRUE(config.startups[0].arguments.empty());
 
-    /* A session without an image shows the startup screen without one. */
+    /* The startup screen of the session is shown and carries no image at all. */
     EXPECT_TRUE(config.startup.screen);
-    EXPECT_TRUE(config.startup.image.empty());
 
     /* Imported folders become lower layers below app/filesystem/<layer key>. */
     EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE-CONTENT");
@@ -545,7 +559,7 @@ TEST(Unit_PackService, PackProducesLauncherConfigurationAndLayers)
     }
 }
 
-TEST(Unit_PackService, PackWritesTheStartupImageOfTheSession)
+TEST(Unit_PackService, PackEmbedsTheStartupImageInTheLauncher)
 {
     TempDir    temp;
     const auto my_app = temp.Get() / L"MyApp";
@@ -577,29 +591,41 @@ TEST(Unit_PackService, PackWritesTheStartupImageOfTheSession)
     ASSERT_NE(archive, nullptr);
 
     /*
-     * The image travels under the fixed name of the archive layout, whatever
-     * format the user selected.
+     * The image is a resource of the launcher payload, so the archive carries
+     * no entry of it at all.
      */
-    EXPECT_EQ(ReadEntry(archive, "app/startup/splash.png"), "PNG-CONTENT");
+    EXPECT_EQ(zip_name_locate(archive, "app/startup/", 0), -1);
+    EXPECT_EQ(zip_name_locate(archive, "app/startup/splash.png", 0), -1);
 
-    /* The configuration names the entry the launcher decodes. */
+    /*
+     * The bytes of the image travel in the launcher entry, whatever format the
+     * user selected.
+     */
     const auto launcher_entry = ReadEntry(archive, "app.exe");
     ASSERT_FALSE(launcher_entry.empty());
+    std::string image_bytes;
+    std::string image_error;
+    ASSERT_TRUE(ReadLauncherResourceFromEntry(launcher_entry, IDR_APPBOX_STARTUP_IMAGE, image_bytes, image_error))
+        << image_error;
+    EXPECT_EQ(image_bytes, "PNG-CONTENT");
+
+    /* The configuration carries the flag of the session and no image name. */
     std::string json_text;
     std::string config_error;
     ASSERT_TRUE(ReadLauncherConfigJsonFromEntry(launcher_entry, json_text, config_error)) << config_error;
-    const auto config = nlohmann::json::parse(json_text).get<appbox::LauncherConfig>();
+    const auto document = nlohmann::json::parse(json_text);
+    const auto config = document.get<appbox::LauncherConfig>();
     EXPECT_TRUE(config.startup.screen);
-    EXPECT_EQ(config.startup.image, "startup/splash.png");
+    ASSERT_TRUE(document.contains("startup"));
+    EXPECT_FALSE(document["startup"].contains("image"));
 
-    /* The image is an entry which does not come from an import, so it is part
-     * of the total the progress reports announce. */
+    /* The image is no entry, so it adds nothing to the progress total. */
     ASSERT_FALSE(reports.empty());
-    EXPECT_EQ(reports.back().total, appbox::NonContentArchiveEntryCount(startup) + appbox::ContentFileCount(model));
+    EXPECT_EQ(reports.back().total, appbox::kNonContentArchiveEntries + appbox::ContentFileCount(model));
     EXPECT_EQ(reports.back().done, reports.back().total);
 }
 
-TEST(Unit_PackService, PackWithoutAStartupImageWritesNoFile)
+TEST(Unit_PackService, PackWithoutAStartupImageWritesNoResource)
 {
     TempDir    temp;
     const auto my_app = temp.Get() / L"MyApp";
@@ -624,21 +650,25 @@ TEST(Unit_PackService, PackWithoutAStartupImageWritesNoFile)
     zip_t*           archive = closer.archive;
     ASSERT_NE(archive, nullptr);
 
-    EXPECT_EQ(zip_name_locate(archive, "app/startup/splash.png", 0), -1);
     EXPECT_EQ(zip_name_locate(archive, "app/startup/", 0), -1);
 
-    /* The flag of the session travels all the same. */
+    /*
+     * The flag of the session travels all the same, and a session without an
+     * image leaves the launcher without the image resource.
+     */
     const auto launcher_entry = ReadEntry(archive, "app.exe");
     ASSERT_FALSE(launcher_entry.empty());
+
+    std::string image_bytes;
+    std::string image_error;
+    EXPECT_FALSE(ReadLauncherResourceFromEntry(launcher_entry, IDR_APPBOX_STARTUP_IMAGE, image_bytes, image_error));
+    EXPECT_FALSE(image_error.empty());
+
     std::string json_text;
     std::string config_error;
     ASSERT_TRUE(ReadLauncherConfigJsonFromEntry(launcher_entry, json_text, config_error)) << config_error;
     const auto config = nlohmann::json::parse(json_text).get<appbox::LauncherConfig>();
     EXPECT_FALSE(config.startup.screen);
-    EXPECT_TRUE(config.startup.image.empty());
-
-    /* A session without an image counts the fixed entries only. */
-    EXPECT_EQ(appbox::NonContentArchiveEntryCount(startup), appbox::kNonContentArchiveEntries);
 }
 
 TEST(Unit_PackService, PackRejectsAStartupImageWhichIsNotThere)
@@ -1778,8 +1808,7 @@ TEST(Unit_PackService, PackCountsTheWhiteoutMarkersInTheProgressTotal)
     ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
     ASSERT_TRUE(model.AddWhiteout("program_files", L"MyApp", L"old.dll", error)) << error;
 
-    const auto expected_total =
-        appbox::NonContentArchiveEntryCount(appbox::StartupScreen{}) + appbox::ContentFileCount(model);
+    const auto expected_total = appbox::kNonContentArchiveEntries + appbox::ContentFileCount(model);
 
     std::size_t seen_total = 0;
     std::size_t max_done = 0;

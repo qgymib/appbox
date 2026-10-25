@@ -555,12 +555,25 @@ static DWORD RunLauncher()
          * is the heavy part: it loads and extracts the patch packages, mounts
          * the layers of the sandbox and mounts its registry. The name it
          * presents is the one the packer wrote into this program, which is the
-         * name of the packaged application.
+         * name of the packaged application, and its image is a resource of this
+         * program as well.
+         *
+         * A payload without the image resource is the normal case of a session
+         * which sets no startup image, so the screen shows the name and the
+         * progress only instead of failing the run.
          */
+        std::string_view startup_image;
+        if (LauncherApp().launcher_config.startup.screen)
+        {
+            std::string image_error;
+            if (!appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_STARTUP_IMAGE, startup_image, image_error))
+            {
+                SPDLOG_DEBUG("the startup screen has no image: {}", image_error);
+            }
+        }
+
         splash = std::make_unique<appbox::SplashScreen>(LauncherApp().launcher_config.startup.screen,
-                                                        appbox::ReadOwnDisplayName(),
-                                                        LauncherApp().sandbox_paths.StartupImageFile(appbox::UTF8ToWide(
-                                                            LauncherApp().launcher_config.startup.image)));
+                                                        appbox::ReadOwnDisplayName(), startup_image);
         LauncherApp().splash = splash.get();
 
         ReportStartupStage(appbox::StartupStage::Preparing, 1.0);

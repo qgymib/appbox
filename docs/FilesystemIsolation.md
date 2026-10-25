@@ -346,8 +346,8 @@ carries:
 
 ```
 <startup file name>                    embedded launcher payload, carries the
-                                       startup configuration as a resource
-app/startup/splash.<extension>         startup image of the session (optional)
+                                       startup configuration and the startup
+                                       image as RCDATA resources
 app/filesystem/isolation.json          isolation modes of the filesystem workspace
 app/filesystem/<layer key>/<import>/... imported folder content
 app/filesystem/<layer key>/<folder>/   folder created in the workspace
@@ -361,9 +361,11 @@ data/cache/sandbox64.dll               released sandbox module (64 bit)
 data/cache/<package>/...               extracted patch package (optional)
 ```
 
-The launcher carries the two sandbox injection modules as resources of its own
-executable and releases them into `data/cache` at every start, so neither the
-archive nor a patch package carries a module file.
+The launcher carries the two sandbox injection modules and, when the session sets
+one, the startup image as resources of its own executable; it releases the
+modules into `data/cache` at every start and decodes the image from its own
+memory, so neither the archive nor a patch package carries a module file or a
+`app/startup` entry.
 
 A folder which was created in the workspace travels as a directory entry of the
 layer of its preset directory, so a preset directory whose folders are the only

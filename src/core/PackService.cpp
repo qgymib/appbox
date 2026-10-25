@@ -3,8 +3,9 @@
 #include "EnvironmentIsolationFile.hpp"
 #include "FilesystemIsolationFile.hpp"
 #include "FilesystemMarker.hpp"
-#include "LauncherConfigResource.hpp"
+#include "LauncherResources.hpp"
 #include "NetworkIsolationFile.hpp"
+#include "PeResourcePatch.hpp"
 #include "PresetDirectory.hpp"
 #include "RegistryHive.hpp"
 #include "RegistryIsolationFile.hpp"
@@ -636,11 +637,6 @@ std::size_t ContentFileCount(const PackModel& model)
     return count;
 }
 
-std::size_t NonContentArchiveEntryCount(const StartupScreen& startup)
-{
-    return kNonContentArchiveEntries + (HasStartupImage(startup) ? 1 : 0);
-}
-
 std::wstring LauncherEntryName(const PackModel& model)
 {
     if (!model.HasStartupFiles())
@@ -680,10 +676,11 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
     }
 
     /*
-     * The startup image is read while the archive is written, so a session
-     * which names a file that is not there is refused before the first entry
-     * is added: the run then reports the file instead of writing an archive
-     * whose launcher cannot show the screen of the session.
+     * The startup image is embedded into the launcher payload, so it is read
+     * before the archive is opened: a session which names a file that is not
+     * there is refused before the first entry is added, and the run reports the
+     * file instead of writing an archive whose launcher cannot show the screen
+     * of the session.
      */
     {
         std::string startup_error;
@@ -693,8 +690,18 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         }
     }
 
+    std::vector<char> startup_image;
+    if (HasStartupImage(startup))
+    {
+        std::string image_error;
+        if (!pe_resource::ReadFileBytes(std::filesystem::path(startup.image), startup_image, image_error))
+        {
+            return image_error;
+        }
+    }
+
     /* Count the files once so the progress callback has a stable total. */
-    const std::size_t total = NonContentArchiveEntryCount(startup) + ContentFileCount(model);
+    const std::size_t total = kNonContentArchiveEntries + ContentFileCount(model);
 
     /*
      * The launcher payload and its configuration are added before the first
@@ -731,13 +738,13 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
 
         /*
          * The startup screen of the session: the flag decides whether the
-         * launcher opens a window of its own while it prepares the sandbox,
-         * and the image names the entry below `app` it presents. A session
-         * which sets no image names none, so the launcher shows the name of
-         * the application and the progress of the run only.
+         * launcher opens a window of its own while it prepares the sandbox.
+         * The image is not part of the document: it is embedded into this
+         * payload as a resource of its own, so a session which sets no image
+         * writes no resource and the launcher shows the name of the
+         * application and the progress of the run only.
          */
         config.startup.screen = startup.enabled;
-        config.startup.image = StartupImageEntryName(startup.image);
 
         for (const auto& file : model.StartupFiles())
         {
@@ -808,20 +815,26 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         }
 
         /*
-         * The run configuration is a resource of the payload as well. It is
-         * written last, after the icon and the version information, so a
-         * resource update of those patches cannot drop it. A failure is fatal:
-         * a launcher without its configuration cannot start the application.
+         * The run configuration and the startup image of the session are
+         * resources of the payload as well. They are written last, after the
+         * icon and the version information, so a resource update of those
+         * patches cannot drop them. A failure is fatal: a launcher without its
+         * configuration cannot start the application.
          */
         {
             const void* const base = payload_image.empty() ? payloads.launcher_bytes : payload_image.data();
             const auto        base_size = payload_image.empty() ? payloads.launcher_size : payload_image.size();
 
+            const std::string_view image_view = startup_image.empty()
+                                                    ? std::string_view()
+                                                    : std::string_view(startup_image.data(), startup_image.size());
+
             std::string config_error;
-            auto        embedded = EmbedLauncherConfig(base, base_size, BuildLauncherConfigJson(config), config_error);
+            auto        embedded =
+                EmbedLauncherResources(base, base_size, BuildLauncherConfigJson(config), image_view, config_error);
             if (embedded.empty())
             {
-                return "the launcher configuration cannot be embedded: " + config_error;
+                return "the launcher resources cannot be embedded: " + config_error;
             }
 
             payload_image = std::move(embedded);
@@ -848,22 +861,6 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
         if (!error.empty())
         {
             return error;
-        }
-
-        /*
-         * The startup image of the session travels below `app` as well: the
-         * launcher reads it from the resources of the archive and decodes it
-         * while it prepares the sandbox, so the file is never copied into the
-         * state directory. A session which sets no image writes no file.
-         */
-        const auto startup_entry = StartupImageEntryName(startup.image);
-        if (!startup_entry.empty())
-        {
-            const auto entry = std::string(layout::kAppDirName) + "/" + startup_entry;
-            if (!writer.AddFileDisk(startup.image, entry, error))
-            {
-                return error;
-            }
         }
 
         if (!writer.Close(error))

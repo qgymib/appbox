@@ -27,32 +27,14 @@ namespace appbox
  *
  * The launcher configuration is not part of the constant: the packer embeds it
  * as a resource of the launcher payload, so it travels with the payload and not
- * as an entry of its own.
+ * as an entry of its own. The startup image of a session is embedded the same
+ * way, so a session which sets one adds no entry either.
  *
  * The two sandbox injection modules are not part of the constant either: the
  * launcher carries them as resources of its own executable and releases them
  * into `data/cache` at every start.
- *
- * The startup image of a session is not part of the constant either, because it
- * is written only while the session sets one: the count both sides use is
- * NonContentArchiveEntryCount(), which adds it to this constant.
  */
 inline constexpr std::size_t kNonContentArchiveEntries = 6;
-
-/**
- * @brief Count the archive entries which do not come from an import.
- *
- * The count covers the fixed entries of a standalone archive (see
- * kNonContentArchiveEntries) plus the startup image of the session, which
- * travels below `app` as well but is written only while the session sets one.
- * The pack run and the caller which prepares the progress dialog derive the
- * total from the same number, so the progress bar describes the archive which
- * is really written.
- *
- * @param[in] startup Startup screen of the session.
- * @return The number of entries which do not come from an import.
- */
-std::size_t NonContentArchiveEntryCount(const StartupScreen& startup);
 
 /**
  * @brief Number of patch archive entries which do not come from an import.
@@ -139,10 +121,9 @@ struct PackPayloads
  * deleting it resets the sandbox to the state the archive carries.
  *
  * ```
- * <launcher entry name>                  launcher payload (payloads.launcher_bytes)
- * <launcher entry name>.json             startups[] = { trigger, auto_start,
- *                                        executable = <layer key>\<import>\<file> }
- * app/startup/splash.png                 startup image of the session (optional)
+ * <launcher entry name>                  launcher payload (payloads.launcher_bytes),
+ *                                        carries the configuration and the
+ *                                        startup image as RCDATA resources
  * app/filesystem/isolation.json          isolation modes of the filesystem
  * app/filesystem/<layer key>/<import>/... imported folder content
  * app/filesystem/<layer key>/<folder>/   folder created inside the workspace
@@ -198,18 +179,18 @@ struct PackPayloads
  * The payloads are supplied by the caller so unit tests can inject fake bytes
  * without a real launcher binary and without real sandbox modules.
  *
- * The startup image of the session travels below `app` as
- * `app/startup/splash.<extension>` and the launcher configuration names it
- * (see `src/core/StartupScreen.hpp`): the launcher decodes the file while it
- * prepares the sandbox and presents it on the startup screen. A session which
- * sets no image packs no file of that name and a configuration which names no
- * image, so the launcher shows the name of the application and the progress of
- * the run only.
+ * The startup image of the session is read by the run and embedded into the
+ * launcher payload as the RCDATA resource `IDR_APPBOX_STARTUP_IMAGE`
+ * (see `src/core/LauncherResources.cpp` and `src/core/StartupScreen.hpp`), so
+ * the archive carries no file of it: the launcher decodes the resource from its
+ * own executable while it prepares the sandbox and presents it on the startup
+ * screen. A session which sets no image embeds no image resource, so the
+ * launcher shows the name of the application and the progress of the run only.
  *
  * The progress total covers the files of the imported folders plus the
- * individually imported files and NonContentArchiveEntryCount(), so the
+ * individually imported files and kNonContentArchiveEntries, so the
  * callback receives a stable upper bound for the whole run. The launcher
- * payload and its configuration are reported as the preparing stage before the
+ * payload and its resources are reported as the preparing stage before the
  * first imported file is packed.
  *
  * Every report names the file which is being packed through
@@ -252,11 +233,11 @@ struct PackPayloads
  *                     program the session inherits them from and written into
  *                     the launcher payload.
  * @param[in] startup Startup screen of the session: whether the launcher shows
- *                    one and the image it presents. The image is written below
- *                    `app` as `app/startup/splash.<extension>`, and the
- *                    launcher configuration names it; a session which sets no
- *                    image packs a launcher which shows the name of the
- *                    application and the progress of the run only.
+ *                    one and the image it presents. The image is read and
+ *                    embedded into the launcher payload as a resource of its
+ *                    own (see `IDR_APPBOX_STARTUP_IMAGE`); a session which sets
+ *                    no image embeds none, so the launcher shows the name of
+ *                    the application and the progress of the run only.
  * @param[in] payloads Embedded launcher program, written into the archive root;
  *                     the sandbox injection modules are resources of that
  *                     launcher and do not travel separately.

@@ -23,5 +23,14 @@ IDI_ICON1 ICON DISCARDABLE "../docs/icon.ico"
 // live in a file which CMake generates at configure time, because the modules
 // are build products of this build tree (see launcher/EmbeddedResourceIds.h,
 // cmake/LauncherResources.rc.in and launcher/CMakeLists.txt).
+//
+// The packer writes two more resources into the payload of the launcher when it
+// packs an archive: the run configuration (IDR_APPBOX_LAUNCHER_CONFIG) and, when
+// the session sets one, the startup image (IDR_APPBOX_STARTUP_IMAGE), both as
+// RCDATA (see src/core/LauncherResources.cpp). Neither is declared here: a bare
+// launcher carries no such resource, so a session without an image needs no
+// resource at all. Their identifiers live in launcher/EmbeddedResourceIds.h, so
+// the packer which writes them and the launcher which reads them back agree on
+// the numbers.
 #include "EmbeddedResourceIds.h"
 #include "LauncherResources.generated.rc"

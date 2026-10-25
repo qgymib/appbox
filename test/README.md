@@ -439,7 +439,8 @@ The unit tests of the packer:
   independently from 101: the packer carries the launcher program as its only
   RCDATA resource, while the base launcher carries as its only RCDATA resources
   the two modules which every run releases into `data/cache`; the packer adds
-  the configuration resource (`IDR_APPBOX_LAUNCHER_CONFIG`) to the payload at
+  the configuration resource (`IDR_APPBOX_LAUNCHER_CONFIG`) and, when the session
+  sets one, the startup image (`IDR_APPBOX_STARTUP_IMAGE`) to the payload at
   pack time. Every
   payload is read from the executable opened as a data file and compared byte for
   byte with the
@@ -449,11 +450,11 @@ The unit tests of the packer:
   is the only automated coverage of the two resource scripts of the build.
 * `test/unit/PackService.cpp` — the archive carries the hive, the isolation
   file of the registry, the isolation file of the filesystem workspace, the
-  isolation file of the network workspace, the isolation file of the
-  environment workspace and, for
-  a session which sets one, the startup image of the launcher, which the
-  configuration names and which the progress total counts like every other
-  entry which does not come from an import; the run refuses a session whose
+  isolation file of the network workspace and the isolation file of the
+  environment workspace; a session which sets a startup image embeds its bytes
+  into the launcher payload as the RCDATA resource `IDR_APPBOX_STARTUP_IMAGE`
+  instead of writing an `app/startup` entry, and the progress total does not
+  count it; the run refuses a session whose
   image is missing or of a format the launcher cannot decode before the first
   entry is written, and
   the launcher carries the file properties of the program the metadata of the
@@ -480,14 +481,15 @@ The unit tests of the packer:
   written as well, in both products, and the markers are part of the total the
   progress reports announce, so the bar of a `Build and Run` run does not
   overrun while the archive is extracted.
-* `test/unit/LauncherConfigResource.cpp` — the run configuration as a resource
-  of the launcher payload: the document is UTF-8 JSON without a byte order mark
-  and keeps characters outside ASCII as their UTF-8 bytes instead of `\uXXXX`
+* `test/unit/LauncherResources.cpp` — the resources of the launcher payload: the
+  run configuration is a UTF-8 JSON document without a byte order mark which
+  keeps characters outside ASCII as their UTF-8 bytes instead of `\uXXXX`
   escapes, the packer writes it as RCDATA `IDR_APPBOX_LAUNCHER_CONFIG` and the
-  launcher reads it back, a second pack run replaces the earlier resource instead
-  of appending a copy, and a payload which is not a PE image or a configuration
-  which is empty is refused with a reason instead of producing an archive which
-  cannot run.
+  launcher reads it back, the startup image is written as
+  `IDR_APPBOX_STARTUP_IMAGE` byte for byte by the very same update session, a
+  second pack run replaces the earlier configuration instead of appending a copy,
+  and a payload which is not a PE image or a configuration which is empty is
+  refused with a reason instead of producing an archive which cannot run.
 * `test/unit/PackModel.cpp` — the editable model of a packer session: the
   import of a host folder and of individual files, the rules of the import
   names and of the startable files (a program, a batch file, a command script and
@@ -852,9 +854,8 @@ executable carries itself:
 * `test/unit/StartupScreen.cpp` — the startup screen of a packer session: the
   session which shows the screen without an image, the formats the launcher can
   decode (`.png`, `.jpg`, `.jpeg` and `.bmp`, compared ignoring the case), the
-  extension of a file name which is not confused with a dot of a directory, the
-  archive entry of an image (`startup/splash.<extension>`, which is the name the
-  launcher configuration carries), and the validation of a pack run: a session
+  extension of a file name which is not confused with a dot of a directory, and
+  the validation of a pack run: a session
   without an image, an image which exists, an image which is missing, a file
   which the launcher cannot decode and a folder which carries the name of an
   image.
@@ -866,12 +867,12 @@ executable carries itself:
   and stays inside the work area, an incomplete image size, the scaling of the
   margins and of the bar with the resolution of the monitor, and an empty work
   area which still yields a usable screen.
-* `test/unit/StartupImage.cpp` — the decoder of a startup image, which is the
-  imaging component of Windows: a bitmap written by the case, a PNG with
+* `test/unit/StartupImage.cpp` — the decoder of the bytes of a startup image
+  resource, which is the imaging component of Windows: a bitmap written by the
+  case, a PNG with
   transparency written by the encoder of the same component, the premultiplied
   pixels the screen blends with, a second image which replaces the first, and
-  the failures of a file which is not an image, of a file which is not there and
-  of an empty path.
+  the failures of bytes which are not an image and of an empty payload.
 * `test/unit/VersionInfo.cpp` — the name the startup screen presents: the
   `ProductName` of a program, the `FileDescription` of a program which carries
   no product name, the file name of a program without a version resource at
@@ -1599,10 +1600,10 @@ The startup screen cases (`test/e2e/Launcher_StartupScreen.cpp`) pin the screen
 the launcher shows while it prepares the sandbox: it presents the name of the
 packaged application, the startup image of the session and the progress of the
 run, and it disappears as soon as the processes of the run were started. The
-image is a resource of the archive below `app` (`app/startup/splash.<extension>`,
-see `src/core/StartupScreen.*`), and the configuration of the run names it
-(`startup.image`); a session which turns the screen off (`startup.screen`) runs
-without a window at all.
+image is a resource of the launcher payload itself
+(`IDR_APPBOX_STARTUP_IMAGE`, see `src/core/LauncherResources.*` and
+`launcher/EmbeddedResourceIds.h`); a session which turns the screen off
+(`startup.screen`) runs without a window at all.
 
 The cases read the log the launcher writes into the directory of the run, which
 reports that the screen was shown, whether it carried its image and that it was
@@ -1612,12 +1613,16 @@ the only ones which turn the screen on, because the harness turns it off for
 every other case: a window which pops up for every case would cover the work of
 the user, like the console window the harness hides.
 
+A case which checks the image patches a copy of the launcher under test with
+`EmbedLauncherResources()`, which is the very call a pack run uses, and starts
+that copy with `ProbeStartupRun(..., launcher_path)`.
+
 | Case | Steps | Expected |
 | --- | --- | --- |
-| `TheScreenIsShownWhileTheApplicationStarts` | the resources carry `app/startup/splash.bmp` of 8x4 pixels and the configuration names it | the startup file is started, the launcher exits with zero, and the log reports a shown screen which decoded the image of 8x4 pixels and which was closed again |
-| `AScreenWithoutItsImageKeepsTheRunAlive` | the configuration names an image which does not exist | the run is not refused, and the log reports a screen which is shown without its image |
-| `AnImageWhichCannotBeDecodedKeepsTheRunAlive` | the file of the image holds text instead of an image | the run is not refused, and the log reports a screen which is shown without its image |
-| `ASessionWithoutAScreenCreatesNoWindow` | the configuration turns the screen off | the startup file is started, and the log reports neither a shown nor a closed screen |
+| `TheScreenIsShownWhileTheApplicationStarts` | the launcher payload carries an image resource of an 8x4 bitmap | the startup file is started, the launcher exits with zero, and the log reports a shown screen which decoded the image of 8x4 pixels and which was closed again |
+| `AScreenWithoutAnImageResourceKeepsTheRunAlive` | the unpatched launcher payload carries no image resource | the run is not refused, and the log reports a screen which is shown with an image of 0x0 pixels |
+| `AnImageWhichCannotBeDecodedKeepsTheRunAlive` | the image resource holds text instead of an image | the run is not refused, and the log reports a screen which is shown without its image |
+| `ASessionWithoutAScreenCreatesNoWindow` | the payload carries the image resource and the configuration turns the screen off | the startup file is started, and the log reports neither a shown nor a closed screen |
 
 ### Launcher log cases
 

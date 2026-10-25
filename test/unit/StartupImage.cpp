@@ -1,15 +1,33 @@
 #include <gtest/gtest.h>
 #include "utils/StartupImage.hpp"
+#include "utils/ReadFileFull.hpp"
 #include "utils/RealFsFolder.hpp"
 #include "utils/TestBitmap.hpp"
 #include <wincodec.h>
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace
 {
+
+/**
+ * @brief Read a file into the bytes the decoder consumes.
+ *
+ * The launcher decodes the bytes of a resource of its own executable, so the
+ * cases read the files they write instead of naming them.
+ *
+ * @param[in] path Host path of the file.
+ * @param[out] data The bytes of the file, empty on failure.
+ * @return true when the file was read.
+ */
+bool ReadBytes(const std::wstring& path, std::string& data)
+{
+    data.clear();
+    return appbox::test::ReadFileFull(path, data) == 0;
+}
 
 /**
  * @brief The interfaces the case uses to write a PNG file.
@@ -218,10 +236,13 @@ TEST(Unit_StartupImage, DecodesABitmapFile)
     const appbox::test::RealFsFolder folder(L"#USERPROFILE#", L"appbox-startup-image-bmp");
     ASSERT_TRUE(appbox::test::WriteTestBitmap(folder.Get() / L"logo.bmp", 4, 3, 0, 0, 0));
 
+    std::string bytes;
+    ASSERT_TRUE(ReadBytes((folder.Get() / L"logo.bmp").wstring(), bytes));
+
     appbox::StartupImage image;
     std::string          error = "not cleared";
 
-    ASSERT_TRUE(appbox::LoadStartupImage((folder.Get() / L"logo.bmp").wstring(), image, error)) << error;
+    ASSERT_TRUE(appbox::LoadStartupImage(bytes, image, error)) << error;
     EXPECT_TRUE(error.empty());
     EXPECT_TRUE(image.IsValid());
     EXPECT_EQ(image.width, 4);
@@ -234,9 +255,12 @@ TEST(Unit_StartupImage, DecodesAPngFileWithTransparency)
     const auto                       path = (folder.Get() / L"logo.png").wstring();
     ASSERT_TRUE(WritePng(path, 5, 4, 255, 128));
 
+    std::string bytes;
+    ASSERT_TRUE(ReadBytes(path, bytes));
+
     appbox::StartupImage image;
     std::string          error;
-    ASSERT_TRUE(appbox::LoadStartupImage(path, image, error)) << error;
+    ASSERT_TRUE(appbox::LoadStartupImage(bytes, image, error)) << error;
 
     EXPECT_EQ(image.width, 5);
     EXPECT_EQ(image.height, 4);
@@ -259,47 +283,37 @@ TEST(Unit_StartupImage, ASecondImageReplacesTheFirst)
     ASSERT_TRUE(appbox::test::WriteTestBitmap(folder.Get() / L"first.bmp", 2, 2, 0, 0, 0));
     ASSERT_TRUE(appbox::test::WriteTestBitmap(folder.Get() / L"second.bmp", 6, 5, 0, 0, 0));
 
+    std::string first;
+    std::string second;
+    ASSERT_TRUE(ReadBytes((folder.Get() / L"first.bmp").wstring(), first));
+    ASSERT_TRUE(ReadBytes((folder.Get() / L"second.bmp").wstring(), second));
+
     appbox::StartupImage image;
     std::string          error;
-    ASSERT_TRUE(appbox::LoadStartupImage((folder.Get() / L"first.bmp").wstring(), image, error)) << error;
+    ASSERT_TRUE(appbox::LoadStartupImage(first, image, error)) << error;
     EXPECT_EQ(image.width, 2);
 
-    ASSERT_TRUE(appbox::LoadStartupImage((folder.Get() / L"second.bmp").wstring(), image, error)) << error;
+    ASSERT_TRUE(appbox::LoadStartupImage(second, image, error)) << error;
     EXPECT_EQ(image.width, 6);
     EXPECT_EQ(image.height, 5);
 }
 
-TEST(Unit_StartupImage, RejectsAFileWhichIsNotAnImage)
+TEST(Unit_StartupImage, RejectsDataWhichIsNotAnImage)
 {
-    const appbox::test::RealFsFolder folder(L"#USERPROFILE#", L"appbox-startup-image-broken");
-    ASSERT_TRUE(folder.WriteFile(L"logo.png", "this is not an image at all"));
-
     appbox::StartupImage image;
     std::string          error;
 
-    EXPECT_FALSE(appbox::LoadStartupImage((folder.Get() / L"logo.png").wstring(), image, error));
+    EXPECT_FALSE(appbox::LoadStartupImage("this is not an image at all", image, error));
     EXPECT_FALSE(error.empty());
     EXPECT_FALSE(image.IsValid());
 }
 
-TEST(Unit_StartupImage, RejectsAFileWhichIsNotThere)
-{
-    const appbox::test::RealFsFolder folder(L"#USERPROFILE#", L"appbox-startup-image-missing");
-
-    appbox::StartupImage image;
-    std::string          error;
-
-    EXPECT_FALSE(appbox::LoadStartupImage((folder.Get() / L"missing.png").wstring(), image, error));
-    EXPECT_FALSE(error.empty());
-    EXPECT_FALSE(image.IsValid());
-}
-
-TEST(Unit_StartupImage, RejectsAnEmptyPath)
+TEST(Unit_StartupImage, RejectsEmptyData)
 {
     appbox::StartupImage image;
     std::string          error;
 
-    EXPECT_FALSE(appbox::LoadStartupImage(L"", image, error));
+    EXPECT_FALSE(appbox::LoadStartupImage(std::string_view(), image, error));
     EXPECT_EQ(error, "no startup image was given");
     EXPECT_FALSE(image.IsValid());
 }

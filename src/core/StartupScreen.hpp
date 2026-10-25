@@ -17,14 +17,14 @@ namespace appbox
  *
  * The session stores two things only: whether the screen is shown at all and
  * the host path of the image the user selected. The image itself is read by
- * the pack run, which writes it into the archive; the name of the application
- * is not part of the session, because the launcher reads it from the file
- * properties the packer writes into itself (see the `Metadata` tab of the
- * Settings workspace).
+ * the pack run, which embeds its bytes into the launcher payload as the RCDATA
+ * resource `IDR_APPBOX_STARTUP_IMAGE` (see `src/core/LauncherResources.cpp`);
+ * the name of the application is not part of the session, because the launcher
+ * reads it from the file properties the packer writes into itself (see the
+ * `Metadata` tab of the Settings workspace).
  *
  * The structure is the counterpart of `LauncherStartupScreen` of
- * `launcher/Config.hpp`, which carries the resolved image entry and the flag
- * into the launcher.
+ * `launcher/Config.hpp`, which carries the flag into the launcher.
  */
 struct StartupScreen
 {
@@ -40,8 +40,8 @@ struct StartupScreen
      * @brief Host path of the startup image, empty while none is set.
      *
      * The path is stored as it was selected on the machine which edited the
-     * session; the file is read by the pack run, which stores it in the archive
-     * under StartupImageEntryName().
+     * session; the file is read by the pack run, which embeds its bytes into the
+     * launcher payload as the startup image resource.
      */
     std::wstring image;
 
@@ -98,41 +98,12 @@ bool IsSupportedStartupImage(const std::wstring& path);
 bool HasStartupImage(const StartupScreen& screen);
 
 /**
- * @brief Get the file name of the startup image inside the startup directory.
- *
- * The image is stored under the base name of the archive layout with the
- * extension of the selected file, so a session which selects `logo.PNG` packs
- * `splash.png`: the launcher configuration names one entry whatever format the
- * user picked.
- *
- * @param[in] host_path Host path of the selected image.
- * @return The file name, e.g. `L"splash.png"`; empty when the path carries no
- *         supported extension.
- */
-std::wstring StartupImageFileName(const std::wstring& host_path);
-
-/**
- * @brief Get the archive entry of the startup image, relative to the resource
- *        root.
- *
- * The name is the one the launcher configuration carries and the one the pack
- * run writes below `app`, e.g. `startup/splash.png`. It is pure ASCII, because
- * it is composed of the names of the archive layout and the extension of the
- * selected file.
- *
- * @param[in] host_path Host path of the selected image.
- * @return The entry name, e.g. `"startup/splash.png"`; empty when the path
- *         carries no supported extension.
- */
-std::string StartupImageEntryName(const std::wstring& host_path);
-
-/**
  * @brief Validate the startup screen of a session before a pack run.
  *
  * A session without an image is valid: the launcher then shows the name of the
  * application and the progress of the run only. A session which names an image
- * has to name a regular file the launcher can decode, because the pack run
- * reads the file while it writes the archive.
+ * has to name a regular file the launcher can decode, because the pack run reads
+ * the file to embed its bytes into the launcher payload.
  *
  * @param[in] screen The startup screen of the session.
  * @param[out] error Description of the failure, empty when the screen is valid.

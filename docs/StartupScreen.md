@@ -8,12 +8,6 @@ window which presents the name of the packaged application, the startup image of
 the session and the progress of the run, so a user sees that the program is
 being prepared instead of a launcher which seems to do nothing.
 
-> **Implementation status**: the `Startup` tab of the Settings workspace, the
-> archive entry of the startup image, the launcher configuration it is named in
-> and the screen of the launcher are implemented, including the stages of the
-> progress bar, the tolerance towards an image which is missing or cannot be
-> decoded and the end-to-end cases of `test/e2e/Launcher_StartupScreen.cpp`.
-
 ## Settings workspace
 
 The `Startup` tab of the Settings workspace holds the startup screen of the
@@ -30,19 +24,23 @@ A patch project cannot set a startup screen: a patch package carries no launcher
 which could show one, so the tab is disabled and says so, exactly like the
 `Metadata` tab.
 
-## Archive layout
+## Launcher resources
 
-The image travels in the read-only resources of the archive, below `app`:
+The image does not travel as a file of the archive: the pack run reads the bytes
+of the file the session names and embeds them as an RCDATA resource of the
+launcher payload itself (see `src/core/LauncherResources.cpp`). The launcher
+carries two resources of its own, both of them declared in
+[`launcher/EmbeddedResourceIds.h`](../launcher/EmbeddedResourceIds.h):
 
-```
-app/startup/splash.png       startup image of the session (optional)
-```
+| Resource | Content |
+| --- | --- |
+| `IDR_APPBOX_LAUNCHER_CONFIG` | The UTF-8 JSON document of the run configuration, written by every pack run. |
+| `IDR_APPBOX_STARTUP_IMAGE` | The bytes of the startup image, written when the session sets one. |
 
-The file name is the base name of the archive layout
-([`common/SandboxLayout.hpp`](../common/SandboxLayout.hpp)) with the extension
-of the file the user selected: a session which selects `logo.PNG` packs
-`app/startup/splash.png`, so the launcher configuration names one entry whatever
-format the user picked. A session without an image packs no file of that name.
+A session without an image writes no image resource at all: the payload the
+packer starts from is the launcher as it was built, which never carries one, so
+there is nothing to replace or drop. The archive itself carries no `app/startup`
+entry.
 
 The launcher configuration carries the screen of the run:
 
@@ -50,8 +48,7 @@ The launcher configuration carries the screen of the run:
 {
   "hide_console": false,
   "startup": {
-    "screen": true,
-    "image": "startup/splash.png"
+    "screen": true
   },
   "startups": []
 }
@@ -60,9 +57,11 @@ The launcher configuration carries the screen of the run:
 - `screen` decides whether a window is opened at all. A configuration which does
   not name the member shows the screen, which is what an archive packed before
   the member existed describes.
-- `image` is the path of the image relative to the resource root, so the
-  launcher resolves it below `app`; an empty value means that the screen
-  presents the name of the application and the progress of the run only.
+- The image is not part of the document: the resource is the only signal of a
+  session which presents one, so a payload without
+  `IDR_APPBOX_STARTUP_IMAGE` shows the name of the application and the progress
+  of the run only. A document which still names the removed `image` member of an
+  earlier version parses as well, because unknown members are ignored.
 
 ## Behavior
 
@@ -71,11 +70,14 @@ The launcher configuration carries the screen of the run:
   (see `src/core/ApplicationMetadata.*`); a program without a product name falls
   back to its `FileDescription` and finally to its own file name without the
   extension.
-- **Image**: the file is decoded once with the imaging component of Windows
+- **Image**: the resource is decoded once with the imaging component of Windows
   (WIC, a component of the operating system) into premultiplied BGRA pixels, so
-  a logo with transparency keeps it. An image which is missing, which cannot be
-  decoded or whose format is unknown leaves the screen without an image and is
-  reported in the log of the run; it never refuses the run.
+  a logo with transparency keeps it. The decoder reads the bytes from memory
+  instead of a file and sniffs their container, so the format of the selected
+  file does not have to be spelled anywhere. A payload without the resource is
+  the normal session without an image; an image resource which cannot be
+  decoded is reported in the log of the run and leaves the screen without an
+  image. Neither case ever refuses the run.
 - **Layout**: the name is centered on top, the image below it and the progress
   bar at the bottom. The image keeps its aspect ratio and is scaled down while
   it does not fit into 60 percent of the work area of the monitor, so a large
@@ -96,10 +98,10 @@ The launcher configuration carries the screen of the run:
 
 ## Known gaps and limitations
 
-1. A patch package cannot carry a startup image of its own: the launcher
-   configuration lives in the standalone archive, so a patch would have to
-   override the image of the archive under the very same name. The packer
-   offers no way to do that.
+1. A patch package cannot change a launcher resource: the configuration and the
+   startup image live in the payload of the standalone archive, so a package
+   which is dropped into its `patch` directory cannot replace either of them.
+   The packer offers no way to do that.
 2. The progress inside one patch package is reported per extracted file, but the
    packages which are already in the cache of a run are counted as a single
    step: the bar advances without a report of their own while they are read.

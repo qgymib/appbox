@@ -186,7 +186,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/FilesystemIsolationModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/FilesystemTree.cpp"
     "${APPBOX_SOURCE_DIR}/core/KnownFolderReference.cpp"
-    "${APPBOX_SOURCE_DIR}/core/LauncherConfigResource.cpp"
+    "${APPBOX_SOURCE_DIR}/core/LauncherResources.cpp"
     "${APPBOX_SOURCE_DIR}/core/NetworkIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/NetworkModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/PackModel.cpp"

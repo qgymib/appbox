@@ -1,10 +1,12 @@
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
+#include "utils/LauncherPath.hpp"
 #include "utils/ProbeCall.hpp"
+#include "utils/ReadFileFull.hpp"
 #include "utils/TestBitmap.hpp"
+#include "utils/WriteFileFull.hpp"
 #include "launcher/Config.hpp"
-#include "src/core/StartupScreen.hpp"
-#include "SandboxLayout.hpp"
+#include "src/core/LauncherResources.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -49,59 +51,84 @@ appbox::LauncherConfig BuildConfig(const std::filesystem::path& root)
  * The arguments of the file carry its marker, which the probe process of the
  * case reports back: the marker tells that the launcher started the file.
  *
- * @param[in,out] config Configuration to extend.
+ * @param[in,out] launcher_config Configuration to extend.
  * @param[in] trigger Trigger and marker of the startup file.
  */
-void AddStartup(appbox::LauncherConfig& config, const std::string& trigger)
+void AddStartup(appbox::LauncherConfig& launcher_config, const std::string& trigger)
 {
     appbox::LauncherStartup startup;
     startup.trigger = trigger;
     startup.auto_start = true;
     startup.arguments = { "--startup_marker", trigger };
-    config.startups.push_back(std::move(startup));
+    launcher_config.startups.push_back(std::move(startup));
 }
 
 /**
- * @brief Get the folder which carries the startup image of a case.
- * @param[in] root Root directory of the filesystem of the case.
- * @return The path of the startup folder below `app`.
- */
-std::filesystem::path StartupFolder(const std::filesystem::path& root)
-{
-    return root / appbox::layout::kAppDirNameW / appbox::layout::kStartupDirNameW;
-}
-
-/**
- * @brief Write the startup image of a case.
+ * @brief Build the bytes of a startup image of a case.
  *
- * The image is stored under the name the archive layout gives it, so the
- * configuration of the case names the entry the launcher resolves.
+ * The image is a bitmap of the size the case names, which the screen reports in
+ * its log line: the size tells that the bytes were decoded.
  *
  * @param[in] root Root directory of the filesystem of the case.
- * @param[in] width Width of the image in pixels.
- * @param[in] height Height of the image in pixels.
- * @param[out] entry Entry name the configuration has to carry.
- * @return true when the image was written.
+ * @param[out] bytes The bytes of the image, empty on failure.
+ * @return true when the image was written and read back.
  */
-bool WriteStartupImage(const std::filesystem::path& root, int width, int height, std::string& entry)
+bool BitmapBytes(const std::filesystem::path& root, std::string& bytes)
 {
-    const auto folder = StartupFolder(root);
+    bytes.clear();
 
-    std::error_code ec;
-    std::filesystem::create_directories(folder, ec);
-    if (ec)
+    const auto image = root / L"logo.bmp";
+    if (!appbox::test::WriteTestBitmap(image, 8, 4, 10, 20, 30))
     {
         return false;
     }
 
-    const auto image = folder / (std::wstring(appbox::layout::kStartupImageBaseNameW) + L".bmp");
-    if (!appbox::test::WriteTestBitmap(image, width, height, 10, 20, 30))
+    return appbox::test::ReadFileFull(image.wstring(), bytes) == 0;
+}
+
+/**
+ * @brief Build a launcher whose image carries the resources of a session.
+ *
+ * The payload is the launcher under test with the configuration of the case and
+ * the bytes of the startup image embedded into it, which is what a pack run
+ * produces (see `src/core/LauncherResources.cpp`). The program is written into
+ * the working directory of the case, so the run of the case starts it beside
+ * its own state.
+ *
+ * @param[in] root Root directory of the filesystem of the case.
+ * @param[in] launcher_config Configuration of the case.
+ * @param[in] image_bytes Bytes of the startup image, empty for a session
+ *                        without one.
+ * @param[out] error Description of the failure, empty on success.
+ * @return Path of the patched launcher, empty on failure.
+ */
+std::wstring MakeLauncherWithImage(const std::filesystem::path& root, const appbox::LauncherConfig& launcher_config,
+                                   const std::string& image_bytes, std::string& error)
+{
+    error.clear();
+
+    std::string payload;
+    if (appbox::test::ReadFileFull(appbox::test::LauncherPath(), payload) != 0)
     {
-        return false;
+        error = "the launcher payload cannot be read";
+        return {};
     }
 
-    entry = appbox::StartupImageEntryName(image.wstring());
-    return !entry.empty();
+    const auto patched = appbox::EmbedLauncherResources(
+        payload.data(), payload.size(), appbox::BuildLauncherConfigJson(launcher_config), image_bytes, error);
+    if (patched.empty())
+    {
+        return {};
+    }
+
+    const auto target = root / L"launcher-with-image.exe";
+    if (appbox::test::WriteFileFull(target.wstring(), std::string(patched.begin(), patched.end())) != 0)
+    {
+        error = "the patched launcher cannot be written";
+        return {};
+    }
+
+    return target.wstring();
 }
 
 /**
@@ -143,27 +170,31 @@ std::string ReadLog(const std::filesystem::path& root)
 
 /**
  * Condition:
- * 1. The configuration holds one startup file and a startup screen which
- *    presents an image of `app/startup/splash.bmp`.
- * 2. The launcher runs with the startup screen turned on.
+ * 1. The launcher payload carries the startup image resource of an 8x4 bitmap.
+ * 2. The configuration holds one startup file whose startup screen is on.
  *
  * Expected:
  * 1. The startup file is started as it is without a screen, and the launcher
  *    exits with its exit code (zero).
  * 2. The screen was shown while the run prepared the sandbox and it was closed
  *    once the process of the run was started.
- * 3. The screen decoded the image of the session, which the log reports with
- *    the size of that image.
+ * 3. The screen decoded the image resource, which the log reports with the size
+ *    of that image.
  */
 TEST_F(E2E_Launcher_StartupScreen, TheScreenIsShownWhileTheApplicationStarts)
 {
-    auto        config = BuildConfig(GetCWD());
-    std::string entry;
-    ASSERT_TRUE(WriteStartupImage(GetCWD(), 8, 4, entry)) << entry;
-    config.startup.image = entry;
-    AddStartup(config, "app");
+    auto launcher_config = BuildConfig(GetCWD());
+    launcher_config.startup.screen = true;
+    AddStartup(launcher_config, "app");
 
-    const auto run = ProbeStartupRun(GetCWDString(), config, "", true);
+    std::string bytes;
+    ASSERT_TRUE(BitmapBytes(GetCWD(), bytes));
+
+    std::string error;
+    const auto  launcher = MakeLauncherWithImage(GetCWD(), launcher_config, bytes, error);
+    ASSERT_FALSE(launcher.empty()) << error;
+
+    const auto run = ProbeStartupRun(GetCWDString(), launcher_config, "", true, LogRun{}, false, launcher);
 
     EXPECT_EQ(run.exit_code, 0u);
     EXPECT_EQ(run.started, std::vector<std::string>({ "app" }));
@@ -176,43 +207,39 @@ TEST_F(E2E_Launcher_StartupScreen, TheScreenIsShownWhileTheApplicationStarts)
 
 /**
  * Condition:
- * 1. The configuration names a startup image which does not exist.
- * 2. The launcher runs with the startup screen turned on.
+ * 1. The launcher payload carries no startup image resource at all, which is
+ *    the payload of a session without an image.
+ * 2. The configuration holds one startup file whose startup screen is on.
  *
  * Expected:
  * 1. The run is not refused: the startup file is started and the launcher
  *    exits with its exit code (zero).
- * 2. The screen is shown without an image, which the log reports, so the name
- *    of the application and the progress stay visible.
+ * 2. The screen is shown without an image, which the log reports with an image
+ *    size of zero, so the name of the application and the progress stay
+ *    visible.
  */
-TEST_F(E2E_Launcher_StartupScreen, AScreenWithoutItsImageKeepsTheRunAlive)
+TEST_F(E2E_Launcher_StartupScreen, AScreenWithoutAnImageResourceKeepsTheRunAlive)
 {
-    auto        config = BuildConfig(GetCWD());
-    std::string entry;
-    ASSERT_TRUE(WriteStartupImage(GetCWD(), 8, 4, entry));
-    config.startup.image = entry;
+    auto launcher_config = BuildConfig(GetCWD());
+    launcher_config.startup.screen = true;
+    AddStartup(launcher_config, "app");
 
-    /* The image of the session is dropped, so the file is not there anymore. */
-    std::error_code ec;
-    std::filesystem::remove_all(StartupFolder(GetCWD()), ec);
-
-    AddStartup(config, "app");
-
-    const auto run = ProbeStartupRun(GetCWDString(), config, "", true);
+    const auto run = ProbeStartupRun(GetCWDString(), launcher_config, "", true);
 
     EXPECT_EQ(run.exit_code, 0u);
     EXPECT_EQ(run.started, std::vector<std::string>({ "app" }));
 
     const auto log = ReadLog(GetCWD());
     EXPECT_NE(log.find("the startup screen is shown"), std::string::npos) << log;
-    EXPECT_NE(log.find("without its image"), std::string::npos) << log;
+    EXPECT_NE(log.find(", image 0x0)"), std::string::npos) << log;
     EXPECT_NE(log.find("the startup screen is closed"), std::string::npos) << log;
 }
 
 /**
  * Condition:
- * 1. The configuration names a startup image which is not an image at all.
- * 2. The launcher runs with the startup screen turned on.
+ * 1. The launcher payload carries a startup image resource which is not an
+ *    image at all.
+ * 2. The configuration holds one startup file whose startup screen is on.
  *
  * Expected:
  * 1. The run is not refused: the startup file is started and the launcher
@@ -221,22 +248,15 @@ TEST_F(E2E_Launcher_StartupScreen, AScreenWithoutItsImageKeepsTheRunAlive)
  */
 TEST_F(E2E_Launcher_StartupScreen, AnImageWhichCannotBeDecodedKeepsTheRunAlive)
 {
-    auto        config = BuildConfig(GetCWD());
-    std::string entry;
-    ASSERT_TRUE(WriteStartupImage(GetCWD(), 8, 4, entry));
-    config.startup.image = entry;
+    auto launcher_config = BuildConfig(GetCWD());
+    launcher_config.startup.screen = true;
+    AddStartup(launcher_config, "app");
 
-    /* The file keeps the name of an image, but it holds no image. */
-    const auto image = StartupFolder(GetCWD()) / (std::wstring(appbox::layout::kStartupImageBaseNameW) + L".bmp");
-    {
-        std::ofstream stream(image, std::ios::binary | std::ios::trunc);
-        ASSERT_TRUE(stream.is_open());
-        stream << "this is not an image at all";
-    }
+    std::string error;
+    const auto  launcher = MakeLauncherWithImage(GetCWD(), launcher_config, "this is not an image at all", error);
+    ASSERT_FALSE(launcher.empty()) << error;
 
-    AddStartup(config, "app");
-
-    const auto run = ProbeStartupRun(GetCWDString(), config, "", true);
+    const auto run = ProbeStartupRun(GetCWDString(), launcher_config, "", true, LogRun{}, false, launcher);
 
     EXPECT_EQ(run.exit_code, 0u);
     EXPECT_EQ(run.started, std::vector<std::string>({ "app" }));
@@ -248,8 +268,8 @@ TEST_F(E2E_Launcher_StartupScreen, AnImageWhichCannotBeDecodedKeepsTheRunAlive)
 
 /**
  * Condition:
- * 1. The configuration holds one startup file and a startup image.
- * 2. The session turns the startup screen off.
+ * 1. The launcher payload carries the startup image resource of a case.
+ * 2. The configuration holds one startup file and turns the startup screen off.
  *
  * Expected:
  * 1. The startup file is started and the launcher exits with its exit code
@@ -260,14 +280,18 @@ TEST_F(E2E_Launcher_StartupScreen, AnImageWhichCannotBeDecodedKeepsTheRunAlive)
  */
 TEST_F(E2E_Launcher_StartupScreen, ASessionWithoutAScreenCreatesNoWindow)
 {
-    auto        config = BuildConfig(GetCWD());
-    std::string entry;
-    ASSERT_TRUE(WriteStartupImage(GetCWD(), 8, 4, entry));
-    config.startup.image = entry;
-    config.startup.screen = false;
-    AddStartup(config, "app");
+    auto launcher_config = BuildConfig(GetCWD());
+    launcher_config.startup.screen = false;
+    AddStartup(launcher_config, "app");
 
-    const auto run = ProbeStartupRun(GetCWDString(), config, "", false);
+    std::string bytes;
+    ASSERT_TRUE(BitmapBytes(GetCWD(), bytes));
+
+    std::string error;
+    const auto  launcher = MakeLauncherWithImage(GetCWD(), launcher_config, bytes, error);
+    ASSERT_FALSE(launcher.empty()) << error;
+
+    const auto run = ProbeStartupRun(GetCWDString(), launcher_config, "", false, LogRun{}, false, launcher);
 
     EXPECT_EQ(run.exit_code, 0u);
     EXPECT_EQ(run.started, std::vector<std::string>({ "app" }));

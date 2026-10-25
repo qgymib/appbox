@@ -3,6 +3,7 @@
 
 #include <windows.h>
 #include <string>
+#include <string_view>
 #include "utils/StartupImage.hpp"
 #include "utils/StartupLayout.hpp"
 
@@ -25,9 +26,9 @@ namespace appbox
  * progress through SetStage() therefore keeps the screen alive while it works.
  *
  * A screen which is turned off, whose window cannot be created (a run without
- * an interactive window station) or whose image cannot be decoded is a no-op:
- * every method returns immediately, so a failure of the screen never fails the
- * run.
+ * an interactive window station) or whose image resource cannot be decoded is a
+ * no-op: every method returns immediately, so a failure of the screen never
+ * fails the run.
  */
 class SplashScreen
 {
@@ -44,10 +45,10 @@ public:
      *
      * @param[in] enabled Whether the session shows a startup screen at all.
      * @param[in] display_name Name of the packaged application.
-     * @param[in] image_path Path of the startup image, empty while the session
-     *                       sets none.
+     * @param[in] image_data Bytes of the startup image resource, empty while
+     *                       the launcher carries none.
      */
-    SplashScreen(bool enabled, const std::wstring& display_name, const std::wstring& image_path);
+    SplashScreen(bool enabled, const std::wstring& display_name, std::string_view image_data);
 
     ~SplashScreen();
 

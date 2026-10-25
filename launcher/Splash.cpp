@@ -151,7 +151,7 @@ int MeasureNameHeight(HFONT font)
 namespace appbox
 {
 
-SplashScreen::SplashScreen(bool enabled, const std::wstring& display_name, const std::wstring& image_path)
+SplashScreen::SplashScreen(bool enabled, const std::wstring& display_name, std::string_view image_data)
 {
     if (!enabled)
     {
@@ -161,15 +161,15 @@ SplashScreen::SplashScreen(bool enabled, const std::wstring& display_name, const
 
     name_ = display_name;
 
-    if (!image_path.empty())
+    if (!image_data.empty())
     {
         std::string error;
-        if (!LoadStartupImage(image_path, image_, error))
+        if (!LoadStartupImage(image_data, image_, error))
         {
             /*
-             * The image is a decoration of the screen: a file which cannot be
-             * decoded leaves the name and the progress in place instead of
-             * failing the run.
+             * The image is a decoration of the screen: an image resource which
+             * cannot be decoded leaves the name and the progress in place
+             * instead of failing the run.
              */
             SPDLOG_WARN("the startup screen is shown without its image: {}", error);
         }

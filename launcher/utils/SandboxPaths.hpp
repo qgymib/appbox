@@ -1,7 +1,6 @@
 #ifndef APPBOX_LAUNCHER_UTILS_SANDBOX_PATHS_HPP
 #define APPBOX_LAUNCHER_UTILS_SANDBOX_PATHS_HPP
 
-#include <algorithm>
 #include <cstddef>
 #include <filesystem>
 #include <string>
@@ -141,30 +140,6 @@ struct SandboxPaths
     std::wstring EnvironmentIsolationFile() const
     {
         return (std::filesystem::path(app) / layout::kEnvironmentDirNameW / layout::kIsolationFileNameW).wstring();
-    }
-
-    /**
-     * @brief Startup image of the archive.
-     *
-     * The configuration names the image relative to the resource root, e.g.
-     * `startup/splash.png`, and the file lives below `app` like every other
-     * resource of the archive. The name is spelled with forward slashes
-     * because it travels in a JSON document, so both separators are accepted.
-     *
-     * @param[in] relative Resource relative path of the image, empty while the
-     *                     session sets no image.
-     * @return The path of the image, empty while no image is configured.
-     */
-    std::wstring StartupImageFile(const std::wstring& relative) const
-    {
-        if (relative.empty())
-        {
-            return {};
-        }
-
-        std::wstring name = relative;
-        std::replace(name.begin(), name.end(), L'/', L'\\');
-        return (std::filesystem::path(app) / name).wstring();
     }
 
     /**

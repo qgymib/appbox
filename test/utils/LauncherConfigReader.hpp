@@ -8,6 +8,20 @@ namespace appbox::test
 {
 
 /**
+ * @brief Read a resource embedded in a launcher image as bytes.
+ *
+ * The image is opened as a data file, so the program it carries is never
+ * executed. The identifiers are the ones of `launcher/EmbeddedResourceIds.h`.
+ *
+ * @param[in] image_path Host path of the launcher image.
+ * @param[in] resource_id Identifier of the resource in that image.
+ * @param[out] bytes The payload of the resource, empty on failure.
+ * @param[out] error Description of the failure, empty on success.
+ * @return true when the resource was read.
+ */
+bool ReadLauncherResource(const std::wstring& image_path, int resource_id, std::string& bytes, std::string& error);
+
+/**
  * @brief Read the raw JSON document of the configuration embedded in a
  *        launcher image.
  *

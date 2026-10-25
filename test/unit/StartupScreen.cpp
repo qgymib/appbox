@@ -88,22 +88,6 @@ TEST(Unit_StartupScreen, TheExtensionComesFromTheFileName)
     EXPECT_EQ(appbox::StartupImageExtension(L""), L"");
 }
 
-TEST(Unit_StartupScreen, TheArchiveEntryIsTheNameOfTheLayout)
-{
-    /*
-     * The launcher configuration carries this name, so it is part of the schema
-     * of the archive and not a detail of the pack run.
-     */
-    EXPECT_EQ(appbox::StartupImageFileName(L"D:\\images\\logo.PNG"), L"splash.png");
-    EXPECT_EQ(appbox::StartupImageEntryName(L"D:\\images\\logo.PNG"), "startup/splash.png");
-    EXPECT_EQ(appbox::StartupImageEntryName(L"D:\\images\\photo.jpeg"), "startup/splash.jpeg");
-    EXPECT_EQ(appbox::StartupImageEntryName(L"D:\\images\\photo.bmp"), "startup/splash.bmp");
-
-    /* A file the launcher cannot decode produces no entry at all. */
-    EXPECT_TRUE(appbox::StartupImageFileName(L"D:\\images\\logo.gif").empty());
-    EXPECT_TRUE(appbox::StartupImageEntryName(L"D:\\images\\logo.gif").empty());
-}
-
 TEST(Unit_StartupScreen, ValidationAcceptsASessionWithoutAnImage)
 {
     std::string error = "not cleared";

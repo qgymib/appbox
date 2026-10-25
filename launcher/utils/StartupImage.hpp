@@ -3,6 +3,7 @@
 
 #include <windows.h>
 #include <string>
+#include <string_view>
 
 namespace appbox
 {
@@ -11,8 +12,8 @@ namespace appbox
  * @brief A startup image which was decoded into a bitmap.
  *
  * The bitmap is a device independent bitmap of the screen, so it can be drawn
- * with `AlphaBlend()`: the decoder converts the file into premultiplied BGRA
- * pixels, which keeps the transparency of a PNG logo.
+ * with `AlphaBlend()`: the decoder converts the bytes of the image resource
+ * into premultiplied BGRA pixels, which keeps the transparency of a PNG logo.
  *
  * The owner is the only one which releases the bitmap, so the record is
  * movable but not copyable.
@@ -58,22 +59,23 @@ struct StartupImage
 };
 
 /**
- * @brief Decode a startup image file.
+ * @brief Decode the bytes of a startup image resource.
  *
- * The file is decoded through the imaging component of Windows, which reads
+ * The bytes are decoded through the imaging component of Windows, which reads
  * the formats the Settings workspace offers (PNG, JPEG and BMP) without a
  * dependency of the project: the launcher only needs the component which the
- * operating system carries.
+ * operating system carries. The decoder sniffs the container of the bytes, so
+ * no file name is needed to tell the format.
  *
  * The call fails without a window, so a caller which has no image to show can
  * continue with the name of the application and the progress bar alone.
  *
- * @param[in] path Path of the image file.
+ * @param[in] data Bytes of the image resource.
  * @param[out] image The decoded image, untouched when the call fails.
  * @param[out] error Description of the failure, empty when the image was read.
  * @return true when the image was decoded.
  */
-bool LoadStartupImage(const std::wstring& path, StartupImage& image, std::string& error);
+bool LoadStartupImage(std::string_view data, StartupImage& image, std::string& error);
 
 } // namespace appbox
 

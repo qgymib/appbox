@@ -6,9 +6,10 @@
 #include <string>
 #include <string_view>
 
-bool appbox::test::ReadLauncherConfigJson(const std::wstring& image_path, std::string& json, std::string& error)
+bool appbox::test::ReadLauncherResource(const std::wstring& image_path, int resource_id, std::string& bytes,
+                                        std::string& error)
 {
-    json.clear();
+    bytes.clear();
     error.clear();
 
     const auto module = appbox::pe_resource::LoadAsDataFile(image_path, error);
@@ -19,13 +20,18 @@ bool appbox::test::ReadLauncherConfigJson(const std::wstring& image_path, std::s
     const appbox::pe_resource::LoadedImage image(module);
 
     std::string_view payload;
-    if (!appbox::ReadEmbeddedResource(module, IDR_APPBOX_LAUNCHER_CONFIG, payload, error))
+    if (!appbox::ReadEmbeddedResource(module, resource_id, payload, error))
     {
         return false;
     }
 
-    json.assign(payload.data(), payload.size());
+    bytes.assign(payload.data(), payload.size());
     return true;
+}
+
+bool appbox::test::ReadLauncherConfigJson(const std::wstring& image_path, std::string& json, std::string& error)
+{
+    return ReadLauncherResource(image_path, IDR_APPBOX_LAUNCHER_CONFIG, json, error);
 }
 
 bool appbox::test::ReadLauncherConfig(const std::wstring& image_path, appbox::LauncherConfig& config,

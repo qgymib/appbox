@@ -40,7 +40,7 @@ add_executable(AppBoxTests
     "unit/FilesystemMarker.cpp"
     "unit/FilesystemTree.cpp"
     "unit/HiveMerge.cpp"
-    "unit/LauncherConfigResource.cpp"
+    "unit/LauncherResources.cpp"
     "unit/KnownFolderReference.cpp"
     "unit/HookTransaction.cpp"
     "unit/IsolationDocument.cpp"
@@ -385,7 +385,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemTree.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/KnownFolderReference.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/LauncherConfigResource.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/LauncherResources.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/NetworkIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/NetworkModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/PackModel.cpp

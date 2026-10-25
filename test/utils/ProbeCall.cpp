@@ -400,9 +400,10 @@ static std::vector<std::wstring> ProbeArgs(const std::string& key, const std::st
 
 static DWORD RunLauncherForProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config,
                                  const std::string& trigger, const appbox::test::LogRun& log,
-                                 std::uint32_t* launcher_pid = nullptr)
+                                 std::uint32_t*      launcher_pid = nullptr,
+                                 const std::wstring& executable_path = std::wstring())
 {
-    return RunLauncher(cwd, config, ProbeArgs(key, trigger), log, launcher_pid);
+    return RunLauncher(cwd, config, ProbeArgs(key, trigger), log, launcher_pid, executable_path);
 }
 
 /**
@@ -522,7 +523,8 @@ static void CollectStartupResults(const ProbeKey& key, appbox::test::StartupRun&
 
 appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launcher_config,
                                                        const std::string& trigger, bool startup_screen,
-                                                       const LogRun& log, bool use_configured_executable)
+                                                       const LogRun& log, bool use_configured_executable,
+                                                       const std::wstring& launcher_path)
 {
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
@@ -533,8 +535,8 @@ appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, 
     ProbeKey key("StartupStarted", nlohmann::json::object());
 
     StartupRun run;
-    run.exit_code =
-        static_cast<std::uint32_t>(RunLauncherForProbe(key.key, cwd, copy_config, trigger, log, &run.launcher_pid));
+    run.exit_code = static_cast<std::uint32_t>(
+        RunLauncherForProbe(key.key, cwd, copy_config, trigger, log, &run.launcher_pid, launcher_path));
     CollectStartupResults(key, run);
     return run;
 }
