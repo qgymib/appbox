@@ -20,6 +20,7 @@ TEST(Unit_ProjectType, TokensAreTheSchemaSpelling)
 {
     /* The tokens are the text form of the project file, so they are stable. */
     EXPECT_EQ(std::string(appbox::ProjectTypeToken(appbox::ProjectType::Standalone)), "standalone");
+    EXPECT_EQ(std::string(appbox::ProjectTypeToken(appbox::ProjectType::StandaloneExecutable)), "standalone-exe");
     EXPECT_EQ(std::string(appbox::ProjectTypeToken(appbox::ProjectType::Patch)), "patch");
 }
 
@@ -53,6 +54,8 @@ TEST(Unit_ProjectType, DisplayNamesAreTheLabelsOfTheBox)
     const std::wstring patch(appbox::ProjectTypeDisplayName(appbox::ProjectType::Patch));
 
     EXPECT_EQ(standalone, L"Standalone (ZIP)");
+    EXPECT_EQ(std::wstring(appbox::ProjectTypeDisplayName(appbox::ProjectType::StandaloneExecutable)),
+              L"Standalone (EXE)");
     EXPECT_EQ(patch, L"Patch (ZIP)");
     EXPECT_NE(standalone, patch);
 
@@ -67,7 +70,7 @@ TEST(Unit_ProjectType, DisplayNamesAreTheLabelsOfTheBox)
 
 TEST(Unit_ProjectType, EveryEntryOfTheBoxIsIndexedAndFoundAgain)
 {
-    EXPECT_EQ(appbox::ProjectTypeCount(), static_cast<std::size_t>(2));
+    EXPECT_EQ(appbox::ProjectTypeCount(), static_cast<std::size_t>(3));
 
     for (std::size_t index = 0; index < appbox::ProjectTypeCount(); ++index)
     {
@@ -75,7 +78,8 @@ TEST(Unit_ProjectType, EveryEntryOfTheBoxIsIndexedAndFoundAgain)
     }
 
     EXPECT_EQ(appbox::ProjectTypeIndexOf(appbox::ProjectType::Standalone), static_cast<std::size_t>(0));
-    EXPECT_EQ(appbox::ProjectTypeIndexOf(appbox::ProjectType::Patch), static_cast<std::size_t>(1));
+    EXPECT_EQ(appbox::ProjectTypeIndexOf(appbox::ProjectType::StandaloneExecutable), static_cast<std::size_t>(1));
+    EXPECT_EQ(appbox::ProjectTypeIndexOf(appbox::ProjectType::Patch), static_cast<std::size_t>(2));
 }
 
 TEST(Unit_ProjectType, AnIndexOutsideTheBoxYieldsTheDefaultType)

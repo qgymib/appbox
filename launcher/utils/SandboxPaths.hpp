@@ -335,6 +335,20 @@ struct SandboxPaths
     std::wstring state; /* Absolute path of the writable state root. */
     std::wstring patch; /* Absolute path of the directory of the patch packages. */
     std::wstring cache; /* Absolute path of the cache inside the state root: released modules and extracted packages. */
+
+    /**
+     * @brief Replace the read-only resource root of the run.
+     *
+     * A self-extracting program keeps its resources in the temporary folder it
+     * extracts the payload into, while the state, the patch packages and the
+     * log directory stay beside the program itself.
+     *
+     * @param[in] resource_root Absolute path of the resource root (`...\app`).
+     */
+    void SetResourceRoot(const std::wstring& resource_root)
+    {
+        app = resource_root;
+    }
 };
 
 } // namespace appbox

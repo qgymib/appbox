@@ -13,10 +13,13 @@
 #include "StartupFileType.hpp"
 #include "ZipWriter.hpp"
 #include "Config.hpp"
+#include "ExecutablePayload.hpp"
 #include "WString.hpp"
 #include <spdlog/spdlog.h>
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <set>
 #include <system_error>
@@ -593,6 +596,268 @@ bool ReadLauncherVersionInfo(const appbox::PackModel& model, const appbox::Appli
     return true;
 }
 
+/**
+ * @brief Build the run configuration the launcher of the product carries.
+ *
+ * The layout of the product is a fixed convention, so the document only
+ * carries what the launcher starts and how it presents the run. Every
+ * executable path starts with the layer key token of its preset, which the
+ * launcher expands.
+ *
+ * @param[in] model The pack model.
+ * @param[in] startup Startup screen of the session.
+ * @param[out] error Description of the failure, empty on success.
+ * @return The configuration, meaningful only when @p error is empty.
+ */
+appbox::LauncherConfig BuildLauncherConfig(const appbox::PackModel& model, const appbox::StartupScreen& startup,
+                                           std::string& error)
+{
+    error.clear();
+
+    appbox::LauncherConfig config;
+
+    /*
+     * The startup screen of the session: the flag decides whether the launcher
+     * opens a window of its own while it prepares the sandbox. The image is not
+     * part of the document: it is embedded into the launcher payload as a
+     * resource of its own, so a session which sets no image writes no resource
+     * and the launcher shows the name of the application and the progress of
+     * the run only.
+     */
+    config.startup.screen = startup.enabled;
+
+    for (const auto& file : model.StartupFiles())
+    {
+        appbox::PresetDirectory owner;
+        if (!appbox::FindPresetDirectory(file.preset_id, owner))
+        {
+            error = "the preset of a startup file no longer exists";
+            return config;
+        }
+
+        auto launch = std::filesystem::path(owner.layer_key);
+        launch /= file.import_name;
+        launch /= file.relative_path;
+
+        appbox::LauncherStartup launcher_startup;
+        launcher_startup.trigger = appbox::WideToUTF8(file.trigger);
+        launcher_startup.auto_start = file.auto_start;
+        launcher_startup.executable = appbox::WideToUTF8(launch.wstring());
+        config.startups.push_back(std::move(launcher_startup));
+    }
+
+    return config;
+}
+
+/**
+ * @brief Build the program image of the product.
+ *
+ * The image is the launcher payload of the session with the icon and the file
+ * properties of the packaged application applied and with the run
+ * configuration and the startup image embedded as its resources. Both products
+ * which carry a launcher write exactly this image: the archive of `Pack()` as
+ * its launcher entry and the self-extracting program of
+ * `PackSelfExtracting()` as the program itself.
+ *
+ * @param[in] model The pack model.
+ * @param[in] metadata Metadata of the session.
+ * @param[in] startup Startup screen of the session.
+ * @param[in] payloads Payloads of the session, whose launcher bytes are the
+ *            image to decorate.
+ * @param[out] error Description of the failure, empty on success.
+ * @return The patched image, empty when @p error is set.
+ */
+std::vector<char> BuildLauncherImage(const appbox::PackModel& model, const appbox::ApplicationMetadata& metadata,
+                                     const appbox::StartupScreen& startup, const appbox::PackPayloads& payloads,
+                                     std::string& error)
+{
+    error.clear();
+
+    /*
+     * The startup image is embedded into the launcher payload, so it is read
+     * before the first entry is written: a session which names a file that is
+     * not there is refused before the run starts writing, and the run reports
+     * the file instead of writing a product whose launcher cannot show the
+     * screen of the session.
+     */
+    {
+        std::string startup_error;
+        if (!appbox::ValidateStartupScreen(startup, startup_error))
+        {
+            error = startup_error;
+            return {};
+        }
+    }
+
+    std::vector<char> startup_image;
+    if (appbox::HasStartupImage(startup))
+    {
+        std::string image_error;
+        if (!appbox::pe_resource::ReadFileBytes(std::filesystem::path(startup.image), startup_image, image_error))
+        {
+            error = image_error;
+            return {};
+        }
+    }
+
+    const auto config = BuildLauncherConfig(model, startup, error);
+    if (!error.empty())
+    {
+        return {};
+    }
+
+    /*
+     * The launcher carries the file icon of the program the application
+     * starts, so Explorer shows the icon of the packaged application for the
+     * written program. A program without an icon never fails the run: the
+     * launcher then keeps its own icon and the reason is logged.
+     */
+    std::wstring      startup_path;
+    std::vector<char> payload_image;
+    const auto* const icon_source = IconSourceOf(model.StartupFiles());
+    if (icon_source != nullptr && model.StartupFilePath(*icon_source, startup_path))
+    {
+        std::string icon_warning;
+        payload_image =
+            appbox::ApplyApplicationIcon(payloads.launcher_bytes, payloads.launcher_size, startup_path, icon_warning);
+        if (!icon_warning.empty())
+        {
+            spdlog::warn("the launcher keeps its own icon: {}", icon_warning);
+        }
+    }
+
+    /*
+     * The launcher carries the file properties of the packaged application as
+     * well, which are the version information the shell shows on the `Details`
+     * page of the written program. The information is applied to the image the
+     * icon patch produced, and a patch which cannot be applied never fails the
+     * run either: the payload keeps the state of the patch before it.
+     */
+    {
+        const void* const base = payload_image.empty() ? payloads.launcher_bytes : payload_image.data();
+        const auto        base_size = payload_image.empty() ? payloads.launcher_size : payload_image.size();
+
+        appbox::ApplicationVersionInfo info;
+        std::string                    metadata_warning;
+        if (ReadLauncherVersionInfo(model, metadata, info, metadata_warning))
+        {
+            auto patched = appbox::ApplyApplicationMetadata(base, base_size, info, metadata_warning);
+            if (!patched.empty())
+            {
+                payload_image = std::move(patched);
+            }
+        }
+
+        if (!metadata_warning.empty())
+        {
+            spdlog::warn("the launcher keeps its own file properties: {}", metadata_warning);
+        }
+    }
+
+    /*
+     * The run configuration and the startup image of the session are resources
+     * of the payload as well. They are written last, after the icon and the
+     * version information, so a resource update of those patches cannot drop
+     * them. A failure is fatal: a launcher without its configuration cannot
+     * start the application.
+     */
+    {
+        const void* const base = payload_image.empty() ? payloads.launcher_bytes : payload_image.data();
+        const auto        base_size = payload_image.empty() ? payloads.launcher_size : payload_image.size();
+
+        const std::string_view image_view =
+            startup_image.empty() ? std::string_view() : std::string_view(startup_image.data(), startup_image.size());
+
+        std::string config_error;
+        auto        embedded = appbox::EmbedLauncherResources(base, base_size, appbox::BuildLauncherConfigJson(config),
+                                                              image_view, config_error);
+        if (embedded.empty())
+        {
+            error = "the launcher resources cannot be embedded: " + config_error;
+            return {};
+        }
+
+        payload_image = std::move(embedded);
+    }
+
+    return payload_image;
+}
+
+/**
+ * @brief Write a self-extracting program: image, payload archive and trailer.
+ *
+ * The payload is copied behind the image instead of being written at an offset
+ * of an existing file, because libzip cannot write an archive at an offset of
+ * another file.
+ *
+ * @param[in] exe_path Path of the program to write.
+ * @param[in] image Program image to write first.
+ * @param[in] payload Path of the payload archive to append.
+ * @return Error description, empty on success.
+ */
+std::string WriteSelfExtractingProgram(const std::wstring& exe_path, const std::vector<char>& image,
+                                       const std::filesystem::path& payload)
+{
+    const auto display = appbox::WideToUTF8(exe_path);
+
+    std::ofstream out(exe_path, std::ios::binary | std::ios::trunc);
+    if (!out)
+    {
+        return "failed to create '" + display + "'";
+    }
+
+    out.write(image.data(), static_cast<std::streamsize>(image.size()));
+    if (!out)
+    {
+        return "failed to write '" + display + "': the program image cannot be written";
+    }
+
+    std::uint64_t copied = 0;
+    {
+        std::ifstream in(payload, std::ios::binary);
+        if (!in)
+        {
+            std::error_code ignored;
+            std::filesystem::remove(exe_path, ignored);
+            return "failed to write '" + display + "': the payload archive cannot be read";
+        }
+
+        std::vector<char> buffer(1024 * 1024);
+        while (in)
+        {
+            in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+            const auto read = in.gcount();
+            if (read <= 0)
+            {
+                break;
+            }
+
+            out.write(buffer.data(), read);
+            if (!out)
+            {
+                std::error_code ignored;
+                std::filesystem::remove(exe_path, ignored);
+                return "failed to write '" + display + "': the file cannot be written";
+            }
+            copied += static_cast<std::uint64_t>(read);
+        }
+    }
+
+    const auto trailer =
+        appbox::executable_payload::BuildTrailer(appbox::executable_payload::PayloadLocation{ image.size(), copied });
+    out.write(trailer.data(), static_cast<std::streamsize>(trailer.size()));
+    out.flush();
+
+    if (!out)
+    {
+        std::error_code ignored;
+        std::filesystem::remove(exe_path, ignored);
+        return "failed to write '" + display + "': the file cannot be written";
+    }
+
+    return {};
+}
+
 } // namespace
 
 namespace appbox
@@ -682,22 +947,11 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
      * file instead of writing an archive whose launcher cannot show the screen
      * of the session.
      */
+    std::string       image_error;
+    std::vector<char> payload_image = BuildLauncherImage(model, metadata, startup, payloads, image_error);
+    if (!image_error.empty())
     {
-        std::string startup_error;
-        if (!ValidateStartupScreen(startup, startup_error))
-        {
-            return startup_error;
-        }
-    }
-
-    std::vector<char> startup_image;
-    if (HasStartupImage(startup))
-    {
-        std::string image_error;
-        if (!pe_resource::ReadFileBytes(std::filesystem::path(startup.image), startup_image, image_error))
-        {
-            return image_error;
-        }
+        return image_error;
     }
 
     /* Count the files once so the progress callback has a stable total. */
@@ -728,121 +982,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
             return "no startup file selected";
         }
 
-        /*
-         * Launcher configuration: the layout of the archive is a fixed
-         * convention, so the document only carries what the launcher starts
-         * and how it presents the run. Every executable path starts with the
-         * layer key token of its preset, which the launcher expands.
-         */
-        LauncherConfig config;
-
-        /*
-         * The startup screen of the session: the flag decides whether the
-         * launcher opens a window of its own while it prepares the sandbox.
-         * The image is not part of the document: it is embedded into this
-         * payload as a resource of its own, so a session which sets no image
-         * writes no resource and the launcher shows the name of the
-         * application and the progress of the run only.
-         */
-        config.startup.screen = startup.enabled;
-
-        for (const auto& file : model.StartupFiles())
-        {
-            PresetDirectory owner;
-            if (!FindPresetDirectory(file.preset_id, owner))
-            {
-                return "the preset of a startup file no longer exists";
-            }
-
-            auto launch = std::filesystem::path(owner.layer_key);
-            launch /= file.import_name;
-            launch /= file.relative_path;
-
-            LauncherStartup launcher_startup;
-            launcher_startup.trigger = WideToUTF8(file.trigger);
-            launcher_startup.auto_start = file.auto_start;
-            launcher_startup.executable = WideToUTF8(launch.wstring());
-            config.startups.push_back(std::move(launcher_startup));
-        }
-
-        /*
-         * The launcher carries the file icon of the program the application
-         * starts, so Explorer shows the icon of the packaged application for
-         * the extracted program. A program without an icon never fails the pack
-         * run: the launcher then keeps its own icon and the reason is logged.
-         */
-        std::wstring      startup_path;
-        std::vector<char> payload_image;
-        const auto* const icon_source = IconSourceOf(model.StartupFiles());
-        if (icon_source != nullptr && model.StartupFilePath(*icon_source, startup_path))
-        {
-            std::string icon_warning;
-            payload_image =
-                ApplyApplicationIcon(payloads.launcher_bytes, payloads.launcher_size, startup_path, icon_warning);
-            if (!icon_warning.empty())
-            {
-                spdlog::warn("the launcher keeps its own icon: {}", icon_warning);
-            }
-        }
-
-        /*
-         * The launcher carries the file properties of the packaged application
-         * as well, which are the version information the shell shows on the
-         * `Details` page of the extracted program. The information is applied
-         * to the image the icon patch produced, and a patch which cannot be
-         * applied never fails the run either: the payload keeps the state of
-         * the patch before it.
-         */
-        {
-            const void* const base = payload_image.empty() ? payloads.launcher_bytes : payload_image.data();
-            const auto        base_size = payload_image.empty() ? payloads.launcher_size : payload_image.size();
-
-            ApplicationVersionInfo info;
-            std::string            metadata_warning;
-            if (ReadLauncherVersionInfo(model, metadata, info, metadata_warning))
-            {
-                auto patched = ApplyApplicationMetadata(base, base_size, info, metadata_warning);
-                if (!patched.empty())
-                {
-                    payload_image = std::move(patched);
-                }
-            }
-
-            if (!metadata_warning.empty())
-            {
-                spdlog::warn("the launcher keeps its own file properties: {}", metadata_warning);
-            }
-        }
-
-        /*
-         * The run configuration and the startup image of the session are
-         * resources of the payload as well. They are written last, after the
-         * icon and the version information, so a resource update of those
-         * patches cannot drop them. A failure is fatal: a launcher without its
-         * configuration cannot start the application.
-         */
-        {
-            const void* const base = payload_image.empty() ? payloads.launcher_bytes : payload_image.data();
-            const auto        base_size = payload_image.empty() ? payloads.launcher_size : payload_image.size();
-
-            const std::string_view image_view = startup_image.empty()
-                                                    ? std::string_view()
-                                                    : std::string_view(startup_image.data(), startup_image.size());
-
-            std::string config_error;
-            auto        embedded =
-                EmbedLauncherResources(base, base_size, BuildLauncherConfigJson(config), image_view, config_error);
-            if (embedded.empty())
-            {
-                return "the launcher resources cannot be embedded: " + config_error;
-            }
-
-            payload_image = std::move(embedded);
-        }
-
-        const void* const payload = payload_image.empty() ? payloads.launcher_bytes : payload_image.data();
-        const auto        payload_size = payload_image.empty() ? payloads.launcher_size : payload_image.size();
-        if (!writer.AddFileBuffer(launcher_entry, payload, payload_size, error))
+        if (!writer.AddFileBuffer(launcher_entry, payload_image.data(), payload_image.size(), error))
         {
             return error;
         }
@@ -871,6 +1011,88 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
     catch (const std::exception& e)
     {
         return std::string("failed to create the zip archive: ") + e.what();
+    }
+
+    if (progress)
+    {
+        /* The run is complete: report the final count without a current file. */
+        progress(BuildProgress{ BuildStage::Packing, total, total, {} });
+    }
+    return {};
+}
+
+std::string PackSelfExtracting(const PackModel& model, const RegistryModel& registry,
+                               const FilesystemIsolationModel& isolation, const NetworkModel& network,
+                               const EnvironmentModel& environment, const ApplicationMetadata& metadata,
+                               const StartupScreen& startup, const PackPayloads& payloads, CompressionLevel compression,
+                               const std::wstring& exe_path, const BuildProgressCallback& progress)
+{
+    if (!model.HasStartupFiles())
+    {
+        return "no startup file selected";
+    }
+    if (!model.HasAutoStart())
+    {
+        return "at least one startup file must start automatically";
+    }
+    if (payloads.launcher_bytes == nullptr || payloads.launcher_size == 0)
+    {
+        return "the embedded launcher payload is empty";
+    }
+
+    std::string       image_error;
+    std::vector<char> image = BuildLauncherImage(model, metadata, startup, payloads, image_error);
+    if (!image_error.empty())
+    {
+        return image_error;
+    }
+
+    const std::size_t total = kNonContentExecutableEntries + ContentFileCount(model);
+    if (progress && !progress(BuildProgress{ BuildStage::Preparing, 0, total, {} }))
+    {
+        return kBuildCancelledError;
+    }
+
+    try
+    {
+        /*
+         * The payload archive is written first and appended afterwards, because
+         * libzip cannot write an archive at an offset of another file. The
+         * helper removes the temporary archive when the run ends.
+         */
+        const pe_resource::TemporaryFile payload_file(pe_resource::TemporaryPath(L"AppBox-Payload"));
+
+        {
+            ZipWriter   writer(payload_file.Path().wstring(), compression);
+            std::string error;
+
+            /*
+             * The payload carries the resources below `app` only: the launcher
+             * is the program itself, so the payload has neither a launcher entry
+             * nor a `data` directory.
+             */
+            error = WriteResourceTree(writer, layout::kAppDirName, model, registry, isolation, network, environment,
+                                      total, progress);
+            if (!error.empty())
+            {
+                return error;
+            }
+
+            if (!writer.Close(error))
+            {
+                return error;
+            }
+        }
+
+        const auto write_error = WriteSelfExtractingProgram(exe_path, image, payload_file.Path());
+        if (!write_error.empty())
+        {
+            return write_error;
+        }
+    }
+    catch (const std::exception& e)
+    {
+        return std::string("failed to create the self-extracting program: ") + e.what();
     }
 
     if (progress)

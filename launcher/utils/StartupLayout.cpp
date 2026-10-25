@@ -18,10 +18,11 @@ struct StartupStageEntry
 
 /** The stages of a run, in the order they run in. */
 constexpr StartupStageEntry kStartupStages[] = {
-    { appbox::StartupStage::Preparing,           0.10 },
-    { appbox::StartupStage::LoadingPatches,      0.45 },
-    { appbox::StartupStage::MountingSandbox,     0.30 },
-    { appbox::StartupStage::StartingApplication, 0.15 },
+    { appbox::StartupStage::ExtractingPayload,   0.25 },
+    { appbox::StartupStage::Preparing,           0.05 },
+    { appbox::StartupStage::LoadingPatches,      0.40 },
+    { appbox::StartupStage::MountingSandbox,     0.20 },
+    { appbox::StartupStage::StartingApplication, 0.10 },
 };
 
 /** Number of stages of the table above. */

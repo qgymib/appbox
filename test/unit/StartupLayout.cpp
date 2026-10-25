@@ -15,8 +15,9 @@ const RECT kFullScreen = { 0, 0, 1920, 1080 };
  */
 std::vector<appbox::StartupStage> Stages()
 {
-    return { appbox::StartupStage::Preparing, appbox::StartupStage::LoadingPatches,
-             appbox::StartupStage::MountingSandbox, appbox::StartupStage::StartingApplication };
+    return { appbox::StartupStage::ExtractingPayload, appbox::StartupStage::Preparing,
+             appbox::StartupStage::LoadingPatches, appbox::StartupStage::MountingSandbox,
+             appbox::StartupStage::StartingApplication };
 }
 
 } // namespace

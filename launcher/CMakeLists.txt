@@ -14,6 +14,7 @@ add_executable(${PROJECT_NAME} WIN32
     "utils/PatchLayer.cpp"
     "utils/ProcessJob.cpp"
     "utils/SandboxModules.cpp"
+    "utils/SelfExtraction.cpp"
     "utils/Shell.cpp"
     "utils/StartupImage.cpp"
     "utils/StartupLayout.cpp"

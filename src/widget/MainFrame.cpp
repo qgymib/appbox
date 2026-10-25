@@ -204,22 +204,25 @@ wxString BuildFilesField(const appbox::BuildProgress& progress)
  *        run.
  *
  * @param[in] outcome Final state of the build run.
+ * @param[in] program Whether the run wrote a program instead of an archive.
  * @return Text of the action row.
  */
-wxString BuildResultAction(appbox::BuildOutcome outcome)
+wxString BuildResultAction(appbox::BuildOutcome outcome, bool program)
 {
     switch (outcome)
     {
     case appbox::BuildOutcome::ArchiveWritten:
-        return "The archive was written successfully.";
+        return program ? "The program was written successfully." : "The archive was written successfully.";
     case appbox::BuildOutcome::ApplicationStarted:
-        return "The archive was written successfully.";
+        return program ? "The program was written successfully." : "The archive was written successfully.";
     case appbox::BuildOutcome::Cancelled:
-        return "The build run was cancelled; no archive was written.";
+        return program ? "The build run was cancelled; no program was written."
+                       : "The build run was cancelled; no archive was written.";
     case appbox::BuildOutcome::Failed:
         return "The build run failed.";
     case appbox::BuildOutcome::LaunchFailed:
-        return "The archive was written, but the packaged launcher could not be started.";
+        return program ? "The program was written, but it could not be started."
+                       : "The archive was written, but the packaged launcher could not be started.";
     }
 
     return {};
@@ -674,11 +677,13 @@ wxString MainFrame::OutputPath() const
 
 wxString MainFrame::DefaultOutputPath() const
 {
-    wxFileName derived(wxFileName::GetCwd(), "AppBoxPackage.zip");
+    const bool executable = project_type_ == appbox::ProjectType::StandaloneExecutable;
+
+    wxFileName derived(wxFileName::GetCwd(), executable ? "AppBoxPackage.exe" : "AppBoxPackage.zip");
     if (model_.HasStartupFiles())
     {
         derived.SetName(model_.StartupFiles().front().import_name);
-        derived.SetExt("zip");
+        derived.SetExt(executable ? "exe" : "zip");
     }
     return derived.GetFullPath();
 }
@@ -718,17 +723,17 @@ void MainFrame::ApplyProjectType(appbox::ProjectType type)
 
     /*
      * A patch package carries no launcher, so there is no program to extract and
-     * start: the run command is offered for a standalone project only.
+     * start: the run command is offered for the standalone products only.
      */
-    toolbar_->SetBuildAndRunEnabled(type == appbox::ProjectType::Standalone);
+    toolbar_->SetBuildAndRunEnabled(type != appbox::ProjectType::Patch);
 
     /*
      * A patch package carries no launcher either, so its file properties and
      * its startup screen are not part of the product: the two tabs follow the
      * type.
      */
-    settings_panel_->EnableMetadata(type == appbox::ProjectType::Standalone);
-    settings_panel_->EnableStartup(type == appbox::ProjectType::Standalone);
+    settings_panel_->EnableMetadata(type != appbox::ProjectType::Patch);
+    settings_panel_->EnableStartup(type != appbox::ProjectType::Patch);
     RefreshMetadata();
     RefreshStartupScreen();
 
@@ -1120,7 +1125,10 @@ void MainFrame::OnBrowseOutput(wxCommandEvent&)
 {
     wxFileName current(OutputPath());
 
-    wxFileDialog dialog(this, "Output Archive", wxEmptyString, current.GetFullName(), "Zip archive (*.zip)|*.zip",
+    const bool executable = project_type_ == appbox::ProjectType::StandaloneExecutable;
+
+    wxFileDialog dialog(this, executable ? "Output Program" : "Output Archive", wxEmptyString, current.GetFullName(),
+                        executable ? "Program (*.exe)|*.exe" : "Zip archive (*.zip)|*.zip",
                         wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if (dialog.ShowModal() != wxID_OK)
     {
@@ -1159,10 +1167,11 @@ void MainFrame::StartPack(bool run_after)
         return;
     }
 
-    const bool standalone = project_type_ == appbox::ProjectType::Standalone;
+    const bool patch = project_type_ == appbox::ProjectType::Patch;
+    const bool executable = project_type_ == appbox::ProjectType::StandaloneExecutable;
 
-    /* Only a standalone archive carries a launcher which starts a startup file. */
-    if (standalone && !model_.HasStartupFiles())
+    /* Both standalone products carry a launcher which starts a startup file. */
+    if (!patch && !model_.HasStartupFiles())
     {
         wxMessageBox("Select at least one startup file before building.", "Build", wxOK | wxICON_INFORMATION, this);
         return;
@@ -1176,13 +1185,13 @@ void MainFrame::StartPack(bool run_after)
     }
 
     /*
-     * The payload of a standalone archive is the resource of this executable:
+     * The payload of a standalone product is the resource of this executable:
      * the launcher program, which carries the two sandbox injection modules as
      * resources of its own. A patch package holds no launcher, so its payload
      * stays empty.
      */
     appbox::PackPayloads payloads;
-    if (standalone)
+    if (!patch)
     {
         std::string      error;
         std::string_view launcher;
@@ -1202,9 +1211,13 @@ void MainFrame::StartPack(bool run_after)
      * import, so the packing stage reports this count and the extracting stage
      * of a `Build and Run` run reports the very same number of file entries.
      */
-    const auto non_content = standalone ? appbox::kNonContentArchiveEntries : appbox::kNonContentPatchEntries;
+    const auto non_content =
+        patch ? appbox::kNonContentPatchEntries
+              : (executable ? appbox::kNonContentExecutableEntries : appbox::kNonContentArchiveEntries);
     const auto total = non_content + appbox::ContentFileCount(model_);
-    const auto planned = run_after ? total * 2 : total;
+
+    /* A self-extracting program is started as it is, so the run extracts nothing. */
+    const auto planned = (run_after && !executable) ? total * 2 : total;
     const auto range = static_cast<int>(std::min<std::size_t>(planned, std::numeric_limits<int>::max()));
 
     /*
@@ -1215,8 +1228,13 @@ void MainFrame::StartPack(bool run_after)
     last_progress_ = appbox::BuildProgress{ appbox::BuildStage::Preparing, 0, total, {} };
 
     ActionDialog::Options options;
-    options.description = run_after ? "The archive is written from the imports of the workspace and started afterwards."
-                                    : "The archive is written from the imports of the workspace.";
+    options.description =
+        executable ? (run_after ? "The self-extracting program is written from the imports of the workspace and "
+                                  "started afterwards."
+                                : "The self-extracting program is written from the imports of the workspace.")
+                   : (run_after ? "The archive is written from the imports of the workspace and started "
+                                  "afterwards."
+                                : "The archive is written from the imports of the workspace.");
     options.field_labels = { "Files:", "Status:" };
     options.buttons = ActionDialog::Buttons_Cancel;
 
@@ -1274,6 +1292,13 @@ void MainFrame::StartPack(bool run_after)
             outcome.error = appbox::PackPatch(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
                                               environment_snapshot, compression_level, zip_wide, report_progress);
         }
+        else if (project_type == appbox::ProjectType::StandaloneExecutable)
+        {
+            /* The self-extracting program is the launcher itself. */
+            outcome.error = appbox::PackSelfExtracting(
+                snapshot, registry_snapshot, isolation_snapshot, network_snapshot, environment_snapshot,
+                metadata_snapshot, startup_snapshot, payloads, compression_level, zip_wide, report_progress);
+        }
         else
         {
             outcome.error = appbox::Pack(snapshot, registry_snapshot, isolation_snapshot, network_snapshot,
@@ -1287,14 +1312,19 @@ void MainFrame::StartPack(bool run_after)
              * The launcher is named after the main program of the snapshot; a
              * patch package has none, because it is not started on its own.
              */
-            if (project_type == appbox::ProjectType::Standalone)
+            outcome.self_extracting = project_type == appbox::ProjectType::StandaloneExecutable;
+            if (project_type != appbox::ProjectType::Patch)
             {
                 outcome.launcher_entry = appbox::LauncherEntryName(snapshot);
             }
             outcome.archive_path = zip_wide;
         }
 
-        if (outcome.error.empty() && run_after)
+        /*
+         * A self-extracting program is started as the file which was written,
+         * so only an archive is extracted here.
+         */
+        if (outcome.error.empty() && run_after && !outcome.self_extracting)
         {
             const auto folder = std::filesystem::temp_directory_path() / UniqueExtractFolder();
             const auto extract_error = appbox::ExtractArchive(zip_wide, folder.wstring(), extract_progress);
@@ -1384,19 +1414,25 @@ void MainFrame::OnPackFinished(wxThreadEvent& event)
         result = appbox::BuildOutcome::Failed;
         result_error = outcome.error;
     }
-    else if (run_after && !outcome.extract_dir.empty())
+    else if (run_after && (outcome.self_extracting || !outcome.extract_dir.empty()))
     {
         /*
-         * The launcher carries the file name of the main program, so it is
-         * started through the name the pack run resolved.
+         * A self-extracting program is the launcher itself, so it is started as
+         * the file the run wrote. The launcher of an archive carries the file
+         * name of the main program, so it is started through the name the pack
+         * run resolved inside the folder it extracted the archive into.
          */
-        long pid = 0;
-        if (!outcome.launcher_entry.empty())
+        std::filesystem::path program;
+        if (outcome.self_extracting)
         {
-            const auto launcher = std::filesystem::path(outcome.extract_dir) / outcome.launcher_entry;
-            pid = wxExecute("\"" + wxString(launcher.wstring()) + "\"", wxEXEC_ASYNC);
+            program = outcome.archive_path;
+        }
+        else if (!outcome.launcher_entry.empty())
+        {
+            program = std::filesystem::path(outcome.extract_dir) / outcome.launcher_entry;
         }
 
+        const long pid = program.empty() ? 0 : wxExecute("\"" + wxString(program.wstring()) + "\"", wxEXEC_ASYNC);
         if (pid <= 0)
         {
             result = appbox::BuildOutcome::LaunchFailed;
@@ -1404,7 +1440,9 @@ void MainFrame::OnPackFinished(wxThreadEvent& event)
         else
         {
             result = appbox::BuildOutcome::ApplicationStarted;
-            final_status = "Running the packaged application from " + wxString(outcome.extract_dir);
+            final_status = outcome.self_extracting
+                               ? "Running " + wxString(outcome.archive_path)
+                               : "Running the packaged application from " + wxString(outcome.extract_dir);
         }
     }
 
@@ -1426,7 +1464,7 @@ void MainFrame::OnPackFinished(wxThreadEvent& event)
      * run is reported by a message box, like the failure of a capture. The
      * Complete() call waits for the user before the dialog is destroyed.
      */
-    progress_dialog_->SetAction(BuildResultAction(result));
+    progress_dialog_->SetAction(BuildResultAction(result, project_type_ == appbox::ProjectType::StandaloneExecutable));
     progress_dialog_->SetObject(wxString(outcome.archive_path));
     progress_dialog_->SetField(kBuildFieldStatus, BuildResultStatus(result));
     progress_dialog_->SetProgress(pack_range_, pack_range_);

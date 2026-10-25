@@ -87,8 +87,9 @@ const char* const kBrowseTooltip = "Choose the destination archive of the Build 
 
 /** Tooltip of the project type box. */
 const char* const kProjectTypeTooltip =
-    "Standalone writes a self-contained archive with the launcher; Patch writes the resources "
-    "of the app directory without a launcher, for the patch directory next to it";
+    "Standalone (ZIP) writes a self-contained zip archive with the launcher; Standalone (EXE) writes the launcher as "
+    "one program with the payload appended, which extracts itself at start; Patch (ZIP) writes the resources of the "
+    "app directory without a launcher, for the patch directory next to it";
 
 /** Tooltip of the compression level box. */
 const char* const kCompressionLevelTooltip =

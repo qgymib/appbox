@@ -17,6 +17,10 @@ namespace appbox
  * - `Standalone` - the self-contained archive of `Pack()`: the launcher program
  *   named after the first startup file, its configuration and the read-only
  *   resources below `app`. The archive is extracted and started on its own.
+ * - `StandaloneExecutable` - the self-extracting program of
+ *   `PackSelfExtracting()`: the very same launcher program, with the resources
+ *   below `app` appended as a payload archive and a trailer behind them. The
+ *   program extracts the payload into a temporary folder and starts from there.
  * - `Patch` - the patch package of `PackPatch()`: the very same resources,
  *   rooted at the archive root instead of below `app`, and without the launcher
  *   program and its configuration. The package is dropped into the `patch`
@@ -25,8 +29,9 @@ namespace appbox
  */
 enum class ProjectType
 {
-    Standalone, ///< Self-contained archive with the launcher and the resources.
-    Patch       ///< Patch package with the resources of `app`, without a launcher.
+    Standalone,           ///< Self-contained archive with the launcher and the resources.
+    StandaloneExecutable, ///< One program: the launcher with the payload appended.
+    Patch                 ///< Patch package with the resources of `app`, without a launcher.
 };
 
 /**
@@ -36,7 +41,8 @@ enum class ProjectType
  * reads.
  *
  * @param[in] type The project type.
- * @return The canonical lower case token, either `"standalone"` or `"patch"`.
+ * @return The canonical lower case token, either `"standalone"`,
+ *         `"standalone-exe"` or `"patch"`.
  */
 const char* ProjectTypeToken(ProjectType type);
 
@@ -59,7 +65,8 @@ bool ParseProjectTypeToken(std::string_view token, ProjectType& type);
  * file never spell a type differently.
  *
  * @param[in] type The project type.
- * @return The label, either `L"Standalone (ZIP)"` or `L"Patch (ZIP)"`.
+ * @return The label, either `L"Standalone (ZIP)"`, `L"Standalone (EXE)"` or
+ *         `L"Patch (ZIP)"`.
  */
 const wchar_t* ProjectTypeDisplayName(ProjectType type);
 

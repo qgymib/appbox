@@ -85,12 +85,12 @@ The launcher configuration carries the screen of the run:
   centered on the work area of the monitor of the foreground window, and it is
   created without activating itself, so it never takes the focus from the
   program the run starts.
-- **Progress**: the bar follows the stages of the run - preparing, loading the
-  patch packages, mounting the sandbox and starting the application - and
-  approaches the reported value instead of jumping. The launcher pumps the
-  message queue while it works, and the extraction of a patch package reports
-  every file it writes, so the bar keeps moving while a large package is
-  unpacked.
+- **Progress**: the bar follows the stages of the run - extracting the payload of
+  a self-extracting program, preparing, loading the patch packages, mounting the
+  sandbox and starting the application - and approaches the reported value
+  instead of jumping. The launcher pumps the message queue while it works, and
+  the extraction of a patch package and of a payload reports every file it
+  writes, so the bar keeps moving while a large package is unpacked.
 - **End**: the screen is destroyed as soon as every process of the run was
   created, which is the moment the packaged application is on its own. A run
   which fails before that closes the screen on its way out as well, so the
@@ -115,3 +115,8 @@ The launcher configuration carries the screen of the run:
 5. The screen has no rounded corners, no shadow and no fade out: it is a plain
    borderless window, which is what the Win32 API of the launcher offers without
    the desktop window manager composition APIs.
+6. The application of a self-extracting program runs from a temporary folder
+   which is new on every run, so a program which stores its own absolute path
+   sees a different path on the next run. The resources of the application are
+   read-only by design, so nothing breaks by that, but a program which writes
+   beside its own image writes into a folder which is removed again.

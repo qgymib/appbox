@@ -472,7 +472,13 @@ The unit tests of the packer:
   which holds no import) and which contribute no file to the progress total, the
   progress total, the cancellation
   and the fact that the archive relative spelling of an entry is the `app`
-  prefix plus its resource relative spelling. The compression level of the
+  prefix plus its resource relative spelling. The self-extracting product is
+  pinned as well: the program starts with the image of the launcher, the
+  payload behind it is found through the trailer of
+  `common/ExecutablePayload.hpp`, its extracted tree holds the resources of
+  `app` and neither a launcher entry nor a `data` directory, the bytes in front
+  of the payload carry the run configuration of the session, and the progress
+  total counts the files of the payload only. The compression level of the
   session reaches the entries of both products: a run which stores them writes a
   stored entry while a run which deflates them writes a deflated one, so the
   level cannot be lost on the way from the session to the archive.
@@ -817,10 +823,18 @@ executable carries itself:
   layer which carries the requests of the probes.
 * `test/unit/WString.cpp` — the UTF-8 and UTF-16 conversions of `common/`.
 * `test/unit/ZipReader.cpp`, `test/unit/ZipWriter.cpp` — the zip
-  layer of the packer, including the zip slip protection of an extraction and
+  layer of the packer, including the zip slip protection of an extraction, the
+  extraction of an archive which is appended to another file at a non zero
+  offset (the payload of a self-extracting program) and
   the compression level of the entries: a level which stores them keeps the
   content of an entry, a level above it deflates a repetitive entry, and an
   entry which does not shrink by being deflated is stored even so.
+* `test/unit/ExecutablePayload.cpp` — the trailer behind the payload of a
+  self-extracting program: a program with a trailer round trips its offset and
+  size, a program which is shorter than the trailer or which ends with other
+  bytes carries none, and a trailer whose fields do not describe the bytes in
+  front of it, which carries an unknown version or which names a file that is
+  not there is reported instead of being trusted.
 * `test/unit/BuildReport.cpp` — the elapsed time text of the build report,
   which the elapsed row of an action dialog shows.
 * `test/unit/ApplicationIcon.cpp` — the icon the packer writes into the first
@@ -1729,6 +1743,23 @@ strict `IsVcRuntimeModule()` of the import tables: the modules of Windows which 
 process loads import the runtime of the operating system themselves, so
 `ucrtbase.dll`, `msvcrt.dll` and `msvcp_win.dll` appear in the list of a process
 which needs no redistributable at all.
+
+### Self-extracting executable cases
+
+The cases (`test/e2e/SelfExtracting_Payload.cpp`) pin the `Standalone (EXE)`
+product: a session is packed with `PackSelfExtracting()`, so the program of the
+case is the launcher image with the payload appended, and the program is started
+without a configuration file, which makes it read the configuration and the
+payload of its own image. The cases are the coverage of
+`launcher/utils/SelfExtraction.cpp` and of the resource root of a
+self-extracting run (`SandboxPaths::SetResourceRoot()`). Each case is documented
+in its own header comment.
+
+| Case | Steps | Expected |
+| --- | --- | --- |
+| `ThePayloadRunsFromATemporaryFolder` | the session starts the probe as `MyApp\app.exe` and is packed into the working directory of the case | the run exits with zero, the probe reports its marker, the image it ran is a file of the extraction folder below the temporary directory, the state is created beside the program, no `app` directory appears beside it and no extraction folder stays behind |
+| `ThePatchesBesideTheProgramAreMerged` | the `patch` directory beside the program carries a package which overrides a file of the filesystem | the run exits with zero, the package was extracted into `data/cache` beside the program and no `app` directory appears beside it |
+| `TheStartupScreenCoversTheExtraction` | the session is packed with the startup screen of the session | the run exits with zero, the log reports the extraction of the payload into its temporary folder, and the screen was shown and closed during the run |
 
 ### Patch layer cases
 

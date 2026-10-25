@@ -313,3 +313,61 @@ TEST(Unit_ZipReader, ExtractCanBeCancelled)
     EXPECT_EQ(result, appbox::ZIPREADER_CANCELLED);
     EXPECT_FALSE(std::filesystem::exists(dest / L"note.txt"));
 }
+
+/**
+ * @brief An archive which is embedded in another file starts at a non zero
+ *        offset, so it is extracted through its region instead of its path.
+ */
+TEST(Unit_ZipReader, ExtractsAnArchiveAppendedToAnotherFile)
+{
+    TempDir    temp;
+    const auto archive_path = temp.Get() / L"payload.zip";
+    const auto host_path = temp.Get() / L"program.exe";
+    const auto dest = temp.Get() / L"region-dest";
+
+    {
+        appbox::ZipWriter writer(archive_path.wstring());
+        std::string       error;
+        ASSERT_TRUE(writer.AddDirectory("app", error)) << error;
+        ASSERT_TRUE(writer.AddFileBuffer("app/note.txt", "NOTE", 4, error)) << error;
+        ASSERT_TRUE(writer.Close(error)) << error;
+    }
+
+    const auto payload = ReadFile(archive_path);
+    ASSERT_FALSE(payload.empty());
+
+    const std::string prefix = "PREFIX";
+    {
+        std::ofstream host(host_path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(host.good());
+        host.write(prefix.data(), static_cast<std::streamsize>(prefix.size()));
+        host.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+        ASSERT_TRUE(host.good());
+    }
+
+    const auto result = appbox::ExtractArchiveAt(host_path.wstring(), prefix.size(), payload.size(), dest.wstring());
+    EXPECT_EQ(result, appbox::ZIPREADER_SUCCESS);
+    EXPECT_EQ(ReadFile(dest / L"app" / L"note.txt"), "NOTE");
+}
+
+/**
+ * @brief A region which does not hold an archive is refused instead of being
+ *        read as one.
+ */
+TEST(Unit_ZipReader, ReportsARegionWithoutAnArchive)
+{
+    TempDir    temp;
+    const auto host_path = temp.Get() / L"plain.exe";
+    const auto dest = temp.Get() / L"plain-dest";
+
+    {
+        std::ofstream host(host_path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(host.good());
+        const std::string filler(64, 'x');
+        host.write(filler.data(), static_cast<std::streamsize>(filler.size()));
+        ASSERT_TRUE(host.good());
+    }
+
+    EXPECT_EQ(appbox::ExtractArchiveAt(host_path.wstring(), 0, 64, dest.wstring()),
+              appbox::ZIPREADER_OPEN_ARCHIVE_FAILED);
+}

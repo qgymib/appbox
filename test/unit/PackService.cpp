@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "src/core/PeResourcePatch.hpp"
 #include "src/core/PackService.hpp"
+#include "ExecutablePayload.hpp"
 #include "ZipReader.hpp"
 #include "SandboxLayout.hpp"
 #include "WString.hpp"
@@ -174,6 +175,17 @@ std::vector<char> ReadAllBytes(const std::wstring& path)
     }
 
     return file ? bytes : std::vector<char>();
+}
+
+/**
+ * @brief Read a whole file as text.
+ * @param[in] path File path.
+ * @return The content, empty when the file cannot be read.
+ */
+std::string ReadTextFile(const std::filesystem::path& path)
+{
+    const auto bytes = ReadAllBytes(path.wstring());
+    return std::string(bytes.begin(), bytes.end());
 }
 
 /**
@@ -557,6 +569,123 @@ TEST(Unit_PackService, PackProducesLauncherConfigurationAndLayers)
     {
         EXPECT_EQ(name.rfind("data/", 0), std::string::npos) << name;
     }
+}
+
+TEST(Unit_PackService, SelfExtractingProgramCarriesAnAppendedPayload)
+{
+    TempDir    program_files;
+    const auto my_app = program_files.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE-CONTENT");
+    MakeFile(my_app, L"data\\config.txt", "CFG-CONTENT");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
+
+    const auto exe_path =
+        program_files.Get().parent_path() / (program_files.Get().filename().wstring() + L"-MyApp.exe");
+
+    std::vector<appbox::BuildProgress> reports;
+    const auto                         report = [&reports](const appbox::BuildProgress& progress) {
+        reports.push_back(progress);
+        return true;
+    };
+
+    const auto result =
+        appbox::PackSelfExtracting(model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                                   appbox::EnvironmentModel(), appbox::ApplicationMetadata(), appbox::StartupScreen{},
+                                   FakePayloads(), appbox::CompressionLevel::Normal, exe_path.wstring(), report);
+    EXPECT_EQ(result, "") << result;
+
+    /* The program starts with the image of the launcher. */
+    const auto image = ReadAllBytes(exe_path.wstring());
+    ASSERT_GE(image.size(), static_cast<std::size_t>(2));
+    EXPECT_EQ(std::string(image.data(), 2), "MZ");
+
+    appbox::executable_payload::PayloadLocation location;
+    std::string                                 trailer_error;
+    ASSERT_EQ(appbox::executable_payload::ReadTrailer(exe_path, location, trailer_error),
+              appbox::executable_payload::TrailerStatus::Present)
+        << trailer_error;
+
+    const auto file_size = std::filesystem::file_size(exe_path);
+    EXPECT_EQ(location.offset + location.size + appbox::executable_payload::kTrailerSize, file_size);
+
+    /* The launcher image itself carries no trailer: it is the program, not a payload. */
+    TempDir                 plain;
+    const auto              image_path = plain.Get() / L"launcher.exe";
+    const std::vector<char> image_bytes(image.begin(), image.begin() + static_cast<std::ptrdiff_t>(location.offset));
+    ASSERT_TRUE(WriteAllBytes(image_path.wstring(), image_bytes));
+    appbox::executable_payload::PayloadLocation image_location;
+    EXPECT_EQ(appbox::executable_payload::ReadTrailer(image_path, image_location, trailer_error),
+              appbox::executable_payload::TrailerStatus::Absent);
+
+    /* The bytes in front of the payload are the decorated launcher image. */
+    std::string json_text;
+    std::string config_error;
+    ASSERT_TRUE(
+        ReadLauncherConfigJsonFromEntry(std::string(image_bytes.begin(), image_bytes.end()), json_text, config_error))
+        << config_error;
+    const auto config = nlohmann::json::parse(json_text).get<appbox::LauncherConfig>();
+    ASSERT_EQ(config.startups.size(), static_cast<std::size_t>(1));
+    EXPECT_EQ(config.startups[0].executable, "#ProgramFiles#\\MyApp\\app.exe");
+
+    /*
+     * The payload holds the resources below `app` and nothing else: the
+     * launcher is the program itself, so neither a launcher entry nor the
+     * state directory travels.
+     */
+    const auto dest = plain.Get() / L"extracted";
+    ASSERT_EQ(appbox::ExtractArchiveAt(exe_path.wstring(), location.offset, location.size, dest.wstring()),
+              appbox::ZIPREADER_SUCCESS);
+
+    const auto layer_root = dest / L"app" / L"filesystem" / L"#ProgramFiles#" / L"MyApp";
+    EXPECT_EQ(ReadTextFile(layer_root / L"app.exe"), "EXE-CONTENT");
+    EXPECT_EQ(ReadTextFile(layer_root / L"data" / L"config.txt"), "CFG-CONTENT");
+
+    const auto resource = [&dest](const wchar_t* domain, const wchar_t* name) {
+        return std::filesystem::is_regular_file(dest / L"app" / domain / name);
+    };
+    EXPECT_TRUE(resource(L"registry", L"user.hiv"));
+    EXPECT_TRUE(resource(L"registry", L"isolation.json"));
+    EXPECT_TRUE(resource(L"filesystem", L"isolation.json"));
+    EXPECT_TRUE(resource(L"network", L"isolation.json"));
+    EXPECT_TRUE(resource(L"environment", L"isolation.json"));
+
+    EXPECT_FALSE(std::filesystem::exists(dest / appbox::layout::kStateDirNameW));
+    EXPECT_FALSE(std::filesystem::exists(dest / L"app.exe"));
+
+    /* The run counts the files of the payload only, without the program itself. */
+    const auto expected = appbox::kNonContentExecutableEntries + appbox::ContentFileCount(model);
+    ASSERT_FALSE(reports.empty());
+    for (const auto& entry : reports)
+    {
+        EXPECT_EQ(entry.total, expected);
+    }
+    EXPECT_EQ(reports.front().stage, appbox::BuildStage::Preparing);
+    EXPECT_EQ(reports.back().stage, appbox::BuildStage::Packing);
+    EXPECT_EQ(reports.back().done, expected);
+}
+
+TEST(Unit_PackService, SelfExtractingProgramRequiresAnAutoStartStartupFile)
+{
+    TempDir temp;
+    MakeFile(temp.Get(), L"app.exe", "EXE");
+
+    appbox::PackModel     model;
+    appbox::RegistryModel registry;
+    std::string           error;
+    ASSERT_TRUE(model.ImportFolder("program_files", temp.Get().wstring(), error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", temp.Get().filename().wstring(), L"app.exe", false, error))
+        << error;
+
+    const auto result = appbox::PackSelfExtracting(
+        model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(), appbox::EnvironmentModel(),
+        appbox::ApplicationMetadata(), appbox::StartupScreen{}, FakePayloads(), appbox::CompressionLevel::Normal,
+        (temp.Get() / L"out.exe").wstring(), nullptr);
+    EXPECT_NE(result.find("start automatically"), std::string::npos);
 }
 
 TEST(Unit_PackService, PackEmbedsTheStartupImageInTheLauncher)

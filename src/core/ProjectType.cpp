@@ -20,8 +20,9 @@ struct ProjectTypeEntry
 
 /** The entries of the `Project Type` box, in the order of the box. */
 constexpr ProjectTypeEntry kProjectTypes[] = {
-    { appbox::ProjectType::Standalone, "standalone", L"Standalone (ZIP)" },
-    { appbox::ProjectType::Patch,      "patch",      L"Patch (ZIP)"      },
+    { appbox::ProjectType::Standalone,           "standalone",     L"Standalone (ZIP)" },
+    { appbox::ProjectType::StandaloneExecutable, "standalone-exe", L"Standalone (EXE)" },
+    { appbox::ProjectType::Patch,                "patch",          L"Patch (ZIP)"      },
 };
 
 /** Number of entries of the table above. */

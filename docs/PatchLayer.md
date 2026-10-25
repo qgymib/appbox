@@ -39,8 +39,9 @@ name of a standalone archive is the name of `app`, a slash and the resource
 relative name, which is what the packer and the launcher share.
 
 A patch project needs no startup file: a patch package carries no launcher, so it
-cannot start a program. The `Build and Run` command is offered for a standalone
-project only.
+cannot start a program. The `Build and Run` command is offered for the two
+standalone products only, which are the self-contained archive and the
+self-extracting executable.
 
 ## Directory layout
 
@@ -64,7 +65,8 @@ project only.
 ```
 
 - `patch` is created by the user. A package only takes effect while it is
-  inside that directory, next to the launcher of the standalone archive.
+  inside that directory, next to the launcher of a standalone archive or of a
+  self-extracting executable.
 - `data` is created by the launcher at run time, and its `cache` directory as
   soon as the `patch` directory holds at least one package. Neither `data` nor
   `patch` travels in the archive: the packer writes the resources only.
@@ -216,8 +218,8 @@ in the run.
 
 ## Launcher side
 
-The launcher consumes the `patch` directory of the standalone archive it starts. A
-run
+The launcher consumes the `patch` directory beside the program it starts, which
+is a standalone archive or a self-extracting executable. A run
 
 1. enumerates `patch/*.zip` next to the launcher program, sorted by name in
    ascending ASCII order, and ignores a directory which does not exist or holds

@@ -4,6 +4,7 @@
 #include "ZipReaderError.hpp"
 #include "details/ZipReaderDetail.hpp"
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <functional>
@@ -51,45 +52,24 @@ struct ExtractProgress
  */
 using ExtractProgressCallback = std::function<bool(const ExtractProgress&)>;
 
+namespace detail
+{
+
 /**
- * @brief Extract a zip archive into a destination folder.
+ * @brief Extract every entry of an opened archive into a destination folder.
  *
- * The destination folder is created when it does not exist, and the entry
- * names of the archive are sanitized: absolute paths, drive relative paths
- * and parent references are rejected, so an archive can never write outside
- * of the destination folder. Directory entries become folders, which keeps
- * empty folders of the archive intact.
+ * The archive is owned by the caller, so both the path variant and the
+ * embedded region variant share this body.
  *
- * The archive is written by ZipWriter of the packer, so the two functions are
- * the write and read half of the same archive layout.
- *
- * Every extracted file is reported through the progress callback. Directory
- * entries only recreate the folder structure and are not reported, so the
- * total matches the number of file entries of the archive. The reported path
- * drops the `app/filesystem/<layer key>` prefix of the archive layout, which
- * makes it match the paths the packing stage reports.
- *
- * @param[in] zip_path Archive to extract.
+ * @param[in] archive Opened archive.
  * @param[in] dest_dir Destination folder.
- * @param[in] progress Called once per extracted file; returning false aborts
- *                     the extraction with ZIPREADER_CANCELLED. May be empty
- *                     to disable progress reporting.
+ * @param[in] progress Called once per extracted file; may be empty.
  * @return ZIPREADER_SUCCESS on success, the error code of the failed step
  *         otherwise.
  */
-inline ZipReaderErrno ExtractArchive(const std::wstring& zip_path, const std::wstring& dest_dir,
-                                     const ExtractProgressCallback& progress = {})
+inline ZipReaderErrno ExtractArchiveEntries(zip_t* archive, const std::wstring& dest_dir,
+                                            const ExtractProgressCallback& progress)
 {
-    const auto path = WideToUTF8(zip_path);
-
-    int                                                    error_code = 0;
-    const std::unique_ptr<zip_t, detail::ZipArchiveCloser> archive(zip_open(path.c_str(), ZIP_RDONLY, &error_code),
-                                                                   detail::ZipArchiveCloser{});
-    if (archive == nullptr)
-    {
-        return ZIPREADER_OPEN_ARCHIVE_FAILED;
-    }
-
     const auto root = std::filesystem::path(dest_dir).lexically_normal();
 
     std::error_code ec;
@@ -99,7 +79,7 @@ inline ZipReaderErrno ExtractArchive(const std::wstring& zip_path, const std::ws
         return ZIPREADER_CREATE_DESTINATION_FAILED;
     }
 
-    const auto count = zip_get_num_entries(archive.get(), 0);
+    const auto count = zip_get_num_entries(archive, 0);
 
     /*
      * The progress total is the number of file entries: directory entries only
@@ -110,7 +90,7 @@ inline ZipReaderErrno ExtractArchive(const std::wstring& zip_path, const std::ws
     for (auto index = static_cast<zip_uint64_t>(0); index < static_cast<zip_uint64_t>(count); ++index)
     {
         zip_stat_t stat = {};
-        if (zip_stat_index(archive.get(), index, 0, &stat) == 0 && stat.name != nullptr &&
+        if (zip_stat_index(archive, index, 0, &stat) == 0 && stat.name != nullptr &&
             (stat.valid & ZIP_STAT_NAME) != 0 && !detail::IsZipDirectoryEntry(stat.name))
         {
             total++;
@@ -126,7 +106,7 @@ inline ZipReaderErrno ExtractArchive(const std::wstring& zip_path, const std::ws
     for (auto index = static_cast<zip_uint64_t>(0); index < static_cast<zip_uint64_t>(count); ++index)
     {
         zip_stat_t stat = {};
-        if (zip_stat_index(archive.get(), index, 0, &stat) < 0)
+        if (zip_stat_index(archive, index, 0, &stat) < 0)
         {
             return ZIPREADER_READ_ENTRY_FAILED;
         }
@@ -177,7 +157,7 @@ inline ZipReaderErrno ExtractArchive(const std::wstring& zip_path, const std::ws
             return ZIPREADER_CANCELLED;
         }
 
-        const auto error = detail::WriteZipEntry(archive.get(), index, target);
+        const auto error = detail::WriteZipEntry(archive, index, target);
         if (error != ZIPREADER_SUCCESS)
         {
             return error;
@@ -185,6 +165,95 @@ inline ZipReaderErrno ExtractArchive(const std::wstring& zip_path, const std::ws
     }
 
     return ZIPREADER_SUCCESS;
+}
+
+} // namespace detail
+
+/**
+ * @brief Extract a zip archive into a destination folder.
+ *
+ * The destination folder is created when it does not exist, and the entry
+ * names of the archive are sanitized: absolute paths, drive relative paths
+ * and parent references are rejected, so an archive can never write outside
+ * of the destination folder. Directory entries become folders, which keeps
+ * empty folders of the archive intact.
+ *
+ * The archive is written by ZipWriter of the packer, so the two functions are
+ * the write and read half of the same archive layout.
+ *
+ * Every extracted file is reported through the progress callback. Directory
+ * entries only recreate the folder structure and are not reported, so the
+ * total matches the number of file entries of the archive. The reported path
+ * drops the `app/filesystem/<layer key>` prefix of the archive layout, which
+ * makes it match the paths the packing stage reports.
+ *
+ * @param[in] zip_path Archive to extract.
+ * @param[in] dest_dir Destination folder.
+ * @param[in] progress Called once per extracted file; returning false aborts
+ *                     the extraction with ZIPREADER_CANCELLED. May be empty
+ *                     to disable progress reporting.
+ * @return ZIPREADER_SUCCESS on success, the error code of the failed step
+ *         otherwise.
+ */
+inline ZipReaderErrno ExtractArchive(const std::wstring& zip_path, const std::wstring& dest_dir,
+                                     const ExtractProgressCallback& progress = {})
+{
+    const auto path = WideToUTF8(zip_path);
+
+    int                                                    error_code = 0;
+    const std::unique_ptr<zip_t, detail::ZipArchiveCloser> archive(zip_open(path.c_str(), ZIP_RDONLY, &error_code),
+                                                                   detail::ZipArchiveCloser{});
+    if (archive == nullptr)
+    {
+        return ZIPREADER_OPEN_ARCHIVE_FAILED;
+    }
+
+    return detail::ExtractArchiveEntries(archive.get(), dest_dir, progress);
+}
+
+/**
+ * @brief Extract a zip archive which is embedded in another file.
+ *
+ * A self-extracting program carries its payload behind its own image, so the
+ * archive does not start at offset zero of the file. libzip cannot open such a
+ * file by path, but a source which describes the region does present the bytes
+ * as a standalone archive.
+ *
+ * @param[in] path File which carries the archive.
+ * @param[in] offset Offset of the archive inside that file, in bytes.
+ * @param[in] length Length of the archive region, in bytes.
+ * @param[in] dest_dir Destination folder.
+ * @param[in] progress Called once per extracted file; may be empty.
+ * @return ZIPREADER_SUCCESS on success, the error code of the failed step
+ *         otherwise.
+ */
+inline ZipReaderErrno ExtractArchiveAt(const std::wstring& path, std::uint64_t offset, std::uint64_t length,
+                                       const std::wstring& dest_dir, const ExtractProgressCallback& progress = {})
+{
+    zip_error_t error;
+    zip_error_init(&error);
+
+    zip_source_t* source =
+        zip_source_file_create(WideToUTF8(path).c_str(), offset, static_cast<zip_int64_t>(length), &error);
+    if (source == nullptr)
+    {
+        zip_error_fini(&error);
+        return ZIPREADER_OPEN_ARCHIVE_FAILED;
+    }
+
+    zip_t* opened = zip_open_from_source(source, ZIP_RDONLY, &error);
+    if (opened == nullptr)
+    {
+        /* zip_open_from_source() does not take the source on failure. */
+        zip_source_free(source);
+        zip_error_fini(&error);
+        return ZIPREADER_OPEN_ARCHIVE_FAILED;
+    }
+
+    zip_error_fini(&error);
+
+    const std::unique_ptr<zip_t, detail::ZipArchiveCloser> archive(opened, detail::ZipArchiveCloser{});
+    return detail::ExtractArchiveEntries(archive.get(), dest_dir, progress);
 }
 
 } // namespace appbox

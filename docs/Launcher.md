@@ -9,6 +9,42 @@ programs it started. The launcher is the part of an archive which a user can dri
 command line, so this document describes its command line options and the log
 files a run writes.
 
+## Self-extracting executable
+
+The `Standalone (EXE)` project type writes one program instead of an archive: the
+launcher image itself, followed by a zip archive of the read-only resources below
+`app` and by a 32 byte trailer, the way a self-extracting archive of 7-Zip is
+built. `data`, `patch` and `log` stay beside the program, so the state of the
+sandbox, the patch packages of the user and the log files survive the run while
+the resources need no folder beside the program at all.
+
+The trailer is the last block of the file and is fixed and little endian:
+
+|Offset|Size|Field|
+|---|---|---|
+|0|8|`uint64` offset of the payload from the start of the file|
+|8|8|`uint64` size of the payload in bytes|
+|16|4|`uint32` version of the trailer layout (`1`)|
+|20|4|`uint32` reserved (`0`)|
+|24|8|magic `APPBOXSF`|
+
+A launcher whose file is shorter than the trailer or whose last bytes carry no
+magic is an ordinary launcher of an archive: it reads its resources from the
+`app` directory beside it, exactly as before. A program which carries the magic
+but whose fields do not describe the bytes in front of the trailer is treated as
+an ordinary launcher as well and logs a warning, so a damaged program reports the
+missing resources instead of a failure of its own.
+
+The payload holds the resource tree of the archive below `app` and nothing else:
+the launcher is the program itself, so the payload carries neither a launcher
+entry nor a `data` directory. The program extracts it into
+`<temporary directory>\AppBox-SFX-<program stem>-<pid>` before the sandbox is
+prepared, reports the release on the startup screen and takes the `app` directory
+of that folder as the resource root of the run. The folder belongs to the run and
+is removed when the run ends; a removal which fails because a process of the run
+still holds a file is logged and left behind, and a leftover folder of the same
+name (a reused process id) is deleted by the next run which meets it.
+
 ## Command line
 
 Every option of the launcher is spelled `--X-AppBox-<Name>` and carries its value
@@ -20,7 +56,7 @@ them as the command of the shell.
 
 | Option | Value | Behavior |
 | --- | --- | --- |
-| `--X-AppBox-ConfigFile` | Path of a configuration file | Resolve the run with the given file instead of the configuration resource embedded in the launcher. The layout of the sandbox is resolved against the directory of that file, so `app`, `data` and `patch` are looked for beside it; the released sandbox modules and the extracted patch packages live in `data/cache`. |
+| `--X-AppBox-ConfigFile` | Path of a configuration file | Resolve the run with the given file instead of the configuration resource embedded in the launcher. The layout of the sandbox is resolved against the directory of that file, so `data` and `patch` are looked for beside it; the released sandbox modules and the extracted patch packages live in `data/cache`. A self-extracting program still extracts its payload and takes the extraction as its resource root, so the resources stay behind the program image while its state follows the configuration file. |
 | `--X-AppBox-LogLevel` | `trace`, `debug`, `info`, `warn`, `err`, `critical` or `off` | Level of the log files of the run (see [Logging](#logging)). A run which names no level writes no log file at all, which is the default. |
 | `--X-AppBox-LogDir` | Directory | Directory the log files of the run are written into. A relative path is resolved against the current directory. Default: the `log` directory beside the launcher. |
 | `--X-AppBox-Startup` | Trigger of a startup file | Start the startup file with that trigger instead of the files which are marked for auto start. A trigger no startup file carries refuses the run. |
@@ -85,9 +121,10 @@ entry `run.exe`.
 The executable a configuration names is a path of the **sandbox view** and not a
 path of the machine: the packer stores `<layer key>\<import>\<file>` (for example
 `#ProgramFiles#\MyApp\app.exe`), while the files themselves travel below
-`app/filesystem/<layer key>` of the archive. The launcher therefore resolves the
-path before it creates the process, with the very rules a sandboxed process
-sees:
+`app/filesystem/<layer key>` of the archive, which the launcher of a
+self-extracting program extracts from its own payload. The launcher therefore
+resolves the path before it creates the process, with the very rules a
+sandboxed process sees:
 
 * the layer key is expanded to the known folder of the machine which runs the
   archive, and the resulting path is resolved against the layers of the view;

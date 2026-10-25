@@ -51,6 +51,18 @@ inline constexpr std::size_t kNonContentArchiveEntries = 6;
 inline constexpr std::size_t kNonContentPatchEntries = 5;
 
 /**
+ * @brief Number of payload archive files of a self-extracting program which do
+ *        not come from an import.
+ *
+ * The payload carries the resources of a standalone archive without the
+ * launcher entry: the two registry artifacts (the hive and the isolation file)
+ * and the isolation file of the filesystem, of the network and of the
+ * environment workspace. The program image and the trailer are not files of the
+ * payload archive and are therefore not counted.
+ */
+inline constexpr std::size_t kNonContentExecutableEntries = 5;
+
+/**
  * @brief Count the regular files below a folder.
  *
  * Symlinks and reparse points are not followed; their targets are not
@@ -255,6 +267,47 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
                  const NetworkModel& network, const EnvironmentModel& environment, const ApplicationMetadata& metadata,
                  const StartupScreen& startup, const PackPayloads& payloads, CompressionLevel compression,
                  const std::wstring& zip_path, const BuildProgressCallback& progress);
+
+/**
+ * @brief Pack the model into one self-extracting program.
+ *
+ * The program is the launcher image of the session - icon, file properties, run
+ * configuration and startup image applied, exactly as `Pack()` writes them into
+ * an archive - followed by a zip archive of the resources below `app` and the
+ * trailer of `common/ExecutablePayload.hpp`. The launcher extracts the payload
+ * into a temporary folder at run time; `data`, `patch` and `log` stay beside the
+ * program.
+ *
+ * The payload is written to a temporary archive first and copied behind the
+ * image afterwards, because libzip cannot write at an offset of an existing
+ * file.
+ *
+ * @param[in] model The pack model.
+ * @param[in] registry Virtual registry of the workspace, written into the
+ *            registry domain of the payload.
+ * @param[in] isolation Isolation modes of the virtual filesystem, written into
+ *            the filesystem domain of the payload.
+ * @param[in] network DNS redirections of the network workspace, written into
+ *            the network domain of the payload.
+ * @param[in] environment Environment variables of the workspace, written into
+ *            the environment domain of the payload.
+ * @param[in] metadata File properties of the program.
+ * @param[in] startup Startup screen of the session.
+ * @param[in] payloads Embedded launcher program, which becomes the program
+ *            itself; the sandbox injection modules are resources of that
+ *            launcher and do not travel separately.
+ * @param[in] compression Compression level of the file entries of the payload.
+ * @param[in] exe_path Destination program path (truncated when it exists).
+ * @param[in] progress Called once per packed file; returning false aborts the
+ *            pack with kBuildCancelledError. May be empty to disable progress
+ *            reporting.
+ * @return Error description, empty on success.
+ */
+std::string PackSelfExtracting(const PackModel& model, const RegistryModel& registry,
+                               const FilesystemIsolationModel& isolation, const NetworkModel& network,
+                               const EnvironmentModel& environment, const ApplicationMetadata& metadata,
+                               const StartupScreen& startup, const PackPayloads& payloads, CompressionLevel compression,
+                               const std::wstring& exe_path, const BuildProgressCallback& progress);
 
 /**
  * @brief Pack the resources of the model into a patch package.

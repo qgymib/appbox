@@ -10,6 +10,7 @@
 #include <spdlog/spdlog.h>
 #include <cctype>
 #include <cstddef>
+#include <filesystem>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -22,6 +23,7 @@
 #include "utils/GetExecutableDir.hpp"
 #include "utils/ProcessJob.hpp"
 #include "utils/SandboxModules.hpp"
+#include "utils/SelfExtraction.hpp"
 #include "utils/Shell.hpp"
 #include "utils/KnownFolder.hpp"
 #include "utils/VersionInfo.hpp"
@@ -291,6 +293,37 @@ static void CloseStartupScreen(std::unique_ptr<appbox::SplashScreen>& splash)
 }
 
 /**
+ * @brief Remove the extraction of a self-extracting program when the run ends.
+ *
+ * The run owns the folder, so every path which leaves RunLauncher() releases
+ * it: the processes of the run were waited for before.
+ */
+class ExtractionCleanup
+{
+public:
+    ~ExtractionCleanup()
+    {
+        appbox::RemoveExtraction(root_);
+    }
+
+    ExtractionCleanup() = default;
+    ExtractionCleanup(const ExtractionCleanup&) = delete;
+    ExtractionCleanup& operator=(const ExtractionCleanup&) = delete;
+
+    /**
+     * @brief Get the folder of the extraction.
+     * @return The folder, empty while the program carries no payload.
+     */
+    std::wstring& Root()
+    {
+        return root_;
+    }
+
+private:
+    std::wstring root_;
+};
+
+/**
  * @brief Run the processes the configuration describes.
  *
  * Every target is started before the first one is waited for, so the targets of
@@ -525,7 +558,11 @@ static DWORD RunLauncher()
      * The startup screen of the run. It covers the preparation of the sandbox
      * and disappears as soon as the processes of the run were started, so it
      * belongs to the run and is released by every path which leaves it.
+     *
+     * The extraction of a self-extracting program is declared first, so the
+     * screen is destroyed before the folder of the extraction is released.
      */
+    ExtractionCleanup                     extraction;
     std::unique_ptr<appbox::SplashScreen> splash;
 
     try
@@ -575,6 +612,33 @@ static DWORD RunLauncher()
         splash = std::make_unique<appbox::SplashScreen>(LauncherApp().launcher_config.startup.screen,
                                                         appbox::ReadOwnDisplayName(), startup_image);
         LauncherApp().splash = splash.get();
+
+        /*
+         * A self-extracting program carries the resources of the application
+         * behind its own image. The payload is extracted into a temporary
+         * folder of the run, which becomes the resource root of the sandbox:
+         * the state directory, the patch directory and the logs stay beside
+         * the program itself.
+         */
+        std::string payload_error;
+        if (!appbox::ExtractProgramPayload(
+                appbox::GetExecutablePath(),
+                [](const appbox::ExtractProgress& report) {
+                    const double total = report.total > 0 ? static_cast<double>(report.total) : 1.0;
+                    ReportStartupStage(appbox::StartupStage::ExtractingPayload,
+                                       static_cast<double>(report.done) / total);
+                    return true;
+                },
+                extraction.Root(), payload_error))
+        {
+            throw std::runtime_error(payload_error);
+        }
+
+        if (!extraction.Root().empty())
+        {
+            LauncherApp().sandbox_paths.SetResourceRoot(
+                (std::filesystem::path(extraction.Root()) / appbox::layout::kAppDirNameW).wstring());
+        }
 
         ReportStartupStage(appbox::StartupStage::Preparing, 1.0);
 

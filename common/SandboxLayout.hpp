@@ -42,6 +42,15 @@ namespace appbox
  * launcher of a standalone archive, which merges every patch of that directory
  * in ascending name order on top of the resources of `app`.
  *
+ * The `Standalone (EXE)` product carries the two halves of an archive in one
+ * file: the program is the launcher image, the resources below `app` are
+ * appended to it as a zip archive and the position and the size of that payload
+ * are written into a trailer behind it (see `common/ExecutablePayload.hpp`).
+ * The launcher extracts the payload into a temporary folder of the run and takes
+ * the `app` directory of that folder as its read-only root, so the tree above
+ * describes the content of the payload, while `data`, `patch` and `log` stay
+ * beside the program itself.
+ *
  * ```
  * filesystem/isolation.json            isolation modes of the filesystem
  * filesystem/<layer key>/...           imported content (read-only layers)

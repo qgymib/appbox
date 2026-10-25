@@ -16,6 +16,7 @@ namespace appbox
  */
 enum class StartupStage
 {
+    ExtractingPayload,  ///< The payload appended to a self-extracting program is extracted.
     Preparing,          ///< The configuration is resolved and the modules are checked.
     LoadingPatches,     ///< The patch packages are read, verified and extracted.
     MountingSandbox,    ///< The filesystem layers, the hive and the RPC server are set up.

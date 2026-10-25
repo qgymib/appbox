@@ -13,7 +13,7 @@ appbox provides runtime isolation for Windows applications, enabling controlled 
 - **Network Isolation**: Answers the name resolution of the packaged application from the redirections of the workspace, and optionally carries its TCP and UDP traffic through a SOCKS5 proxy (see [Network Isolation](docs/NetworkIsolation.md)).
 - **Environment Isolation**: Collects the environment variables the packaged application sees inside the sandbox with the isolation mode and the merge mode of every variable; the composed environment is installed as the environment block of the process, so every reader of the process sees it while the environment of the host is never modified, and the modifications of the application survive in the state directory of the sandbox (see [Environment Isolation](docs/EnvironmentIsolation.md)).
 - **Fonts Isolation**: Loads the fonts a layer of the filesystem carries into the font table of every process of a run, so the packaged application creates, enumerates and renders them as if they were installed, while the font directory, the font table and the registry of the host stay untouched (see [Fonts Isolation](docs/FontsIsolation.md)).
-- **Patch Packages**: The `Project Type` box of the packer writes either a self-contained archive or a patch package which holds the resources of the packaged application without the launcher; the packages of the `patch` directory next to a standalone archive are merged into its resources in ascending name order — the filesystem layers, the virtual registry, the network configuration and the environment variables of a package included (see [Patch Layers](docs/PatchLayer.md)).
+- **Patch Packages**: The `Project Type` box of the packer writes either a self-contained archive, a self-extracting program or a patch package which holds the resources of the packaged application without the launcher; the packages of the `patch` directory next to a standalone archive are merged into its resources in ascending name order — the filesystem layers, the virtual registry, the network configuration and the environment variables of a package included (see [Patch Layers](docs/PatchLayer.md)).
 
 ## Build
 
@@ -49,7 +49,8 @@ the configuration subdirectory the generator adds below it:
 ### AppBox
 
 The main product of the repository: a wxWidgets-based GUI application which
-packages an installed application into a portable zip archive and edits the
+packages an installed application into a portable zip archive or a
+self-extracting program and edits the
 isolation the packaged application runs with. Its workspaces edit the four
 isolation domains of the sandbox, hold the destination archive and the project
 type of the `Build` command, and may reference a known folder of the machine

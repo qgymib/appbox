@@ -73,6 +73,15 @@ struct PackOutcome
      * archive has to be started through this name instead of a fixed one.
      */
     std::wstring launcher_entry;
+
+    /**
+     * @brief Whether the product is a program which starts on its own.
+     *
+     * A self-extracting executable carries the launcher and its payload in one
+     * file, so `Build and Run` starts the written program instead of extracting
+     * an archive.
+     */
+    bool self_extracting = false;
 };
 
 /**
