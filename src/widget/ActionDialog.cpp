@@ -179,11 +179,36 @@ bool ActionDialog::Show(bool show)
         disabler_ = std::make_unique<wxWindowDisabler>(this);
     }
 
+    if (!show)
+    {
+        /*
+         * The other windows are enabled before the dialog is hidden: a window
+         * which is still disabled cannot take the activation back when the
+         * active dialog disappears, and Windows activates another application
+         * instead. The modal dialog of wxWidgets leaves its modal loop for the
+         * same reason before it hides itself.
+         */
+        disabler_.reset();
+    }
+
     const bool changed = wxDialog::Show(show);
 
     if (!show)
     {
-        disabler_.reset();
+        if (changed)
+        {
+            /*
+             * The dialog is owned by the window which opened it, but Windows
+             * does not have to activate the owner when an owned window is
+             * hidden. Raising the owner puts the focus back on the window the
+             * dialog was opened from.
+             */
+            if (auto* owner = wxDynamicCast(GetParent(), wxTopLevelWindow); owner != nullptr && owner->IsShown())
+            {
+                owner->Raise();
+            }
+        }
+
         if (tick_timer_ != nullptr && tick_timer_->IsRunning())
         {
             tick_timer_->Stop();
