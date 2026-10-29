@@ -5,8 +5,8 @@
 #include "utils/ReadFileFull.hpp"
 #include "utils/RealFsFolder.hpp"
 #include "utils/TestKnownFolder.hpp"
+#include "PeImage.hpp"
 #include "WString.hpp"
-#include "tracer/PeImage.hpp"
 #include <filesystem>
 #include <string>
 
@@ -60,7 +60,7 @@ std::wstring FolderInOverlay(const std::wstring& cwd)
  */
 TEST_F(E2E_Fs, Probe32_DefaultMerge_WritesTheFileOfTheHost)
 {
-    ASSERT_TRUE(appbox::tracer::PeImage::FromFile(ProbePath(ProbeBitness::Bit32)).Is32Bit())
+    ASSERT_TRUE(appbox::PeImage::FromFile(ProbePath(ProbeBitness::Bit32)).Is32Bit())
         << "the probe of the run is not a 32 bit image: pass the 32 bit probe as --probe32=";
 
     RealFsFolder host(L"#USERPROFILE#", kFolderName);

@@ -1,7 +1,7 @@
 #ifndef APPBOX_UTILS_CONVERT_DOS_PATH_TO_NT_PATH_HPP
 #define APPBOX_UTILS_CONVERT_DOS_PATH_TO_NT_PATH_HPP
 
-#include "sandbox/utils/WinAPI.h"
+#include "WinAPI.h"
 #include <string>
 
 namespace appbox

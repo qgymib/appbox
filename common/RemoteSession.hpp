@@ -9,11 +9,14 @@
 #include <asio.hpp>
 #include <spdlog/spdlog.h>
 #include <array>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstring>
 #include <functional>
 #include <list>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 #include "RpcCodec.hpp"
@@ -55,6 +58,21 @@ public:
      */
     void Send(MsgPtr data);
 
+    /**
+     * @brief Close the pipe of the session.
+     *
+     * The pending reads and writes complete with an error, so the owner of the
+     * session learns that the connection is gone. The call may be repeated.
+     */
+    void Close();
+
+    /**
+     * @brief Wait until the messages which are queued for the client are written.
+     * @param[in] timeout_ms Upper bound of the wait.
+     * @return true when nothing is pending any more, otherwise false.
+     */
+    bool WaitForPendingWrites(uint32_t timeout_ms);
+
 private:
     RemoteSession();
 
@@ -81,6 +99,7 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
      */
     void WantWrite()
     {
+        std::lock_guard<std::mutex> lock(write_mutex);
         if (in_write)
         {
             return;
@@ -95,8 +114,13 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
 
         self->in_write = true;
         asio::async_write(*pipe, asio::buffer(*msg), [self](const asio::error_code& ec, std::size_t) {
-            self->in_write = false;
-            self->send_queue.pop_front();
+            {
+                std::lock_guard<std::mutex> guard(self->write_mutex);
+                self->in_write = false;
+                self->send_queue.pop_front();
+            }
+            self->write_cv.notify_all();
+
             if (ec)
             { /* Write failed */
                 SPDLOG_ERROR("[HANDLE: {}] write pipe failed: {}", self->pipe->native_handle(), ec.message());
@@ -105,6 +129,45 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
 
             self->WantWrite();
         });
+    }
+
+    /**
+     * @brief Close the pipe of the session.
+     */
+    void Close()
+    {
+        if (!pipe)
+        {
+            return;
+        }
+
+        asio::error_code ec;
+        pipe->close(ec);
+        if (ec)
+        {
+            SPDLOG_DEBUG("[HANDLE: {}] close pipe: {}", pipe->native_handle(), ec.message());
+        }
+    }
+
+    /**
+     * @brief Wait until the queued messages are written.
+     * @param[in] timeout_ms Upper bound of the wait.
+     * @return true when nothing is pending any more, otherwise false.
+     */
+    bool WaitForPendingWrites(uint32_t timeout_ms)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+
+        std::unique_lock<std::mutex> lock(write_mutex);
+        while (in_write || !send_queue.empty())
+        {
+            if (write_cv.wait_until(lock, deadline) == std::cv_status::timeout)
+            {
+                return !in_write && send_queue.empty();
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -171,6 +234,9 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
     std::vector<uint8_t>                          recv_data;  /* Recv data */
     std::array<uint8_t, 4096>                     recv_buff;  /* Recv cache */
     bool                                          in_write;   /* During write */
+
+    std::mutex              write_mutex; /* Send queue and write state lock */
+    std::condition_variable write_cv;    /* Signals a finished write */
 };
 
 inline RemoteSession::RemoteSession() : data_(std::make_shared<Data>())
@@ -208,10 +274,23 @@ inline void RemoteSession::Send(MsgPtr data)
         return;
     }
 
-    data_->send_queue.push_back(std::make_shared<std::string>(std::move(header)));
-    data_->send_queue.push_back(std::move(data));
+    {
+        std::lock_guard<std::mutex> lock(data_->write_mutex);
+        data_->send_queue.push_back(std::make_shared<std::string>(std::move(header)));
+        data_->send_queue.push_back(std::move(data));
+    }
 
     data_->WantWrite();
+}
+
+inline void RemoteSession::Close()
+{
+    data_->Close();
+}
+
+inline bool RemoteSession::WaitForPendingWrites(uint32_t timeout_ms)
+{
+    return data_->WaitForPendingWrites(timeout_ms);
 }
 
 } // namespace appbox

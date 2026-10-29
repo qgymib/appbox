@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_UTILS_PROCESS_PARAMETERS_HPP
 #define APPBOX_SANDBOX_UTILS_PROCESS_PARAMETERS_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include <string>
 
 namespace appbox::process_parameters

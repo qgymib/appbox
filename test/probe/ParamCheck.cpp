@@ -1,4 +1,4 @@
-#include "sandbox/utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include <CLI/CLI.hpp>
 #include "ParamCheck.hpp"
 #include "common/SandboxLayout.hpp"

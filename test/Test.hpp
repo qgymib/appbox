@@ -40,8 +40,6 @@ enum class TestMode
 struct TestConfig
 {
     std::wstring      launcher_path;        /* Path to launcher */
-    std::wstring      sandbox32_path;       /* Path to the 32 bit sandbox injection module */
-    std::wstring      sandbox64_path;       /* Path to the 64 bit sandbox injection module */
     std::wstring      probe32_path;         /* Path to the 32 bit probe executable */
     std::wstring      probe64_path;         /* Path to the 64 bit probe executable */
     std::wstring      packer_path;          /* Path to the packer */

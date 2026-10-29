@@ -1,4 +1,4 @@
-#include "sandbox/utils/WinAPI.h" /* Must be included before any other headers. */
+#include "WinAPI.h" /* Must be included before any other headers. */
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <cctype>
@@ -274,14 +274,6 @@ void SetConfigFromEnv()
     {
         appbox::test::config.launcher_path = val;
     }
-    if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_SANDBOX32", val))
-    {
-        appbox::test::config.sandbox32_path = val;
-    }
-    if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_SANDBOX64", val))
-    {
-        appbox::test::config.sandbox64_path = val;
-    }
     if (appbox::test::ReadEnvironmentVariable(L"APPBOX_TEST_PROBE32", val))
     {
         appbox::test::config.probe32_path = val;
@@ -359,10 +351,6 @@ int appbox::test::SetupTestConfig(CLI::App& app)
 
     app.add_option("--launcher", appbox::test::config.launcher_path,
                    "Path to launcher. Environment variable: APPBOX_TEST_LAUNCHER.");
-    app.add_option("--sandbox32", appbox::test::config.sandbox32_path,
-                   "Path to the 32 bit sandbox injection module. Environment variable: APPBOX_TEST_SANDBOX32.");
-    app.add_option("--sandbox64", appbox::test::config.sandbox64_path,
-                   "Path to the 64 bit sandbox injection module. Environment variable: APPBOX_TEST_SANDBOX64.");
     app.add_option("--probe32", appbox::test::config.probe32_path,
                    "Path to the 32 bit probe executable. Environment variable: APPBOX_TEST_PROBE32.");
     app.add_option("--probe64", appbox::test::config.probe64_path,

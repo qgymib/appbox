@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_FILESYSTEM_REMOVEALL_HPP
 #define APPBOX_SANDBOX_FILESYSTEM_REMOVEALL_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include <string>
 
 namespace appbox::filesystem

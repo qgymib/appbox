@@ -1,4 +1,4 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "SetProcessMitigationPolicy.hpp"
 
 T_SetProcessMitigationPolicy sys_SetProcessMitigationPolicy = nullptr;

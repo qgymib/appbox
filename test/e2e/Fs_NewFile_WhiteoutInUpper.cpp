@@ -1,4 +1,4 @@
-#include "sandbox/utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "probe/CreateFileW.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"

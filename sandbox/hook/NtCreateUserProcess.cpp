@@ -1,12 +1,12 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
 #include "utils/Defines.hpp"
-#include "utils/MappingAsDosNtPath.hpp"
 #include "utils/ProcessParameters.hpp"
 #include "environment/Isolation.hpp"
 #include "filesystem/LayerPath.hpp"
 #include "filesystem/Resolve.hpp"
 #include "Sandbox.hpp"
+#include "MappingAsDosNtPath.hpp"
 #include "NtCreateUserProcess.hpp"
 #include "WString.hpp"
 #include <detours.h>

@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_UTILS_LOG_HPP
 #define APPBOX_SANDBOX_UTILS_LOG_HPP
 
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "msg/Log.hpp"
 #include <spdlog/spdlog.h>
 #include <nlohmann/json.hpp>

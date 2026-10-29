@@ -1,8 +1,7 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "filesystem/CopyUp.hpp"
 #include "filesystem/CreateDirectory.hpp"
-#include "filesystem/DirName.hpp"
-#include "filesystem/IsolationPolicy.hpp"
+#include "FilesystemIsolationPolicy.hpp"
 #include "filesystem/MarkerName.hpp"
 #include "filesystem/Resolve.hpp"
 #include "filesystem/RemoveAll.hpp"
@@ -15,9 +14,10 @@
 #include "utils/BitParser.hpp"
 #include "utils/HandleInfo.hpp"
 #include "utils/Log.hpp"
-#include "utils/MappingAsDosNtPath.hpp"
 #include "utils/QueryHandlePath.hpp"
 #include "utils/ConvertToFullNtPath.hpp"
+#include "MappingAsDosNtPath.hpp"
+#include "PathText.hpp"
 #include "WString.hpp"
 #include "Sandbox.hpp"
 #include <vector>

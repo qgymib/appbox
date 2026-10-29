@@ -3,6 +3,7 @@
 
 #include "IsolationDocument.hpp"
 #include <nlohmann/json.hpp>
+#include <cstddef>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -224,45 +225,14 @@ inline constexpr EnvironmentMergeMode kDefaultMergeMode = EnvironmentMergeMode::
  * @param[in] name Name of an environment variable.
  * @return true when the name is the search path variable.
  */
-inline bool IsPathVariableName(std::wstring_view name)
-{
-    if (name.size() != 4)
-    {
-        return false;
-    }
-
-    constexpr wchar_t kExpected[] = L"path";
-    for (std::size_t index = 0; index < 4; ++index)
-    {
-        wchar_t character = name[index];
-        if (character >= L'A' && character <= L'Z')
-        {
-            character = static_cast<wchar_t>(character - L'A' + L'a');
-        }
-        if (character != kExpected[index])
-        {
-            return false;
-        }
-    }
-    return true;
-}
+inline bool IsPathVariableName(std::wstring_view name);
 
 /**
  * @brief Get the token of an isolation mode.
  * @param[in] isolation The isolation mode.
  * @return The canonical lower case token, for example `"write_copy"`.
  */
-inline const char* IsolationToken(EnvironmentIsolation isolation)
-{
-    switch (isolation)
-    {
-    case EnvironmentIsolation::Full:
-        return "full";
-    case EnvironmentIsolation::WriteCopy:
-        return "write_copy";
-    }
-    return "write_copy";
-}
+inline const char* IsolationToken(EnvironmentIsolation isolation);
 
 /**
  * @brief Resolve an isolation mode from its token.
@@ -275,57 +245,14 @@ inline const char* IsolationToken(EnvironmentIsolation isolation)
  * @param[out] out The resolved mode when the token is known.
  * @return true when the token names an isolation mode.
  */
-inline bool ParseIsolationToken(std::string_view token, EnvironmentIsolation& out)
-{
-    std::string normalized;
-    normalized.reserve(token.size());
-    for (const char character : token)
-    {
-        char lower = character;
-        if (lower >= 'A' && lower <= 'Z')
-        {
-            lower = static_cast<char>(lower - 'A' + 'a');
-        }
-        if (lower == ' ' || lower == '-')
-        {
-            lower = '_';
-        }
-        normalized.push_back(lower);
-    }
-
-    if (normalized == "full")
-    {
-        out = EnvironmentIsolation::Full;
-        return true;
-    }
-    if (normalized == "write_copy" || normalized == "writecopy")
-    {
-        out = EnvironmentIsolation::WriteCopy;
-        return true;
-    }
-    return false;
-}
+inline bool ParseIsolationToken(std::string_view token, EnvironmentIsolation& out);
 
 /**
  * @brief Get the token of a merge mode.
  * @param[in] merge The merge mode.
  * @return The canonical lower case token, for example `"prepend"`.
  */
-inline const char* MergeModeToken(EnvironmentMergeMode merge)
-{
-    switch (merge)
-    {
-    case EnvironmentMergeMode::Replace:
-        return "replace";
-    case EnvironmentMergeMode::Host:
-        return "host";
-    case EnvironmentMergeMode::Prepend:
-        return "prepend";
-    case EnvironmentMergeMode::Append:
-        return "append";
-    }
-    return "replace";
-}
+inline const char* MergeModeToken(EnvironmentMergeMode merge);
 
 /**
  * @brief Resolve a merge mode from its token.
@@ -338,46 +265,7 @@ inline const char* MergeModeToken(EnvironmentMergeMode merge)
  * @param[out] out The resolved mode when the token is known.
  * @return true when the token names a merge mode.
  */
-inline bool ParseMergeModeToken(std::string_view token, EnvironmentMergeMode& out)
-{
-    std::string normalized;
-    normalized.reserve(token.size());
-    for (const char character : token)
-    {
-        char lower = character;
-        if (lower >= 'A' && lower <= 'Z')
-        {
-            lower = static_cast<char>(lower - 'A' + 'a');
-        }
-        if (lower == ' ' || lower == '-')
-        {
-            lower = '_';
-        }
-        normalized.push_back(lower);
-    }
-
-    if (normalized == "replace")
-    {
-        out = EnvironmentMergeMode::Replace;
-        return true;
-    }
-    if (normalized == "host")
-    {
-        out = EnvironmentMergeMode::Host;
-        return true;
-    }
-    if (normalized == "prepend")
-    {
-        out = EnvironmentMergeMode::Prepend;
-        return true;
-    }
-    if (normalized == "append")
-    {
-        out = EnvironmentMergeMode::Append;
-        return true;
-    }
-    return false;
-}
+inline bool ParseMergeModeToken(std::string_view token, EnvironmentMergeMode& out);
 
 /**
  * @brief Value the sandbox reports for one configured variable.
@@ -414,10 +302,7 @@ struct ComposedValue
  * @param[in] isolation The isolation mode.
  * @return true when the value below the layer is visible.
  */
-inline bool HostValueIsVisible(EnvironmentIsolation isolation)
-{
-    return isolation == EnvironmentIsolation::WriteCopy;
-}
+inline bool HostValueIsVisible(EnvironmentIsolation isolation);
 
 /**
  * @brief Compose the value the sandbox reports for one variable.
@@ -456,39 +341,7 @@ inline bool HostValueIsVisible(EnvironmentIsolation isolation)
  */
 inline ComposedValue ComposeEnvironmentValue(bool host_present, std::wstring_view host_value, std::wstring_view value,
                                              EnvironmentIsolation isolation, EnvironmentMergeMode merge,
-                                             std::wstring_view merge_string)
-{
-    if (!HostValueIsVisible(isolation))
-    {
-        return ComposedValue{ true, std::wstring(value) };
-    }
-
-    switch (merge)
-    {
-    case EnvironmentMergeMode::Replace:
-        return ComposedValue{ true, std::wstring(value) };
-    case EnvironmentMergeMode::Host:
-        if (!host_present)
-        {
-            return ComposedValue{ false, std::wstring() };
-        }
-        return ComposedValue{ true, std::wstring(host_value) };
-    case EnvironmentMergeMode::Prepend:
-        if (!host_present || host_value.empty())
-        {
-            return ComposedValue{ true, std::wstring(value) };
-        }
-        return ComposedValue{ true, std::wstring(value) + std::wstring(merge_string) + std::wstring(host_value) };
-    case EnvironmentMergeMode::Append:
-        if (!host_present || host_value.empty())
-        {
-            return ComposedValue{ true, std::wstring(value) };
-        }
-        return ComposedValue{ true, std::wstring(host_value) + std::wstring(merge_string) + std::wstring(value) };
-    }
-
-    return ComposedValue{ true, std::wstring(value) };
-}
+                                             std::wstring_view merge_string);
 
 /**
  * @brief Build the prefix of an error description which names an entry.
@@ -499,10 +352,7 @@ inline ComposedValue ComposeEnvironmentValue(bool host_present, std::wstring_vie
  * @param[in] index Position of the entry.
  * @return The prefix, for example `"entries[0]: "`.
  */
-inline std::string EntryPrefix(std::size_t index)
-{
-    return "entries[" + std::to_string(index) + "]: ";
-}
+inline std::string EntryPrefix(std::size_t index);
 
 /**
  * @brief Read a required member of an entry which holds a text.
@@ -512,16 +362,7 @@ inline std::string EntryPrefix(std::size_t index)
  * @return The text of the member.
  * @throw appbox::IsolationDocumentError The member is missing or not a text.
  */
-inline std::string EntryText(const nlohmann::json& entry, const char* key, const std::string& prefix)
-{
-    const auto* member = isolation_document::FindMember(entry, key);
-    if (member == nullptr || !member->is_string())
-    {
-        isolation_document::Throw(prefix + "the member '" + key + "' is missing or is not a string");
-    }
-
-    return member->get<std::string>();
-}
+inline std::string EntryText(const nlohmann::json& entry, const char* key, const std::string& prefix);
 
 /**
  * @brief Read a required member of an entry which holds a flag.
@@ -531,16 +372,7 @@ inline std::string EntryText(const nlohmann::json& entry, const char* key, const
  * @return The value of the member.
  * @throw appbox::IsolationDocumentError The member is missing or not a flag.
  */
-inline bool EntryFlag(const nlohmann::json& entry, const char* key, const std::string& prefix)
-{
-    const auto* member = isolation_document::FindMember(entry, key);
-    if (member == nullptr || !member->is_boolean())
-    {
-        isolation_document::Throw(prefix + "the member '" + key + "' is missing or is not a boolean");
-    }
-
-    return member->get<bool>();
-}
+inline bool EntryFlag(const nlohmann::json& entry, const char* key, const std::string& prefix);
 
 /**
  * @brief Read a required member of an entry which holds the token of a mode.
@@ -552,18 +384,7 @@ inline bool EntryFlag(const nlohmann::json& entry, const char* key, const std::s
  * @throw appbox::IsolationDocumentError The member is missing or names no mode.
  */
 template <typename Mode, typename ParseFn>
-inline Mode EntryMode(const nlohmann::json& entry, const char* key, const std::string& prefix, ParseFn parse)
-{
-    const std::string token = EntryText(entry, key, prefix);
-
-    Mode mode{};
-    if (!parse(token, mode))
-    {
-        isolation_document::Throw(prefix + "the member '" + key + "' is not a known mode: '" + token + "'");
-    }
-
-    return mode;
-}
+inline Mode EntryMode(const nlohmann::json& entry, const char* key, const std::string& prefix, ParseFn parse);
 
 /**
  * @brief Get the entry list of an environment document.
@@ -573,16 +394,7 @@ inline Mode EntryMode(const nlohmann::json& entry, const char* key, const std::s
  * @return The entry list.
  * @throw appbox::IsolationDocumentError The document carries no entry list.
  */
-inline const nlohmann::json& EntryList(const nlohmann::json& json, const char* key, const std::string& description)
-{
-    const auto* entries = isolation_document::FindMember(json, key);
-    if (entries == nullptr || !entries->is_array())
-    {
-        isolation_document::Throw(description + " carries no entry list");
-    }
-
-    return *entries;
-}
+inline const nlohmann::json& EntryList(const nlohmann::json& json, const char* key, const std::string& description);
 
 /**
  * @brief Reject an entry which is not a JSON object.
@@ -590,13 +402,7 @@ inline const nlohmann::json& EntryList(const nlohmann::json& json, const char* k
  * @param[in] prefix Prefix of the error description, names the entry.
  * @throw appbox::IsolationDocumentError The entry is not an object.
  */
-inline void RequireEntryObject(const nlohmann::json& entry, const std::string& prefix)
-{
-    if (!entry.is_object())
-    {
-        isolation_document::Throw(prefix + "the entry is not an object");
-    }
-}
+inline void RequireEntryObject(const nlohmann::json& entry, const std::string& prefix);
 
 /**
  * @brief One variable of the environment isolation file.
@@ -708,15 +514,7 @@ struct StateDocument
  * @param[out] json Object which receives the entry.
  * @param[in] entry The entry to store.
  */
-inline void to_json(nlohmann::json& json, const Entry& entry)
-{
-    json = nlohmann::json::object();
-    json[kNameKey] = entry.name;
-    json[kValueKey] = entry.value;
-    json[kIsolationKey] = IsolationToken(entry.isolation);
-    json[kMergeKey] = MergeModeToken(entry.merge);
-    json[kMergeStringKey] = entry.merge_string;
-}
+inline void to_json(nlohmann::json& json, const Entry& entry);
 
 /**
  * @brief Read one variable of the environment isolation file.
@@ -730,45 +528,14 @@ inline void to_json(nlohmann::json& json, const Entry& entry)
  * @param[out] entry The entry to fill.
  * @throw appbox::IsolationDocumentError The entry does not fit the schema.
  */
-inline void ReadEntry(const nlohmann::json& json, std::size_t index, Entry& entry)
-{
-    const std::string prefix = EntryPrefix(index);
-    RequireEntryObject(json, prefix);
-
-    entry = Entry{};
-    entry.name = EntryText(json, kNameKey, prefix);
-    entry.value = EntryText(json, kValueKey, prefix);
-    entry.merge_string = EntryText(json, kMergeStringKey, prefix);
-    entry.isolation = EntryMode<EnvironmentIsolation>(json, kIsolationKey, prefix, ParseIsolationToken);
-    entry.merge = EntryMode<EnvironmentMergeMode>(json, kMergeKey, prefix, ParseMergeModeToken);
-
-    if (entry.name.empty())
-    {
-        isolation_document::Throw(prefix + "the variable carries no name");
-    }
-    if (entry.name.find('=') != std::string::npos)
-    {
-        isolation_document::Throw(prefix + "the name of the variable carries an equals sign");
-    }
-}
+inline void ReadEntry(const nlohmann::json& json, std::size_t index, Entry& entry);
 
 /**
  * @brief Store the content of the environment isolation file.
  * @param[out] json Object which receives the document.
  * @param[in] document The document to store.
  */
-inline void to_json(nlohmann::json& json, const Document& document)
-{
-    json = nlohmann::json::object();
-    json[kVersionKey] = document.version;
-
-    nlohmann::json entries = nlohmann::json::array();
-    for (const auto& entry : document.entries)
-    {
-        entries.push_back(nlohmann::json(entry));
-    }
-    json[kEntriesKey] = std::move(entries);
-}
+inline void to_json(nlohmann::json& json, const Document& document);
 
 /**
  * @brief Read the content of the environment isolation file.
@@ -776,35 +543,14 @@ inline void to_json(nlohmann::json& json, const Document& document)
  * @param[out] document The document to fill.
  * @throw appbox::IsolationDocumentError The document does not fit the schema.
  */
-inline void from_json(const nlohmann::json& json, Document& document)
-{
-    const std::string description = "the environment isolation file";
-    isolation_document::RequireObject(json, description);
-
-    document = Document{};
-    document.version = isolation_document::RequiredInt(json, kVersionKey, description);
-
-    const nlohmann::json& entries = EntryList(json, kEntriesKey, description);
-    for (std::size_t index = 0; index < entries.size(); ++index)
-    {
-        Entry entry;
-        ReadEntry(entries[index], index, entry);
-        document.entries.push_back(std::move(entry));
-    }
-}
+inline void from_json(const nlohmann::json& json, Document& document);
 
 /**
  * @brief Store one modification of the environment state file.
  * @param[out] json Object which receives the entry.
  * @param[in] entry The entry to store.
  */
-inline void to_json(nlohmann::json& json, const StateEntry& entry)
-{
-    json = nlohmann::json::object();
-    json[kStateNameKey] = entry.name;
-    json[kStateValueKey] = entry.value;
-    json[kStateDeletedKey] = entry.deleted;
-}
+inline void to_json(nlohmann::json& json, const StateEntry& entry);
 
 /**
  * @brief Read one modification of the environment state file.
@@ -813,39 +559,14 @@ inline void to_json(nlohmann::json& json, const StateEntry& entry)
  * @param[out] entry The entry to fill.
  * @throw appbox::IsolationDocumentError The entry does not fit the schema.
  */
-inline void ReadEntry(const nlohmann::json& json, std::size_t index, StateEntry& entry)
-{
-    const std::string prefix = EntryPrefix(index);
-    RequireEntryObject(json, prefix);
-
-    entry = StateEntry{};
-    entry.name = EntryText(json, kStateNameKey, prefix);
-    entry.value = EntryText(json, kStateValueKey, prefix);
-    entry.deleted = EntryFlag(json, kStateDeletedKey, prefix);
-
-    if (entry.name.empty())
-    {
-        isolation_document::Throw(prefix + "the variable carries no name");
-    }
-}
+inline void ReadEntry(const nlohmann::json& json, std::size_t index, StateEntry& entry);
 
 /**
  * @brief Store the content of the environment state file.
  * @param[out] json Object which receives the document.
  * @param[in] document The document to store.
  */
-inline void to_json(nlohmann::json& json, const StateDocument& document)
-{
-    json = nlohmann::json::object();
-    json[kStateVersionKey] = document.version;
-
-    nlohmann::json entries = nlohmann::json::array();
-    for (const auto& entry : document.entries)
-    {
-        entries.push_back(nlohmann::json(entry));
-    }
-    json[kStateEntriesKey] = std::move(entries);
-}
+inline void to_json(nlohmann::json& json, const StateDocument& document);
 
 /**
  * @brief Read the content of the environment state file.
@@ -853,25 +574,17 @@ inline void to_json(nlohmann::json& json, const StateDocument& document)
  * @param[out] document The document to fill.
  * @throw appbox::IsolationDocumentError The document does not fit the schema.
  */
-inline void from_json(const nlohmann::json& json, StateDocument& document)
-{
-    const std::string description = "the environment state file";
-    isolation_document::RequireObject(json, description);
-
-    document = StateDocument{};
-    document.version = isolation_document::RequiredInt(json, kStateVersionKey, description);
-
-    const nlohmann::json& entries = EntryList(json, kStateEntriesKey, description);
-    for (std::size_t index = 0; index < entries.size(); ++index)
-    {
-        StateEntry entry;
-        ReadEntry(entries[index], index, entry);
-        document.entries.push_back(std::move(entry));
-    }
-}
+inline void from_json(const nlohmann::json& json, StateDocument& document);
 
 } // namespace environment_isolation
 
 } // namespace appbox
+
+/*
+ * The token parsing, the composition of a value and the JSON members of both
+ * schemas are the implementation of the declarations above, so they live in a
+ * detail header which only this header includes.
+ */
+#include "details/EnvironmentIsolationDetail.hpp"
 
 #endif // APPBOX_COMMON_ENVIRONMENT_ISOLATION_HPP

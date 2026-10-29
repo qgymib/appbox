@@ -1,7 +1,7 @@
 #ifndef APPBOX_TEST_PROBE_ENVIRONMENT_READ_HPP
 #define APPBOX_TEST_PROBE_ENVIRONMENT_READ_HPP
 
-#include "sandbox/utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "probe/__init__.hpp"
 #include <cstdint>
 #include <string>

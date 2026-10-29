@@ -1,4 +1,4 @@
-#include "sandbox/utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "RegDeleteKey.hpp"
 #include "utils/RegistryRootKey.hpp"
 #include "WString.hpp"

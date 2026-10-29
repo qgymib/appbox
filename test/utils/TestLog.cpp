@@ -1,4 +1,4 @@
-#include "sandbox/utils/WinAPI.h" /* Must be included before any other headers. */
+#include "WinAPI.h" /* Must be included before any other headers. */
 #include <gtest/gtest.h>
 #include <spdlog/sinks/base_sink.h>
 #include <spdlog/spdlog.h>

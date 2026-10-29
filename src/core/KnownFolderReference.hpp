@@ -1,7 +1,7 @@
 #ifndef APPBOX_PACKER_CORE_KNOWN_FOLDER_REFERENCE_HPP
 #define APPBOX_PACKER_CORE_KNOWN_FOLDER_REFERENCE_HPP
 
-#include "utils/KnownFolder.hpp"
+#include "KnownFolder.hpp"
 #include <cstdint>
 #include <string>
 #include <vector>

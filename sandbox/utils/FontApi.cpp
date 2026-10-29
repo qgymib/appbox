@@ -1,8 +1,8 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
-#include "utils/MappingAsDosNtPath.hpp"
 #include "filesystem/Resolve.hpp"
 #include "hook/__init__.hpp"
+#include "MappingAsDosNtPath.hpp"
 #include "FontApi.hpp"
 #include <algorithm>
 #include <cwctype>

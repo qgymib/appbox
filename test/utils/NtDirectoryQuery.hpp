@@ -1,7 +1,7 @@
 #ifndef APPBOX_TEST_UTILS_NTDIRECTORYQUERY_HPP
 #define APPBOX_TEST_UTILS_NTDIRECTORYQUERY_HPP
 
-#include "sandbox/utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include <string>
 #include <vector>
 

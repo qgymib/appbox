@@ -46,6 +46,7 @@ add_executable(${probe_name}
     "EnvironmentWrite.cpp"
     "FindStreams.cpp"
     "Fonts.cpp"
+    "Job.cpp"
     "LaunchProcess.cpp"
     "ListDir.cpp"
     "ListDirNt.cpp"

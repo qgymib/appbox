@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_HOOK_NTDELETEFILE_HPP
 #define APPBOX_SANDBOX_HOOK_NTDELETEFILE_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include "filesystem/Resolve.hpp"
 #include "__init__.hpp"
 

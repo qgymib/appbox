@@ -1,8 +1,7 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "CreateDirectory.hpp"
-#include "DirName.hpp"
+#include "PathText.hpp"
 #include "ReparsePoint.hpp"
-#include "StreamName.hpp"
 #include "Resolve.hpp"
 #include "utils/CopyFileNt.hpp"
 #include "utils/Log.hpp"

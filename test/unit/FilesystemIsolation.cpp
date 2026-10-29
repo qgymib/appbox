@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
-#include "filesystem/IsolationTable.hpp"
+#include "FilesystemIsolationTable.hpp"
+#include "PathText.hpp"
 #include "filesystem/MarkerName.hpp"
-#include "filesystem/StreamName.hpp"
 #include "src/core/FilesystemIsolationFile.hpp"
 #include "src/core/FilesystemIsolationModel.hpp"
 #include <nlohmann/json.hpp>

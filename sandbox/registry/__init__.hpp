@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_REGISTRY_INIT_HPP
 #define APPBOX_SANDBOX_REGISTRY_INIT_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include "RegistryIsolation.hpp"
 #include "registry/IsolationTable.hpp"
 #include <optional>

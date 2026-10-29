@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "utils/KnownFolder.hpp"
+#include "KnownFolder.hpp"
 #include "utils/TestKnownFolder.hpp"
 #include "WString.hpp"
 #include <algorithm>

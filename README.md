@@ -67,7 +67,13 @@ was packed with. While it prepares the sandbox it may show a startup screen,
 which presents the name of the packaged application, its startup image and the
 progress of the run (see [Startup Screen](docs/StartupScreen.md)). Its command
 line options and the log files a run writes only when it asks for them are
-described in [Launcher](docs/Launcher.md).
+described in [Launcher](docs/Launcher.md). A sandbox may be started more than
+once: the runs of one archive share the master instance which prepared the
+sandbox, and the requests of the other runs are served by it as well. The packer
+writes the configuration of the sandbox into the image of every launcher it
+writes with its hooks turned off, so the sandbox never isolates a launcher, not
+even when a sandboxed program starts one (see
+[Launcher](docs/Launcher.md#the-launcher-is-never-isolated)).
 
 ### Sandbox
 
@@ -197,10 +203,10 @@ The rules of the expansion:
   references, see
   [Registry Isolation](docs/RegistryIsolation.md#variable-references).
 
-The names are resolved by the launcher (`launcher/utils/KnownFolder.*`) and handed
-to the sandbox through the injected configuration; the expansion itself is the
-pure function `appbox::ExpandVariables()` of
-`sandbox/utils/VariableExpansion.*`.
+The names are resolved by `common/KnownFolder.hpp`, which the launcher, the
+packer and the tests share, and handed to the sandbox through the injected
+configuration; the expansion itself is the pure function
+`appbox::ExpandVariables()` of `sandbox/utils/VariableExpansion.*`.
 
 ## Documentation
 

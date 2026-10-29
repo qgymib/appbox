@@ -1,4 +1,4 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include <exception>
 #include <utility>
 #include "Table.hpp"

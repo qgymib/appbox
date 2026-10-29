@@ -1,5 +1,6 @@
 #include "hook/NtClose.hpp"
 #include "hook/NtOpenFile.hpp"
+#include "utils/HandleInfo.hpp"
 #include "utils/QueryHandlePath.hpp"
 #include "ConvertToFullNtPath.hpp"
 
@@ -143,12 +144,32 @@ NTSTATUS appbox::ConvertToFullNtPath(const POBJECT_ATTRIBUTES ObjectAttributes, 
         return 0;
     }
 
-    // RootDirectory 非空：相对路径，需用 NtQueryObject 取根的 NT 名
+    /*
+     * A relative name is relative to the directory the process works in, which
+     * is a path of the view and not the layer a handle names: the file system
+     * reports the path of the layer for a handle the sandbox opened, and a
+     * caller which joined the name to that path would reach the layer directly,
+     * bypassing the whiteout markers, the isolation modes and the copy up of
+     * the view. The record of such an open carries the path of the view, so the
+     * name is joined to it.
+     *
+     * A handle the sandbox did not open - one the process inherited or
+     * duplicated - carries no record, so the name is joined to the path the
+     * file system reports, which is what the sandbox did before.
+     */
     std::wstring rootPath;
-    st = appbox::QueryHandlePath(ObjectAttributes->RootDirectory, rootPath);
-    if (!NT_SUCCESS(st))
+    const auto   root_info = appbox::HandleInfo::Find(ObjectAttributes->RootDirectory);
+    if (root_info.get() != nullptr && !root_info->viewPath.empty())
     {
-        return st;
+        rootPath = root_info->viewPath;
+    }
+    else
+    {
+        st = appbox::QueryHandlePath(ObjectAttributes->RootDirectory, rootPath);
+        if (!NT_SUCCESS(st))
+        {
+            return st;
+        }
     }
 
     path = std::move(rootPath);

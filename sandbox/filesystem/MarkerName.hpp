@@ -4,9 +4,10 @@
 #include <cstddef>
 #include <cwctype>
 #include <string>
-#include "filesystem/StreamName.hpp"
+#include "PathText.hpp"
+#include "FilesystemMarker.hpp"
 #include "utils/Defines.hpp"
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 
 namespace appbox::filesystem
 {
@@ -228,7 +229,7 @@ inline NTSTATUS ReservedMarkerNameFailure(const std::wstring& viewPath, NTSTATUS
  */
 inline std::wstring WhiteoutPathOf(const std::wstring& path)
 {
-    return path + APPBOX_SANDBOX_WHITEOUT_SUFFIX_W;
+    return appbox::filesystem_marker::WhiteoutPathOf(path);
 }
 
 /**
@@ -242,7 +243,7 @@ inline std::wstring WhiteoutPathOf(const std::wstring& path)
  */
 inline std::wstring OpaquePathOf(const std::wstring& directory)
 {
-    return directory + L"\\" + APPBOX_SANDBOX_OPAQUE_NAME_W;
+    return appbox::filesystem_marker::OpaquePathOf(directory);
 }
 
 } // namespace appbox::filesystem

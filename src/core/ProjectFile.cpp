@@ -1,4 +1,5 @@
 #include "ProjectFile.hpp"
+#include "SandboxId.hpp"
 #include "WString.hpp"
 #include <nlohmann/json.hpp>
 #include <cstddef>
@@ -430,10 +431,12 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
                                     const FilesystemIsolationModel& isolation, const NetworkModel& network,
                                     const EnvironmentModel& environment, const ApplicationMetadata& metadata,
                                     const StartupScreen& startup, ProjectType project_type,
-                                    CompressionLevel compression_level, const std::wstring& output_path)
+                                    CompressionLevel compression_level, const std::string& sandbox_id,
+                                    const std::wstring& output_path)
 {
     ProjectDocument document;
     document.output_path = output_path;
+    document.sandbox_id = sandbox_id;
     document.project_type = project_type;
     document.compression_level = compression_level;
     document.startup.enabled = startup.enabled;
@@ -578,7 +581,8 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
 bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, RegistryModel& registry,
                           FilesystemIsolationModel& isolation, NetworkModel& network, EnvironmentModel& environment,
                           ApplicationMetadata& metadata, StartupScreen& startup, ProjectType& project_type,
-                          CompressionLevel& compression_level, std::wstring& output_path, std::string& error)
+                          CompressionLevel& compression_level, std::wstring& output_path, std::string& sandbox_id,
+                          std::string& error)
 {
     PackModel                candidate;
     RegistryModel            candidate_registry;
@@ -693,6 +697,23 @@ bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, Reg
         return false;
     }
 
+    /*
+     * The identifier is validated last, because it is the identity of the
+     * products of the session and not one of the entries the workspace shows: a
+     * document which names an entry the models refuse is reported for that
+     * entry, which is the one the user has to correct.
+     */
+    std::string candidate_sandbox_id;
+    if (!document.sandbox_id.empty())
+    {
+        candidate_sandbox_id = NormalizeSandboxId(document.sandbox_id);
+        if (candidate_sandbox_id.empty())
+        {
+            error = Scoped("sandbox_id", "'" + document.sandbox_id + "' is not a sandbox identifier");
+            return false;
+        }
+    }
+
     /* Every entry was accepted: the document can replace the caller. */
     model = std::move(candidate);
     registry = std::move(candidate_registry);
@@ -704,6 +725,7 @@ bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, Reg
     project_type = document.project_type;
     compression_level = document.compression_level;
     output_path = document.output_path;
+    sandbox_id = std::move(candidate_sandbox_id);
     return true;
 }
 

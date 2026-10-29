@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_UTILS_CHECK_PATH_EXIST_HPP
 #define APPBOX_SANDBOX_UTILS_CHECK_PATH_EXIST_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include <string>
 
 namespace appbox

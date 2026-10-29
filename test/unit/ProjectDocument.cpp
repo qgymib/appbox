@@ -59,6 +59,7 @@ appbox::ProjectDocument BuildSampleDocument()
 {
     appbox::ProjectDocument document;
     document.output_path = L"D:\\out\\MyApp.zip";
+    document.sandbox_id = "2b1f7c4e-9a3d-4f6b-8c2e-5d7a1b3c9e0f";
     document.project_type = appbox::ProjectType::Patch;
     document.compression_level = appbox::CompressionLevel::Extreme;
 
@@ -168,6 +169,7 @@ TEST(Unit_ProjectDocument, RoundTripKeepsEveryMember)
     const auto back = nlohmann::ordered_json(document).get<appbox::ProjectDocument>();
 
     EXPECT_EQ(back.output_path, document.output_path);
+    EXPECT_EQ(back.sandbox_id, document.sandbox_id);
     EXPECT_EQ(back.project_type, document.project_type);
     EXPECT_EQ(back.compression_level, document.compression_level);
 
@@ -252,6 +254,38 @@ TEST(Unit_ProjectDocument, RoundTripKeepsEveryMember)
     EXPECT_EQ(back.environment[0].isolation, appbox::EnvironmentIsolation::WriteCopy);
     EXPECT_EQ(back.environment[0].merge, appbox::EnvironmentMergeMode::Prepend);
     EXPECT_EQ(back.environment[0].merge_string, L";");
+}
+
+TEST(Unit_ProjectDocument, SandboxIdRoundTrip)
+{
+    /* The identifier of a session travels through the file unchanged. */
+    appbox::ProjectDocument document;
+    document.sandbox_id = "2b1f7c4e-9a3d-4f6b-8c2e-5d7a1b3c9e0f";
+
+    const auto json = nlohmann::ordered_json(document);
+    ASSERT_TRUE(json.contains("sandbox_id"));
+    EXPECT_EQ(json.at("sandbox_id").get<std::string>(), document.sandbox_id);
+
+    const auto back = json.get<appbox::ProjectDocument>();
+    EXPECT_EQ(back.sandbox_id, document.sandbox_id);
+}
+
+TEST(Unit_ProjectDocument, SandboxIdMissingIsEmpty)
+{
+    /*
+     * The member is optional: a file which was written before it existed
+     * records no identifier, so the session generates one of its own.
+     */
+    const auto document = ParseDocument(R"({"version":1})");
+    EXPECT_TRUE(document.sandbox_id.empty());
+
+    /* A session without an identifier does not name the member at all. */
+    const auto text = nlohmann::ordered_json(appbox::ProjectDocument()).dump();
+    EXPECT_EQ(text.find("sandbox_id"), std::string::npos) << text;
+
+    /* A member which is not a string is refused like every other member. */
+    const auto mistyped = ParseError(R"({"version":1,"sandbox_id":7})");
+    EXPECT_NE(mistyped.find("sandbox_id"), std::string::npos) << mistyped;
 }
 
 TEST(Unit_ProjectDocument, ReadsADocumentWithoutCreatedFolders)
@@ -419,12 +453,16 @@ TEST(Unit_ProjectDocument, WritesTheSchemaInAFixedOrder)
      * The version comes first and the members follow the order of the schema,
      * so the text of a given document is stable and easy to diff.
      */
-    const std::vector<std::string> expected{ "version",     "output_path", "project_type",  "compression_level",
-                                             "metadata",    "startup",     "folders",       "files",
-                                             "directories", "whiteouts",   "startup_files", "registry",
-                                             "filesystem",  "network",     "proxy",         "environment" };
+    const std::vector<std::string> expected{
+        "version",  "output_path", "sandbox_id", "project_type", "compression_level", "metadata",
+        "startup",  "folders",     "files",      "directories",  "whiteouts",         "startup_files",
+        "registry", "filesystem",  "network",    "proxy",        "environment"
+    };
     EXPECT_EQ(members, expected);
     EXPECT_EQ(json.at("version").get<int>(), appbox::kProjectFileVersion);
+
+    /* The identifier of the sandbox is the identity of the products. */
+    EXPECT_EQ(json.at("sandbox_id").get<std::string>(), "2b1f7c4e-9a3d-4f6b-8c2e-5d7a1b3c9e0f");
 
     /* The kind of product is stored as the token of the project type. */
     EXPECT_EQ(json.at("project_type").get<std::string>(), "patch");

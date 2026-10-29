@@ -14,7 +14,8 @@
 namespace appbox
 {
 class SplashScreen;
-}
+class ControlPlane;
+} // namespace appbox
 
 struct AppBoxLauncherRuntime
 {
@@ -22,6 +23,12 @@ struct AppBoxLauncherRuntime
 
     /**
      * @brief Build the runtime of one run.
+     *
+     * The runtime prepares the sandbox of the run: it loads the patch packages,
+     * mounts the layers, rebuilds the registry image and fills the injection
+     * data of the processes the run starts. The control pipe of the sandbox is
+     * served by the control layer of the run, which exists before the runtime
+     * does, so the runtime neither creates nor starts a pipe server.
      *
      * @param[in] log_level Level the run reports: `trace`, `debug`, `info`,
      *                      `warn`, `err`, `critical` or `off`. It is handed to
@@ -31,12 +38,14 @@ struct AppBoxLauncherRuntime
      *                    process of the run into, in UTF-8. It is empty when
      *                    the run asks for no log file, which leaves every
      *                    process of the run without one.
+     * @param[in] pipe_path Name of the control pipe of the sandbox, in UTF-8.
+     *                      The sandbox of every process of the run connects to
+     *                      it to reach the launcher.
      */
-    AppBoxLauncherRuntime(const std::string& log_level, const std::wstring& log_dir);
+    AppBoxLauncherRuntime(const std::string& log_level, const std::wstring& log_dir, const std::string& pipe_path);
     ~AppBoxLauncherRuntime();
 
-    appbox::SandboxConfig     inject_data; /* Inject data information */
-    appbox::RemoteServer::Ptr pipe_server; /* Pipe server for remote communication */
+    appbox::SandboxConfig inject_data; /* Inject data information */
 };
 
 /**
@@ -51,11 +60,13 @@ struct AppBoxLauncher
     appbox::SandboxPaths                        sandbox_paths;   /* Layout of the sandbox */
     appbox::SandboxModulePaths                  sandbox_modules; /* Released injection modules */
     AppBoxLauncherRuntime::Ptr                  runtime;         /* Runtime information */
+    std::shared_ptr<appbox::ControlPlane>       control;         /* Control layer of the master instance */
     std::vector<const appbox::LauncherStartup*> startups;        /* Startup files to run */
-    std::string                                 startup_error;   /* Error which refuses the run */
-    bool                                        shell = false;   /* True to run the shell of the host in the sandbox */
-    std::wstring                                shell_path; /* Shell of the host to run, empty outside the shell mode */
-    std::vector<std::wstring>                   shell_args; /* Command the shell runs, empty for an interactive shell */
+    std::vector<std::string>  extra_args;    /* Arguments of the command line the programs of the run receive */
+    std::string               startup_error; /* Error which refuses the run */
+    bool                      shell = false; /* True to run the shell of the host in the sandbox */
+    std::wstring              shell_path;    /* Shell of the host to run, empty outside the shell mode */
+    std::vector<std::wstring> shell_args;    /* Command the shell runs, empty for an interactive shell */
 
     /**
      * @brief Startup screen of the run, null while the session shows none.

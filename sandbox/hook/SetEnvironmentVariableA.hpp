@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_HOOK_SETENVIRONMENTVARIABLEA_HPP
 #define APPBOX_SANDBOX_HOOK_SETENVIRONMENTVARIABLEA_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include "hook/__init__.hpp"
 
 extern "C" {

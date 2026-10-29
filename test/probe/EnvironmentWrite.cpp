@@ -1,4 +1,4 @@
-#include "sandbox/utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "EnvironmentWrite.hpp"
 #include "utils/GetPEB.hpp"
 #include "WString.hpp"

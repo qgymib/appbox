@@ -1,7 +1,7 @@
 #ifndef APPBOX_TEST_PROBE_QUERY_FULL_ATTRIBUTES_HPP
 #define APPBOX_TEST_PROBE_QUERY_FULL_ATTRIBUTES_HPP
 
-#include "sandbox/utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "probe/__init__.hpp"
 #include <string>
 #include <vector>

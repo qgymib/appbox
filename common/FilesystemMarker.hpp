@@ -43,6 +43,40 @@ inline std::wstring WhiteoutNameOf(std::wstring_view name)
     return std::wstring(name) + std::wstring(kWhiteoutSuffix);
 }
 
+/**
+ * @brief Path of the whiteout marker which hides an entry of the view.
+ *
+ * The marker is a sibling of the entry, so the caller has to place it inside
+ * the layer which hides the entry. The marker of a stream is a stream of the
+ * file which carries it, because a file name cannot carry a colon.
+ *
+ * The helper is the one implementation of the name, which the resolver of
+ * `common/ResolveCore.hpp` and the sandbox use alike: the sandbox spells the
+ * suffix with its own macro, see `sandbox/filesystem/MarkerName.hpp`, and the
+ * two spellings are pinned against each other by `test/unit/FilesystemMarker.cpp`.
+ *
+ * @param[in] path Path of the entry inside a layer.
+ * @return Path of the marker of the entry.
+ */
+inline std::wstring WhiteoutPathOf(std::wstring_view path)
+{
+    return std::wstring(path) + std::wstring(kWhiteoutSuffix);
+}
+
+/**
+ * @brief Path of the opaque marker of a folder of the view.
+ *
+ * The marker is a child of the folder, so the caller has to place it inside the
+ * layer which holds the folder.
+ *
+ * @param[in] directory Path of the folder inside a layer.
+ * @return Path of the marker of the folder.
+ */
+inline std::wstring OpaquePathOf(std::wstring_view directory)
+{
+    return std::wstring(directory) + L"\\" + std::wstring(kOpaqueName);
+}
+
 } // namespace appbox::filesystem_marker
 
 #endif // APPBOX_COMMON_FILESYSTEM_MARKER_HPP

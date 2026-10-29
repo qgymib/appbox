@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_NETWORK_ISOLATION_HPP
 #define APPBOX_SANDBOX_NETWORK_ISOLATION_HPP
 
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "DnsTable.hpp"
 
 namespace appbox

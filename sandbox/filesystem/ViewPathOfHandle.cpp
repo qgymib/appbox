@@ -1,8 +1,8 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "utils/HandleInfo.hpp"
-#include "utils/MappingAsDosNtPath.hpp"
 #include "utils/QueryHandlePath.hpp"
 #include "LayerPath.hpp"
+#include "MappingAsDosNtPath.hpp"
 #include "ViewPathOfHandle.hpp"
 
 /**

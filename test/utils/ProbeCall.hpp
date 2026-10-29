@@ -129,6 +129,34 @@ nlohmann::json ProbeCall(const std::string& name, const nlohmann::json& data, co
                          ProbeBitness bitness = ProbeBitness::Bit64);
 
 /**
+ * @brief Run the launcher of a configuration document and wait for it.
+ *
+ * The document is written as it is, so a case can describe a configuration the
+ * type `LauncherConfig` cannot express: a member which is missing, a member of
+ * another type or a value the type accepts but the launcher refuses. The call
+ * starts no probe process, because a run which is refused starts no program at
+ * all; it reports the exit code of the launcher alone.
+ *
+ * The name of the file is the one of the case unless the case names another
+ * one: two launchers of one sandbox share the directory which carries the
+ * sandbox, so the second instance of a case writes its configuration beside the
+ * file of the master instance instead of over it.
+ *
+ * @param[in] cwd The current working directory.
+ * @param[in] document The launcher configuration document.
+ * @param[in] log The log options of the run, see LogRun.
+ * @param[in] config_file_name Name of the file the document is written into.
+ * @param[out] launcher_pid Process id of the launcher which was started, may be
+ *                          null.
+ * @param[in] args Arguments of the launcher, without the options which select
+ *                 and log the configuration.
+ * @return The exit code of the launcher.
+ */
+std::uint32_t ProbeRunRawConfig(const std::wstring& cwd, const nlohmann::json& document, const LogRun& log = {},
+                                const std::wstring& config_file_name = L"config.json",
+                                std::uint32_t* launcher_pid = nullptr, const std::vector<std::wstring>& args = {});
+
+/**
  * @brief One startup file the launcher started during one run.
  *
  * The report is what the probe process of the startup file sent, so it
@@ -149,6 +177,30 @@ struct StartupReport
 
     /** Path of the image the process runs, in UTF-8. */
     std::string module_path;
+
+    /** Command line of the process, in UTF-8. */
+    std::string command_line;
+
+    /** Entries of the environment of the process, one `name=value` text each. */
+    std::vector<std::string> environment;
+
+    /** Current directory the process reported, in UTF-8. */
+    std::string cwd;
+
+    /**
+     * @brief Outcome of one operation the process ran with a relative name.
+     */
+    struct RelativeOperation
+    {
+        /** Error code of the operation, zero on success. */
+        std::uint32_t code = 0;
+
+        /** Content the operation read, empty for the other kinds. */
+        std::string data;
+    };
+
+    /** Outcomes of the operations of the task data, in the order of the list. */
+    std::vector<RelativeOperation> relative_ops;
 };
 
 /**
@@ -212,12 +264,71 @@ struct StartupRun
  *                    configuration, empty to run the configured launcher. A
  *                    case which verifies a resource of the launcher itself
  *                    passes a patched copy of it.
+ * @param[in] hold_ms Time every started probe process stays alive after it
+ *                    reported, in milliseconds. A case which runs a second
+ *                    launcher while the programs of the first one work needs
+ *                    programs which outlive the handshake, because the run of a
+ *                    launcher ends with its last program.
+ * @param[in] working_directory Directory the launcher itself works in, empty to
+ *                    inherit the directory of the test process. The directory
+ *                    of the run is what the programs of the run inherit, so a
+ *                    case which checks the rewriting of a directory names a
+ *                    directory of a layer here.
+ * @param[in] probe_data Task data of the probe processes, see
+ *                    `ProtocolStartupStarted::Req`.
  * @return The reports of the started startup files and the exit code of the
  *         launcher.
  */
 StartupRun ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launcher_config, const std::string& trigger,
                            bool startup_screen = false, const LogRun& log = {}, bool use_configured_executable = false,
-                           const std::wstring& launcher_path = std::wstring());
+                           const std::wstring& launcher_path = std::wstring(), std::uint32_t hold_ms = 0,
+                           const std::wstring&   working_directory = std::wstring(),
+                           const nlohmann::json& probe_data = nlohmann::json::object());
+
+/**
+ * @brief Run a second launcher which asks the master instance for programs.
+ *
+ * The call is the client side of a start request: it starts the launcher of a
+ * configuration document which names the sandbox and nothing else, so the
+ * launcher hands its request over instead of preparing a sandbox of its own.
+ * The programs the master instance starts for the request are probe processes
+ * which report to the case, so the case observes what the request really
+ * started.
+ *
+ * @param[in] cwd The current working directory.
+ * @param[in] document Configuration document of the second instance.
+ * @param[in] trigger Trigger of the request, empty to ask for the auto start
+ *                    files.
+ * @param[in] marker Marker of the probe processes of the request, empty to
+ *                   omit it.
+ * @param[in] exit_code Exit code the probe processes of the request report,
+ *                      zero for a successful run.
+ * @param[in] log The log options of the run, see LogRun.
+ * @param[out] run Reports of the programs the master instance started for the
+ *                 request, and the exit code of the second launcher.
+ * @param[in] working_directory Directory the second launcher works in, empty to
+ *                 inherit the directory of the test process. The directory of
+ *                 the client is the one the request asks the master instance
+ *                 for, so a case which checks the working directory of a
+ *                 request names a directory of a layer here.
+ * @param[in] probe_data Task data of the programs the request starts, see
+ *                 `ProtocolStartupStarted::Req`.
+ * @param[in] launcher_path Program of the second instance, empty to run the
+ *                 launcher of the test configuration. A case which checks the
+ *                 sandbox of a self-extracting program runs that program, so the
+ *                 client runs the very image the master instance runs.
+ * @param[in] config_file_name Name of the file the configuration of the second
+ *                 instance is written into. Two second instances of one case
+ *                 which run at the same time name a file of their own, because
+ *                 both of them write it into the directory of the sandbox.
+ * @return The exit code of the second launcher.
+ */
+std::uint32_t ProbeRunSecondary(const std::wstring& cwd, const nlohmann::json& document, const std::string& trigger,
+                                const std::string& marker, std::uint32_t exit_code, const LogRun& log, StartupRun& run,
+                                const std::wstring&   working_directory = std::wstring(),
+                                const nlohmann::json& probe_data = nlohmann::json::object(),
+                                const std::wstring&   launcher_path = std::wstring(),
+                                const std::wstring&   config_file_name = std::wstring());
 
 /**
  * @brief Run a launcher program whose configuration is embedded in its image.
@@ -233,12 +344,14 @@ StartupRun ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launch
  *                    the launcher start the auto start files.
  * @param[in] marker Marker passed to the probe processes, empty to omit it.
  * @param[in] log The log options of the run, see LogRun.
+ * @param[in] hold_ms Time every started probe process stays alive after it
+ *                    reported, in milliseconds, see ProbeStartupRun().
  * @return The reports of the started startup files and the exit code of the
  *         launcher.
  */
 StartupRun ProbeStartupRunEmbedded(const std::wstring& cwd, const std::wstring& launcher_path,
                                    const std::string& trigger = "", const std::string& marker = "",
-                                   const LogRun& log = {});
+                                   const LogRun& log = {}, std::uint32_t hold_ms = 0);
 
 /**
  * @brief Run a launcher program with an explicit configuration file.

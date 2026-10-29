@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_REGISTRY_VALUEEXPANSION_HPP
 #define APPBOX_SANDBOX_REGISTRY_VALUEEXPANSION_HPP
 
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "utils/VariableExpansion.hpp"
 #include <vector>
 

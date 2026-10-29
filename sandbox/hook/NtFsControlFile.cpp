@@ -1,4 +1,4 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "filesystem/ReparsePoint.hpp"
 #include "utils/Log.hpp"
 #include "NtFsControlFile.hpp"

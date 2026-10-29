@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_UTILS_LOG_FILE_HPP
 #define APPBOX_SANDBOX_UTILS_LOG_FILE_HPP
 
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include <atomic>
 #include <cstddef>
 #include <string>

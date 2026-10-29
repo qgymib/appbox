@@ -4,6 +4,7 @@
 #include "utils/ProbeCall.hpp"
 #include "utils/ProbePath.hpp"
 #include "utils/ReadFileFull.hpp"
+#include "utils/SelfExtractingProgram.hpp"
 #include "src/core/PackService.hpp"
 #include "SandboxLayout.hpp"
 #include "WString.hpp"
@@ -26,7 +27,7 @@ namespace
 {
 
 /** Name of the program the cases pack. */
-constexpr const wchar_t* kProgramName = L"MyApp.exe";
+constexpr const wchar_t* kProgramName = appbox::test::kSelfExtractingProgramName;
 
 /** Marker the probe process reports back; it tells that the payload ran. */
 constexpr const char* kMarker = "sfx";
@@ -39,105 +40,6 @@ constexpr int kSettleAttempts = 40;
 
 /** Delay between two attempts of a check, in milliseconds. */
 constexpr int kSettleDelayMs = 50;
-
-/**
- * @brief Read the payload of the launcher of the suite.
- * @return The bytes of the launcher, empty when the run named no launcher.
- */
-std::vector<char> ReadLauncherPayload()
-{
-    const auto& path = LauncherPath();
-    if (path.empty())
-    {
-        return {};
-    }
-
-    std::string data;
-    if (ReadFileFull(path, data) != 0)
-    {
-        return {};
-    }
-
-    return std::vector<char>(data.begin(), data.end());
-}
-
-/**
- * @brief Pack a session which starts the 64 bit probe as a self-extracting
- *        program.
- *
- * The probe is imported as `MyApp\app.exe`, so the program starts it through
- * the layer of the packaged application. The import folder is removed after the
- * pack run, which leaves the program as the only source of the image.
- *
- * @param[in] root Directory the program is written into.
- * @param[in] trigger Trigger of the startup file.
- * @param[in] screen Startup screen of the session.
- * @param[out] error Description of the failure.
- * @return true on success.
- */
-bool PackProbeProgram(const std::filesystem::path& root, const std::wstring& trigger,
-                      const appbox::StartupScreen& screen, std::string& error)
-{
-    const auto& probe = ProbePath(ProbeBitness::Bit64);
-    if (probe.empty())
-    {
-        error = "the run was started without the path of the 64 bit probe";
-        return false;
-    }
-
-    const auto import = root / L"import";
-    const auto application = import / L"MyApp";
-
-    std::error_code ec;
-    std::filesystem::create_directories(application, ec);
-    if (ec)
-    {
-        error = "failed to create the import folder: " + ec.message();
-        return false;
-    }
-
-    std::filesystem::copy_file(probe, application / L"app.exe", std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec)
-    {
-        error = "failed to copy the probe: " + ec.message();
-        return false;
-    }
-
-    appbox::PackModel     model;
-    appbox::RegistryModel registry;
-    if (!model.ImportFolder("program_files", application.wstring(), error))
-    {
-        return false;
-    }
-    if (!model.RestoreStartupFile("program_files", L"MyApp", L"app.exe", trigger, true, error))
-    {
-        return false;
-    }
-
-    const auto payload = ReadLauncherPayload();
-    if (payload.empty())
-    {
-        error = "failed to read the launcher payload";
-        return false;
-    }
-
-    appbox::PackPayloads payloads;
-    payloads.launcher_bytes = payload.data();
-    payloads.launcher_size = payload.size();
-
-    const auto exe_path = root / kProgramName;
-    const auto result = appbox::PackSelfExtracting(
-        model, registry, appbox::FilesystemIsolationModel(), appbox::NetworkModel(), appbox::EnvironmentModel(),
-        appbox::ApplicationMetadata(), screen, payloads, appbox::CompressionLevel::Normal, exe_path.wstring(), nullptr);
-    if (!result.empty())
-    {
-        error = result;
-        return false;
-    }
-
-    std::filesystem::remove_all(import, ec);
-    return true;
-}
 
 /**
  * @brief Lower the ASCII letters of a path.
@@ -263,7 +165,7 @@ std::string ReadLog(const std::filesystem::path& root)
 TEST_F(E2E_SelfExtracting, ThePayloadRunsFromATemporaryFolder)
 {
     std::string error;
-    ASSERT_TRUE(PackProbeProgram(GetCWD(), L"app", appbox::StartupScreen{ false }, error)) << error;
+    ASSERT_TRUE(PackProbeSelfExtracting(GetCWD(), L"app", appbox::StartupScreen{ false }, error)) << error;
 
     /* The program carries its resources, so no resource folder is beside it. */
     ASSERT_FALSE(std::filesystem::exists(GetCWD() / appbox::layout::kAppDirNameW));
@@ -320,7 +222,7 @@ TEST_F(E2E_SelfExtracting, ThePayloadRunsFromATemporaryFolder)
 TEST_F(E2E_SelfExtracting, ThePatchesBesideTheProgramAreMerged)
 {
     std::string error;
-    ASSERT_TRUE(PackProbeProgram(GetCWD(), L"app", appbox::StartupScreen{ false }, error)) << error;
+    ASSERT_TRUE(PackProbeSelfExtracting(GetCWD(), L"app", appbox::StartupScreen{ false }, error)) << error;
 
     constexpr const wchar_t* fileName = L"AppBoxTest_SelfExtracting.txt";
 
@@ -358,7 +260,7 @@ TEST_F(E2E_SelfExtracting, ThePatchesBesideTheProgramAreMerged)
 TEST_F(E2E_SelfExtracting, TheStartupScreenCoversTheExtraction)
 {
     std::string error;
-    ASSERT_TRUE(PackProbeProgram(GetCWD(), L"app", appbox::StartupScreen{}, error)) << error;
+    ASSERT_TRUE(PackProbeSelfExtracting(GetCWD(), L"app", appbox::StartupScreen{}, error)) << error;
 
     const auto run = ProbeStartupRunEmbedded(GetCWDString(), (GetCWD() / kProgramName).wstring(), "", kMarker);
 

@@ -1,7 +1,7 @@
 #ifndef APPBOX_LAUNCHER_UTILS_COMMANDLINEOPTIONS_HPP
 #define APPBOX_LAUNCHER_UTILS_COMMANDLINEOPTIONS_HPP
 
-#include "sandbox/utils/WinAPI.h"
+#include "WinAPI.h"
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -16,8 +16,28 @@ struct CommandLineOptions
 
     /**
      * @brief Parse the command line options.
+     *
+     * The call has no side effect on the sandbox of the run: it creates neither
+     * a log directory nor a log file and it writes nothing into the state of the
+     * sandbox, so a run which refuses the configuration it was given leaves no
+     * trace behind. The log files are set up by `SetupLogging()`, which the
+     * launcher calls once it knows whether it serves the sandbox or hands its
+     * request over to the launcher which does.
      */
     void ParseOptions();
+
+    /**
+     * @brief Set up the log files of the run.
+     *
+     * A run which names no level, names `off` or names a level the launcher does
+     * not know creates neither a directory nor a file. A run which asks for a
+     * level creates the log directory and writes the log of the launcher itself
+     * into it.
+     *
+     * A log which cannot be created never fails the run: the failure is reported
+     * and the run continues without that log file.
+     */
+    void SetupLogging();
 
     int                      wargc;               /* Command line argument count */
     LPWSTR*                  wargv;               /* Command line argument array */

@@ -1,4 +1,4 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include <detours.h>
 #include <stdexcept>
 #include <utility>
@@ -7,6 +7,7 @@
 #include "hook/NtCreateFile.hpp"
 #include "environment/Isolation.hpp"
 #include "filesystem/Isolation.hpp"
+#include "filesystem/ViewCurrentDirectory.hpp"
 #include "fonts/Isolation.hpp"
 #include "network/Isolation.hpp"
 #include "registry/__init__.hpp"
@@ -110,12 +111,23 @@ static void ParseInjectData(const std::string& data)
 
 static void LoadInjectData()
 {
-    const GUID guid = APPBOX_SANDBOX_GUID;
-    DWORD      inject_bytes_sz = 0;
-    void*      inject_bytes = nullptr;
-    HMODULE    hModuleLast = nullptr;
+    const GUID    guid = APPBOX_SANDBOX_GUID;
+    const HMODULE image = GetModuleHandleW(nullptr);
+    DWORD         inject_bytes_sz = 0;
+    void*         inject_bytes = nullptr;
+    HMODULE       hModuleLast = nullptr;
     while ((hModuleLast = DetourEnumerateModules(hModuleLast)) != nullptr)
     {
+        /*
+         * The image of the process carries the configuration of the packer, not
+         * the one of the run: the run writes its configuration into a module of
+         * its own, so the image is skipped here.
+         */
+        if (hModuleLast == image)
+        {
+            continue;
+        }
+
         if ((inject_bytes = DetourFindPayload(hModuleLast, guid, &inject_bytes_sz)) != nullptr)
         {
             break;
@@ -142,6 +154,61 @@ static void SayHello()
  * @brief Whether the module table was applied successfully.
  */
 static bool s_modules_initialized = false;
+
+/**
+ * @brief Whether the hooks of this process were left alone.
+ *
+ * The flag is set by the attach notification which read a configuration that
+ * turns the hooks off, and it tells the detach notification that nothing of the
+ * sandbox was ever initialized in this process.
+ */
+static bool s_hooks_skipped = false;
+
+/**
+ * @brief Read the configuration an image carries under the GUID of the run.
+ *
+ * The configuration of a process travels as a payload of the injection data
+ * (`APPBOX_SANDBOX_GUID` of `sandbox/utils/Defines.hpp`), and its member
+ * `hook_enabled` decides whether the sandbox works in the process. The packer
+ * writes that payload into the image of every launcher it produces with the
+ * member turned off, and the module is injected into a launcher as well when a
+ * sandboxed program starts one. A launcher is the program which creates the
+ * processes of a sandbox and hands the configuration to them, so isolating it
+ * would isolate the program which builds the sandbox.
+ *
+ * The payload of the image is not the configuration of the run: the run writes
+ * its own configuration into a module of the process (see `LoadInjectData()`).
+ *
+ * @param[in] module Image to read, which is the image of this process.
+ * @param[out] config The configuration, only set when the image carries one.
+ * @return true when the image carries a configuration this build can read.
+ */
+static bool ReadImageConfig(HMODULE module, appbox::SandboxConfig& config)
+{
+    const GUID guid = APPBOX_SANDBOX_GUID;
+
+    DWORD       size = 0;
+    const void* payload = DetourFindPayload(module, guid, &size);
+    if (payload == nullptr || size == 0)
+    {
+        return false;
+    }
+
+    try
+    {
+        config =
+            nlohmann::json::parse(std::string(static_cast<const char*>(payload), size)).get<appbox::SandboxConfig>();
+        return true;
+    }
+    catch (const std::exception&)
+    {
+        /*
+         * A payload which cannot be read is no configuration of this build, so
+         * the process is isolated the way it was before the packer wrote one.
+         */
+        return false;
+    }
+}
 
 /**
  * @brief RAII owner of the global sandbox instance.
@@ -190,12 +257,33 @@ private:
  * The sandbox instance and every module of the module table are released again
  * when the initialization fails, so the DLL can be unloaded cleanly.
  *
- * @return true when the sandbox was initialized, otherwise false.
+ * A process whose image carries a configuration of the packer with the hooks
+ * turned off is skipped before the first step: the call reports success without
+ * creating anything of the sandbox, because a launcher runs outside the sandbox
+ * on purpose (see `ReadImageConfig()`).
+ *
+ * @return true when the sandbox was initialized or the process was skipped,
+ *         otherwise false.
  */
 static bool OnDllAttach()
 {
     if (DetourIsHelperProcess())
     {
+        return true;
+    }
+
+    /*
+     * The configuration the packer wrote into the image of this process decides
+     * whether the sandbox works at all: a launcher carries it with the hooks
+     * turned off, so the module was injected into it like into any other process
+     * and the configuration is the only thing which tells the two apart. The
+     * check runs before anything of the sandbox is created, so a skipped process
+     * holds no sandbox object, no log file, no crash handler and no hook.
+     */
+    appbox::SandboxConfig image_config;
+    if (ReadImageConfig(GetModuleHandleW(nullptr), image_config) && !image_config.hook_enabled)
+    {
+        s_hooks_skipped = true;
         return true;
     }
 
@@ -227,6 +315,15 @@ static bool OnDllAttach()
         s_modules_initialized = true;
 
         /*
+         * The directory of the process is rewritten once the hooks are
+         * attached: a directory of a layer is turned into the path of the view,
+         * so the application works in the directory it knows and a relative
+         * path is answered by the view instead of the layer which holds the
+         * directory. A directory which belongs to no layer keeps its path.
+         */
+        appbox::filesystem::SetViewCurrentDirectory();
+
+        /*
          * The instance has to stay alive as long as the module table is
          * initialized, because the deinitialization of the hooks uses it.
          */
@@ -253,6 +350,16 @@ static bool OnDllAttach()
  */
 static void OnDllDetach(bool process_terminating)
 {
+    /*
+     * A process whose hooks were skipped owns nothing of the sandbox: no log
+     * file was opened, no module was initialized and no object was created, so
+     * the detach of such a process has nothing to release.
+     */
+    if (s_hooks_skipped)
+    {
+        return;
+    }
+
     /*
      * Nothing of the sandbox is torn down while the process is terminating.
      *

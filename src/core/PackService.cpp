@@ -4,6 +4,7 @@
 #include "FilesystemIsolationFile.hpp"
 #include "FilesystemMarker.hpp"
 #include "LauncherResources.hpp"
+#include "SandboxConfigPayload.hpp"
 #include "NetworkIsolationFile.hpp"
 #include "PeResourcePatch.hpp"
 #include "PresetDirectory.hpp"
@@ -617,6 +618,15 @@ appbox::LauncherConfig BuildLauncherConfig(const appbox::PackModel& model, const
     appbox::LauncherConfig config;
 
     /*
+     * The identity of the sandbox: the launcher derives the name of its control
+     * pipe from it, so every product of one session carries the same identity
+     * and two sessions never do. The run only reads the identifier of the
+     * session - an export is the only path which writes the project file - so a
+     * pack run never leaves a half written file behind.
+     */
+    config.sandbox_id = model.EnsureSandboxId();
+
+    /*
      * The startup screen of the session: the flag decides whether the launcher
      * opens a window of its own while it prepares the sandbox. The image is not
      * part of the document: it is embedded into the launcher payload as a
@@ -653,10 +663,12 @@ appbox::LauncherConfig BuildLauncherConfig(const appbox::PackModel& model, const
  * @brief Build the program image of the product.
  *
  * The image is the launcher payload of the session with the icon and the file
- * properties of the packaged application applied and with the run
- * configuration and the startup image embedded as its resources. Both products
- * which carry a launcher write exactly this image: the archive of `Pack()` as
- * its launcher entry and the self-extracting program of
+ * properties of the packaged application applied, with the run configuration
+ * and the startup image embedded as its resources and with the configuration of
+ * the sandbox written into it, whose `hook_enabled` member is turned off, which
+ * is what tells the injection module of the sandbox to leave the process alone.
+ * Both products which carry a launcher write exactly this image: the archive of
+ * `Pack()` as its launcher entry and the self-extracting program of
  * `PackSelfExtracting()` as the program itself.
  *
  * @param[in] model The pack model.
@@ -778,6 +790,29 @@ std::vector<char> BuildLauncherImage(const appbox::PackModel& model, const appbo
         }
 
         payload_image = std::move(embedded);
+    }
+
+    /*
+     * The configuration of the sandbox is written last, after the resources: it
+     * turns the hooks of the injection module off for this image, so a launcher
+     * runs outside the sandbox of the application which started it (see
+     * `src/core/SandboxConfigPayload.hpp`). A failure is fatal: a launcher
+     * without the configuration would be isolated inside the sandbox which
+     * started it, and it would refuse to serve a sandbox of its own.
+     */
+    {
+        const void* const base = payload_image.empty() ? payloads.launcher_bytes : payload_image.data();
+        const auto        base_size = payload_image.empty() ? payloads.launcher_size : payload_image.size();
+
+        std::string payload_error;
+        auto        patched = appbox::EmbedSandboxConfigPayload(base, base_size, payload_error);
+        if (patched.empty())
+        {
+            error = "the sandbox configuration cannot be embedded: " + payload_error;
+            return {};
+        }
+
+        payload_image = std::move(patched);
     }
 
     return payload_image;

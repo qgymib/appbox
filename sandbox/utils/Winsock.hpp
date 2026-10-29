@@ -19,6 +19,6 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 
 #endif // APPBOX_SANDBOX_UTILS_WINSOCK_HPP

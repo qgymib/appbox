@@ -6,9 +6,9 @@
 #include "utils/ProbePath.hpp"
 #include "utils/RegChildExitCode.hpp"
 #include "utils/TestKnownFolder.hpp"
+#include "PeImage.hpp"
 #include "Random.hpp"
 #include "WString.hpp"
-#include "tracer/PeImage.hpp"
 #include <spdlog/fmt/fmt.h>
 #include <string>
 
@@ -29,7 +29,7 @@ namespace
  */
 void ExpectProbeImage(ProbeBitness bitness)
 {
-    const bool is_32_bit_image = appbox::tracer::PeImage::FromFile(ProbePath(bitness)).Is32Bit();
+    const bool is_32_bit_image = appbox::PeImage::FromFile(ProbePath(bitness)).Is32Bit();
     const bool is_32_bit_probe = bitness == ProbeBitness::Bit32;
 
     ASSERT_EQ(is_32_bit_image, is_32_bit_probe) << "the probe of the run is not a " << (is_32_bit_probe ? 32 : 64)

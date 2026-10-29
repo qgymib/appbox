@@ -77,6 +77,23 @@ struct SandboxVariable
 struct SandboxConfig
 {
     /**
+     * @brief Whether the sandbox hooks the process it was injected into.
+     *
+     * The configuration travels under the GUID of `APPBOX_SANDBOX_GUID`
+     * (`sandbox/utils/Defines.hpp`). The launcher writes it for every process it
+     * creates, with the hooks turned on, which is the state in which the sandbox
+     * redirects the file system, the registry, the network and the environment of
+     * the process.
+     *
+     * The packer writes the configuration into the image of every launcher it
+     * produces with the hooks turned off: a launcher builds the sandbox of the
+     * application it starts, so isolating it would isolate the program which
+     * creates the sandbox, and a launcher which a sandboxed application starts
+     * would run inside that sandbox instead of serving a sandbox of its own.
+     */
+    bool hook_enabled = true;
+
+    /**
      * @brief Whether the environment of the process is composed already.
      *
      * A process the launcher starts directly composes its environment from the
@@ -206,7 +223,7 @@ struct SandboxConfig
      */
     std::string log_level;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE(SandboxConfig, environment_is_composed, pipe_path, sandbox32_dos_path,
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(SandboxConfig, hook_enabled, environment_is_composed, pipe_path, sandbox32_dos_path,
                                    sandbox64_dos_path, fs_upper, fs_lower, variables, registry_hive_dos_path,
                                    registry_image_hive_dos_path, registry_isolation_dos_paths,
                                    filesystem_isolation_dos_paths, network_isolation_dos_paths,

@@ -1,4 +1,4 @@
-#include "sandbox/utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include <spdlog/spdlog.h>
 #include <exception>
 #include <filesystem>
@@ -6,10 +6,10 @@
 #include <iterator>
 #include <string>
 #include <vector>
-#include "sandbox/filesystem/IsolationTable.hpp"
-#include "sandbox/filesystem/ResolveCore.hpp"
+#include "ResolveCore.hpp"
+#include "FilesystemIsolationTable.hpp"
+#include "KnownFolder.hpp"
 #include "utils/ConvertDosPathToNtPath.hpp"
-#include "utils/KnownFolder.hpp"
 #include "WString.hpp"
 #include "ViewPathResolver.hpp"
 

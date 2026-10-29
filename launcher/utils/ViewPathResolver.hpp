@@ -2,7 +2,7 @@
 #define APPBOX_LAUNCHER_UTILS_VIEWPATHRESOLVER_HPP
 
 #include "sandbox/Config.hpp"
-#include "sandbox/filesystem/Resolve.hpp"
+#include "ResolveTypes.hpp"
 #include <string>
 
 namespace appbox
@@ -23,7 +23,7 @@ namespace appbox
  * opaque markers of the overlay hide entries, the isolation modes of the view
  * mask the layers they hide and a reparse point is expanded by the view itself.
  * The rules are implemented once and shared with the sandbox, see
- * `sandbox/filesystem/ResolveCore.hpp`.
+ * `common/ResolveCore.hpp`.
  *
  * The instance holds the layers and the isolation modes of one run, so it is
  * built once and asked for every program the run starts.

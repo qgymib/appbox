@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_UTILS_HANDLE_INFO_HPP
 #define APPBOX_SANDBOX_UTILS_HANDLE_INFO_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include "filesystem/Resolve.hpp"
 #include <memory>
 #include <string>

@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_UTILS_DIRECTORYINFORMATIONWALKER_HPP
 #define APPBOX_SANDBOX_UTILS_DIRECTORYINFORMATIONWALKER_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include <functional>
 #include <string>
 

@@ -1,4 +1,4 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "registry/__init__.hpp"
 #include "registry/KeyGuard.hpp"
 #include "registry/ValueExpansion.hpp"

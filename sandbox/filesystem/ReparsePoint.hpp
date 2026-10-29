@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_FILESYSTEM_REPARSEPOINT_HPP
 #define APPBOX_SANDBOX_FILESYSTEM_REPARSEPOINT_HPP
 
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "filesystem/Resolve.hpp"
 #include <string>
 #include <vector>

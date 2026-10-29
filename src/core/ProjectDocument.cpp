@@ -20,6 +20,7 @@ using Json = nlohmann::ordered_json;
 /* Member names of the document schema. */
 constexpr const char* kVersionKey = "version";
 constexpr const char* kOutputPathKey = "output_path";
+constexpr const char* kSandboxIdKey = "sandbox_id";
 constexpr const char* kProjectTypeKey = "project_type";
 constexpr const char* kCompressionLevelKey = "compression_level";
 constexpr const char* kMetadataKey = "metadata";
@@ -113,6 +114,32 @@ std::string ReadRequiredString(const Json& json, const char* key)
 std::wstring ReadRequiredText(const Json& json, const char* key)
 {
     return appbox::UTF8ToWide(ReadRequiredString(json, key));
+}
+
+/**
+ * @brief Read a member which holds a string, empty when it is absent.
+ *
+ * The text is returned as it is stored, which is what a member of the document
+ * that carries no path needs: the caller decides whether the value is usable.
+ *
+ * @param[in] json Object to read from.
+ * @param[in] key Name of the member.
+ * @return The text of the member, empty when the member is absent.
+ * @throw appbox::ProjectDocumentError The member is present but not a string.
+ */
+std::string ReadOptionalString(const Json& json, const char* key)
+{
+    const auto member = json.find(key);
+    if (member == json.end())
+    {
+        return {};
+    }
+    if (!member->is_string())
+    {
+        throw appbox::ProjectDocumentError(std::string("the '") + key + "' member is not a string");
+    }
+
+    return member->get<std::string>();
 }
 
 /**
@@ -844,6 +871,14 @@ void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
     json = nlohmann::ordered_json::object();
     json[kVersionKey] = kProjectFileVersion;
     json[kOutputPathKey] = WideToUTF8(document.output_path);
+
+    /* A document of a session without an identifier does not name the member
+     * at all, which keeps the text of a session written before it existed. */
+    if (!document.sandbox_id.empty())
+    {
+        json[kSandboxIdKey] = document.sandbox_id;
+    }
+
     json[kProjectTypeKey] = ProjectTypeToken(document.project_type);
     json[kCompressionLevelKey] = CompressionLevelToken(document.compression_level);
     json[kMetadataKey] = document.metadata;
@@ -904,6 +939,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectDocument& document)
      */
     ProjectDocument candidate;
     candidate.output_path = ReadOptionalText(json, kOutputPathKey);
+    candidate.sandbox_id = ReadOptionalString(json, kSandboxIdKey);
     candidate.project_type = ReadProjectType(json);
     candidate.compression_level = ReadCompressionLevel(json);
     ReadRecord(json, kMetadataKey, candidate.metadata);

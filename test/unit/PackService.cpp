@@ -2,6 +2,7 @@
 #include "src/core/PeResourcePatch.hpp"
 #include "src/core/PackService.hpp"
 #include "ExecutablePayload.hpp"
+#include "SandboxId.hpp"
 #include "ZipReader.hpp"
 #include "SandboxLayout.hpp"
 #include "WString.hpp"
@@ -544,6 +545,12 @@ TEST(Unit_PackService, PackProducesLauncherConfigurationAndLayers)
 
     /* The startup screen of the session is shown and carries no image at all. */
     EXPECT_TRUE(config.startup.screen);
+
+    /*
+     * The configuration names the identity of the sandbox, which the launcher
+     * derives the name of its control pipe from.
+     */
+    EXPECT_TRUE(appbox::IsValidSandboxId(config.sandbox_id)) << config.sandbox_id;
 
     /* Imported folders become lower layers below app/filesystem/<layer key>. */
     EXPECT_EQ(ReadEntry(archive, "app/filesystem/#ProgramFiles#/MyApp/app.exe"), "EXE-CONTENT");
@@ -2059,4 +2066,60 @@ TEST(Unit_PackService, PatchWritesTheEntriesWithTheLevelOfTheSession)
     EXPECT_EQ(stat.comp_method, ZIP_CM_STORE);
     EXPECT_EQ(stat.comp_size, static_cast<zip_uint64_t>(payload.size()));
     EXPECT_EQ(ReadEntry(archive, entry), payload);
+}
+
+TEST(Unit_PackService, PackKeepsTheSandboxIdOfTheSession)
+{
+    TempDir    temp;
+    const auto my_app = temp.Get() / L"MyApp";
+    MakeFile(my_app, L"app.exe", "EXE");
+
+    appbox::PackModel model;
+    std::string       error;
+    ASSERT_TRUE(model.ImportFolder("program_files", my_app.wstring(), error)) << error;
+    ASSERT_TRUE(model.AddStartupFile("program_files", L"MyApp", L"app.exe", true, error)) << error;
+
+    /*
+     * Pack the session once and report the identifier its launcher carries. The
+     * identifier is read from the configuration resource of the written program,
+     * which is the value the launcher derives its control pipe name from.
+     */
+    const auto pack = [&](const std::wstring& name) {
+        const auto zip_path = temp.Get() / name;
+        const auto result =
+            appbox::Pack(model, appbox::RegistryModel(), appbox::FilesystemIsolationModel(), appbox::NetworkModel(),
+                         appbox::EnvironmentModel(), appbox::ApplicationMetadata(), appbox::StartupScreen{},
+                         FakePayloads(), appbox::CompressionLevel::Normal, zip_path.wstring(), nullptr);
+        EXPECT_EQ(result, "") << result;
+
+        ZipArchiveCloser closer(OpenArchive(zip_path.wstring()));
+        if (closer.archive == nullptr)
+        {
+            ADD_FAILURE() << "the archive of the run cannot be opened";
+            return std::string();
+        }
+
+        const auto  launcher_entry = ReadEntry(closer.archive, "app.exe");
+        std::string json_text;
+        std::string config_error;
+        if (!ReadLauncherConfigJsonFromEntry(launcher_entry, json_text, config_error))
+        {
+            ADD_FAILURE() << config_error;
+            return std::string();
+        }
+
+        return nlohmann::json::parse(json_text).get<appbox::LauncherConfig>().sandbox_id;
+    };
+
+    const auto first = pack(L"first.zip");
+    const auto second = pack(L"second.zip");
+
+    /* One session names every product it writes with the same identity. */
+    EXPECT_TRUE(appbox::IsValidSandboxId(first)) << first;
+    EXPECT_EQ(first, second);
+
+    /* A session of its own names its products with an identity of its own. */
+    appbox::PackModel other;
+    EXPECT_TRUE(appbox::IsValidSandboxId(other.EnsureSandboxId()));
+    EXPECT_NE(other.SandboxId(), first);
 }

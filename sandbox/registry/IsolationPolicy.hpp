@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_REGISTRY_ISOLATIONPOLICY_HPP
 #define APPBOX_SANDBOX_REGISTRY_ISOLATIONPOLICY_HPP
 
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "RegistryIsolation.hpp"
 #include <optional>
 

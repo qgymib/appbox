@@ -90,6 +90,21 @@ struct LauncherStartupScreen
 struct LauncherConfig
 {
     /**
+     * @brief Identifier of the sandbox the run belongs to.
+     *
+     * The identifier is written by the packer from the project session (see
+     * `common/SandboxId.hpp`) and is the identity of the packaged application:
+     * the launcher derives the name of its control pipe from it, so every
+     * product of one project is one sandbox and two projects are never the same
+     * one. The member is required - a configuration which does not carry it, or
+     * which carries a value that is no identifier, refuses the run with
+     * `ERROR_INVALID_DATA` instead of falling back to a name of its own, because
+     * a run with an identity of its own would silently open a second sandbox
+     * next to the one the archive describes.
+     */
+    std::string sandbox_id;
+
+    /**
      * @brief Start the startup files without a console window.
      *
      * The launcher is a GUI program without a console, so a console program it
@@ -111,7 +126,7 @@ struct LauncherConfig
      */
     std::vector<LauncherStartup> startups;
 
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LauncherConfig, hide_console, startup, startups)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(LauncherConfig, sandbox_id, hide_console, startup, startups)
 };
 
 } // namespace appbox

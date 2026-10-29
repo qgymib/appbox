@@ -10,7 +10,8 @@
  */
 /* clang-format off */
 #define APPBOX_LAUNCHER_RPC_METHODS(xx)   \
-    xx(MsgEnvironment)
+    xx(MsgEnvironment)                    \
+    xx(MsgLauncherStart)
 /* clang-format on */
 
 /**

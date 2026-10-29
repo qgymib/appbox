@@ -24,9 +24,10 @@ namespace appbox
  * filesystem, the DNS redirections and the proxy of the network workspace, the
  * environment variables of the environment workspace, the file properties the
  * launcher carries, the startup screen the launcher shows, the kind of product
- * the `Build` command writes, the compression level of the archive it writes
- * and the path of the `Output File` box. The structure and the schema of the
- * document are described by ProjectDocument.
+ * the `Build` command writes, the compression level of the archive it writes,
+ * the identifier of the sandbox of the session and the path of the
+ * `Output File` box. The structure and the schema of the document are described
+ * by ProjectDocument.
  *
  * The imported folders, the folders the user created and the hidden entries are
  * listed preset directory by preset directory, so the order of the document
@@ -42,6 +43,10 @@ namespace appbox
  * @param[in] project_type Kind of product the `Build` command writes.
  * @param[in] compression_level Compression level of the archive the `Build`
  *                              command writes.
+ * @param[in] sandbox_id Identifier of the sandbox of the session, empty to
+ *                       write a document which records none. The export passes
+ *                       the value of `PackModel::EnsureSandboxId()`, so the file
+ *                       records the identity of the products of the session.
  * @param[in] output_path Destination archive path of the configuration, which
  *                        may be empty when no path was chosen yet.
  * @return The document of the session.
@@ -50,7 +55,8 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
                                     const FilesystemIsolationModel& isolation, const NetworkModel& network,
                                     const EnvironmentModel& environment, const ApplicationMetadata& metadata,
                                     const StartupScreen& startup, ProjectType project_type,
-                                    CompressionLevel compression_level, const std::wstring& output_path);
+                                    CompressionLevel compression_level, const std::string& sandbox_id,
+                                    const std::wstring& output_path);
 
 /**
  * @brief Replace the models of a session with the content of a document.
@@ -72,6 +78,11 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
  * by the time its child is restored. The hidden entries follow them, so an
  * entry which hangs below a folder of the document is restored as well.
  *
+ * The identifier of the sandbox is validated last: a document which records
+ * none is accepted and reports an empty identifier, while a value which is no
+ * identifier of `common/SandboxId.hpp` refuses the import, so a session never
+ * continues with an identity the launcher would reject.
+ *
  * @param[in] document Document to apply.
  * @param[out] model Model replaced with the configuration of the document.
  * @param[out] registry Registry replaced with the registry of the document.
@@ -87,6 +98,10 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
  * @param[out] compression_level Compression level of the document, which the
  *                              session adopts together with the models.
  * @param[out] output_path Destination archive path of the document.
+ * @param[out] sandbox_id Identifier of the sandbox the document records,
+ *                        normalized to the canonical form; empty when the
+ *                        document names none, which leaves the identity of the
+ *                        session to the caller.
  * @param[out] error Error description on failure, prefixed with the path of the
  *                   entry which was rejected, for example `folders[1]: ...`.
  * @return true on success.
@@ -94,7 +109,8 @@ ProjectDocument MakeProjectDocument(const PackModel& model, const RegistryModel&
 bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, RegistryModel& registry,
                           FilesystemIsolationModel& isolation, NetworkModel& network, EnvironmentModel& environment,
                           ApplicationMetadata& metadata, StartupScreen& startup, ProjectType& project_type,
-                          CompressionLevel& compression_level, std::wstring& output_path, std::string& error);
+                          CompressionLevel& compression_level, std::wstring& output_path, std::string& sandbox_id,
+                          std::string& error);
 
 /**
  * @brief Write the content of a document into a project file.

@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_FILESYSTEM_FILE_INFORMATION_CLASS_HPP
 #define APPBOX_SANDBOX_FILESYSTEM_FILE_INFORMATION_CLASS_HPP
 
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include <nlohmann/json.hpp>
 
 namespace appbox::filesystem

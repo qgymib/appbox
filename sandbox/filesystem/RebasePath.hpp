@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_FILESYSTEM_REBASE_PATH_HPP
 #define APPBOX_SANDBOX_FILESYSTEM_REBASE_PATH_HPP
 
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include <string>
 
 namespace appbox::filesystem

@@ -974,18 +974,28 @@ void MainFrame::OnImportConfiguration(wxCommandEvent&)
     appbox::ProjectType              loaded_project_type = appbox::ProjectType::Standalone;
     appbox::CompressionLevel         loaded_compression_level = appbox::kDefaultCompressionLevel;
     std::wstring                     output_path;
+    std::string                      loaded_sandbox_id;
     std::string                      error;
 
     if (!appbox::LoadProject(dialog.GetPath().ToStdWstring(), document, error) ||
         !appbox::ApplyProjectDocument(document, loaded, loaded_registry, loaded_isolation, loaded_network,
                                       loaded_environment, loaded_metadata, loaded_startup, loaded_project_type,
-                                      loaded_compression_level, output_path, error))
+                                      loaded_compression_level, output_path, loaded_sandbox_id, error))
     {
         spdlog::error("importing the configuration failed: {}", error);
         wxMessageBox("The configuration could not be imported:\n\n" + wxString::FromUTF8(error), "Import Configuration",
                      wxOK | wxICON_ERROR, this);
         return;
     }
+
+    /*
+     * The identifier of the document is the identity of the products the
+     * project wrote, so the session adopts it: a later export or build then
+     * writes the very same identifier again. A document which records none
+     * leaves the session without one, which generates a new identifier when it
+     * next needs it.
+     */
+    loaded.SetSandboxId(std::move(loaded_sandbox_id));
 
     model_ = std::move(loaded);
     registry_model_ = std::move(loaded_registry);
@@ -1041,9 +1051,18 @@ void MainFrame::OnExportConfiguration(wxCommandEvent&)
     }
 
     std::string error;
-    const auto  document = appbox::MakeProjectDocument(
+
+    /*
+     * The export is the only path which writes the identifier of the sandbox
+     * into the project file, so the session generates it here when it holds
+     * none: the file records the identity the products of this session carry,
+     * and importing the file again keeps it.
+     */
+    const std::string& sandbox_id = model_.EnsureSandboxId();
+
+    const auto document = appbox::MakeProjectDocument(
         model_, registry_model_, filesystem_isolation_, network_, environment_, metadata_, startup_screen_,
-        project_type_, settings_panel_->GetCompressionLevel(), OutputPath().ToStdWstring());
+        project_type_, settings_panel_->GetCompressionLevel(), sandbox_id, OutputPath().ToStdWstring());
     if (!appbox::SaveProject(document, dialog.GetPath().ToStdWstring(), error))
     {
         spdlog::error("exporting the configuration failed: {}", error);

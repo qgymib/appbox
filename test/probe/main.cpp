@@ -1,4 +1,4 @@
-#include "sandbox/utils/WinAPI.h" /* Must be included before any other headers. */
+#include "WinAPI.h" /* Must be included before any other headers. */
 #include <CLI/CLI.hpp>
 #include "probe/__init__.hpp"
 #include "probe/ParamCheck.hpp"

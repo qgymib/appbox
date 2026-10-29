@@ -250,6 +250,48 @@ public:
     bool IsEmpty() const;
 
     /**
+     * @brief Get the identifier of the sandbox of the session.
+     *
+     * The identifier is the identity of the packaged application: it travels
+     * into the run configuration of the launcher, which derives the name of its
+     * control pipe from it (see `common/SandboxId.hpp`). It is generated once
+     * per session, so every product of one session carries the same identity
+     * and the products of two sessions never do.
+     *
+     * @return The identifier, empty while the session holds none.
+     */
+    const std::string& SandboxId() const;
+
+    /**
+     * @brief Get the identifier of the sandbox, generating it when it is unset.
+     *
+     * The call is the one the export of a project file and the pack run use, so
+     * a session which was never exported still names its products: the first
+     * call generates the identifier and every later call returns the same one.
+     * The generation is not a write to the project file - an export is the only
+     * path which writes that file - so a pack run never leaves a half written
+     * file behind.
+     *
+     * The call is `const` because the pack run works on a read-only model and
+     * still has to record the identity of the products it writes.
+     *
+     * @return The identifier of the session.
+     */
+    const std::string& EnsureSandboxId() const;
+
+    /**
+     * @brief Replace the identifier of the session.
+     *
+     * The entry point restores the identifier a project file records, so an
+     * imported session keeps the identity of the products of the project. The
+     * text is stored as it is given; the caller validates it, see
+     * `ApplyProjectDocument()`.
+     *
+     * @param[in] id Identifier of the sandbox, empty to forget it.
+     */
+    void SetSandboxId(std::string id);
+
+    /**
      * @brief Import a host folder as a subdirectory of a preset directory.
      *
      * The import name is the last path component of the source folder. The
@@ -885,6 +927,15 @@ private:
     std::vector<VirtualDirectory> directories_;
     std::vector<WhiteoutEntry>    whiteouts_;
     std::vector<StartupFile>      startup_files_;
+
+    /**
+     * @brief Identifier of the sandbox of the session, empty while unset.
+     *
+     * The member is mutable because the pack run receives a read-only model and
+     * still generates the identifier it writes into the run configuration, see
+     * EnsureSandboxId().
+     */
+    mutable std::string sandbox_id_;
 };
 
 } // namespace appbox

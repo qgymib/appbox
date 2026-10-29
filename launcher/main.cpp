@@ -8,8 +8,8 @@
 #include <CLI/CLI.hpp>
 #include <detours.h>
 #include <spdlog/spdlog.h>
-#include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <stdexcept>
@@ -18,115 +18,23 @@
 #include <vector>
 #include <base64.hpp>
 #include "EmbeddedResource.hpp"
+#include "SandboxId.hpp"
 #include "sandbox/utils/Defines.hpp"
 #include "utils/CommandLineOptions.hpp"
 #include "utils/GetExecutableDir.hpp"
-#include "utils/ProcessJob.hpp"
+#include "utils/ProcessJobSet.hpp"
 #include "utils/SandboxModules.hpp"
 #include "utils/SelfExtraction.hpp"
 #include "utils/Shell.hpp"
-#include "utils/KnownFolder.hpp"
 #include "utils/VersionInfo.hpp"
 #include "utils/ViewPathResolver.hpp"
 #include "utils/WinCall.hpp"
 #include "EmbeddedResourceIds.h"
+#include "control/ControlPlane.hpp"
+#include "rpc/__init__.hpp"
 #include "Launcher.hpp"
 #include "Splash.hpp"
 #include "WString.hpp"
-
-/**
- * @brief Compare two trigger names ignoring case.
- * @param[in] a Left operand.
- * @param[in] b Right operand.
- * @return true when both names are equal ignoring case.
- */
-static bool EqualsIgnoreCase(const std::string& a, const std::string& b)
-{
-    if (a.size() != b.size())
-    {
-        return false;
-    }
-
-    for (std::size_t i = 0; i < a.size(); ++i)
-    {
-        const auto left = std::tolower(static_cast<unsigned char>(a[i]));
-        const auto right = std::tolower(static_cast<unsigned char>(b[i]));
-        if (left != right)
-        {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-/**
- * @brief Get the command line arguments of one startup file.
- * @param[in] startup Startup file to convert.
- * @return The arguments in wide characters.
- */
-static std::vector<std::wstring> BuildCmdArg(const appbox::LauncherStartup& startup)
-{
-    std::vector<std::wstring> args;
-    for (auto& arg : startup.arguments)
-    {
-        args.push_back(appbox::UTF8ToWide(arg));
-    }
-
-    return args;
-}
-
-/**
- * @brief Select the startup files the launcher runs.
- *
- * A trigger given on the command line selects exactly one startup file and
- * suppresses the auto start of every other file. Without a trigger every
- * startup file which carries the auto start flag is selected; a configuration
- * without such a file is an error, because the sandbox would start nothing.
- *
- * @param[in] config The launcher configuration.
- * @param[in] trigger Trigger given on the command line.
- * @param[in] has_trigger Whether a trigger was given on the command line.
- * @param[out] selected The startup files to run, in configuration order.
- * @param[out] error Error description on failure.
- * @return true when at least one startup file was selected.
- */
-static bool SelectStartups(const appbox::LauncherConfig& config, const std::string& trigger, bool has_trigger,
-                           std::vector<const appbox::LauncherStartup*>& selected, std::string& error)
-{
-    selected.clear();
-
-    if (has_trigger)
-    {
-        for (const auto& startup : config.startups)
-        {
-            if (EqualsIgnoreCase(startup.trigger, trigger))
-            {
-                selected.push_back(&startup);
-                return true;
-            }
-        }
-
-        error = "no startup file uses the trigger '" + trigger + "'";
-        return false;
-    }
-
-    for (const auto& startup : config.startups)
-    {
-        if (startup.auto_start)
-        {
-            selected.push_back(&startup);
-        }
-    }
-
-    if (selected.empty())
-    {
-        error = "no startup file is marked for auto start";
-        return false;
-    }
-
-    return true;
-}
 
 /**
  * @brief Resolve the shell of the host which the sandbox runs.
@@ -176,47 +84,22 @@ static void SelectStartupsForRun(const appbox::CommandLineOptions& opt)
         return;
     }
 
-    SelectStartups(LauncherApp().launcher_config, opt.startup_trigger, opt.has_startup_trigger, LauncherApp().startups,
-                   LauncherApp().startup_error);
-}
+    appbox::LauncherStartSelection selection;
+    selection.kind = opt.has_startup_trigger ? appbox::LauncherStartSelectionKind::Trigger
+                                             : appbox::LauncherStartSelectionKind::Auto;
+    selection.trigger = opt.startup_trigger;
 
-/**
- * @brief One process the launcher starts inside the sandbox.
- */
-struct LaunchTarget
-{
-    std::string               name;         /* Name of the target, for the log. */
-    std::wstring              exe_path;     /* Executable to run, as the configuration spells it. */
-    std::wstring              image_path;   /* Host path of the image which is created. */
-    std::vector<std::wstring> args;         /* Arguments of the executable. */
-    bool                      hide_console; /* Start the process without a console window. */
-    std::string               error;        /* Reason the target cannot be started at all. */
-};
-
-/**
- * @brief Resolve the image of one target into the path of the host.
- *
- * The configuration names a path of the sandbox view, which usually exists in
- * the layers of the archive only: the launcher resolves it before it creates
- * the process, because the process has to be created from the file which holds
- * the image. A path which no layer and no host path holds refuses the target.
- *
- * @param[in] resolver Resolver of the view of the run.
- * @param[in,out] target Target whose image is resolved.
- */
-static void ResolveTargetImage(const appbox::ViewPathResolver& resolver, LaunchTarget& target)
-{
-    if (!target.error.empty())
+    std::string error_code;
+    std::string error_message;
+    if (!appbox::SelectStartupFiles(LauncherApp().launcher_config, selection, LauncherApp().startups, error_code,
+                                    error_message))
     {
-        /* The kind of the startup file already refuses the run. */
-        return;
+        LauncherApp().startup_error = error_message;
     }
-
-    resolver.Resolve(target.exe_path, target.image_path, target.error);
 }
 
 /**
- * @brief Build the processes the launcher starts.
+ * @brief Build the processes the initial run of the launcher starts.
  *
  * A run of the shell starts the shell of the host alone, which makes the run
  * ignore the startup files of the configuration completely. The console window
@@ -231,49 +114,33 @@ static void ResolveTargetImage(const appbox::ViewPathResolver& resolver, LaunchT
  * machine does not offer is reported and refuses the run, because the sandbox
  * would otherwise start only a part of the application.
  *
- * The image of a program is the file of the layer which holds it, while the
- * configuration names the path of the view: the run resolves both the shell and
- * the startup files before it creates the first process, so a program the view
- * does not hold refuses the run instead of failing while it starts.
+ * The view of the run belongs to the control layer, which builds it once and
+ * asks it for every program of the run: a request of another launcher resolves
+ * its programs through the same view.
  *
+ * @param[in] resolver View of the run.
  * @return The processes to start, in the order they are started in.
  */
-static std::vector<LaunchTarget> BuildLaunchTargets()
+static std::vector<appbox::LaunchTarget> BuildInitialTargets(const appbox::ViewPathResolver& resolver)
 {
-    std::vector<LaunchTarget> targets;
-
-    /*
-     * The view of the run: the layers the launcher mounts and the isolation
-     * modes of the archive. The resolver decides a path with the rules the
-     * sandbox applies to a path of an application, so the launcher creates the
-     * process from the very file the application would open.
-     */
-    const appbox::ViewPathResolver resolver(LauncherApp().runtime->inject_data);
+    std::vector<appbox::LaunchTarget> targets;
 
     if (LauncherApp().shell)
     {
-        LaunchTarget target;
-        target.name = "shell";
-        target.exe_path = LauncherApp().shell_path;
-        target.args = LauncherApp().shell_args;
-        target.hide_console = false;
-        ResolveTargetImage(resolver, target);
+        appbox::LaunchTarget target;
+        std::string          error;
+        appbox::BuildShellTarget(LauncherApp().shell_path, LauncherApp().shell_args, resolver, target, error);
         targets.push_back(std::move(target));
         return targets;
     }
 
-    for (const auto* startup : LauncherApp().startups)
-    {
-        const auto path = appbox::ExpandKnownFolder(appbox::UTF8ToWide(startup->executable.c_str()));
-
-        LaunchTarget target;
-        target.name = startup->trigger;
-        target.hide_console = LauncherApp().launcher_config.hide_console;
-        appbox::BuildStartupInvocation(path, BuildCmdArg(*startup), target.exe_path, target.args, target.error);
-        ResolveTargetImage(resolver, target);
-        targets.push_back(std::move(target));
-    }
-
+    /*
+     * The arguments of the command line of this run follow the arguments of
+     * every startup file, which is what makes the remaining command line the
+     * arguments of the sandboxed application.
+     */
+    appbox::BuildLaunchTargets(LauncherApp().startups, LauncherApp().extra_args,
+                               LauncherApp().launcher_config.hide_console, resolver, targets);
     return targets;
 }
 
@@ -324,7 +191,7 @@ private:
 };
 
 /**
- * @brief Run the processes the configuration describes.
+ * @brief Run the processes the configuration describes and serve the sandbox.
  *
  * Every target is started before the first one is waited for, so the targets of
  * the run side by side instead of one after the other.
@@ -333,20 +200,33 @@ private:
  * destroyed as soon as every process was started, which is the moment the
  * packaged application is on its own.
  *
+ * The processes of the run belong to the control layer, which holds them in one
+ * set: the run starts its own programs into that set and waits for them with
+ * the control loop of the layer, which also serves the requests of the other
+ * launchers of the sandbox. A request wakes the wait up, so it is handled while
+ * the programs of this run still work.
+ *
+ * Only the programs the configuration of the run describes decide the exit code:
+ * a program which a request started is the work of another launcher and its
+ * exit code is none of this run's.
+ *
  * @param[in,out] splash Startup screen of the run, which is closed by the call.
- * @return The exit code of the run: the first non zero exit code of a target,
- *         zero when every target exited with zero.
+ * @return The exit code of the run: the first non zero exit code of a target of
+ *         the run, zero when every target exited with zero.
  */
 static DWORD MainLauncher(std::unique_ptr<appbox::SplashScreen>& splash)
 {
-    const auto targets = BuildLaunchTargets();
+    auto       control = LauncherApp().control;
+    const auto targets = BuildInitialTargets(control->Resolver());
 
     /*
      * Every target is started before the first one is waited for, so the
-     * targets of the run side by side instead of one after the other.
+     * targets of the run side by side instead of one after the other. The
+     * processes belong to the control layer, which waits for them and covers
+     * the processes a request of another launcher adds later.
      */
-    std::vector<std::unique_ptr<appbox::ProcessJob>> jobs;
-    DWORD                                            exit_code = 0;
+    auto& jobs = control->Jobs();
+    DWORD exit_code = 0;
 
     ReportStartupStage(appbox::StartupStage::StartingApplication, 0.0);
 
@@ -357,7 +237,7 @@ static DWORD MainLauncher(std::unique_ptr<appbox::SplashScreen>& splash)
             /*
              * The kind of the startup file could not be turned into a process,
              * which is a reason the run cannot work around: the interpreter it
-             * needs is not on this machine, see BuildLaunchTargets().
+             * needs is not on this machine, see BuildInitialTargets().
              */
             SPDLOG_ERROR("Failed to start '{}': {}", target.name, target.error);
             if (exit_code == 0)
@@ -367,9 +247,14 @@ static DWORD MainLauncher(std::unique_ptr<appbox::SplashScreen>& splash)
             continue;
         }
 
-        auto       job = std::make_unique<appbox::ProcessJob>(target.image_path, target.exe_path, target.args,
-                                                              LauncherApp().runtime->inject_data, target.hide_console);
-        const auto ret = job->Start();
+        /*
+         * A target of the run inherits the environment and the working
+         * directory of the launcher, which is what an empty option asks for.
+         * The target is the work of this run, which is what makes its exit code
+         * the one the run reports.
+         */
+        const auto ret = jobs.Start(target.image_path, target.exe_path, target.args, LauncherApp().runtime->inject_data,
+                                    target.hide_console, appbox::ProcessJobOptions{}, appbox::JobOrigin::Initial);
         if (ret != 0)
         {
             SPDLOG_ERROR("Failed to start '{}': {}", target.name, ret);
@@ -380,10 +265,8 @@ static DWORD MainLauncher(std::unique_ptr<appbox::SplashScreen>& splash)
             continue;
         }
 
-        jobs.push_back(std::move(job));
-
         /* The screen follows the processes the run creates. */
-        const auto created = static_cast<double>(jobs.size());
+        const auto created = static_cast<double>(jobs.Size());
         const auto total = targets.empty() ? 1.0 : static_cast<double>(targets.size());
         ReportStartupStage(appbox::StartupStage::StartingApplication, created / total);
     }
@@ -394,22 +277,44 @@ static DWORD MainLauncher(std::unique_ptr<appbox::SplashScreen>& splash)
      * not by a window which stays open.
      */
     CloseStartupScreen(splash);
+    SPDLOG_INFO("the initial application of the sandbox was started");
 
-    for (auto& job : jobs)
+    /*
+     * The control loop of the layer serves the requests of the other launchers
+     * and waits for the processes of the run, so a request which arrives while
+     * the application works is handled at once.
+     */
+    const auto wait_result = control->WaitForPrograms();
+    if (wait_result.status == appbox::WaitStatus::Error)
     {
-        const auto ret = job->Wait(INFINITE);
-        if (ret != 0)
+        SPDLOG_ERROR("Failed to wait for the processes: {}", wait_result.error);
+        if (exit_code == 0)
         {
-            SPDLOG_ERROR("Failed to wait for process: {}", ret);
-            if (exit_code == 0)
-            {
-                exit_code = ret;
-            }
+            exit_code = wait_result.error;
+        }
+    }
+
+    /*
+     * Only the programs the configuration of the run describes decide the exit
+     * code: a program of a request belongs to the launcher which asked for it,
+     * and a request which was refused is no reason for this run to fail.
+     */
+    for (std::size_t i = 0; i < jobs.Size(); ++i)
+    {
+        auto* job = jobs.Job(i);
+        if (job == nullptr)
+        {
             continue;
         }
 
         const auto code = job->GetExitCode();
         SPDLOG_INFO("application exited with code {}", code);
+
+        if (!jobs.IsInitial(i))
+        {
+            continue;
+        }
+
         if (exit_code == 0)
         {
             exit_code = code;
@@ -462,6 +367,39 @@ static void PrepareSandboxModules(std::string& error)
     appbox::ReleaseSandboxModules(LauncherApp().sandbox_paths.cache, LauncherApp().sandbox_modules, error);
 }
 
+/**
+ * @brief Check the identifier of the sandbox of the run.
+ *
+ * The identifier is the identity of the packaged application and the only
+ * source of the name of the control pipe, so a configuration which carries none
+ * or carries a value which is no identifier refuses the run: a fallback name of
+ * the run's own would silently open a second sandbox next to the one the archive
+ * describes. The check runs before the sandbox state exists, so a refused run
+ * leaves neither a `data` directory nor a pipe behind.
+ *
+ * @return The exit code of the run: zero when the identifier is usable,
+ *         `ERROR_INVALID_DATA` otherwise.
+ */
+static DWORD CheckSandboxId()
+{
+    const auto& id = LauncherApp().launcher_config.sandbox_id;
+    if (appbox::IsValidSandboxId(id))
+    {
+        return 0;
+    }
+
+    if (id.empty())
+    {
+        SPDLOG_ERROR("the launcher configuration carries no sandbox identifier, the run is refused");
+    }
+    else
+    {
+        SPDLOG_ERROR("the sandbox identifier '{}' of the launcher configuration is not valid, the run is refused", id);
+    }
+
+    return ERROR_INVALID_DATA;
+}
+
 static void LoadConfig()
 {
     /*
@@ -487,19 +425,20 @@ static void LoadConfig()
     ResolveSandboxPaths({});
 }
 
-static void FinializeCommandArgs(const appbox::CommandLineOptions& opt)
+/**
+ * @brief Keep the arguments of the command line which belong to the programs of the run.
+ *
+ * The arguments which were not consumed by the launcher belong to the sandboxed
+ * application, so every program of the run receives them. They are kept beside
+ * the configuration and are not appended to it: the configuration is what a
+ * request of another launcher builds its programs from, and a request must not
+ * inherit the arguments of this run.
+ *
+ * @param[in] opt The command line options of the launcher.
+ */
+static void KeepRunArguments(const appbox::CommandLineOptions& opt)
 {
-    /*
-     * The arguments which were not consumed by the launcher belong to the
-     * sandboxed application, so every startup file receives them.
-     */
-    for (auto& startup : LauncherApp().launcher_config.startups)
-    {
-        for (const auto& arg : opt.extra_args)
-        {
-            startup.arguments.push_back(arg);
-        }
-    }
+    LauncherApp().extra_args = opt.extra_args;
 }
 
 /**
@@ -518,7 +457,7 @@ static bool PrepareShellRun(const appbox::CommandLineOptions& opt)
 {
     if (!opt.shell)
     {
-        FinializeCommandArgs(opt);
+        KeepRunArguments(opt);
         return true;
     }
 
@@ -539,21 +478,44 @@ static bool PrepareShellRun(const appbox::CommandLineOptions& opt)
 }
 
 /**
- * @brief Run the launcher.
+ * @brief Stop serving the sandbox and release the control layer of the run.
  *
- * The launcher has no user interface and no message loop: it resolves the
- * configuration, starts the startup files (or the shell) and exits with the
- * exit code of the run. A failure is logged and reported through the exit code.
+ * The pipe of the run is stopped before the layer is released: the requests
+ * which still wait are answered with the end of the run, and the answers which
+ * are in flight are written before the pipe is closed. A launcher which asks for
+ * a program of a sandbox which is ending is therefore told so instead of losing
+ * its request to a pipe which disappeared.
+ */
+static void StopServing()
+{
+    auto control = LauncherApp().control;
+    if (control)
+    {
+        control->Shutdown();
+    }
+}
+
+/**
+ * @brief Run this launcher as the master instance of its sandbox.
  *
+ * The master instance prepares the sandbox, starts the programs of its own
+ * configuration and serves the requests of the other launchers of the sandbox
+ * until every process it started exited and no request waits any more.
+ *
+ * The control layer is built before the sandbox is prepared, so the requests of
+ * the other launchers are accepted while this run extracts its payload and
+ * mounts its layers. They are queued and handled once the sandbox exists, which
+ * is what keeps a launcher of an archive which is being unpacked from being
+ * lost.
+ *
+ * @param[in,out] opt The command line options of the run.
+ * @param[in] server Pipe server which won the race for the control pipe.
+ * @param[in] pipe Name of the control pipe of the sandbox.
  * @return The exit code of the run.
  */
-static DWORD RunLauncher()
+static DWORD RunMasterInstance(appbox::CommandLineOptions& opt, appbox::RemoteServer::Ptr server,
+                               const std::string& pipe)
 {
-    appbox::WinCallInit();
-
-    appbox::CommandLineOptions opt;
-    opt.ParseOptions();
-
     /*
      * The startup screen of the run. It covers the preparation of the sandbox
      * and disappears as soon as the processes of the run were started, so it
@@ -567,17 +529,42 @@ static DWORD RunLauncher()
 
     try
     {
-        if (!opt.override_config.is_null())
+        /*
+         * The control layer of the run owns the pipe server, the queue of the
+         * requests of the other launchers and the view which resolves the
+         * programs a request starts. It exists before the runtime, because the
+         * pipe has to serve the requests of a second instance while this run
+         * is still preparing its sandbox.
+         */
+        auto control = std::make_shared<appbox::ControlPlane>(std::move(server), LauncherApp().sandbox_paths.root);
+        LauncherApp().control = control;
+
+        /*
+         * A pipe which serves no connection any more is the end of the run. The
+         * callback runs on the IO thread of the server, which may neither block
+         * nor stop the server, so it keeps the failure and wakes the control
+         * loop up; the loop reports the error and stops the pipe itself. The
+         * layer is captured weakly, because the server is owned by the layer and
+         * a strong reference would keep both alive for ever.
+         */
+        std::weak_ptr<appbox::ControlPlane> weak_control = control;
+        control->Server()->SetAcceptFailureCallback([weak_control](appbox::AcceptFailureKind kind, DWORD error_code) {
+            if (auto layer = weak_control.lock())
+            {
+                layer->OnAcceptFailure(kind, error_code);
+            }
+        });
+
+        /* Methods must register before rpc server start. */
+        appbox::RpcInit(control->Server());
+        if (!control->Server()->Start())
         {
-            LauncherApp().launcher_config = opt.override_config;
-            ResolveSandboxPaths(opt.config_dir);
+            throw std::runtime_error("the control pipe of the sandbox cannot be served");
         }
-        else
-        {
-            LoadConfig();
-        }
+
+        SPDLOG_DEBUG("pipe listen on {}", pipe);
+
         PrepareShellRun(opt);
-        SPDLOG_INFO("Load config: {}", nlohmann::json(LauncherApp().launcher_config).dump());
 
         /*
          * A run without the injection modules cannot sandbox anything: the
@@ -642,12 +629,21 @@ static DWORD RunLauncher()
 
         ReportStartupStage(appbox::StartupStage::Preparing, 1.0);
 
-        LauncherApp().runtime = std::make_shared<AppBoxLauncherRuntime>(opt.log_level, opt.log_dir);
+        LauncherApp().runtime = std::make_shared<AppBoxLauncherRuntime>(opt.log_level, opt.log_dir, pipe);
+
+        /*
+         * The view of the run is built from the injection data, which exists
+         * once the sandbox is mounted: the initial targets and every request of
+         * another launcher resolve their programs through it.
+         */
+        control->BindInjectData(LauncherApp().runtime->inject_data);
     }
     catch (const std::exception& e)
     {
         SPDLOG_ERROR(e.what());
         CloseStartupScreen(splash);
+        StopServing();
+        LauncherApp().control.reset();
         return 1;
     }
 
@@ -662,6 +658,8 @@ static DWORD RunLauncher()
         SPDLOG_ERROR("{}", LauncherApp().startup_error);
         LauncherApp().runtime.reset();
         CloseStartupScreen(splash);
+        StopServing();
+        LauncherApp().control.reset();
         return 1;
     }
 
@@ -669,7 +667,161 @@ static DWORD RunLauncher()
 
     CloseStartupScreen(splash);
     LauncherApp().runtime.reset();
+    StopServing();
+    LauncherApp().control.reset();
     return exit_code;
+}
+
+/**
+ * @brief Hand the request of this run over to the master instance of its sandbox.
+ *
+ * The second instance prepares nothing: it neither extracts a payload nor
+ * releases the injection modules, it creates no state directory, it rebuilds no
+ * registry image, it serves no pipe and it starts no program of its own. It
+ * asks the master instance of the sandbox to start what its own command line
+ * selects and leaves as soon as the master instance answered.
+ *
+ * @param[in] opt The command line options of the run.
+ * @param[in] pipe Name of the control pipe of the sandbox.
+ * @return The outcome of the handshake: the exit code of the run, or the request
+ *         to race for the control pipe again because the sandbox is closing.
+ */
+static appbox::SecondaryHandover HandOverToMaster(const appbox::CommandLineOptions& opt, const std::string& pipe)
+{
+    const auto selection = appbox::MakeLauncherStartSelection(opt.shell, opt.has_startup_trigger, opt.startup_trigger);
+
+    const auto request = appbox::BuildLauncherStartRequest(LauncherApp().launcher_config,
+                                                           LauncherApp().sandbox_paths.root, selection, opt.extra_args);
+
+    SPDLOG_INFO("join the sandbox '{}' of '{}'", request.sandbox_id, request.sandbox_root);
+
+    return appbox::RunSecondaryInstance(pipe, request);
+}
+
+/**
+ * @brief Run the launcher.
+ *
+ * The launcher has no user interface and no message loop: it resolves the
+ * configuration, races for the control pipe of its sandbox and then either
+ * serves the sandbox or hands its request over to the launcher which does. A
+ * failure is logged and reported through the exit code.
+ *
+ * @return The exit code of the run.
+ */
+static DWORD RunLauncher()
+{
+    appbox::WinCallInit();
+
+    appbox::CommandLineOptions opt;
+    opt.ParseOptions();
+
+    try
+    {
+        if (!opt.override_config.is_null())
+        {
+            LauncherApp().launcher_config = opt.override_config;
+            ResolveSandboxPaths(opt.config_dir);
+        }
+        else
+        {
+            LoadConfig();
+        }
+    }
+    catch (const std::exception& e)
+    {
+        SPDLOG_ERROR(e.what());
+        return 1;
+    }
+
+    /*
+     * The identifier of the sandbox is checked before anything of the run is
+     * created: a configuration which cannot name its sandbox starts no process,
+     * creates no `data` directory and opens no pipe.
+     */
+    const auto id_error = CheckSandboxId();
+    if (id_error != 0)
+    {
+        return id_error;
+    }
+
+    const auto pipe = appbox::SandboxPipeName(LauncherApp().launcher_config.sandbox_id);
+    if (pipe.empty())
+    {
+        SPDLOG_ERROR("the sandbox identifier cannot name a control pipe, the run is refused");
+        return ERROR_INVALID_DATA;
+    }
+
+    appbox::RemoteServer::Options options;
+    options.first_instance = true;
+
+    bool          logging_ready = false;
+    std::uint32_t budget = appbox::kShutdownRaceBudgetMs;
+    std::uint32_t delay = appbox::kShutdownRaceFirstDelayMs;
+
+    /*
+     * The race for the control pipe decides the role of this run: the launcher
+     * which creates the first instance of the pipe serves the sandbox, and every
+     * other launcher of the same sandbox hands its request over to it.
+     *
+     * A handshake which finds a sandbox which is closing is no failure: the run
+     * waits for the interval of the shutdown race and races again, so the
+     * request is served by the sandbox which is started next, or by this run
+     * once it won the race itself.
+     */
+    for (;;)
+    {
+        const auto created = appbox::RemoteServer::CreateCompetitive(pipe, options);
+
+        /*
+         * The log files are set up once the role of the run is known: the options
+         * of the run have no side effect on the sandbox before that, so a run
+         * which refuses its configuration leaves nothing behind. A run which
+         * races again keeps the log it opened for the first race.
+         */
+        if (!logging_ready)
+        {
+            opt.SetupLogging();
+            SPDLOG_INFO("Load config: {}", nlohmann::json(LauncherApp().launcher_config).dump());
+            logging_ready = true;
+        }
+
+        switch (created.status)
+        {
+        case appbox::ServerCreateStatus::Created:
+            return RunMasterInstance(opt, created.server, pipe);
+
+        case appbox::ServerCreateStatus::AlreadyRunning: {
+            const auto handover = HandOverToMaster(opt, pipe);
+            if (!handover.retry)
+            {
+                return handover.exit_code;
+            }
+
+            const auto retry = appbox::NextShutdownRetry(budget, delay);
+            if (retry.delay_ms == 0)
+            {
+                SPDLOG_ERROR("the sandbox serves no request and does not come back within {} ms", budget);
+                return ERROR_TIMEOUT;
+            }
+
+            SPDLOG_INFO("the sandbox ends its run, race for its control pipe again in {} ms", retry.delay_ms);
+            Sleep(retry.delay_ms);
+
+            budget = retry.remaining_ms;
+            delay = retry.next_delay_ms;
+            continue;
+        }
+
+        case appbox::ServerCreateStatus::AccessDenied:
+            SPDLOG_ERROR("the control pipe '{}' of the sandbox cannot be used by this user", pipe);
+            return ERROR_ACCESS_DENIED;
+
+        case appbox::ServerCreateStatus::Failed:
+        default:
+            SPDLOG_ERROR("the control pipe '{}' of the sandbox cannot be created: {}", pipe, created.error_code);
+            return created.error_code != 0 ? created.error_code : ERROR_GEN_FAILURE;
+        }
+    }
 }
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)

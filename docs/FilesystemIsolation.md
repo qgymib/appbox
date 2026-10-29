@@ -248,6 +248,21 @@ which are of another type, or which names a mode its kind cannot hold is
 therefore refused while the file is read, which is what keeps the packer and the
 sandbox in step.
 
+The modes are applied by the table of `common/FilesystemIsolationTable.hpp`,
+which the sandbox and the launcher share: the table translates the paths of the
+document into paths of the view with the layer mapping of the run, so the
+launcher resolves the image of a startup file with the very same rules a
+sandboxed process sees. The policy of the modes is the one of
+`common/FilesystemIsolationPolicy.hpp`, and the resolver which applies both is a
+header of `common/` as well: `common/ResolveCore.hpp` declares it,
+`common/details/ResolveCoreDetail.hpp` implements it, so the sandbox and the
+launcher compile the same rules instead of one of them building a source file of
+the other. The pure path helpers of the resolver - the directory name of a path,
+the splitting of a path and the stream name of an entry - live in
+`common/PathText.hpp` next to it, the names of the markers of the view in
+`common/FilesystemMarker.hpp`, and the declarations of the NT calls it needs in
+`common/WinAPI.h`.
+
 The launcher derives the path of the file from the resources of the archive and
 passes it to the sandbox. A missing file, a missing configuration or a malformed document is not
 an error: the sandbox then behaves like one without an isolation file, in which
@@ -619,6 +634,24 @@ These rules constrain every hooked API; the implementation lives in
   the view before the child process is created and the sandbox DLL is injected
   into it, so applications which only exist in a lower layer become launchable
   and every file operation of the child stays inside the view.
+* **The working directory of a process is a path of the view.** A process is
+  created with a directory of a layer whenever the run works in a folder of the
+  view, so the sandbox rewrites the directory of every process it is injected
+  into once its hooks are attached: the directory the file system reports is
+  translated back into the path of the view it belongs to
+  (`sandbox/filesystem/ViewCurrentDirectory.*`) and `RtlSetCurrentDirectory_U`
+  installs it, so the path the process reports (`GetCurrentDirectoryW()`), the
+  handle a relative name is resolved against and the per-drive entries of the
+  environment block agree. A directory which belongs to no layer keeps its path,
+  and the rewritten path belongs to no layer either, so the step is idempotent.
+  A relative name is resolved against that path and not against the name of the
+  layer: the hooks join the name to the path of the view the sandbox recorded
+  for the handle (`sandbox/utils/ConvertToFullNtPath.cpp`), so a relative read,
+  a write and a delete of the application follow the same rules as the absolute
+  path of the same entry, the whiteout markers, the isolation modes and the copy
+  up included. A handle the sandbox did not open carries no record, so a name
+  which is relative to such a handle is joined to the path the file system
+  reports for it.
 * **`ResolveFs` is fixed at injection time.** The layers and the isolation
   modes come from the injected configuration; there is no way to change them
   while a sandboxed process is running.
@@ -712,9 +745,17 @@ through them acts on the layer the object of the call belongs to.
    but which no end-to-end case can drive. A root mode of `Write Copy` or `Merge` is the
    one a workspace normally uses.
 7. **A delete on close of a handle the sandbox did not open is not recorded.** The
-    delete of such a handle is recorded while it is closed, and the sandbox only knows
-    the layers of a handle it opened itself: a handle which was inherited or duplicated
-    from another process removes its layer object without hiding the layers below it.
+   delete of such a handle is recorded while it is closed, and the sandbox only knows
+   the layers of a handle it opened itself: a handle which was inherited or duplicated
+   from another process removes its layer object without hiding the layers below it.
+8. **A working directory the view cannot rewrite stays a path of the layer.** The
+   rewrite of the working directory reports and skips a step which fails — a directory
+   which the view cannot open, a machine whose `ntdll` does not export
+   `RtlSetCurrentDirectory_U` — so the process keeps the directory it was created with.
+   `GetCurrentDirectoryW()` then reports the path of the layer, and a relative name is
+   joined to the handle the process inherited, which names the layer as well, so a
+   relative read, write or delete of the application reaches the layer directly. The
+   process itself is not blocked by the failure, which is the point of skipping it.
 
 ### The entry points the isolation does not hook
 

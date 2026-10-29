@@ -1,7 +1,7 @@
 #ifndef APPBOX_LAUNCHER_UTILS_WINCALL_HPP
 #define APPBOX_LAUNCHER_UTILS_WINCALL_HPP
 
-#include "sandbox/utils/WinAPI.h"
+#include "WinAPI.h"
 
 extern "C" {
 extern T_RtlDosPathNameToNtPathName_U_WithStatus sys_RtlDosPathNameToNtPathName_U_WithStatus;

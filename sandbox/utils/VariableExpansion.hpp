@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_UTILS_VARIABLE_EXPANSION_HPP
 #define APPBOX_SANDBOX_UTILS_VARIABLE_EXPANSION_HPP
 
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 /*
  * The path is spelled relative to this header, because the test executable
  * compiles the file as well and its include path holds the configuration of the

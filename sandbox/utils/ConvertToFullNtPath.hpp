@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_UTILS_CONVERT_TO_FULL_NT_PATH_HPP
 #define APPBOX_SANDBOX_UTILS_CONVERT_TO_FULL_NT_PATH_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include <string>
 
 namespace appbox

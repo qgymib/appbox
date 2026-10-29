@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_FONTS_ISOLATION_HPP
 #define APPBOX_SANDBOX_FONTS_ISOLATION_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 
 namespace appbox
 {

@@ -1,11 +1,13 @@
 #include "PackModel.hpp"
 #include "FilesystemMarker.hpp"
+#include "SandboxId.hpp"
 #include "StartupFileType.hpp"
 #include "WString.hpp"
 #include <algorithm>
 #include <cwctype>
 #include <filesystem>
 #include <system_error>
+#include <utility>
 
 namespace
 {
@@ -304,12 +306,40 @@ void PackModel::Clear()
     directories_.clear();
     whiteouts_.clear();
     startup_files_.clear();
+
+    /*
+     * The identifier belongs to the session and not to its content: a cleared
+     * model is a new session, which names its products with an identity of its
+     * own. An imported project brings the identifier of the document with it,
+     * see SetSandboxId().
+     */
+    sandbox_id_.clear();
 }
 
 bool PackModel::IsEmpty() const
 {
     return imports_.empty() && imported_files_.empty() && directories_.empty() && whiteouts_.empty() &&
            startup_files_.empty();
+}
+
+const std::string& PackModel::SandboxId() const
+{
+    return sandbox_id_;
+}
+
+const std::string& PackModel::EnsureSandboxId() const
+{
+    if (sandbox_id_.empty())
+    {
+        sandbox_id_ = appbox::GenerateSandboxId();
+    }
+
+    return sandbox_id_;
+}
+
+void PackModel::SetSandboxId(std::string id)
+{
+    sandbox_id_ = std::move(id);
 }
 
 bool PackModel::ImportFolder(const std::string& preset_id, const std::wstring& source_path, std::string& error)

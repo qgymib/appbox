@@ -1,8 +1,8 @@
 #ifndef APPBOX_SANDBOX_FILESYSTEM_ISOLATION_HPP
 #define APPBOX_SANDBOX_FILESYSTEM_ISOLATION_HPP
 
-#include "utils/WinAPI.h" /* Must be first include file */
-#include "IsolationTable.hpp"
+#include "WinAPI.h" /* Must be first include file */
+#include "FilesystemIsolationTable.hpp"
 
 namespace appbox
 {

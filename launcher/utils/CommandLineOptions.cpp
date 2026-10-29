@@ -78,7 +78,7 @@ std::wstring OwnLogFileName()
  *                    its resolved absolute path, and it is cleared when the run
  *                    writes no log file at all.
  */
-void SetupLogging(appbox::CommandLineOptions& opt)
+void SetupLoggingImpl(appbox::CommandLineOptions& opt)
 {
     const auto level = appbox::UTF8ToWide(opt.log_level);
 
@@ -219,10 +219,13 @@ void appbox::CommandLineOptions::ParseOptions()
         exit(app.exit(e));
     }
 
-    SetupLogging(*this);
-
     for (auto& arg : app.remaining())
     {
         extra_args.push_back(arg);
     }
+}
+
+void appbox::CommandLineOptions::SetupLogging()
+{
+    SetupLoggingImpl(*this);
 }

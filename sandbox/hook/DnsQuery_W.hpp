@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_HOOK_DNSQUERY_W_HPP
 #define APPBOX_SANDBOX_HOOK_DNSQUERY_W_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include "__init__.hpp"
 
 extern "C" {

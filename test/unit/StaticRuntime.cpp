@@ -1,14 +1,20 @@
-#include "sandbox/utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include <gtest/gtest.h>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <string>
+#include <string_view>
+#include <system_error>
 #include <vector>
+#include "EmbeddedResource.hpp"
+#include "launcher/EmbeddedResourceIds.h"
+#include "SandboxLayout.hpp"
 #include "utils/LauncherPath.hpp"
 #include "utils/ModuleList.hpp"
 #include "utils/ProbePath.hpp"
 #include "utils/ReadFileFull.hpp"
-#include "utils/SandboxDll.hpp"
+#include "utils/WriteFileFull.hpp"
 #include "Test.hpp"
 #include "WString.hpp"
 
@@ -297,12 +303,196 @@ std::wstring SelfPath()
     }
 }
 
+/** Prefix of the directory the modules of a case are released into. */
+constexpr const wchar_t* kReleasedModuleDirectoryPrefix = L"appbox-test-modules-";
+
+/**
+ * @brief The two sandbox injection modules of the launcher, as files.
+ *
+ * The launcher carries both modules as RCDATA resources of its own executable,
+ * which is why the build tree keeps no module file a case could read. A case
+ * which works on the module images reads the resources of the launcher, writes
+ * them into a directory of its own below the temporary directory of the machine
+ * and parses the two files. The directory is removed when the object is
+ * destroyed, so a case leaves nothing behind.
+ */
+class ReleasedModules
+{
+public:
+    /**
+     * @brief Release the modules the launcher carries.
+     * @param[in] launcher Path of the launcher executable.
+     */
+    explicit ReleasedModules(const std::wstring& launcher)
+    {
+        if (launcher.empty())
+        {
+            error_ = "the launcher was not provided";
+            return;
+        }
+
+        if (!PrepareDirectory())
+        {
+            return;
+        }
+
+        const auto module = ::LoadLibraryExW(launcher.c_str(), nullptr, LOAD_LIBRARY_AS_DATAFILE);
+        if (module == nullptr)
+        {
+            error_ = "the launcher `" + appbox::WideToUTF8(launcher) + "` cannot be opened as a data file";
+            return;
+        }
+
+        ReleaseAll(module);
+        ::FreeLibrary(module);
+    }
+
+    ~ReleasedModules()
+    {
+        if (directory_.empty())
+        {
+            return;
+        }
+
+        std::error_code ignored;
+        std::filesystem::remove_all(directory_, ignored);
+    }
+
+    ReleasedModules(const ReleasedModules&) = delete;
+    ReleasedModules& operator=(const ReleasedModules&) = delete;
+    ReleasedModules(ReleasedModules&&) = delete;
+    ReleasedModules& operator=(ReleasedModules&&) = delete;
+
+    /**
+     * @brief Whether both modules were released.
+     * @return true when both files exist.
+     */
+    bool ok() const
+    {
+        return error_.empty();
+    }
+
+    /**
+     * @brief Reason of a failure.
+     * @return The description, empty when both modules were released.
+     */
+    const std::string& error() const
+    {
+        return error_;
+    }
+
+    /**
+     * @brief Path of the released 32 bit module.
+     * @return The path, empty when the module was not released.
+     */
+    const std::wstring& path32() const
+    {
+        return path32_;
+    }
+
+    /**
+     * @brief Path of the released 64 bit module.
+     * @return The path, empty when the module was not released.
+     */
+    const std::wstring& path64() const
+    {
+        return path64_;
+    }
+
+private:
+    /**
+     * @brief Create the empty directory the modules are released into.
+     * @return true when the directory exists.
+     */
+    bool PrepareDirectory()
+    {
+        std::error_code ec;
+        const auto      temporary = std::filesystem::temp_directory_path(ec);
+        if (ec)
+        {
+            error_ = "the temporary directory of the machine cannot be resolved: " + ec.message();
+            return false;
+        }
+
+        directory_ =
+            temporary / (std::wstring(kReleasedModuleDirectoryPrefix) + std::to_wstring(::GetCurrentProcessId()));
+
+        /* A directory a killed run left behind is replaced, so the case never
+         * parses a module of a previous run. */
+        std::filesystem::remove_all(directory_, ec);
+        ec.clear();
+        std::filesystem::create_directories(directory_, ec);
+        if (ec)
+        {
+            directory_.clear();
+            error_ = "the directory of the released modules cannot be created: " + ec.message();
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * @brief Release both modules of an opened launcher.
+     *
+     * The second release is skipped when the first one fails, so the error which
+     * is reported is the one of the first failure.
+     *
+     * @param[in] module The launcher, opened as a data file.
+     */
+    void ReleaseAll(HMODULE module)
+    {
+        if (!Release(module, IDR_APPBOX_SANDBOX32, appbox::layout::kSandbox32DllNameW, path32_))
+        {
+            return;
+        }
+
+        Release(module, IDR_APPBOX_SANDBOX64, appbox::layout::kSandbox64DllNameW, path64_);
+    }
+
+    /**
+     * @brief Write one resource of the launcher into the directory of the case.
+     * @param[in] module The launcher, opened as a data file.
+     * @param[in] resource_id Identifier of the module in the launcher.
+     * @param[in] name Name of the file the module is written to.
+     * @param[out] path Path of the file which was written.
+     * @return true when the resource was written.
+     */
+    bool Release(HMODULE module, int resource_id, const wchar_t* name, std::wstring& path)
+    {
+        std::string_view payload;
+        std::string      error;
+        if (!appbox::ReadEmbeddedResource(module, resource_id, payload, error))
+        {
+            error_ = error;
+            return false;
+        }
+
+        path = (directory_ / name).wstring();
+
+        const auto status = appbox::test::WriteFileFull(path, std::string(payload));
+        if (status != ERROR_SUCCESS)
+        {
+            error_ = "the module `" + appbox::WideToUTF8(path) + "` cannot be written: error " + std::to_string(status);
+            return false;
+        }
+
+        return true;
+    }
+
+    std::filesystem::path directory_; /*!< Directory the modules are written to. */
+    std::wstring          path32_;    /*!< Path of the released 32 bit module. */
+    std::wstring          path64_;    /*!< Path of the released 64 bit module. */
+    std::string           error_;     /*!< Reason of a failure, empty when both modules were released. */
+};
+
 } // namespace
 
 /**
  * Condition:
- * 1. The build produced the packer, the launcher, the two sandbox injection
- *    modules and the two probe executables.
+ * 1. The build produced the packer, the launcher and the two probe executables,
+ *    and the launcher carries the two sandbox injection modules as resources of
+ *    its own executable.
  *
  * Expected:
  * 1. Every one of them links the runtime library of the compiler statically, so
@@ -314,17 +504,20 @@ std::wstring SelfPath()
  */
 TEST(Unit_StaticRuntime, ProductsImportNoVcRuntime)
 {
-    if (appbox::test::config.packer_path.empty() || appbox::test::LauncherPath().empty() ||
-        appbox::test::Sandbox32DllPath().empty() || appbox::test::Sandbox64DllPath().empty())
+    if (appbox::test::config.packer_path.empty() || appbox::test::LauncherPath().empty())
     {
-        GTEST_SKIP() << "the products of the build are unavailable: pass --packer=, --launcher=, --sandbox32= "
-                        "and --sandbox64=";
+        GTEST_SKIP() << "the products of the build are unavailable: pass --packer= and --launcher=";
     }
+
+    /* The modules are read from the launcher, which carries them as resources:
+     * the build tree keeps no module file of its own. */
+    const ReleasedModules modules(appbox::test::LauncherPath());
+    ASSERT_TRUE(modules.ok()) << modules.error();
 
     ExpectStaticRuntime(appbox::test::config.packer_path);
     ExpectStaticRuntime(appbox::test::LauncherPath());
-    ExpectStaticRuntime(appbox::test::Sandbox32DllPath());
-    ExpectStaticRuntime(appbox::test::Sandbox64DllPath());
+    ExpectStaticRuntime(modules.path32());
+    ExpectStaticRuntime(modules.path64());
 
     /* The probe is the program the cases run inside the sandbox, so the module
      * list the case `E2E_Launcher_NoVcRuntime` reads cannot carry a runtime

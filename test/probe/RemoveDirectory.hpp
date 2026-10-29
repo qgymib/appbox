@@ -1,7 +1,7 @@
 #ifndef APPBOX_TEST_PROBE_REMOVEDIRECTORY_HPP
 #define APPBOX_TEST_PROBE_REMOVEDIRECTORY_HPP
 
-#include "sandbox/utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "probe/__init__.hpp"
 #include <string>
 #include <nlohmann/json.hpp>

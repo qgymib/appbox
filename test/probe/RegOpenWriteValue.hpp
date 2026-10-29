@@ -1,7 +1,7 @@
 #ifndef APPBOX_TEST_PROBE_REGOPENWRITEVALUE_HPP
 #define APPBOX_TEST_PROBE_REGOPENWRITEVALUE_HPP
 
-#include "sandbox/utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <string>

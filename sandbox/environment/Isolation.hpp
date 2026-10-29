@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_ENVIRONMENT_ISOLATION_HPP
 #define APPBOX_SANDBOX_ENVIRONMENT_ISOLATION_HPP
 
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include <string>
 
 namespace appbox

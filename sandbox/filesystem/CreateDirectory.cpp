@@ -1,4 +1,4 @@
-#include "filesystem/Sequence.hpp"
+#include "PathText.hpp"
 #include "hook/NtClose.hpp"
 #include "hook/NtCreateFile.hpp"
 #include "hook/RtlInitUnicodeString.hpp"

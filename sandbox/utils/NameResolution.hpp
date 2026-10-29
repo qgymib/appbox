@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_UTILS_NAME_RESOLUTION_HPP
 #define APPBOX_SANDBOX_UTILS_NAME_RESOLUTION_HPP
 
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "network/DnsTable.hpp"
 #include <nlohmann/json.hpp>
 #include <string>

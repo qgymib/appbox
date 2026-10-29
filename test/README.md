@@ -34,17 +34,18 @@ configuration, whose workflow carries no package step, while
 is registered at all.
 
 CTest passes `--launcher=$<TARGET_FILE:AppBoxLauncher>` to both entries, the two
-injection modules the build installed below `resource/lib`, the two probe
-executables the build installed below `resource/probe`
+probe executables the build installed below `resource/probe`
 (`build/<configuration>/resource/probe/AppBoxProbe32.exe` and
-`AppBoxProbe64.exe`) and the packer executable `$<TARGET_FILE:AppBox>`.
+`AppBoxProbe64.exe`) and the packer executable `$<TARGET_FILE:AppBox>`. The two
+sandbox injection modules need no argument of their own: the launcher carries
+them as resources of its own executable, so the suite reaches them through the
+launcher and not through a file of the build tree.
 
 A test executable which is started by hand needs those arguments as well:
-without the launcher the end-to-end cases cannot start it, without the modules the
-unit tests which compare the embedded resources with the build tree skip
-themselves, and without the packer that unit test skips itself as well. A run
-which was started without one of the two probes is refused before the first case
-(see `appbox::test::ValidateProbePaths()`): the probe is the program a case runs
+without the launcher the end-to-end cases cannot start it, and without the packer
+the unit test which reads the resources of the packer skips itself. A run which
+was started without one of the two probes is refused before the first case (see
+`appbox::test::ValidateProbePaths()`): the probe is the program a case runs
 inside the sandbox, so a missing probe reports a failure instead of skipped
 cases.
 
@@ -58,8 +59,6 @@ green (an elevated run verifies the save).
 ```bash
 build/Debug/test/Debug/AppBoxTests.exe --mode=e2e \
     --launcher=<absolute path of AppBoxLauncher.exe> \
-    --sandbox32=<absolute path of AppBoxSandbox32.dll> \
-    --sandbox64=<absolute path of AppBoxSandbox64.dll> \
     --probe32=<absolute path of AppBoxProbe32.exe> \
     --probe64=<absolute path of AppBoxProbe64.exe> \
     --packer=<absolute path of AppBox.exe>
@@ -70,9 +69,7 @@ variable counterpart:
 
 | Option | Environment variable | Meaning |
 | --- | --- | --- |
-| `--launcher` | `APPBOX_TEST_LAUNCHER` | Path of the launcher executable the cases start. |
-| `--sandbox32` | `APPBOX_TEST_SANDBOX32` | Path of the 32 bit sandbox injection module the unit tests compare with the resource of the launcher. |
-| `--sandbox64` | `APPBOX_TEST_SANDBOX64` | Path of the 64 bit sandbox injection module. |
+| `--launcher` | `APPBOX_TEST_LAUNCHER` | Path of the launcher executable the cases start, which also carries the two sandbox injection modules. |
 | `--probe32` | `APPBOX_TEST_PROBE32` | Path of the 32 bit probe executable, which runs the operations of a case inside a 32 bit process. |
 | `--probe64` | `APPBOX_TEST_PROBE64` | Path of the 64 bit probe executable, which is the probe of a case unless it asks for the 32 bit one. |
 | `--packer` | `APPBOX_TEST_PACKER` | Path of the packer executable, which carries the payloads as resources. |
@@ -308,18 +305,18 @@ which died is the first one to open:
 | `test/utils/Coredump.*` | The coredump writer: the full memory dump of a process, the walk of a process tree and the termination of its processes. |
 | `test/utils/CommandLine.*` | The command line and the environment of a run, which the coredump writer reads before GoogleTest and CLI11 look at them. |
 | `test/utils/LauncherPath.hpp` | The launcher path of a run: `LauncherPath()` answers the `--launcher` value of the configuration. |
-| `test/utils/SandboxDll.hpp` | The injection modules of a run: `Sandbox32DllPath()` and `Sandbox64DllPath()` answer the `--sandbox32` and `--sandbox64` values, and `SandboxModulesAvailable()` tells whether the unit tests can compare the embedded modules with the build tree. |
 | `test/utils/ProbePath.hpp` | The probe executables of a run: `ProbePath(ProbeBitness)` answers the path of the 32 bit or of the 64 bit probe. A run which cannot find both is refused before the first case, see `ValidateProbePaths()`. |
 | `test/utils/RegChildExitCode.*` | The exit code bits of the registry worker (`regchild`) and their description; the worker itself is a subcommand of the probe executable. |
-| `test/Test.cpp` / `test/Test.hpp` | The configuration of the run: `--launcher`, `--sandbox32`, `--sandbox64`, `--probe32`, `--probe64`, `--packer`, `--log-level`, `--mode`, `--no-cleanup`, the timeout options, the prefixes which tell the mode of a suite, the guard which keeps the prefix and the directory of a suite together, the mode filter and the check of the probe executables. |
+| `test/Test.cpp` / `test/Test.hpp` | The configuration of the run: `--launcher`, `--probe32`, `--probe64`, `--packer`, `--log-level`, `--mode`, `--no-cleanup`, the timeout options, the prefixes which tell the mode of a suite, the guard which keeps the prefix and the directory of a suite together, the mode filter and the check of the probe executables. |
 | `test/main.cpp` | The entry point of the test executable. It serves the unit tests and the end-to-end cases, and it also handles the coredump writer and the name resolution probe of the tracer. |
 
 The source files of the executable are an explicit list in
 `test/CMakeLists.txt`, not a glob, so a new test file has to be registered
 there. The include directories put the project directories first, because
-`test/utils` holds headers with the same name as the launcher ones and the launcher
+`test/utils` holds headers with the same name as the project ones and the project
 headers have to win; the known folder helper of the cases is called
-`TestKnownFolder` for that reason.
+`TestKnownFolder` for that reason, because `common/KnownFolder.hpp` is part of
+the code under test.
 
 ## Unit tests
 
@@ -434,20 +431,6 @@ The unit tests of the packer:
   level, the order of the scale, the default level of a session, and the mapping
   between the entries of the box and the enumeration, including the fallback of
   an index which is outside of the box.
-* `test/unit/EmbeddedResource.cpp` — the payloads the executables carry as RCDATA
-  resources of their own, with the identifiers of every executable numbered
-  independently from 101: the packer carries the launcher program as its only
-  RCDATA resource, while the base launcher carries as its only RCDATA resources
-  the two modules which every run releases into `data/cache`; the packer adds
-  the configuration resource (`IDR_APPBOX_LAUNCHER_CONFIG`) and, when the session
-  sets one, the startup image (`IDR_APPBOX_STARTUP_IMAGE`) to the payload at
-  pack time. Every
-  payload is read from the executable opened as a data file and compared byte for
-  byte with the
-  files of the build tree they were embedded from, the identifier set of every
-  executable is checked as a whole, and a resource which an executable does not
-  carry is reported instead of being handed out as an empty payload. The suite
-  is the only automated coverage of the two resource scripts of the build.
 * `test/unit/PackService.cpp` — the archive carries the hive, the isolation
   file of the registry, the isolation file of the filesystem workspace, the
   isolation file of the network workspace and the isolation file of the
@@ -496,6 +479,14 @@ The unit tests of the packer:
   second pack run replaces the earlier configuration instead of appending a copy,
   and a payload which is not a PE image or a configuration which is empty is
   refused with a reason instead of producing an archive which cannot run.
+* `test/unit/SandboxConfigPayload.cpp` — the sandbox configuration the packer
+  writes into a launcher image (`sandbox/Config.hpp`,
+  `src/core/SandboxConfigPayload.hpp`): the configuration of the real launcher
+  payload is read back through the binary API of Detours and turns the hooks off,
+  the configuration of a run enables them and survives a round trip through JSON,
+  a second write replaces the payload instead of appending a record of the same
+  GUID, the resource of the image survives the section the configuration is
+  stored in, and a payload which is no PE image is refused with a reason.
 * `test/unit/PackModel.cpp` — the editable model of a packer session: the
   import of a host folder and of individual files, the rules of the import
   names and of the startable files (a program, a batch file, a command script and
@@ -740,18 +731,65 @@ executable carries itself:
   whose expansion does not depend on the bitness of the reading process, so
   `ProgramFiles` and `ProgramFilesCommon` are not part of it.
 * `test/unit/GetExecutableDir.cpp`,
-  `test/unit/ProcessJob.cpp`, `test/unit/Shell.cpp` — the launcher helpers which
-  locate the executable, start it, own the job of a started process and resolve
+  `test/unit/ProcessJob.cpp`, `test/unit/ProcessJobSet.cpp`,
+  `test/unit/Shell.cpp` — the launcher helpers which locate the executable, start
+  it, own the job of a started process, wait for every job of a run and resolve
   the shell of the host together with the arguments of the command it runs. The
-  resolver falls back from `%COMSPEC%` to the command processor of the system
-  root and refuses a value which names a folder; the command is run through
-  `/c` unless it is empty, which runs the shell interactively. The suite pins the
+  job cases pin that a working directory which does not exist refuses the
+  creation, that the flags of a creation name the environment block and the job
+  attribute, that the options own the environment block of a process (the copy of
+  the options still reads the block after the source is released), that a set
+  without a job is complete at once, that a job which never reports its end keeps
+  the wait from succeeding, and that a job which joins the set while it waits is
+  covered by the wait. The cases of the wait pin the four outcomes as well: a
+  wakeup interrupts a wait at once (`WakeInterruptsWait`), a wakeup of a set
+  which holds no job is no completion (`WakeWithoutJobKeepsWaiting`), the end of
+  the processes and a wakeup are distinguishable (`WaitResultDistinguishesExitFromWake`),
+  the set records why a job exists and which request it belongs to
+  (`RecordsJobOrigin`), and a rollback terminates the jobs of one request and of
+  no other (`TerminateRequestKillsOnlyThatRequest`, which the end-to-end case
+  `AutoRollback` covers for real processes). The resolver falls back from
+  `%COMSPEC%` to the command processor of the system root and refuses a value
+  which names a folder; the command is run through `/c` unless it is empty, which
+  runs the shell interactively. The suite pins the
   invocation of a startup file as well: a program is started on its own, a batch
   file and a command script are run by the command interpreter of the host, a
   PowerShell script is run by Windows PowerShell with its profile turned off and
   with the execution policy bypassed, the extension is recognized ignoring the
   case, a file which cannot be started is refused, and the resolver of Windows
   PowerShell finds `powershell.exe` of the system root.
+* `test/unit/ViewCurrentDirectory.cpp` — the path forms the sandbox uses to
+  rewrite the working directory of a process into the path of the view
+  (`sandbox/filesystem/ViewCurrentDirectory.hpp`). The cases pin the translation
+  of a path of a drive and of a share into the DOS style NT form and back, the
+  refusal of a device, a pipe, a drive relative path, an empty path and a path
+  which already carries a namespace, the idempotence of the rewrite (the path of
+  the view belongs to no layer, so running the call on its own result answers the
+  same path), the directory which belongs to no layer and keeps its path, and the
+  form the call refuses instead of rewriting. The translation of a layer is
+  handed to the call as a parameter, so a case needs no layer and no system call;
+  the effect of `RtlSetCurrentDirectory_U` is covered by the end-to-end cases.
+* `test/unit/PeerIdentity.cpp` — the identity which the master instance of a
+  sandbox compares with the client of its control pipe
+  (`launcher/control/PeerIdentity.hpp`). The cases pin that the identity of the
+  process of the case is readable (its image, the SID of the user of its token
+  and the level of that token), that the identity of the peer of a request of the
+  same process is its own, and that two spellings of one image compare equal
+  while another program, another directory or another case of a path never does.
+  The decisions are pinned without a second process: another image or another
+  user is `unauthorized`, another integrity level is `integrity_mismatch`, an
+  identity which cannot be read is refused, and a copy of a layer of a sandbox is
+  refused in both directions, because the injection module of the sandbox leaves
+  every launcher alone and a launcher therefore never runs a copy of a layer. The
+  server of a pipe is checked with the same rule: the image of this run is
+  accepted, while a program of another directory, another user or another level
+  is refused.
+* `test/unit/ShutdownRetry.cpp` — the wait of the shutdown race
+  (`launcher/control/ShutdownRetry.hpp`): the first wait, the doubling of it and
+  the upper bound the sequence reaches (200, 400, 800, 1600 and 2000
+  milliseconds), the budget which shrinks by every wait, a wait which does not fit
+  into the budget and ends the retries instead of overshooting it, and an empty
+  budget or a zero wait, which end them as well.
 * `test/unit/ViewPathResolver.cpp` — the resolver which turns the path of a
   startup file into the host path which holds its image. The cases build a view
   of their own below the temp directory: a lower layer holds the image, the
@@ -819,8 +857,54 @@ executable carries itself:
   directory which is created for it, the level which suppresses a message, and
   the report a fatal exception leaves in the file of the process which raised
   it (`Unit_LogFile.CrashReportNamesTheExceptionOfTheProcess`).
-* `test/unit/RemoteClient.cpp`, `test/unit/RpcCodec.cpp` — the RPC
-  layer which carries the requests of the probes.
+* `test/unit/RemoteServer.cpp`, `test/unit/RemoteClient.cpp`,
+  `test/unit/RpcCodec.cpp` — the RPC layer which carries the requests of the
+  probes. The server cases cover the race for the name of the pipe
+  (`Unit_RemoteServer.FirstInstanceCreates`,
+  `Unit_RemoteServer.SecondInstanceReportsAlreadyRunning`), the pipe whose
+  instances all serve a client, which is a running server and no pipe of another
+  user (`Unit_RemoteServer.BusyPipeReportsAlreadyRunning`), the name which carries
+  no pipe at all and is therefore not reachable
+  (`Unit_RemoteServer.MissingPipeIsNotReachable`), the mapping of an
+  access denial of the creation to a running server or to a refused run
+  (`Unit_RemoteServer.CreateResultMapsAccessDenied`), the stop which refuses new
+  connections but answers the requests in flight
+  (`Unit_RemoteServer.StopRefusesNewConnections`), and the robustness against a
+  malformed request: a payload which is no JSON is answered with the parse error,
+  a request above the limit of the server and an unknown method with their own
+  errors, and the IO thread keeps serving
+  (  `Unit_RemoteServer.MalformedJsonKeepsServing`,
+  `Unit_RemoteServer.OversizedFrameReturnsError`,
+  `Unit_RemoteServer.UnknownMethodReturnsError`). The process at the other end of
+  a session is reported for the authentication of a request
+  (`Unit_RemoteServer.PeerProcessIdOfRequestIsAvailable`). A client which connects
+  and leaves before the connection was established consumes the instance of the
+  pipe without starting a session, and the server creates the next instance
+  instead of ending its loop
+  (`Unit_RemoteServer.AbandonedConnectionKeepsServing`), which is what a launcher
+  does when it probes the pipe of its sandbox. The retry and the fatal report
+  of the accept loop are driven by an injected creation error
+  (`Unit_RemoteServer.AcceptRetryKeepsServing`,
+  `Unit_RemoteServer.AcceptNextFailureIsReported`). The client cases cover the
+  budget of a call (`Unit_RemoteClient.CallTimesOut`), the retries of the
+  connection while the pipe does not exist yet
+  (`Unit_RemoteClient.RetriesOnBrokenPipe`), the process of the server
+  (`Unit_RemoteClient.ServerProcessIdIsAvailable`) and the reason why the
+  strong-typed call cannot carry a budget
+  (`Unit_RemoteClient.DeferredCallCannotBeUsedForTimeout`).
+* `test/unit/LauncherStartMessage.cpp` — the request a second launcher instance
+  hands to the master instance of its sandbox (`launcher/msg/LauncherStart.hpp`).
+  The cases cover the round trip of the request and of the answer, including the
+  non-ASCII value of an environment entry and the Win32 code of a creation which
+  failed (`Unit_LauncherStartMessage.RoundTrip`), the refusal of a version the
+  master instance does not know
+  (`Unit_LauncherStartMessage.RejectsUnknownVersion`), the limits of every field
+  and of the whole request
+  (`Unit_LauncherStartMessage.RejectsOversizedField`), the selection of the
+  startup files which the command line of a run names
+  (`Unit_LauncherStartMessage.SelectionMapping`) and the refusal of a request
+  which carries no identifier, no root or no known selection
+  (`Unit_LauncherStartMessage.RejectsMalformedRequest`).
 * `test/unit/WString.cpp` — the UTF-8 and UTF-16 conversions of `common/`.
 * `test/unit/ZipReader.cpp`, `test/unit/ZipWriter.cpp` — the zip
   layer of the packer, including the zip slip protection of an extraction, the
@@ -904,12 +988,15 @@ executable carries itself:
 The independence of the products from the runtime library of the toolchain has
 a suite of its own:
 
-* `test/unit/StaticRuntime.cpp` — the import table of the four products of the
-  build (the packer, the launcher and the two sandbox injection modules) and of
-  the test executable itself: the reader parses the image of the file, so it
-  works for the 32 bit and the 64 bit products alike, and no table may name a
-  module of the Visual C++ runtime (`VCRUNTIME`, `MSVCP`, `CONCRT`, `VCCORLIB`,
-  `ucrtbase` and the `api-ms-win-crt-*` API sets). The suite pins the promise of
+* `test/unit/StaticRuntime.cpp` — the import table of the products of the build
+  (the packer, the launcher, the two sandbox injection modules and the two probe
+  executables) and of the test executable itself: the reader parses the image of
+  the file, so it works for the 32 bit and the 64 bit products alike, and no
+  table may name a module of the Visual C++ runtime (`VCRUNTIME`, `MSVCP`,
+  `CONCRT`, `VCCORLIB`, `ucrtbase` and the `api-ms-win-crt-*` API sets). The two
+  modules are read from the resources of the launcher and written into a
+  directory below the temporary directory of the machine, because the build tree
+  keeps no module file. The suite pins the promise of
   `cmake/StaticRuntime.cmake`, so a dependency which is linked with the DLL form
   of the runtime is reported instead of being noticed on a machine which carries
   no redistributable. The reader is only trusted while it reports the modules
@@ -1553,6 +1640,181 @@ documented in its own header comment.
 | `SelectedByTrigger` | `manual` | only `manual` starts, the auto start files do not, the launcher exits with zero |
 | `UnknownTrigger` | `missing` | nothing starts, not even the auto start files, and the launcher reports a non zero exit code |
 
+### Multi-instance sandbox identifier cases
+
+The multi-instance cases (`test/e2e/MultiInstance_SandboxId.cpp`) pin the
+identifier a sandbox is named by. The run configuration carries it as the
+required member `sandbox_id` (see `common/SandboxId.hpp`), the launcher derives
+the name of its control pipe from it, and a configuration which carries none or
+carries a value that is no identifier refuses the run. The helpers of
+`test/utils/ProbeCall.*` derive the identifier of a case from its working
+directory (`test/utils/TestSandboxId.*`), so every case runs a sandbox of its
+own and two cases never compete for one pipe name; a case which checks the
+identifier names one itself, and `ProbeRunRawConfig()` writes a configuration
+document as it is, which is what the refusal cases need. The behavior of the
+feature itself — the race for the control pipe, the request and its answer, the
+programs a request starts, the working directory, the limits and the
+authentication — is documented in
+[docs/Launcher.md](../docs/Launcher.md#multiple-instances-of-one-sandbox), and
+the sections below pin it case by case. Each case is documented in its own
+header comment.
+
+| Case | Observation | Expected |
+| --- | --- | --- |
+| `SandboxIdIsAccepted` | run a configuration which names a legal identifier | the launcher prepares the sandbox, the probe reports its marker and the launcher exits with zero |
+| `SandboxIdMissingIsRefused` | write the configuration without the `sandbox_id` member and run it | the launcher exits with `ERROR_INVALID_DATA` (13) and creates no `data` directory |
+| `SandboxIdInvalidIsRefused` | run configurations whose identifier has a wrong length, upper case digits, a misplaced hyphen or a character which is no hexadecimal digit | every run exits with `ERROR_INVALID_DATA` (13) and creates no `data` directory |
+| `SandboxPipeNameIsUsed` | watch the named pipes of the machine while a run of the case works | the only pipe with the `appbox_` prefix is `appbox_<id>` of the case, with the hyphens of the identifier kept |
+
+### Multi-instance handshake cases
+
+The handshake cases (`test/e2e/MultiInstance_Join.cpp`) pin what a second
+launcher of one sandbox does. The first launcher of a case wins the race for the
+control pipe and serves the sandbox; a second launcher of the same identifier and
+the same root loses the race, sends the request of its own command line over the
+pipe (`LauncherStart`) and leaves as soon as the master instance answered. The
+master instance starts the programs the request selects inside the sandbox it
+prepared, so a request never unpacks an archive or mounts a layer a second time.
+
+A case runs the master instance in a thread of its own and observes its stages
+through the log files of the case, which the run writes while it works
+(`appbox::test::WaitForRunLog()`): the line "the initial application of the
+sandbox was started" proves that the sandbox exists and that its program works,
+and the line "AppBox Sandbox initialized for " proves that the process of the
+sandbox initialized itself. The pipe of the sandbox is watched by name
+(`appbox::test::WaitForControlPipe()`), which is the window in which the master
+instance is still preparing its sandbox. The helpers of
+`test/utils/MultiInstance.*` build the configuration of a master instance, the
+document of a second instance and the description of a directory tree; the second
+instance writes its configuration into `config.secondary.json`, because both
+launchers share the directory which carries the sandbox. `ProbeStartupRun()` and
+`ProbeStartupRunEmbedded()` take `hold_ms`, which the probe passes to
+`--probe_hold_ms`: the probe reports, waits and leaves, so the run of a master
+instance outlives the handshake a case observes. `ProbeRunSecondary()` is the
+client side of a request: it starts a second launcher whose request carries the
+arguments of the probe (`probe --probe_pipe --probe_key`), so the programs the
+master instance starts for the request report to the case as well; the call
+waits for that report within a bounded budget, because the second launcher leaves
+before its programs are ready. The call names the program of the client and the
+file its configuration is written into as well: a case of a self-extracting
+archive runs the archive itself, and two clients which run at the same time name
+a file of their own, because both of them write it into the directory of the
+sandbox. Each case is documented in its own header comment.
+
+| Case | Observation | Expected |
+| --- | --- | --- |
+| `JoinsTheRunningSandbox` | run a second launcher of the same archive while the program of the master instance works | the second launcher exits with zero, the program of the run and the program of the request report with the master instance as the process which created them, and the log of the master instance names the started process |
+| `QueuesRequestDuringPreparation` | send the request as soon as the control pipe exists, which is before the master instance prepared its sandbox | the request is queued and handled after the initial target started: the second launcher exits with zero and the log of the master instance names both the queued request and the started process |
+| `SecondInstanceWritesNoState` | describe the `data` directory and count the log files of the case before and after a second launcher runs without any log option | the state holds the same entries with the same sizes and write times, the log directory holds the same number of files, and no extraction folder appears |
+| `ConfigFileAndSelfExtracting` | hand a request over in the layout of a configuration file and in the layout of a self-extracting program | the request is accepted in both layouts: the second launcher exits with zero and the master instance started the program of the request; the client of the self-extracting layout runs the archive itself, which is the image of the master instance |
+
+### Multi-instance injection case
+
+The injection case (`test/e2e/MultiInstance_NotInjected.cpp`) pins that the
+injection module of the sandbox leaves a launcher alone: the packer writes the
+configuration of the sandbox into the image of every launcher it produces with
+`hook_enabled` turned off (`sandbox/Config.hpp`), and the module skips a process
+whose configuration turns the hooks off (see
+[docs/Launcher.md](../docs/Launcher.md#the-launcher-is-never-isolated)).
+
+| Case | Observation | Expected |
+| --- | --- | --- |
+| `PackedLauncherIsNotInjected` | start the packed launcher of another archive, whose image carries that configuration and a configuration of its own, as a startup file of a sandbox, with `--X-AppBox-LogLevel info` | the packed launcher serves a sandbox of its own: the program of that sandbox reports with a parent which is not the master instance, the packed launcher writes a log file of its own beside its program, and the log directory of the outer sandbox holds no log file of it, because the module never hooked that process |
+
+### Multi-instance runtime request cases
+
+The runtime cases (`test/e2e/MultiInstance_Request.cpp`,
+`test/e2e/MultiInstance_Rollback.cpp`, `test/e2e/MultiInstance_Environment.cpp`)
+pin what a master instance does with a request while its own program works: the
+request is handled at once instead of being queued until that program exits, a
+request whose programs cannot all be created is rolled back as a whole, and the
+exit code of a run is the one of its own targets only.
+
+A case observes the programs a request started through the probe reports of the
+request (`ProbeRunSecondary()`), which carry the command line and the environment
+of every process: `StartupReport::command_line` pins the arguments a request
+passed on, and `StartupReport::environment` pins the environment the sandbox
+composed. The probe names its own marker with `--probe_marker`, because the
+launcher appends the arguments of a request to the arguments of the startup file,
+which already carries `--startup_marker`, and the parser refuses an option which
+is given twice; `--probe_exit_code` makes a probe leave with a code of its own,
+which is what the case of the exit code needs. The case of the environment starts
+a master instance whose isolation file joins a value to the value of the host, so
+the program of a request observes the value the sandbox composed.
+
+| Case | Observation | Expected |
+| --- | --- | --- |
+| `RequestWhileRunning` | send a request while the program of the master instance stays alive for six seconds, and measure how long the second launcher needs | the request is handled within the acceptance threshold of two seconds, the master instance keeps its own program running, and both programs report with the master instance as the process which created them |
+| `ArgsIsolation` | send two requests one after the other, each with a marker of its own, and read the command line of the programs they started | every request starts exactly one program, whose command line carries the marker of its own request and none of the other one |
+| `AutoRollback` | run a master instance whose configuration lists two auto start files, the second of them a file which is no program, and send a request which asks for the auto start files | the request is refused with the code of the failed creation, the log of the run reports that the process of the request was terminated, and the program of the run keeps working and decides the exit code |
+| `ExitCodeIsolation` | start a program of a request which leaves with a code of its own | the request is accepted, the log reports that code for the program of the request, and the exit code of the run stays the one of its own program |
+| `EnvironmentComposedByTheSandbox` | send a request from a launcher of the host, whose environment is not composed yet | the program of the request sees the value joined once, because the sandbox of the created process composes it |
+
+### Multi-instance refusal cases
+
+The refusal cases (`test/e2e/MultiInstance_Refuse.cpp`) pin what a launcher does
+when it is not a second instance of the running sandbox. The master instance
+compares the identifier and the root of a request with its own, and a request
+which names another sandbox is refused without touching the run of the master
+instance. Each case is documented in its own header comment.
+
+| Case | Observation | Expected |
+| --- | --- | --- |
+| `RefusesDifferentRoot` | run a copy of the archive, which carries the identifier of the running sandbox but lives in another directory | the request is refused with `sandbox_mismatch`, the second launcher exits with `ERROR_ACCESS_DENIED` (5), and the master instance exits with zero and started nothing for the request |
+| `RefusesDifferentSandboxId` | run a launcher which carries another identifier in a directory of its own | the second launcher races for the pipe of its own sandbox, prepares it and exits with zero, while the first sandbox ran only its own program |
+
+### Multi-instance security cases
+
+The security cases (`test/e2e/MultiInstance_Security.cpp`) pin the boundary of
+the control pipe: a master instance accepts a start request from a process which
+runs the launcher of its own sandbox under its own user and at its own integrity
+level, and refuses everything else before a program is created. The client of
+`test/utils/MultiInstancePipe.*` speaks the frames of the transport itself, so a
+case can send a request from the process of the case, which is no launcher, and
+read the answer the master instance sends.
+
+The image of a client has to be the image of the master instance: the injection
+module of the sandbox leaves every launcher alone, so a launcher runs the file it
+was started from and the kernel reports the same host path to both ends of the
+pipe. Each case is documented in its own header comment.
+
+| Case | Observation | Expected |
+| --- | --- | --- |
+| `UnauthorizedClient` | connect to the control pipe of a running sandbox from the process of the case and send a start request which names the identifier and the root of the sandbox | the request is refused with `unauthorized`, the same connection reads the environment state of the sandbox afterwards, and the run of the master instance started its own program only |
+| `IntegrityMismatch` | run a second launcher of the archive with a token whose integrity level was lowered to the low level of Windows | the client leaves with `ERROR_ACCESS_DENIED` (5) and the master instance started no program for it. The case skips itself when the machine does not allow the case to lower the level of a token or to create the client with that token; the decision itself is covered by `Unit_PeerIdentity` |
+| `ServerIdentityMismatch` | let the process of the case occupy the name of the control pipe of a sandbox and answer a start request as if it were the master instance, then run a launcher of that sandbox | the launcher refuses the server before it sends its request, leaves with `ERROR_ACCESS_DENIED` (5) and its log names the reason (`is not the master instance`) |
+
+### Multi-instance robustness cases
+
+The robustness cases (`test/e2e/MultiInstance_Robustness.cpp`) pin that the
+control pipe of a sandbox survives what a client which is no launcher sends, and
+that the two methods of the pipe do not block each other. The malformed payloads
+are written by the client of `test/utils/MultiInstancePipe.*`, which sends the
+bytes of a frame as they are. Each case is documented in its own header comment.
+
+| Case | Observation | Expected |
+| --- | --- | --- |
+| `MalformedRequests` | send a payload which is no JSON, a payload which is no object, a request without a method, a request of an unknown method, a start request without the identifier of the sandbox and a start request whose selection is above the limit of the protocol | the transport answers `-32700`, `-32600`, `-32600` and `-32601`, the launcher answers `malformed_request` and `payload_too_large`, and a second launcher of the archive hands a request over afterwards, whose program reports |
+| `ConcurrentRequests` | send three start requests from three second launchers at the same time, each with a marker of its own and a configuration file of its own, while two clients of the case read the environment state of the sandbox over the same pipe | every request is answered with zero and started exactly one program of its own, every environment read is answered, and the run of the master instance keeps its own program and leaves with zero |
+
+### Multi-instance shutdown race case
+
+The shutdown race case (`test/e2e/MultiInstance_Shutdown.cpp`) pins that a start
+request which arrives while the run which serves a sandbox ends is not lost: the
+master instance answers the requests which still wait with `shutting_down` and
+closes its pipe, and the client races for the pipe again within the budget of the
+shutdown race (`appbox::NextShutdownRetry()`, see `launcher/control/ShutdownRetry.hpp`),
+so it either hands its request over to the run which still serves the sandbox or
+becomes the master instance itself. The case cannot place its request inside the
+window between the last program of a run and the closing of its pipe on a machine
+it does not control, so it does not pin which of the two happened: it pins that
+the client reports no failure and that the request was served either way. The
+policy of the wait is covered by `Unit_ShutdownRetry`.
+
+| Case | Observation | Expected |
+| --- | --- | --- |
+| `ShutdownRace` | run a master instance whose program leaves after a short time and send a request of a second launcher of the archive at the end of that time | the second launcher leaves with zero, and the request was either handed over (its program reported) or served by a run which started the sandbox afterwards (the log of the case carries a second `the initial application of the sandbox was started`) |
+
 ### Launcher startup script cases
 
 The startup script cases (`test/e2e/Launcher_StartupScript.cpp`) start a script
@@ -1589,6 +1851,17 @@ process which created it, see `test/probe/StartupStarted.cpp`.
 | Case | Expected |
 | --- | --- |
 | `TheStartupFileIsCreatedByTheLauncher` | the startup file is started, the process which created it is the launcher of the run, and the probe reports the image it runs |
+
+### Launcher job case
+
+The job case (`test/e2e/Launcher_Job.cpp`) pins the job object of a process the
+launcher starts, see [docs/Launcher.md](../docs/Launcher.md). The probe of the
+case reports the job it is a member of, the limits of that job and the number of
+processes the job holds, see `test/probe/Job.cpp`.
+
+| Case | Expected |
+| --- | --- |
+| `StartupFileRunsInTheJobOfTheRun` | the program of the run is a member of a job object, the job kills its processes when its last handle closes, the job allows no process to break away, and the job holds a process |
 
 ### Launcher startup image cases
 
@@ -1707,22 +1980,6 @@ tell which hive the sandbox mounted.
 | `RegistryStateIsKept` | the resources carry `packed`, the first run writes `sandbox` into the key | the second run returns `sandbox`, so the state of the first run survives the next one |
 | `RegistryStateIsReset` | the resources carry `packed`, the first run writes `sandbox`, then the state directory is deleted | the second run returns `packed`, so deleting the state directory resets the sandbox to the registry of the archive |
 | `RegistryImageFollowsTheApp` | the resources carry `v1`, the first run writes `kept` into another value, then the resources are packed again with `v2` | the second run returns `v2` for the packed value, because the image is rebuilt at every start, and `kept` for the value of the first run, because the state hive wins over the image |
-
-### Launcher sandbox module cases
-
-The module cases (`test/e2e/Launcher_SandboxModules.cpp`) pin the contract of the
-injection modules: the launcher carries them as RCDATA resources of its own
-executable and releases them into `data/cache` at every start, so the archive
-and a patch package carry no module file. The release always writes the embedded
-modules, without a digest and without comparing their content with the files
-which are already there.
-
-| Case | Steps | Expected |
-| --- | --- | --- |
-| `SandboxModules.EveryRunReleasesTheModulesIntoTheCache` | the cache directory does not exist, the configuration holds an auto start file | the startup file runs inside the sandbox, `data/cache` carries `sandbox32.dll` and `sandbox64.dll` byte for byte like the build products, and the resource root carries no module |
-| `SandboxModules.ALeftOverModuleIsReplaced` | the cache directory carries two files with the names of the modules and content which is not a module | the run replaces both files with the embedded modules before the injection, and the startup file still runs |
-| `SandboxModules.ALoadedModuleIsReused` | a first run released both modules, then both cached files are held open for reading without write sharing | the launcher cannot truncate the files, reuses them because their size matches the embedded modules, and starts the startup file |
-| `SandboxModules.AnUncreatableCacheRefusesTheRun` | `data/cache` is a regular file, so the directory cannot be created | the launcher refuses the run, starts nothing and exits with a non zero code |
 
 ### Launcher runtime library case
 
@@ -1882,10 +2139,6 @@ They are documented in their own header comments.
   the helpers of the suite write and the registry domain are not
   part of the declared content.
 * `test/utils/CommonFixture.*` — gives every case a private working directory.
-* `test/utils/SandboxDll.hpp` — the injection modules of a run:
-  `Sandbox32DllPath()` and `Sandbox64DllPath()` answer the paths of the run and
-  `SandboxModulesAvailable()` tells whether both of them exist, which is what the
-  unit tests compare with the resources of the launcher.
 * `test/utils/ModuleList.hpp` — the module list checks of the runtime
   independence cases: `IsVcRuntimeModule()` reports whether a module name is a
   runtime library of the C++ toolchain (`VCRUNTIME`, `MSVCP`, `CONCRT`,
@@ -1946,8 +2199,8 @@ They are documented in their own header comments.
 * `test/utils/RegistryRootKey.*` — resolves the predefined handle of a registry
   root key, which is what a probe passes to the registry API.
 * `test/utils/TestKnownFolder.*` — path of a known folder. The helper is named
-  `TestKnownFolder` because the launcher ships a header of the name `KnownFolder`
-  with a different API, and the single test executable carries both.
+  `TestKnownFolder` because `common/KnownFolder.hpp` carries a header of the name
+  `KnownFolder` with a different API, and the single test executable carries both.
 * `test/utils/TestFont.*` — a font whose family the host does not carry, which the
   cases of the font isolation need. The helper copies an installed font of
   `%windir%\Fonts`, rewrites the family strings of its `name` table in place — the
@@ -2112,7 +2365,7 @@ They are documented in their own header comments.
 
 ## Tracer tests
 
-* `test/unit/Tracer*.cpp` — the parser, the PE reader, the scope table
+* `test/unit/Tracer*.cpp` — the parser, the scope table
   (which is verified against the export tables of `ntdll`, `ws2_32` and
   `dnsapi`), the breakpoint plan, the arm helpers, the category vocabulary and
   the workspace model (`TracerModel.cpp`), all without a debugger.
@@ -2161,6 +2414,11 @@ They are documented in their own header comments.
 * **The timeout and the coredumps of a run are verified by hand.** The test
   suite does not test itself (see
   [Timeouts and coredumps](#timeouts-and-coredumps)).
+* **The fallback of a process which cannot name its job has no case.** The
+  launcher puts a process into its job through the attribute of the creation, and
+  falls back to assigning the process afterwards on a platform which does not
+  offer the attribute. Every Windows the suite runs on offers it, so the fallback
+  is only covered by reading it.
 * **Two packages which share a cache entry are not covered.** Two package names
   can only name one cache entry when they differ in the case of their extension
   (`00-foo.zip` and `00-foo.ZIP`), and a directory of a case-insensitive

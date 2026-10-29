@@ -485,6 +485,7 @@ struct ProjectEnvironmentRecord
  * {
  *   "version": 1,
  *   "output_path": "D:\\out\\MyApp.zip",
+ *   "sandbox_id": "2b1f7c4e-9a3d-4f6b-8c2e-5d7a1b3c9e0f",
  *   "project_type": "standalone",
  *   "compression_level": "normal",
  *   "metadata": { "source": "C:\\Program Files\\MyApp\\app.exe",
@@ -557,6 +558,12 @@ struct ProjectEnvironmentRecord
  * describes a session whose launcher shows a startup screen without an image.
  * The record describes the screen of a standalone archive only, because a
  * patch package carries no launcher which could show it.
+ *
+ * The `sandbox_id` member is optional as well: a file which does not name it
+ * describes a project which was written before the member existed, so the
+ * session which imports the file generates an identifier of its own. The
+ * identifier is written only while the session holds one, which keeps the text
+ * of a session without an identifier as it was before the member existed.
  */
 struct ProjectDocument
 {
@@ -564,6 +571,19 @@ struct ProjectDocument
      * @brief Path of the `Output File` box, empty when none was chosen.
      */
     std::wstring output_path;
+
+    /**
+     * @brief Identifier of the sandbox of the project, empty when the file does
+     *        not record one.
+     *
+     * The identifier is what pairs the products of one project: it is written
+     * into the run configuration of every launcher the project writes, and the
+     * launcher derives the name of its control pipe from it (see
+     * `common/SandboxId.hpp`). A document which does not name the member
+     * describes a project which was written before the member existed, so the
+     * session generates an identifier of its own; the next export records it.
+     */
+    std::string sandbox_id;
 
     /**
      * @brief Kind of product the `Build` command writes.
@@ -877,7 +897,8 @@ void from_json(const nlohmann::ordered_json& json, ProjectEnvironmentRecord& rec
  * The members are written in the order of ProjectDocument with the schema
  * version first, so the text of a given document is stable and easy to read.
  * Every member is written, except `proxy`, which is omitted while no proxy is
- * configured.
+ * configured, and `sandbox_id`, which is omitted while the document records no
+ * identifier.
  *
  * @param[out] json Object which receives the document.
  * @param[in] document The document to store.

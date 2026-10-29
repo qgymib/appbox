@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_HOOK_DNSQUERY_UTF8_HPP
 #define APPBOX_SANDBOX_HOOK_DNSQUERY_UTF8_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include "__init__.hpp"
 
 extern "C" {

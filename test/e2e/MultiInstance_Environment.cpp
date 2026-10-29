@@ -1,0 +1,128 @@
+#include "utils/CommonFixture.hpp"
+#include "utils/EnvironmentIsolationBuilder.hpp"
+#include "utils/MultiInstance.hpp"
+#include "utils/ProbeCall.hpp"
+#include "utils/ProbePath.hpp"
+#include "utils/TestSandboxId.hpp"
+#include "WString.hpp"
+#include "launcher/Config.hpp"
+#include <windows.h>
+#include <cstdint>
+#include <filesystem>
+#include <string>
+#include <thread>
+#include <vector>
+
+typedef appbox::test::CommonFixture E2E_MultiInstance;
+using namespace appbox::test;
+
+namespace
+{
+
+/** Text the log of a master instance carries once its own program runs. */
+constexpr const char* kApplicationStarted = "the initial application of the sandbox was started";
+
+/** Budget of a case which waits for a stage of a run, in milliseconds. */
+constexpr int kStageTimeoutMs = 60000;
+
+/** Time the initial program of a master instance stays alive, in milliseconds. */
+constexpr std::uint32_t kRunHoldMs = 6000;
+
+/** Name of the variable the sandbox joins its own value to. */
+constexpr const char* kJoinedVariable = "APPBOX_ENV_HOST";
+
+/** Value the host holds for that variable. */
+constexpr const wchar_t* kHostValue = L"foo";
+
+/** Value the sandbox joins behind the value of the host. */
+constexpr const wchar_t* kSandboxValue = L"bar";
+
+/** Text which joins the two values, so a value joined twice is visible. */
+constexpr const wchar_t* kMergeString = L";";
+
+/** Value of a variable which was composed once. */
+constexpr const char* kComposedOnce = "foo;bar";
+
+/**
+ * @brief Read one variable from the environment a probe reported.
+ * @param[in] entries Entries of the environment, one `name=value` text each.
+ * @param[in] name Name of the variable.
+ * @return The value, empty when the environment does not carry the variable.
+ */
+std::string EnvironmentValue(const std::vector<std::string>& entries, const std::string& name)
+{
+    const std::string prefix = name + "=";
+    for (const auto& entry : entries)
+    {
+        if (entry.rfind(prefix, 0) == 0)
+        {
+            return entry.substr(prefix.size());
+        }
+    }
+
+    return {};
+}
+
+/**
+ * @brief Write the isolation file which joins a value to the value of the host.
+ * @param[in] root Root directory of the sandbox.
+ * @return true on success.
+ */
+bool WriteJoinedVariable(const std::filesystem::path& root)
+{
+    return WriteEnvironmentIsolationFile(
+        root, {
+                  { appbox::UTF8ToWide(kJoinedVariable), kSandboxValue, appbox::EnvironmentIsolation::WriteCopy,
+                   appbox::EnvironmentMergeMode::Append, kMergeString }
+    });
+}
+
+} // namespace
+
+/**
+ * Condition:
+ * 1. The host holds `APPBOX_ENV_HOST=foo`, the isolation file joins `bar` to it
+ *    with `;`, so a sandboxed process sees `foo;bar`.
+ * 2. A launcher of the host serves a sandbox and its own program works.
+ * 3. A second launcher of the host asks for a program of the sandbox.
+ *
+ * Expected:
+ * 1. The environment the host passes on is not composed yet, so the sandbox of
+ *    the created process composes it exactly once: the probe sees `foo;bar` and
+ *    not `foo` or `foo;bar;bar`.
+ */
+TEST_F(E2E_MultiInstance, EnvironmentComposedByTheSandbox)
+{
+    const auto cwd = GetCWD() / L"host";
+    const auto id = SandboxIdForPath(cwd.wstring());
+
+    const HostEnvironmentVariable host(appbox::UTF8ToWide(kJoinedVariable), kHostValue);
+
+    const auto launcher_config = MultiInstanceConfig(cwd, id, "app");
+    ASSERT_TRUE(WriteJoinedVariable(cwd));
+
+    StartupRun  master;
+    std::thread master_thread([&]() {
+        master =
+            ProbeStartupRun(cwd.wstring(), launcher_config, "", false, LogRun{}, false, std::wstring(), kRunHoldMs);
+    });
+
+    const auto running = WaitForRunLog(cwd, kApplicationStarted, kStageTimeoutMs);
+
+    StartupRun    request;
+    std::uint32_t secondary_exit = 1;
+    if (running)
+    {
+        secondary_exit =
+            ProbeRunSecondary(cwd.wstring(), MultiInstanceRequestDocument(id), "", "request", 0, LogRun{}, request);
+    }
+
+    master_thread.join();
+
+    ASSERT_TRUE(running) << "the master instance never started its application";
+    EXPECT_EQ(secondary_exit, 0u);
+    EXPECT_EQ(master.exit_code, 0u);
+
+    ASSERT_EQ(request.reports.size(), static_cast<std::size_t>(1)) << request.reports.size();
+    EXPECT_EQ(EnvironmentValue(request.reports[0].environment, kJoinedVariable), kComposedOnce);
+}

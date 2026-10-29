@@ -1,4 +1,4 @@
-#include "sandbox/utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "TestKnownFolder.hpp"
 #include <Shlobj.h>
 #include <algorithm>
@@ -11,9 +11,9 @@ struct KnownFolderMap
 };
 
 /*
- * The tokens the cases use as layer keys of their resource tree. The launcher
- * resolves the very same known folders (`launcher/utils/KnownFolder.cpp`), so a
- * case and the sandbox agree on the real directory behind a token.
+ * The tokens the cases use as layer keys of their resource tree. The table of
+ * `common/KnownFolder.hpp` resolves the very same known folders, so a case and
+ * the sandbox agree on the real directory behind a token.
  */
 static const KnownFolderMap KnownFolders[] = {
     { L"#USERPROFILE#",           FOLDERID_Profile               },

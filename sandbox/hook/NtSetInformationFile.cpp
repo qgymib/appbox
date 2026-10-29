@@ -1,8 +1,7 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "filesystem/CreateDirectory.hpp"
-#include "filesystem/DirName.hpp"
 #include "filesystem/FileInformationClass.hpp"
-#include "filesystem/IsolationPolicy.hpp"
+#include "FilesystemIsolationPolicy.hpp"
 #include "filesystem/MarkerName.hpp"
 #include "filesystem/RemoveAll.hpp"
 #include "filesystem/Resolve.hpp"
@@ -10,7 +9,8 @@
 #include "hook/NtDeleteFile.hpp"
 #include "utils/ConvertToFullNtPath.hpp"
 #include "utils/Log.hpp"
-#include "utils/MappingAsDosNtPath.hpp"
+#include "MappingAsDosNtPath.hpp"
+#include "PathText.hpp"
 #include "NtSetInformationFile.hpp"
 #include <cstddef>
 #include <cwctype>

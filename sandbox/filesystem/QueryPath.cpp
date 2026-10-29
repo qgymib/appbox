@@ -1,9 +1,9 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "utils/ConvertToFullNtPath.hpp"
 #include "utils/Log.hpp"
-#include "utils/MappingAsDosNtPath.hpp"
-#include "filesystem/DirName.hpp"
 #include "filesystem/MarkerName.hpp"
+#include "MappingAsDosNtPath.hpp"
+#include "PathText.hpp"
 #include "Resolve.hpp"
 #include "QueryPath.hpp"
 

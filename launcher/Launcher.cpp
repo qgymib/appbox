@@ -7,20 +7,17 @@
 #include <winsock2.h>
 #include <spdlog/spdlog.h>
 #include <sstream>
-#include <chrono>
 #include <Shlobj.h>
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
-#include "sandbox/utils/WinAPI.h"
-#include "Random.hpp"
-#include "rpc/__init__.hpp"
+#include "WinAPI.h"
+#include "KnownFolder.hpp"
 #include "utils/GetExecutableDir.hpp"
 #include "utils/HiveMerge.hpp"
 #include "utils/ConvertDosPathToNtPath.hpp"
-#include "utils/KnownFolder.hpp"
 #include "utils/MapBaseFS.hpp"
 #include "utils/PatchLayer.hpp"
 #include "WString.hpp"
@@ -329,15 +326,19 @@ static std::string BuildRegistryImage(const appbox::SandboxPaths& paths, const s
     return {};
 }
 
-AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const std::wstring& log_dir)
+AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const std::wstring& log_dir,
+                                             const std::string& pipe_path)
 {
-    std::time_t timestamp = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-    auto        random_str = appbox::RandomString(16);
-    auto        unique_path = fmt::format("appbox-{}-{}", timestamp, random_str);
-
     const auto& paths = LauncherApp().sandbox_paths;
 
-    this->inject_data.pipe_path = fmt::format(R"(\\.\pipe\{})", unique_path);
+    /*
+     * The control pipe is the RPC pipe of the sandbox, and its name is derived
+     * from the identifier of the sandbox alone: every launcher of one sandbox
+     * competes for the same name, while two sandboxes never share one. The name
+     * is resolved by the caller, which won the race for the pipe before the
+     * runtime of the run was created.
+     */
+    this->inject_data.pipe_path = pipe_path;
 
     /*
      * The resources below `app` are read-only: the layer tree of the packaged
@@ -500,19 +501,7 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const
     this->inject_data.sandbox32_dos_path = appbox::WideToUTF8(LauncherApp().sandbox_modules.sandbox32_dll);
     this->inject_data.sandbox64_dos_path = appbox::WideToUTF8(LauncherApp().sandbox_modules.sandbox64_dll);
 
-    ReportStartupStage(appbox::StartupStage::MountingSandbox, 0.8);
-
-    this->pipe_server = appbox::RemoteServer::Create(this->inject_data.pipe_path);
-    SPDLOG_DEBUG("pipe listen on {}", this->inject_data.pipe_path);
-
-    /* Methods must register before rpc server start. */
-    appbox::RpcInit(this->pipe_server);
-    this->pipe_server->Start();
-
     ReportStartupStage(appbox::StartupStage::MountingSandbox, 1.0);
 }
 
-AppBoxLauncherRuntime::~AppBoxLauncherRuntime()
-{
-    this->pipe_server.reset();
-}
+AppBoxLauncherRuntime::~AppBoxLauncherRuntime() = default;

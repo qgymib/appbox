@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_HOOK_RTLSETCURRENTENVIRONMENT_HPP
 #define APPBOX_SANDBOX_HOOK_RTLSETCURRENTENVIRONMENT_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include "hook/__init__.hpp"
 
 extern "C" {

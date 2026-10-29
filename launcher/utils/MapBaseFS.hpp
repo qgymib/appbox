@@ -1,7 +1,7 @@
 #ifndef APPBOX_LAUNCHER_UTILS_MAPBASEFS_HPP
 #define APPBOX_LAUNCHER_UTILS_MAPBASEFS_HPP
 
-#include "sandbox/utils/WinAPI.h"
+#include "WinAPI.h"
 #include "sandbox/Config.hpp"
 
 namespace appbox

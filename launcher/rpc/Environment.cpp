@@ -10,6 +10,7 @@
 #include <fstream>
 #include "sandbox/msg/Environment.hpp"
 #include "WString.hpp"
+#include "control/ControlPlane.hpp"
 #include "Launcher.hpp"
 #include "__init__.hpp"
 
@@ -76,6 +77,18 @@ bool WriteEnvironmentState(const std::wstring& path, const std::string& text, st
 
 APPBOX_LAUNCHER_RPC_DEFINE(MsgEnvironment, id, param)
 {
+    /*
+     * The pipe server belongs to the control layer of the run and not to the
+     * runtime of the sandbox: the server serves the pipe before the runtime is
+     * created, so a message may arrive while the runtime is still missing.
+     */
+    auto control = LauncherApp().control;
+    if (!control)
+    {
+        SPDLOG_ERROR("the launcher has no control layer, the environment of the sandbox is dropped");
+        return;
+    }
+
     const std::wstring path = LauncherApp().sandbox_paths.StateEnvironmentFile();
 
     std::string error;
@@ -88,5 +101,5 @@ APPBOX_LAUNCHER_RPC_DEFINE(MsgEnvironment, id, param)
      * The answer is sent after the document is on disk: the sandbox relies on
      * the answer to know that its modifications survive the end of the run.
      */
-    LauncherApp().runtime->pipe_server->SendResponse(id, {});
+    control->Server()->SendResponse(id, {});
 }

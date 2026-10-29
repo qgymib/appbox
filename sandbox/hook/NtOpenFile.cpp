@@ -1,14 +1,14 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "utils/Log.hpp"
-#include "utils/MappingAsDosNtPath.hpp"
 #include "utils/HandleInfo.hpp"
 #include "utils/ConvertToFullNtPath.hpp"
 #include "filesystem/CopyUp.hpp"
-#include "filesystem/IsolationPolicy.hpp"
+#include "FilesystemIsolationPolicy.hpp"
 #include "filesystem/MarkerName.hpp"
 #include "filesystem/Resolve.hpp"
 #include "hook/NtCreateFile.hpp"
 #include "hook/RtlInitUnicodeString.hpp"
+#include "MappingAsDosNtPath.hpp"
 #include "NtOpenFile.hpp"
 
 T_NtOpenFile sys_NtOpenFile = nullptr;

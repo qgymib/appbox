@@ -15,9 +15,9 @@
 # be registered here.
 #
 # The include directories put the project directories first: `test/utils` holds
-# headers with the same name as the launcher ones and the launcher headers have to
+# headers with the same name as the project ones and the project headers have to
 # win. The known folder helper of the cases is named `TestKnownFolder` for that
-# reason.
+# reason, because `common/KnownFolder.hpp` is part of the code under test.
 ###############################################################################
 add_executable(AppBoxTests
     # Unit tests. They run in the process of the test executable and do not
@@ -32,7 +32,6 @@ add_executable(AppBoxTests
     "unit/EnvironmentIsolation.cpp"
     "unit/EnvironmentIsolationFile.cpp"
     "unit/EnvironmentModel.cpp"
-    "unit/EmbeddedResource.cpp"
     "unit/EnvironmentTable.cpp"
     "unit/EtwEventDecoder.cpp"
     "unit/ExecutablePayload.cpp"
@@ -42,9 +41,11 @@ add_executable(AppBoxTests
     "unit/FilesystemTree.cpp"
     "unit/HiveMerge.cpp"
     "unit/LauncherResources.cpp"
+    "unit/SandboxConfigPayload.cpp"
     "unit/KnownFolderReference.cpp"
     "unit/HookTransaction.cpp"
     "unit/IsolationDocument.cpp"
+    "unit/LauncherStartMessage.cpp"
     "unit/Log.cpp"
     "unit/LogFile.cpp"
     "unit/Md5.cpp"
@@ -53,8 +54,10 @@ add_executable(AppBoxTests
     "unit/NetworkModel.cpp"
     "unit/PackModel.cpp"
     "unit/PackService.cpp"
+    "unit/PeerIdentity.cpp"
     "unit/PipeClient.cpp"
     "unit/ProcessJob.cpp"
+    "unit/ProcessJobSet.cpp"
     "unit/ProjectDocument.cpp"
     "unit/ProjectFile.cpp"
     "unit/ProjectType.cpp"
@@ -65,8 +68,11 @@ add_executable(AppBoxTests
     "unit/RegistryModel.cpp"
     "unit/RegistryValueExpansion.cpp"
     "unit/RemoteClient.cpp"
+    "unit/RemoteServer.cpp"
     "unit/RpcCodec.cpp"
+    "unit/SandboxId.cpp"
     "unit/Shell.cpp"
+    "unit/ShutdownRetry.cpp"
     "unit/ViewPathResolver.cpp"
     "unit/SnapshotApply.cpp"
     "unit/SnapshotCapture.cpp"
@@ -89,10 +95,10 @@ add_executable(AppBoxTests
     "unit/TracerCdbOutput.cpp"
     "unit/TracerIntegration.cpp"
     "unit/TracerModel.cpp"
-    "unit/TracerPeImage.cpp"
     "unit/TracerScope.cpp"
     "unit/TracerTargetProgram.cpp"
     "unit/VariableExpansion.cpp"
+    "unit/ViewCurrentDirectory.cpp"
     "unit/WString.cpp"
     "unit/ZipReader.cpp"
     "unit/ZipWriter.cpp"
@@ -194,6 +200,7 @@ add_executable(AppBoxTests
     "e2e/Fs_WriteLowerLayerFile_CopyUp.cpp"
     "e2e/Launcher_EmbeddedConfig.cpp"
     "e2e/Launcher_HideConsole.cpp"
+    "e2e/Launcher_Job.cpp"
     "e2e/Launcher_Log.cpp"
     "e2e/Launcher_NoVcRuntime.cpp"
     "e2e/Launcher_ProcessChain.cpp"
@@ -201,12 +208,21 @@ add_executable(AppBoxTests
     "e2e/Launcher_RegistryStateIsKept.cpp"
     "e2e/Launcher_RegistryStateIsReset.cpp"
     "e2e/Launcher_RegistryStateIsSeeded.cpp"
-    "e2e/Launcher_SandboxModules.cpp"
     "e2e/Launcher_Shell.cpp"
     "e2e/Launcher_Startup.cpp"
     "e2e/Launcher_StartupImage.cpp"
     "e2e/Launcher_StartupScreen.cpp"
     "e2e/Launcher_StartupScript.cpp"
+    "e2e/MultiInstance_Environment.cpp"
+    "e2e/MultiInstance_Join.cpp"
+    "e2e/MultiInstance_NotInjected.cpp"
+    "e2e/MultiInstance_Refuse.cpp"
+    "e2e/MultiInstance_Request.cpp"
+    "e2e/MultiInstance_Robustness.cpp"
+    "e2e/MultiInstance_Rollback.cpp"
+    "e2e/MultiInstance_SandboxId.cpp"
+    "e2e/MultiInstance_Security.cpp"
+    "e2e/MultiInstance_Shutdown.cpp"
     "e2e/Net_Dns_EveryResolutionApiIsRedirected.cpp"
     "e2e/Net_Dns_FamilyOfTheRedirectIsHonoured.cpp"
     "e2e/Net_Dns_HostnameIsNormalized.cpp"
@@ -334,6 +350,8 @@ add_executable(AppBoxTests
     "utils/FsIsolationBuilder.cpp"
     "utils/HiveBuilder.cpp"
     "utils/LauncherConfigReader.cpp"
+    "utils/MultiInstance.cpp"
+    "utils/MultiInstancePipe.cpp"
     "utils/NameResolutionProbe.cpp"
     "utils/NetworkIsolationBuilder.cpp"
     "utils/NtDirectoryQuery.cpp"
@@ -344,12 +362,14 @@ add_executable(AppBoxTests
     "utils/RealHkcuKey.cpp"
     "utils/RegChildExitCode.cpp"
     "utils/RegistryRootKey.cpp"
+    "utils/SelfExtractingProgram.cpp"
     "utils/Semaphore.cpp"
     "utils/Socks5Server.cpp"
     "utils/TestBitmap.cpp"
     "utils/TestFont.cpp"
     "utils/TestKnownFolder.cpp"
     "utils/TestLog.cpp"
+    "utils/TestSandboxId.cpp"
     "utils/TestTimeout.cpp"
     "utils/WriteFileFull.cpp"
 
@@ -362,10 +382,11 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/ConvertDosPathToNtPath.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/GetExecutableDir.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/HiveMerge.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/KnownFolder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/HostPath.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/MapBaseFS.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/Md5.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/ProcessJob.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/ProcessJobSet.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/Shell.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/StartupImage.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../launcher/utils/StartupLayout.cpp
@@ -401,6 +422,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryHive.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/RegistryModel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/SandboxConfigPayload.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/SnapshotApply.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/SnapshotCapture.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/SnapshotDiff.cpp
@@ -412,12 +434,6 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/ModuleTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/environment/Configuration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/environment/Table.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/DirName.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/IsolationTable.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/ResolveCore.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/filesystem/Sequence.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/MappingAsDosNtPath.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/utils/MappingAsSandboxNtPath.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/network/DnsTable.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/network/ProxyConfig.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../sandbox/network/Socks5.cpp
@@ -439,7 +455,6 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/CdbLocator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/CdbOutputParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/CdbSession.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/PeImage.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/ScopePatterns.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/TargetProgram.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/tracer/TracedModules.cpp
@@ -462,14 +477,11 @@ target_include_directories(AppBoxTests
 add_dependencies(AppBoxTests appbox_build_info)
 add_dependencies(AppBoxTests AppBoxLauncher)
 
-# The end-to-end cases start the launcher, which injects the modules below
-# `resource/lib`, and the unit test of the embedded resources reads the
-# resources of the packer.
-add_dependencies(AppBoxTests
-    AppBox
-    sandbox_x86_build
-    sandbox_x64_build
-)
+# The end-to-end cases start the launcher, which releases the injection modules
+# it carries, and the unit test of the runtime independence reads the resources
+# of the packer and of the launcher. The builds of the modules belong to the
+# launcher, so they are reached through the dependency above.
+add_dependencies(AppBoxTests AppBox)
 
 ###############################################################################
 # The probe executables
@@ -490,21 +502,22 @@ add_dependencies(AppBoxTests
 # probe whatever the configuration of the build is.
 ###############################################################################
 include(ExternalProject)
+include(ForeignBuild)
 
 set(APPBOX_PROBE_DIR "${CMAKE_BINARY_DIR}/resource/probe")
 set(APPBOX_PROBE32 "${APPBOX_PROBE_DIR}/AppBoxProbe32.exe")
 set(APPBOX_PROBE64 "${APPBOX_PROBE_DIR}/AppBoxProbe64.exe")
 
-# The arguments of a foreign build are computed by the top level project, which
-# forwards the bit size, the build type and the toolchain file to the builds of
-# the injection modules: the probe is built the same way, so it inherits them.
+# The bit size, the build type and the toolchain file of a foreign build are the
+# ones of the build which starts it (see cmake/ForeignBuild.cmake), which is what
+# the probe builds of this directory get here.
 ExternalProject_Add(probe_x86_build
     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/probe"
     BINARY_DIR "${CMAKE_BINARY_DIR}/_probe_x86_build"
     CMAKE_ARGS
-        ${X86_CMAKE_EXTRA_ARGS}
-        ${FWD_BUILD_TYPE}
-        ${X86_FWD_TOOLCHAIN_FILE}
+        ${APPBOX_FOREIGN_X86_ARGS}
+        ${APPBOX_FOREIGN_BUILD_TYPE}
+        ${APPBOX_FOREIGN_X86_TOOLCHAIN_FILE}
         -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/resource
     BUILD_BYPRODUCTS ${APPBOX_PROBE32}
     BUILD_ALWAYS ON
@@ -514,9 +527,9 @@ ExternalProject_Add(probe_x64_build
     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/probe"
     BINARY_DIR "${CMAKE_BINARY_DIR}/_probe_x64_build"
     CMAKE_ARGS
-        ${X64_CMAKE_EXTRA_ARGS}
-        ${FWD_BUILD_TYPE}
-        ${X64_FWD_TOOLCHAIN_FILE}
+        ${APPBOX_FOREIGN_X64_ARGS}
+        ${APPBOX_FOREIGN_BUILD_TYPE}
+        ${APPBOX_FOREIGN_X64_TOOLCHAIN_FILE}
         -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/resource
     BUILD_BYPRODUCTS ${APPBOX_PROBE64}
     BUILD_ALWAYS ON
@@ -563,7 +576,8 @@ target_compile_options(AppBoxTests PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TR
 find_package(Detours REQUIRED)
 target_link_libraries(AppBoxTests PRIVATE Detours)
 
-# Used by the known folder helper of the launcher.
+# Known folder resolution of `common/KnownFolder.hpp` (SHGetKnownFolderPath and
+# CoTaskMemFree), which the cases exercise through the layer keys of their trees.
 target_link_libraries(AppBoxTests PRIVATE shell32 ole32)
 
 # Registry access of the sandbox hive reader (RegLoadAppKeyW and friends).
@@ -612,8 +626,6 @@ target_link_libraries(AppBoxTests PRIVATE sqlite::sqlite3)
 add_test(NAME AppBoxUnitTests
     COMMAND AppBoxTests
         --launcher=$<TARGET_FILE:AppBoxLauncher>
-        --sandbox32=${APPBOX_RESOURCE_SANDBOX32}
-        --sandbox64=${APPBOX_RESOURCE_SANDBOX64}
         --probe32=${APPBOX_PROBE32}
         --probe64=${APPBOX_PROBE64}
         --packer=$<TARGET_FILE:AppBox>
@@ -623,8 +635,6 @@ add_test(NAME AppBoxUnitTests
 add_test(NAME AppBoxE2ETests
     COMMAND AppBoxTests
         --launcher=$<TARGET_FILE:AppBoxLauncher>
-        --sandbox32=${APPBOX_RESOURCE_SANDBOX32}
-        --sandbox64=${APPBOX_RESOURCE_SANDBOX64}
         --probe32=${APPBOX_PROBE32}
         --probe64=${APPBOX_PROBE64}
         --packer=$<TARGET_FILE:AppBox>

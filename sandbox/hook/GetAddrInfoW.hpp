@@ -1,7 +1,7 @@
 #ifndef APPBOX_SANDBOX_HOOK_GETADDRINFOW_HPP
 #define APPBOX_SANDBOX_HOOK_GETADDRINFOW_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include "__init__.hpp"
 
 extern "C" {

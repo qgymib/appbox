@@ -1,4 +1,4 @@
-#include "utils/WinAPI.h" /* Must be first include file */
+#include "WinAPI.h" /* Must be first include file */
 #include "utils/FontApi.hpp"
 #include "utils/Log.hpp"
 #include "NtGdiRemoveFontResourceW.hpp"

@@ -334,10 +334,9 @@ TEST(Unit_TracerScope, EveryScopeEntryIsAnExecutableExportOfItsModule)
         ASSERT_NE(module, modules.end()) << entry.module;
 
         const auto& exports = module->second.image.Exports();
-        const auto  found =
-            std::find_if(exports.begin(), exports.end(), [&entry](const appbox::tracer::ExportEntry& candidate) {
-                return candidate.name == entry.name;
-            });
+        const auto found = std::find_if(exports.begin(), exports.end(), [&entry](const appbox::ExportEntry& candidate) {
+            return candidate.name == entry.name;
+        });
         ASSERT_NE(found, exports.end()) << entry.module << L"!" << entry.name;
         EXPECT_TRUE(found->forwarder.empty()) << entry.module << L"!" << entry.name;
         EXPECT_TRUE(module->second.image.IsExecutable(found->rva)) << entry.module << L"!" << entry.name;

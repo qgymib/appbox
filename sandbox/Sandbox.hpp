@@ -1,12 +1,12 @@
 #ifndef APPBOX_SANDBOX_HPP
 #define APPBOX_SANDBOX_HPP
 
-#include "utils/WinAPI.h"
+#include "WinAPI.h"
 #include "utils/PipeClient.hpp"
 #include "utils/VariableExpansion.hpp"
 #include "environment/Configuration.hpp"
 #include "environment/Table.hpp"
-#include "filesystem/IsolationTable.hpp"
+#include "FilesystemIsolationTable.hpp"
 #include "filesystem/Resolve.hpp"
 #include "network/DnsTable.hpp"
 #include "Config.hpp"

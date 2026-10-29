@@ -188,6 +188,23 @@ appbox::CompressionLevel& ScratchCompressionLevel()
 }
 
 /**
+ * @brief Sink of the sandbox identifier for the cases which do not check it.
+ *
+ * The identifier of the sandbox is not the subject of the cases which use this
+ * helper, so it is stored into one sink which every case shares; a case which
+ * describes the identifier keeps a value of its own. The sink is empty, which
+ * is the identifier of a document that records none, so the cases of the other
+ * parts of the schema write the text they wrote before the member existed.
+ *
+ * @return The sink of the sandbox identifier.
+ */
+std::string& ScratchSandboxId()
+{
+    static std::string id;
+    return id;
+}
+
+/**
  * @brief Build the document of a session with the network and the environment
  *        model left out.
  *
@@ -212,7 +229,8 @@ appbox::ProjectDocument MakeDocument(const appbox::PackModel& model, const appbo
                                      const appbox::StartupScreen&       startup = {})
 {
     return appbox::MakeProjectDocument(model, registry, isolation, appbox::NetworkModel{}, appbox::EnvironmentModel{},
-                                       metadata, startup, project_type, appbox::CompressionLevel::Normal, output_path);
+                                       metadata, startup, project_type, appbox::CompressionLevel::Normal,
+                                       ScratchSandboxId(), output_path);
 }
 
 /**
@@ -234,7 +252,8 @@ bool ApplyDocument(const appbox::ProjectDocument& document, appbox::PackModel& m
     appbox::EnvironmentModel environment;
     appbox::ProjectType      project_type = appbox::ProjectType::Standalone;
     return appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, ScratchMetadata(),
-                                        ScratchStartup(), project_type, ScratchCompressionLevel(), output_path, error);
+                                        ScratchStartup(), project_type, ScratchCompressionLevel(), output_path,
+                                        ScratchSandboxId(), error);
 }
 
 /**
@@ -249,7 +268,7 @@ appbox::ProjectDocument MakeEnvironmentDocument(const appbox::EnvironmentModel& 
     return appbox::MakeProjectDocument(appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{},
                                        appbox::NetworkModel{}, environment, appbox::ApplicationMetadata{},
                                        appbox::StartupScreen{}, appbox::ProjectType::Standalone,
-                                       appbox::CompressionLevel::Normal, output_path);
+                                       appbox::CompressionLevel::Normal, ScratchSandboxId(), output_path);
 }
 
 /**
@@ -273,7 +292,8 @@ bool ApplyEnvironmentDocument(const appbox::ProjectDocument& document, appbox::E
     appbox::ProjectType              project_type = appbox::ProjectType::Standalone;
     std::wstring                     output_path;
     return appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment, ScratchMetadata(),
-                                        ScratchStartup(), project_type, ScratchCompressionLevel(), output_path, error);
+                                        ScratchStartup(), project_type, ScratchCompressionLevel(), output_path,
+                                        ScratchSandboxId(), error);
 }
 
 /**
@@ -1216,7 +1236,7 @@ TEST(Unit_ProjectFile, NetworkRedirectionsTravelWithTheProjectFile)
     const auto document = appbox::MakeProjectDocument(
         appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, network,
         appbox::EnvironmentModel{}, appbox::ApplicationMetadata(), appbox::StartupScreen{},
-        appbox::ProjectType::Standalone, appbox::CompressionLevel::Normal, L"D:\\out\\MyApp.zip");
+        appbox::ProjectType::Standalone, appbox::CompressionLevel::Normal, ScratchSandboxId(), L"D:\\out\\MyApp.zip");
 
     const auto path = temp.File(L"network.json");
     ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
@@ -1233,7 +1253,8 @@ TEST(Unit_ProjectFile, NetworkRedirectionsTravelWithTheProjectFile)
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, ScratchMetadata(), ScratchStartup(),
-                                             loaded_project_type, ScratchCompressionLevel(), loaded_output, error))
+                                             loaded_project_type, ScratchCompressionLevel(), loaded_output,
+                                             ScratchSandboxId(), error))
         << error;
 
     ASSERT_EQ(loaded_network.DnsEntries().size(), 2u);
@@ -1275,7 +1296,7 @@ TEST(Unit_ProjectFile, FilePropertiesTravelWithTheProjectFile)
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, loaded_metadata, ScratchStartup(), loaded_project_type,
-                                             ScratchCompressionLevel(), loaded_output, error))
+                                             ScratchCompressionLevel(), loaded_output, ScratchSandboxId(), error))
         << error;
 
     EXPECT_EQ(loaded_metadata.source, metadata.source);
@@ -1294,7 +1315,7 @@ TEST(Unit_ProjectFile, FilePropertiesTravelWithTheProjectFile)
     appbox::ApplicationMetadata cleared = loaded_metadata;
     ASSERT_TRUE(appbox::ApplyProjectDocument(plain, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, cleared, ScratchStartup(), loaded_project_type,
-                                             ScratchCompressionLevel(), loaded_output, error))
+                                             ScratchCompressionLevel(), loaded_output, ScratchSandboxId(), error))
         << error;
     EXPECT_TRUE(cleared.source.empty());
     EXPECT_TRUE(cleared.overrides.empty());
@@ -1328,7 +1349,7 @@ TEST(Unit_ProjectFile, StartupScreenTravelsWithTheProjectFile)
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, ScratchMetadata(), loaded_startup, loaded_project_type,
-                                             ScratchCompressionLevel(), loaded_output, error))
+                                             ScratchCompressionLevel(), loaded_output, ScratchSandboxId(), error))
         << error;
 
     EXPECT_FALSE(loaded_startup.enabled);
@@ -1343,7 +1364,7 @@ TEST(Unit_ProjectFile, StartupScreenTravelsWithTheProjectFile)
     appbox::StartupScreen cleared = loaded_startup;
     ASSERT_TRUE(appbox::ApplyProjectDocument(plain, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, ScratchMetadata(), cleared, loaded_project_type,
-                                             ScratchCompressionLevel(), loaded_output, error))
+                                             ScratchCompressionLevel(), loaded_output, ScratchSandboxId(), error))
         << error;
     EXPECT_TRUE(cleared.enabled);
     EXPECT_TRUE(cleared.image.empty());
@@ -1385,14 +1406,14 @@ TEST(Unit_ProjectFile, ApplyRejectsABrokenNetworkMember)
     ASSERT_TRUE(appbox::LoadProject(bad_address.wstring(), document, error)) << error;
     EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
                                               ScratchMetadata(), ScratchStartup(), project_type,
-                                              ScratchCompressionLevel(), output, error));
+                                              ScratchCompressionLevel(), output, ScratchSandboxId(), error));
     EXPECT_NE(error.find("network[0]"), std::string::npos);
     EXPECT_NE(error.find("is not an IPv4 or an IPv6 address"), std::string::npos);
 
     ASSERT_TRUE(appbox::LoadProject(duplicate.wstring(), document, error)) << error;
     EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
                                               ScratchMetadata(), ScratchStartup(), project_type,
-                                              ScratchCompressionLevel(), output, error));
+                                              ScratchCompressionLevel(), output, ScratchSandboxId(), error));
     EXPECT_NE(error.find("network[1]"), std::string::npos);
     EXPECT_NE(error.find("listed twice"), std::string::npos);
 
@@ -1423,7 +1444,7 @@ TEST(Unit_ProjectFile, ProxyTravelsWithTheProjectFile)
     const auto document = appbox::MakeProjectDocument(
         appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, network,
         appbox::EnvironmentModel{}, appbox::ApplicationMetadata(), appbox::StartupScreen{},
-        appbox::ProjectType::Standalone, appbox::CompressionLevel::Normal, L"");
+        appbox::ProjectType::Standalone, appbox::CompressionLevel::Normal, ScratchSandboxId(), L"");
 
     const auto path = temp.File(L"proxy.json");
     ASSERT_TRUE(appbox::SaveProject(document, path.wstring(), error)) << error;
@@ -1440,7 +1461,8 @@ TEST(Unit_ProjectFile, ProxyTravelsWithTheProjectFile)
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, ScratchMetadata(), ScratchStartup(),
-                                             loaded_project_type, ScratchCompressionLevel(), loaded_output, error))
+                                             loaded_project_type, ScratchCompressionLevel(), loaded_output,
+                                             ScratchSandboxId(), error))
         << error;
 
     ASSERT_TRUE(loaded_network.HasProxy());
@@ -1474,7 +1496,7 @@ TEST(Unit_ProjectFile, KeepsAProxyWhichIsTurnedOff)
     const auto document = appbox::MakeProjectDocument(
         appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, network,
         appbox::EnvironmentModel{}, appbox::ApplicationMetadata(), appbox::StartupScreen{},
-        appbox::ProjectType::Standalone, appbox::CompressionLevel::Normal, L"");
+        appbox::ProjectType::Standalone, appbox::CompressionLevel::Normal, ScratchSandboxId(), L"");
 
     /*
      * A proxy which was typed and then disabled is part of the document, so
@@ -1509,7 +1531,7 @@ TEST(Unit_ProjectFile, ApplyOfADocumentWithoutAProxyClearsTheProxy)
     std::wstring                     output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
                                              ScratchMetadata(), ScratchStartup(), project_type,
-                                             ScratchCompressionLevel(), output, error))
+                                             ScratchCompressionLevel(), output, ScratchSandboxId(), error))
         << error;
 
     /* A session which imports a configuration without a proxy holds none. */
@@ -1548,7 +1570,7 @@ TEST(Unit_ProjectFile, ApplyRejectsAProxyTheModelRefuses)
     std::wstring                     output;
     EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
                                               ScratchMetadata(), ScratchStartup(), project_type,
-                                              ScratchCompressionLevel(), output, error));
+                                              ScratchCompressionLevel(), output, ScratchSandboxId(), error));
     EXPECT_NE(error.find("proxy"), std::string::npos) << error;
     EXPECT_NE(error.find("must not be empty"), std::string::npos) << error;
 
@@ -1726,7 +1748,8 @@ TEST(Unit_ProjectFile, ProjectTypeTravelsWithTheProjectFile)
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, ScratchMetadata(), ScratchStartup(),
-                                             loaded_project_type, ScratchCompressionLevel(), loaded_output, error))
+                                             loaded_project_type, ScratchCompressionLevel(), loaded_output,
+                                             ScratchSandboxId(), error))
         << error;
 
     /* The session adopts the type of the file together with the models. */
@@ -1756,7 +1779,7 @@ TEST(Unit_ProjectFile, AFileWithoutAProjectTypeIsAStandaloneProject)
     std::wstring                     output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
                                              ScratchMetadata(), ScratchStartup(), project_type,
-                                             ScratchCompressionLevel(), output, error))
+                                             ScratchCompressionLevel(), output, ScratchSandboxId(), error))
         << error;
 
     EXPECT_EQ(project_type, appbox::ProjectType::Standalone);
@@ -1784,7 +1807,7 @@ TEST(Unit_ProjectFile, CompressionLevelTravelsWithTheProjectFile)
     const auto document = appbox::MakeProjectDocument(
         appbox::PackModel{}, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, appbox::NetworkModel{},
         appbox::EnvironmentModel{}, appbox::ApplicationMetadata{}, appbox::StartupScreen{},
-        appbox::ProjectType::Standalone, appbox::CompressionLevel::Extreme, L"D:\\out\\MyApp.zip");
+        appbox::ProjectType::Standalone, appbox::CompressionLevel::Extreme, ScratchSandboxId(), L"D:\\out\\MyApp.zip");
     EXPECT_EQ(document.compression_level, appbox::CompressionLevel::Extreme);
 
     std::string error;
@@ -1808,7 +1831,8 @@ TEST(Unit_ProjectFile, CompressionLevelTravelsWithTheProjectFile)
     std::wstring                     loaded_output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, loaded_network,
                                              loaded_environment, ScratchMetadata(), ScratchStartup(),
-                                             loaded_project_type, loaded_compression_level, loaded_output, error))
+                                             loaded_project_type, loaded_compression_level, loaded_output,
+                                             ScratchSandboxId(), error))
         << error;
 
     /* The session adopts the level of the file together with the models. */
@@ -1839,7 +1863,7 @@ TEST(Unit_ProjectFile, AFileWithoutACompressionLevelUsesTheDefaultOne)
     std::wstring                     output;
     ASSERT_TRUE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
                                              ScratchMetadata(), ScratchStartup(), project_type, compression_level,
-                                             output, error))
+                                             output, ScratchSandboxId(), error))
         << error;
 
     EXPECT_EQ(compression_level, appbox::kDefaultCompressionLevel);
@@ -1856,4 +1880,90 @@ TEST(Unit_ProjectFile, ApplyRejectsAnUnknownCompressionLevel)
     std::string             error;
     EXPECT_FALSE(appbox::LoadProject(path.wstring(), document, error));
     EXPECT_NE(error.find("unknown compression level 'best'"), std::string::npos) << error;
+}
+
+TEST(Unit_ProjectFile, SandboxIdRoundTrip)
+{
+    /* The identifier of the session is written into the file and read back. */
+    const std::string id = "2b1f7c4e-9a3d-4f6b-8c2e-5d7a1b3c9e0f";
+
+    appbox::PackModel model;
+    ASSERT_TRUE(BuildSampleModel(model));
+    model.SetSandboxId(id);
+
+    TempDir     temp;
+    const auto  file = temp.File(L"sandbox-id.json");
+    std::string error;
+
+    const auto document = appbox::MakeProjectDocument(
+        model, appbox::RegistryModel{}, appbox::FilesystemIsolationModel{}, appbox::NetworkModel{},
+        appbox::EnvironmentModel{}, appbox::ApplicationMetadata{}, appbox::StartupScreen{},
+        appbox::ProjectType::Standalone, appbox::CompressionLevel::Normal, model.SandboxId(), L"D:\\out\\MyApp.zip");
+    ASSERT_TRUE(appbox::SaveProject(document, file.wstring(), error)) << error;
+
+    appbox::ProjectDocument loaded_document;
+    ASSERT_TRUE(appbox::LoadProject(file.wstring(), loaded_document, error)) << error;
+    EXPECT_EQ(loaded_document.sandbox_id, id);
+
+    appbox::PackModel                loaded;
+    appbox::RegistryModel            loaded_registry;
+    appbox::FilesystemIsolationModel loaded_isolation;
+    appbox::NetworkModel             network;
+    appbox::EnvironmentModel         environment;
+    appbox::ProjectType              project_type = appbox::ProjectType::Standalone;
+    std::wstring                     output;
+    std::string                      sandbox_id;
+    ASSERT_TRUE(appbox::ApplyProjectDocument(loaded_document, loaded, loaded_registry, loaded_isolation, network,
+                                             environment, ScratchMetadata(), ScratchStartup(), project_type,
+                                             ScratchCompressionLevel(), output, sandbox_id, error))
+        << error;
+
+    EXPECT_EQ(sandbox_id, id);
+
+    /*
+     * The identifier is normalized while it is applied, so a document which
+     * spells it with 32 digits and upper case letters yields the canonical
+     * form the launcher accepts.
+     */
+    appbox::ProjectDocument plain;
+    plain.sandbox_id = "2B1F7C4E9A3D4F6B8C2E5D7A1B3C9E0F";
+    ASSERT_TRUE(appbox::ApplyProjectDocument(plain, loaded, loaded_registry, loaded_isolation, network, environment,
+                                             ScratchMetadata(), ScratchStartup(), project_type,
+                                             ScratchCompressionLevel(), output, sandbox_id, error))
+        << error;
+    EXPECT_EQ(sandbox_id, id);
+}
+
+TEST(Unit_ProjectFile, SandboxIdInvalidIsRejected)
+{
+    /* A value which is no identifier refuses the import, named by its member. */
+    const char* const refused[] = { "appbox", "2b1f7c4e9a3d4f6b8c2e5d7a1b3c9e0", "2b1f7c4e9a3d4f6b8c2e5d7a1b3c9e0ff",
+                                    "2b1f7c4e-9a3d-4f6b8c2e-5d7a1b3c9e0f", "2b1f7c4e-9a3d-4f6b-8c2e-5d7a1b3c9e0z" };
+
+    for (const auto* value : refused)
+    {
+        appbox::ProjectDocument document;
+        document.sandbox_id = value;
+
+        appbox::PackModel                model;
+        appbox::RegistryModel            registry;
+        appbox::FilesystemIsolationModel isolation;
+        appbox::NetworkModel             network;
+        appbox::EnvironmentModel         environment;
+        appbox::ProjectType              project_type = appbox::ProjectType::Standalone;
+        std::wstring                     output;
+        std::string                      sandbox_id = "unchanged";
+        std::string                      error;
+
+        EXPECT_FALSE(appbox::ApplyProjectDocument(document, model, registry, isolation, network, environment,
+                                                  ScratchMetadata(), ScratchStartup(), project_type,
+                                                  ScratchCompressionLevel(), output, sandbox_id, error))
+            << value;
+
+        /* The description names the member, like every other rejected entry. */
+        EXPECT_EQ(error.rfind("sandbox_id: ", 0), 0u) << error;
+
+        /* A refused document leaves the caller untouched. */
+        EXPECT_EQ(sandbox_id, "unchanged");
+    }
 }
