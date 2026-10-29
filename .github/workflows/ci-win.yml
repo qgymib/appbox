@@ -24,10 +24,22 @@ jobs:
         with:
           submodules: 'recursive'
 
+      # Only configures and builds: the tests run in the `Test` step, so a
+      # failure reports the step it belongs to. The exit code of the configure
+      # command is checked by hand, because the runner only looks at the exit
+      # code of the last command of the script.
       - name: Build
         env:
           CMAKE_PREFIX_PATH: ${{env.WX_INSTALL_DIR}}
-        run: cmake --workflow --preset ${{matrix.build_type}}
+        run: |
+          cmake --preset ${{matrix.build_type}}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build --preset ${{matrix.build_type}}
+
+      # Runs from the repository root, where the test preset resolves the build
+      # directory of the configuration the step above has filled.
+      - name: Test
+        run: ctest --preset ${{matrix.build_type}}
 
       # The upload names the directory which holds the collected cases, so the
       # archive keeps the directory of every case instead of flattening it into
@@ -39,6 +51,12 @@ jobs:
           name: failed_cases_${{matrix.build_type}}
           path: ./build/${{matrix.build_type}}/test/Test-*
           if-no-files-found: ignore
+
+      # Packs the products of the release configuration once its tests passed.
+      # The package preset is the same one the `Release` workflow preset runs.
+      - name: Package
+        if: success() && matrix.build_type == 'Release'
+        run: cpack --preset Release
 
       - name: Upload release artifacts
         if: success() && matrix.build_type == 'Release'
