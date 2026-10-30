@@ -368,6 +368,24 @@ void ResolveWithDnsQueryWide(const appbox::test::ProtocolResolveName::Question& 
 }
 
 /**
+ * @brief Initialize the socket library of the probe process.
+ *
+ * The name resolution APIs belong to winsock 2, which a process has to start
+ * before it resolves a name: a call which follows a missing initialization is
+ * answered with `WSANOTINITIALISED` instead of an address. The library is
+ * started once per process, so every call after the first one reports the
+ * version which is already running.
+ */
+void EnsureWinsock()
+{
+    static const bool initialized = []() {
+        WSADATA data;
+        return WSAStartup(MAKEWORD(2, 2), &data) == 0;
+    }();
+    (void)initialized;
+}
+
+/**
  * @brief Answer one question with the API it names.
  * @param[in] question Question of the case.
  * @return The answer of the question.
@@ -411,6 +429,8 @@ appbox::test::ProtocolResolveName::Rsp appbox::test::ProbeResolveName_Entry(
     const appbox::test::ProtocolResolveName::Req& request)
 {
     const auto& req = request;
+
+    EnsureWinsock();
 
     appbox::test::ProtocolResolveName::Rsp rsp;
     rsp.answers.reserve(req.questions.size());

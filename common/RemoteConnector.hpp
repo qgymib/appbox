@@ -4,9 +4,7 @@
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
 #endif
-#include <winsock2.h>
 #include <windows.h>
-#include <asio.hpp>
 #include <spdlog/spdlog.h>
 #include <cstdint>
 #include <memory>
@@ -22,9 +20,9 @@ namespace appbox
  * @brief Connector of a named pipe: the end which opens the name of the pipe.
  *
  * The connector opens the client end of a pipe and hands it to its caller as a
- * `RemoteSession`. It owns the retries of the connection and the IO thread the
- * session runs on, so it has to outlive the session it returned: releasing the
- * connector stops the thread and with it the session.
+ * `RemoteSession`. It owns the retries of the connection only: the session owns
+ * the handle and the thread which serves it, so the connector may be released
+ * while the session keeps working.
  *
  * The connector knows no method either: what the peer serves is the business of
  * the session, which is the same type the accepter of the other end created.

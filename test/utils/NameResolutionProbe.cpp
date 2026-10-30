@@ -22,6 +22,22 @@ bool WantsProbe()
 }
 
 /**
+ * @brief Initialize the socket library of the probe process.
+ *
+ * The resolver of the socket library answers `WSANOTINITIALISED` until the
+ * process started the library, so the probe starts it before it asks for a
+ * name.
+ */
+void EnsureWinsock()
+{
+    static const bool initialized = []() {
+        WSADATA data;
+        return WSAStartup(MAKEWORD(2, 2), &data) == 0;
+    }();
+    (void)initialized;
+}
+
+/**
  * @brief Resolve a name with the socket library.
  *
  * The entry points are declared here instead of including `winsock2.h`, which
@@ -33,6 +49,8 @@ void QueryWithSockets()
 {
     using GetAddrInfoWProc = int(APPBOX_PROBE_WSAAPI*)(const wchar_t*, const wchar_t*, const void*, void**);
     using FreeAddrInfoWProc = void(APPBOX_PROBE_WSAAPI*)(void*);
+
+    EnsureWinsock();
 
     /* ws2_32 is loaded on demand as well, even when the executable imports it. */
     HMODULE module = ::LoadLibraryW(L"ws2_32.dll");

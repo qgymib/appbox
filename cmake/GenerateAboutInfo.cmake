@@ -57,14 +57,6 @@ endfunction()
 
 set(_third_party "${APPBOX_SOURCE_DIR}/third_party")
 
-# asio: ASIO_VERSION encodes major * 100000 + minor * 1000 + patch.
-appbox_read_version("${_third_party}/asio/include/asio/version.hpp"
-                    "#define +ASIO_VERSION +([0-9]+)" _asio_encoded)
-math(EXPR _asio_major "${_asio_encoded} / 100000")
-math(EXPR _asio_minor "(${_asio_encoded} / 100) % 1000")
-math(EXPR _asio_patch "${_asio_encoded} % 100")
-set(_asio_version "${_asio_major}.${_asio_minor}.${_asio_patch}")
-
 # Detours: the version only appears in the header comment of detver.h.
 appbox_read_version("${_third_party}/Detours/src/detver.h"
                     "Version +([0-9]+\\.[0-9]+\\.[0-9]+)" _detours_version)
@@ -108,7 +100,6 @@ appbox_read_version("${_third_party}/zlib/zlib.h"
 # The libraries are listed in the order the About dialog shows them, which is
 # alphabetical ignoring the case of the name.
 set(_dependencies
-    "asio=${_asio_version}"
     "Detours=${_detours_version}"
     "expected=${_expected_version}"
     "libzip=${_libzip_version}"

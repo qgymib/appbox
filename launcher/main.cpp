@@ -1,10 +1,8 @@
 /*
- * <winsock2.h> has to precede <windows.h>, which the headers below pull in
- * (<Shlobj.h>, the project headers): it defines _WINSOCKAPI_, so <windows.h>
- * skips the winsock 1.1 header, which cannot be included next to the winsock 2
- * header the RPC server reaches through asio.
+ * <windows.h> has to precede <detours.h>, which selects the architecture of the
+ * transaction API with the macros <winnt.h> defines.
  */
-#include <winsock2.h>
+#include <windows.h>
 #include <CLI/CLI.hpp>
 #include <detours.h>
 #include <spdlog/spdlog.h>

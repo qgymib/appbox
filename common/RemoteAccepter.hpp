@@ -4,9 +4,7 @@
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
 #endif
-#include <winsock2.h>
 #include <windows.h>
-#include <asio.hpp>
 #include <spdlog/spdlog.h>
 #include <atomic>
 #include <cstddef>
@@ -55,9 +53,11 @@ enum class AcceptFailureKind
  * the owner registers its methods on, which makes the two ends of a connection
  * interchangeable.
  *
- * The accepter owns a private IO thread which accepts connections and runs the
- * sessions it created, so the sessions of one accepter share one thread and the
- * caller of the methods above is never that thread.
+ * The accepter owns a private thread which creates the instances of the pipe and
+ * waits for the clients, so the caller of the methods above is never that
+ * thread. Every accepted connection is handed to a session which owns a thread
+ * of its own, so the sessions of one accepter are independent of each other and
+ * of the accepter: a client which blocks its session blocks no other client.
  */
 class RemoteAccepter : public std::enable_shared_from_this<RemoteAccepter>
 {
@@ -127,9 +127,9 @@ public:
     /**
      * @brief Set the callback which receives every accepted connection.
      *
-     * The callback runs on the IO thread of the accepter before the session
-     * starts reading, so it is the place which registers the methods of the
-     * session. It must not block and must not throw.
+     * The callback runs on the thread of the accepter before the session starts
+     * reading, so it is the place which registers the methods of the session.
+     * It must not block and must not throw.
      *
      * The session is owned by the accepter only while it is connected: a caller
      * which keeps a session alive after its connection ended keeps the handle of
@@ -147,7 +147,7 @@ public:
     bool Start();
 
     /**
-     * @brief Stop accepting connections and end the IO thread.
+     * @brief Stop accepting connections and end the thread of the accepter.
      *
      * New connections are refused, the requests which are already handled are
      * answered, and the sessions are released. The call is idempotent and may be
@@ -158,7 +158,7 @@ public:
     /**
      * @brief Set the callback which receives a fatal failure of the accept loop.
      *
-     * The callback runs on the IO thread of the accepter. It must not block and
+     * The callback runs on the thread of the accepter. It must not block and
      * must not throw.
      *
      * @param[in] callback Callback to set, an empty function removes it.

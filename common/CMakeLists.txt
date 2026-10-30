@@ -25,8 +25,12 @@ target_compile_features(${PROJECT_NAME}
 ###############################################################################
 # Dependency
 ###############################################################################
-find_package(asio REQUIRED)
-target_link_libraries(${PROJECT_NAME} INTERFACE asio ws2_32)
+
+# Winsock 2 is no dependency of the RPC layer, which serves named pipes: the
+# library is part of the interface because the probes of the test executable and
+# the helper servers of the cases call the socket API, and neither the launcher
+# nor the test target links it on its own.
+target_link_libraries(${PROJECT_NAME} INTERFACE ws2_32)
 
 find_package(expected REQUIRED)
 target_link_libraries(${PROJECT_NAME} INTERFACE tl::expected)

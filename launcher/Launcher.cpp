@@ -1,10 +1,3 @@
-/*
- * <winsock2.h> has to precede <windows.h>, which the headers below pull in
- * (<Shlobj.h>, the project headers): it defines _WINSOCKAPI_, so <windows.h>
- * skips the winsock 1.1 header, which cannot be included next to the winsock 2
- * header the RPC server reaches through asio.
- */
-#include <winsock2.h>
 #include <spdlog/spdlog.h>
 #include <sstream>
 #include <Shlobj.h>

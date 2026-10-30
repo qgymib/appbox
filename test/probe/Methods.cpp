@@ -47,10 +47,12 @@
  * The translation unit of the method table of the probe executable.
  *
  * The table is built here and not in `test/probe/__init__.cpp`, because the
- * headers of the probes bring the declarations of the system API with them,
- * while the runtime brings the socket headers of asio: the two cannot be
- * included in one translation unit. The runtime asks for the table with
- * `RegisterProbes()` and knows no probe of its own.
+ * headers of the probes bring `common/WinAPI.h` with them, which has to be the
+ * first include of a translation unit: `<ntstatus.h>` has to precede
+ * `<windows.h>`. The runtime includes the RPC header of `common/` first, which
+ * brings `<windows.h>`, so the two cannot share one translation unit. The
+ * runtime asks for the table with `RegisterProbes()` and knows no probe of its
+ * own.
  */
 #define APPBOX_PROBE_REGISTER(NAME)                                                                                    \
     appbox::test::RegisterProbe<appbox::test::Protocol##NAME>(&appbox::test::Probe##NAME##_Entry);

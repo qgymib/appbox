@@ -3,12 +3,13 @@
 
 /*
  * Implementation of `common/RemoteAccepter.hpp`: the internal state of the
- * accepter, the pipe handling on the private IO thread and the members of the
+ * accepter, the pipe handling on its private thread and the members of the
  * class. The header is included by the public header and is not meant to be
  * included on its own.
  */
 
 #include "RemoteAccepter.hpp"
+#include "RemoteThread.hpp"
 #include <aclapi.h>
 #include <sddl.h>
 #include <array>
@@ -17,6 +18,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -265,18 +267,31 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
     {
         Running,  /* Accepting connections */
         Stopping, /* Refusing connections, waiting for the pending work */
-        Stopped,  /* The IO thread ended */
+        Stopped,  /* The accept thread ended */
     };
 
     typedef std::map<std::uint64_t, RemoteSession::Ptr> SessionMap;
 
-    Data() : io_context(std::make_shared<asio::io_context>()), uid_gen(0)
+    /**
+     * @brief Create the events the accept thread waits on.
+     *
+     * The events are automatic reset events: a wait consumes the signal, so the
+     * thread which sets one never has to know whether the accept thread already
+     * noticed the previous one.
+     */
+    Data()
     {
+        accept_event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        stop_event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
     }
 
     ~Data()
     {
         Stop();
+
+        /* The accept thread ended above, so nothing uses the events any more. */
+        detail::CloseHandleIfValid(accept_event);
+        detail::CloseHandleIfValid(stop_event);
     }
 
     /**
@@ -345,161 +360,139 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
     }
 
     /**
-     * @brief Create one instance of the pipe and wait for a client to connect.
-     * @return true when an instance waits for a client, otherwise false.
+     * @brief Take the instance which waits for the first client.
+     *
+     * The instance of the race for the name is created by CreateCompetitive()
+     * and handed to the accept thread through this member, which is why the
+     * member is only a hand-off slot: the thread owns the handle from the moment
+     * it took it.
+     *
+     * @return The handle, `INVALID_HANDLE_VALUE` when the slot is empty.
      */
-    bool AcceptNext()
+    HANDLE TakeListener()
     {
-        if (stopping)
-        {
-            return false;
-        }
+        std::lock_guard<std::mutex> lock(listener_mutex);
 
+        const HANDLE handle = listener;
+        listener = INVALID_HANDLE_VALUE;
+        return handle;
+    }
+
+    /**
+     * @brief Create the instance which waits for the next client.
+     *
+     * The options of the accepter may inject an error instead of creating the
+     * instance, which is what the cases of the retries of the accept loop use.
+     *
+     * @param[out] error Error code of a failed creation.
+     * @return The handle of the instance, INVALID_HANDLE_VALUE on failure.
+     */
+    HANDLE CreateNextInstance(DWORD& error)
+    {
         if (options.create_instance_error)
         {
             const DWORD injected = options.create_instance_error();
             if (injected != ERROR_SUCCESS)
             {
-                ReportAcceptFailure(injected);
-                return false;
+                error = injected;
+                return INVALID_HANDLE_VALUE;
             }
         }
 
-        DWORD        error = ERROR_SUCCESS;
-        const HANDLE handle = CreateInstance(error);
-        if (handle == INVALID_HANDLE_VALUE)
-        {
-            ReportAcceptFailure(error);
-            return false;
-        }
-
-        std::shared_ptr<asio::windows::stream_handle> pipe;
-        try
-        {
-            pipe = std::make_shared<asio::windows::stream_handle>(*io_context, handle);
-        }
-        catch (const std::exception& e)
-        {
-            ::CloseHandle(handle);
-            SPDLOG_ERROR("cannot wrap the pipe instance: {}", e.what());
-            ReportAcceptFailure(ERROR_INVALID_HANDLE);
-            return false;
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(listener_mutex);
-            if (stopping)
-            {
-                /* The handle is closed when the instance is released. */
-                return false;
-            }
-            listener = pipe;
-        }
-
-        BeginAccept();
-        return true;
+        return CreateInstance(error);
     }
 
     /**
-     * @brief Start waiting for a client on the instance which is held.
+     * @brief Wait until a client connected to the given instance.
+     *
+     * The connect is overlapped, so the wait of the thread is bounded by the
+     * stop event: Stop() interrupts it, and the cancellation is waited for
+     * before the handle is released, so the overlapped state of the connect is
+     * never reused while the system still writes it.
+     *
+     * @param[in] instance Instance of the pipe to wait on.
+     * @param[out] error Error code of a failed connect.
+     * @return true when a client connected, otherwise false.
      */
-    void BeginAccept()
+    bool WaitForClient(HANDLE instance, DWORD& error)
     {
-        std::shared_ptr<asio::windows::stream_handle> pipe;
-        {
-            std::lock_guard<std::mutex> lock(listener_mutex);
-            if (stopping)
-            {
-                return;
-            }
-            pipe = listener;
-        }
+        std::memset(&accept_ov, 0, sizeof(accept_ov));
+        accept_ov.hEvent = accept_event;
 
-        if (!pipe)
-        {
-            return;
-        }
-
-        auto                          self = shared_from_this();
-        asio::windows::overlapped_ptr ov(
-            *io_context, [self, pipe](asio::error_code ec, std::size_t) { self->OnConnected(ec, pipe); });
-
-        const BOOL  ok = ::ConnectNamedPipe(pipe->native_handle(), ov.get());
-        const DWORD err = ::GetLastError();
-
-        if (ok)
+        if (::ConnectNamedPipe(instance, &accept_ov))
         { /* Finished synchronously */
-            ov.complete(asio::error_code(), 0);
-            return;
+            return true;
         }
 
-        if (err == ERROR_IO_PENDING)
-        { /* Completion is delivered by the IOCP */
-            ov.release();
-            return;
-        }
-
-        if (err == ERROR_PIPE_CONNECTED)
+        const DWORD pending_error = ::GetLastError();
+        if (pending_error == ERROR_PIPE_CONNECTED)
         { /* Client connected between CreateNamedPipe() and ConnectNamedPipe() */
-            ov.complete(asio::error_code(), 0);
-            return;
+            return true;
         }
 
-        /* Error occurred */
-        ov.complete(asio::error_code(err, std::system_category()), 0);
+        if (pending_error != ERROR_IO_PENDING)
+        {
+            error = pending_error;
+            return false;
+        }
+
+        const HANDLE handles[2] = { accept_event, stop_event };
+        const DWORD  index = ::WaitForMultipleObjects(2, handles, FALSE, INFINITE);
+
+        if (index == detail::kWaitObjectFirst)
+        {
+            DWORD transferred = 0;
+            if (::GetOverlappedResult(instance, &accept_ov, &transferred, FALSE))
+            {
+                return true;
+            }
+
+            error = ::GetLastError();
+            return false;
+        }
+
+        if (index == detail::kWaitObjectFirst + 1)
+        { /* The accept was interrupted by Stop(). */
+            ::CancelIoEx(instance, &accept_ov);
+            ::WaitForSingleObject(accept_event, INFINITE);
+            error = ERROR_OPERATION_ABORTED;
+            return false;
+        }
+
+        error = ::GetLastError();
+        return false;
     }
 
     /**
-     * @brief Handle one finished ConnectNamedPipe() attempt.
-     * @param[in] ec Error code of the connect.
-     * @param[in] pipe The connected pipe handle.
+     * @brief Hand one connected instance over to a session of its own.
+     *
+     * The session owns the handle from here on, so the connection lives exactly
+     * as long as the session does.
+     *
+     * @param[in] instance Connected instance of the pipe.
      */
-    void OnConnected(asio::error_code ec, std::shared_ptr<asio::windows::stream_handle> pipe)
+    void OnConnected(HANDLE instance)
     {
-        if (ec)
-        {
-            if (stopping)
-            {
-                /* The accept was cancelled by Stop(). */
-                return;
-            }
-
-            const DWORD error = static_cast<DWORD>(ec.value());
-            if (detail::AccepterConnectionWasAbandoned(error))
-            {
-                /*
-                 * A client which connects and leaves before the connection was
-                 * established consumes the instance without starting a session.
-                 * The server still serves, so the next instance is created
-                 * instead of reporting a failure: a launcher which probes the
-                 * pipe of its sandbox must not stop the sandbox it probes.
-                 */
-                SPDLOG_DEBUG("[HANDLE: {}] a client left the pipe before the connection was established: {}",
-                             static_cast<void*>(pipe->native_handle()), ec.message());
-                AcceptNext();
-                return;
-            }
-
-            SPDLOG_WARN("[HANDLE: {}] server accept failed: {}", static_cast<void*>(pipe->native_handle()),
-                        ec.message());
-            ReportAcceptFailure(error);
-            return;
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(listener_mutex);
-            listener.reset();
-        }
-
         DWORD peer_pid = 0;
-        if (!::GetNamedPipeClientProcessId(pipe->native_handle(), &peer_pid))
+        if (!::GetNamedPipeClientProcessId(instance, &peer_pid))
         {
-            SPDLOG_WARN("[HANDLE: {}] cannot query the client process: {}", static_cast<void*>(pipe->native_handle()),
+            SPDLOG_WARN("[HANDLE: {}] cannot query the client process: {}", static_cast<void*>(instance),
                         ::GetLastError());
             peer_pid = 0;
         }
 
-        auto session = RemoteSession::Create(pipe, peer_pid, io_context);
+        RemoteSession::Ptr session;
+        try
+        {
+            session = RemoteSession::Create(instance, peer_pid);
+        }
+        catch (const std::exception& e)
+        {
+            SPDLOG_ERROR("cannot create the session of the connection: {}", e.what());
+            ::CloseHandle(instance);
+            return;
+        }
+
         session->SetMaxRequestSize(options.max_request_size);
 
         /*
@@ -550,9 +543,6 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
         }
 
         session->Start();
-
-        /* Keep at least one instance of the pipe alive for the next client. */
-        AcceptNext();
     }
 
     /**
@@ -589,48 +579,56 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
     }
 
     /**
-     * @brief Report a failure of the accept loop.
+     * @brief Release every session which is still in the table.
+     */
+    void ReleaseSessions()
+    {
+        /*
+         * The table is released outside of its lock: a session reports the end of
+         * its connection when it is destroyed, and that report takes the lock.
+         */
+        SessionMap remaining;
+        {
+            std::lock_guard<std::mutex> lock(session_map_mutex);
+            remaining.swap(session_map);
+        }
+        remaining.clear();
+    }
+
+    /**
+     * @brief Report a failure of the accept loop and decide whether it goes on.
      *
-     * A transient failure is retried with a growing delay, a fatal one is
-     * handed to the callback of the control plane. Nothing is thrown, the
-     * failure is reported on the IO thread which must not be left by an
-     * exception.
+     * A transient failure is retried with a growing delay, a fatal one is handed
+     * to the callback of the control plane. Nothing is thrown, the failure is
+     * reported on the accept thread which must not be left by an exception.
      *
      * @param[in] error Error code of the failed instance creation.
+     * @return true when the loop retries, false when it ends.
      */
-    void ReportAcceptFailure(DWORD error)
+    bool HandleAcceptFailure(DWORD error)
     {
         const AcceptFailureKind kind = detail::ClassifyAccepterAcceptError(error);
 
-        if (kind == AcceptFailureKind::StillServing && accept_retry < kAcceptRetryDelaysMs.size() && !stopping)
+        if (kind == AcceptFailureKind::StillServing && accept_retry < kAcceptRetryDelaysMs.size() && !stopping.load())
         {
             const std::uint32_t delay_ms = kAcceptRetryDelaysMs[accept_retry++];
 
             SPDLOG_WARN("cannot create a pipe instance: {}, retry {} in {} ms", error, accept_retry, delay_ms);
 
-            auto self = shared_from_this();
-            auto timer = std::make_shared<asio::steady_timer>(*io_context, std::chrono::milliseconds(delay_ms));
-            timer->async_wait([self, timer](const asio::error_code& ec) {
-                if (ec)
-                { /* Cancelled by the shutdown. */
-                    return;
-                }
-                if (self->stopping)
-                {
-                    return;
-                }
-                self->AcceptNext();
-            });
-            return;
+            /* The wait is bounded by the stop event, so a stop does not wait for it. */
+            if (::WaitForSingleObject(stop_event, delay_ms) == detail::kWaitObjectFirst)
+            {
+                return false;
+            }
+
+            return !stopping.load();
         }
 
         SPDLOG_ERROR("the pipe server cannot accept connections any more: {}", error);
         accept_failed = true;
 
-        {
-            std::lock_guard<std::mutex> lock(listener_mutex);
-            listener.reset();
-        }
+        HANDLE listener_to_close = TakeListener();
+        detail::CloseHandleIfValid(listener_to_close);
 
         AcceptFailureCallback callback;
         {
@@ -640,7 +638,7 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
 
         if (!callback)
         {
-            return;
+            return false;
         }
 
         try
@@ -655,10 +653,91 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
         {
             SPDLOG_ERROR("the accept failure callback failed");
         }
+
+        return false;
     }
 
     /**
-     * @brief Start the IO thread and the accept loop.
+     * @brief The loop of the accept thread.
+     *
+     * The loop keeps at least one instance of the pipe open for its whole life:
+     * it creates an instance, waits for a client, hands the connected instance
+     * to a session of its own and creates the next instance at once, so the name
+     * of the sandbox never disappears while the server serves.
+     */
+    void Run()
+    {
+        for (;;)
+        {
+            if (stopping.load())
+            {
+                return;
+            }
+
+            HANDLE instance = TakeListener();
+            if (instance == INVALID_HANDLE_VALUE)
+            {
+                DWORD error = ERROR_SUCCESS;
+                instance = CreateNextInstance(error);
+                if (instance == INVALID_HANDLE_VALUE)
+                {
+                    if (!HandleAcceptFailure(error))
+                    {
+                        return;
+                    }
+                    continue;
+                }
+            }
+
+            if (stopping.load())
+            {
+                detail::CloseHandleIfValid(instance);
+                return;
+            }
+
+            DWORD error = ERROR_SUCCESS;
+            if (!WaitForClient(instance, error))
+            {
+                detail::CloseHandleIfValid(instance);
+
+                if (stopping.load())
+                {
+                    return;
+                }
+
+                if (detail::AccepterConnectionWasAbandoned(error))
+                {
+                    /*
+                     * A client which connects and leaves before the connection
+                     * was established consumes the instance without starting a
+                     * session. The server still serves, so the next instance is
+                     * created instead of reporting a failure: a launcher which
+                     * probes the pipe of its sandbox must not stop the sandbox
+                     * it probes.
+                     */
+                    SPDLOG_DEBUG("a client left the pipe before the connection was established: {}", error);
+                    continue;
+                }
+
+                if (!HandleAcceptFailure(error))
+                {
+                    return;
+                }
+                continue;
+            }
+
+            if (stopping.load())
+            {
+                detail::CloseHandleIfValid(instance);
+                return;
+            }
+
+            OnConnected(instance);
+        }
+    }
+
+    /**
+     * @brief Start the accept thread.
      * @return true when the accepter is listening, otherwise false.
      */
     bool Start()
@@ -677,26 +756,36 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
             return false;
         }
 
-        auto self = shared_from_this();
-        auto context = io_context;
+        if (accept_event == nullptr || stop_event == nullptr)
+        {
+            SPDLOG_ERROR("the events of the pipe server cannot be created");
+            return false;
+        }
 
-        asio::post(*context, [self]() { self->BeginAccept(); });
-
-        /*
-         * The thread does not log when it ends: the accepter may be destroyed by
-         * a static destructor of the process, which runs after the logger of
-         * the process is gone.
-         */
-        thread = std::thread([context]() { context->run(); });
+        try
+        {
+            /*
+             * The thread holds the state of the accepter, so a server which the
+             * last caller releases while its thread still runs is not destroyed
+             * under that thread.
+             */
+            auto self = shared_from_this();
+            thread = std::thread([self]() { self->Run(); });
+        }
+        catch (const std::exception& e)
+        {
+            SPDLOG_ERROR("the accept thread of the pipe server cannot be created: {}", e.what());
+            return false;
+        }
 
         return true;
     }
 
     /**
-     * @brief Stop accepting connections and end the IO thread.
+     * @brief Stop accepting connections and end the accept thread.
      *
      * The call is idempotent. The requests which are already handled are
-     * answered first, then the sessions are drained and released, and the IO
+     * answered first, then the sessions are drained and released, and the accept
      * thread ends.
      */
     void Stop()
@@ -721,20 +810,23 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
         stopping = true;
 
         /*
-         * Refuse new connections: the pending accept is cancelled and the
-         * instance is released, which closes the handle on the IO thread when
-         * the completion handler drops its reference.
+         * Refuse new connections: the instance which waits for a client is
+         * released, the pending connect is cancelled and the accept thread is
+         * woken up, so it leaves its loop instead of waiting for a client which
+         * never comes.
          */
-        std::shared_ptr<asio::windows::stream_handle> listener_to_close;
+        HANDLE listener_to_close = TakeListener();
+        if (listener_to_close != INVALID_HANDLE_VALUE)
         {
-            std::lock_guard<std::mutex> lock(listener_mutex);
-            listener_to_close.swap(listener);
+            ::CancelIoEx(listener_to_close, nullptr);
         }
-        if (listener_to_close)
+
+        if (stop_event != nullptr)
         {
-            ::CancelIoEx(listener_to_close->native_handle(), nullptr);
+            ::SetEvent(stop_event);
         }
-        listener_to_close.reset();
+
+        detail::CloseHandleIfValid(listener_to_close);
 
         /*
          * Wait for the requests which the sessions are already handling. The
@@ -764,37 +856,13 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
         }
         sessions.clear();
 
-        /*
-         * The table is released outside of its lock: a session reports the end of
-         * its connection when it is destroyed, and that report takes the lock.
-         */
-        SessionMap remaining;
-        {
-            std::lock_guard<std::mutex> lock(session_map_mutex);
-            remaining.swap(session_map);
-        }
-        remaining.clear();
+        ReleaseSessions();
 
-        /* Stop the IO thread and release the handlers which are still queued. */
-        if (io_context)
-        {
-            io_context->stop();
-        }
+        /* End the accept thread and release the handlers which are still queued. */
+        detail::JoinOrDetach(thread);
 
-        if (thread.joinable())
-        {
-            if (std::this_thread::get_id() == thread.get_id())
-            {
-                SPDLOG_WARN("the pipe server is stopped from its own IO thread, the thread is detached");
-                thread.detach();
-            }
-            else
-            {
-                thread.join();
-            }
-        }
-
-        io_context.reset();
+        /* A connection which completed while the stop ran is released as well. */
+        ReleaseSessions();
 
         {
             std::lock_guard<std::mutex> lock(state_mutex);
@@ -818,14 +886,16 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
     detail::RemoteAccepterSecurityDescriptor security;           /* DACL and label of the pipe */
     detail::RemoteAccepterSecurityDescriptor security_dacl_only; /* DACL of the pipe without the label */
 
-    std::shared_ptr<asio::io_context> io_context; /* IO context of the private IO thread */
+    HANDLE     accept_event = nullptr; /* Signalled when the pending connect completed */
+    HANDLE     stop_event = nullptr;   /* Set by Stop() to interrupt the accept thread */
+    OVERLAPPED accept_ov = {};         /* Overlapped state of the connect in flight */
 
-    std::thread          thread;  /* Working thread */
-    std::atomic_uint64_t uid_gen; /* Session id generator */
+    std::thread          thread;       /* Accept thread */
+    std::atomic_uint64_t uid_gen{ 0 }; /* Session id generator */
 
-    std::shared_ptr<asio::windows::stream_handle> listener;               /* Instance which waits for a client */
-    bool                                          first_instance = false; /* First creation of the pipe */
-    std::mutex                                    listener_mutex;         /* Listener lock */
+    HANDLE     listener = INVALID_HANDLE_VALUE; /* Instance which waits for a client */
+    bool       first_instance = false;          /* First creation of the pipe */
+    std::mutex listener_mutex;                  /* Listener lock */
 
     SessionMap         session_map;       /* Sessions which are still connected */
     mutable std::mutex session_map_mutex; /* Session map lock */
@@ -908,18 +978,13 @@ inline RemoteAccepter::CreateResult RemoteAccepter::CreateCompetitive(const std:
         return result;
     }
 
-    try
+    /*
+     * The first instance waits for the first client on the accept thread, which
+     * takes it out of this slot when it starts.
+     */
     {
-        obj->data_->listener = std::make_shared<asio::windows::stream_handle>(*obj->data_->io_context, handle);
-    }
-    catch (const std::exception& e)
-    {
-        ::CloseHandle(handle);
-        SPDLOG_ERROR("cannot wrap the pipe instance: {}", e.what());
-
-        result.status = ServerCreateStatus::Failed;
-        result.error_code = ERROR_INVALID_HANDLE;
-        return result;
+        std::lock_guard<std::mutex> lock(obj->data_->listener_mutex);
+        obj->data_->listener = handle;
     }
 
     result.status = ServerCreateStatus::Created;
