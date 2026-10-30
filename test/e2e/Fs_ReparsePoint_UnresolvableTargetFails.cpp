@@ -1,4 +1,5 @@
 #include "probe/ReparsePoint.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -79,7 +80,7 @@ TEST_F(E2E_Fs, ReparsePoint_UnresolvableTargetFails)
     link.path = appbox::WideToUTF8(folder + L"\\link");
     req.items.push_back(link);
 
-    const auto rsp = ProbeReparsePoint.Call(req, GetCWD(), config).get<ProtocolReparsePoint::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolReparsePoint>(req);
     ASSERT_EQ(rsp.items.size(), static_cast<size_t>(3));
 
     /* The view refuses the call instead of forwarding it to the layer. */

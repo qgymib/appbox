@@ -6,6 +6,7 @@ add_executable(${PROJECT_NAME} WIN32
     "rpc/__init__.cpp"
     "rpc/Environment.cpp"
     "rpc/LauncherStart.cpp"
+    "rpc/RunState.cpp"
     "utils/CommandLineOptions.cpp"
     "utils/ConvertDosPathToNtPath.cpp"
     "utils/GetExecutableDir.cpp"

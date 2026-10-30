@@ -1,5 +1,6 @@
 #include "WinAPI.h" /* Must be first include file */
 #include "probe/CreateFileW.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -59,7 +60,7 @@ TEST_F(E2E_Fs, NewFile_WhiteoutInUpper)
         req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt");
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
-        auto rsp = ProbeCreateFileW.Call(req, GetCWD(), config).get<ProtocolCreateFileW::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateFileW>(req);
         ASSERT_EQ(rsp.code, 0);
     }
 

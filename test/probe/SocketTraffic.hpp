@@ -1,7 +1,6 @@
 #ifndef APPBOX_TEST_PROBE_SOCKET_TRAFFIC_HPP
 #define APPBOX_TEST_PROBE_SOCKET_TRAFFIC_HPP
 
-#include "probe/__init__.hpp"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -19,6 +18,8 @@ namespace appbox::test
  */
 struct ProtocolSocketTraffic
 {
+    static constexpr const char* Method = "SocketTraffic";
+
     /**
      * @brief Operation a step performs.
      */
@@ -156,8 +157,11 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolSocketTraffic::Operation,
 
 /**
  * @brief Carry the traffic of an application through the socket API.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeSocketTraffic;
+ProtocolSocketTraffic::Rsp ProbeSocketTraffic_Entry(const ProtocolSocketTraffic::Req& request);
 
 } // namespace appbox::test
 

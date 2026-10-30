@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGQUERYKEYNAME_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -11,6 +10,7 @@ namespace appbox::test
 
 struct ProtocolRegQueryKeyName
 {
+    static constexpr const char* Method = "RegQueryKeyName";
 
     struct Req
     {
@@ -35,8 +35,11 @@ struct ProtocolRegQueryKeyName
  * @brief Key name probe: create a key below HKCU inside the sandbox and report
  *        the key names of NtQueryKey(KeyNameInformation) and
  *        NtQueryObject(ObjectNameInformation).
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegQueryKeyName;
+ProtocolRegQueryKeyName::Rsp ProbeRegQueryKeyName_Entry(const ProtocolRegQueryKeyName::Req& request);
 
 } // namespace appbox::test
 

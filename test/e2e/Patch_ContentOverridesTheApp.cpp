@@ -1,5 +1,6 @@
 #include "probe/ListDir.hpp"
 #include "probe/ReadFileFull.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/PatchBuilder.hpp"
@@ -105,7 +106,7 @@ TEST_F(E2E_Patch, ContentOverridesTheApp)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(folder + L"\\" + kSharedName);
 
-        const auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.data, "bar");
     }
@@ -116,7 +117,7 @@ TEST_F(E2E_Patch, ContentOverridesTheApp)
         req.path = appbox::WideToUTF8(folder);
         req.method = ProtocolListDir::Req::Method::Std;
 
-        const auto rsp = ProbeListDir.Call(req, GetCWD(), config).get<ProtocolListDir::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);
         EXPECT_TRUE(HoldsFile(rsp, kSharedName));
         EXPECT_TRUE(HoldsFile(rsp, kAppName));
         EXPECT_TRUE(HoldsFile(rsp, kFirstPackageName));

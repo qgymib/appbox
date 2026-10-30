@@ -3,7 +3,8 @@
 #include "LoadedModules.hpp"
 #include "WString.hpp"
 
-static nlohmann::json ProbeLoadedModules_Entry(const nlohmann::json&)
+appbox::test::ProtocolLoadedModules::Rsp appbox::test::ProbeLoadedModules_Entry(
+    const appbox::test::ProtocolLoadedModules::Req& /*request*/)
 {
     appbox::test::ProtocolLoadedModules::Rsp rsp;
 
@@ -31,5 +32,3 @@ static nlohmann::json ProbeLoadedModules_Entry(const nlohmann::json&)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeLoadedModules("LoadedModules", ProbeLoadedModules_Entry);

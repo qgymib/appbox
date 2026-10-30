@@ -1,4 +1,5 @@
 #include "probe/ListDirNt.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/RealFsFolder.hpp"
@@ -106,7 +107,7 @@ TEST_F(E2E_Fs, ListDir_UnregisteredNotInView)
         req.create_file = true; /* A file is not opened with `FILE_DIRECTORY_FILE`. */
         req.duplicate = true;
 
-        auto rsp = ProbeListDirNt.Call(req, GetCWD(), config).get<ProtocolListDirNt::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolListDirNt>(req);
         ExpectForwarded(rsp.status, rsp.names);
     }
 
@@ -119,7 +120,7 @@ TEST_F(E2E_Fs, ListDir_UnregisteredNotInView)
         req.create_file = true;
         req.duplicate = true;
 
-        auto rsp = ProbeListDirNt.Call(req, GetCWD(), config).get<ProtocolListDirNt::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolListDirNt>(req);
         ExpectForwarded(rsp.status, rsp.names);
     }
 
@@ -132,7 +133,7 @@ TEST_F(E2E_Fs, ListDir_UnregisteredNotInView)
         req.duplicate = true;
         req.remove_before_query = true;
 
-        auto rsp = ProbeListDirNt.Call(req, GetCWD(), config).get<ProtocolListDirNt::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolListDirNt>(req);
         ExpectRefusedByView(rsp.status, rsp.names);
     }
 

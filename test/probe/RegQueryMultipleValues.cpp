@@ -65,9 +65,10 @@ std::string FormatValueData(const BYTE* data, DWORD size)
  * The call runs inside the sandbox, so the registry isolation has to answer the
  * batch from the layer which holds each value.
  */
-static nlohmann::json ProbeRegQueryMultipleValues_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegQueryMultipleValues::Rsp appbox::test::ProbeRegQueryMultipleValues_Entry(
+    const appbox::test::ProtocolRegQueryMultipleValues::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolRegQueryMultipleValues::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegQueryMultipleValues::Rsp rsp;
 
@@ -139,6 +140,3 @@ static nlohmann::json ProbeRegQueryMultipleValues_Entry(const nlohmann::json& da
     RegCloseKey(key);
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegQueryMultipleValues("RegQueryMultipleValues",
-                                                              ProbeRegQueryMultipleValues_Entry);

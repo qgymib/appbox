@@ -1,5 +1,6 @@
 #include "probe/RegDeleteValue.hpp"
 #include "probe/RegReadValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -56,7 +57,7 @@ TEST_F(E2E_Reg, Merge_DeletesTheHostValue)
         req.Key = appbox::WideToUTF8(subkey);
         req.Value = "HostValue";
 
-        const auto rsp = ProbeRegDeleteValue.Call(req, GetCWD(), config).get<ProtocolRegDeleteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteValue>(req);
         ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.delete_code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -75,7 +76,7 @@ TEST_F(E2E_Reg, Merge_DeletesTheHostValue)
         req.Key = appbox::WideToUTF8(subkey);
         req.Value = "HostValue";
 
-        const auto rsp = ProbeRegReadValue.Call(req, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);
         EXPECT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
 }

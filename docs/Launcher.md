@@ -248,7 +248,7 @@ another user or a name which a launcher of this user took; the flag cannot tell
 the two apart. One connection to the pipe decides it: a name which accepts the
 connection belongs to a running sandbox, and so does a name whose instances all
 serve a client at that moment, which refuses the connection with
-`ERROR_PIPE_BUSY` (`RemoteServerPeerIsReachable()`). Only a name whose access
+`ERROR_PIPE_BUSY` (`AccepterPeerIsReachable()`). Only a name whose access
 control refuses the connection belongs to another user. A busy pipe is therefore
 no reason to refuse the run: the handover of a secondary instance waits for the
 next free instance of the pipe, which the master instance creates as soon as it
@@ -256,7 +256,7 @@ accepted a connection.
 
 The master instance keeps at least one instance of the pipe open for its whole
 life and creates the next instance once a connection was established
-(`RemoteServer::AcceptNext()`), so the name of the sandbox never disappears while
+(`RemoteAccepter::AcceptNext()`), so the name of the sandbox never disappears while
 the sandbox runs. A transient failure of that creation, which is a machine out of
 resources while an instance still serves, is retried after 50, 100 and 200 ms; a
 failure which leaves no instance at all ends the run, because no secondary
@@ -357,6 +357,39 @@ whose exit code it could report:
 | `start_failed` | A process could not be created; `win32_error` carries the code | the Win32 code |
 | `shutting_down` | The run is ending | `ERROR_TIMEOUT` (1460) once the budget of the race is used up |
 
+### The state of a run
+
+The master instance answers the message `RunState` of
+`launcher/msg/RunState.hpp` with the state of its run: the stage the run
+reached, the startup screen of the session, the folder a self-extracting program
+extracted its payload into, the requests the run queued and handled, the
+processes a rollback terminated and every program the run created. The query is
+read-only: it starts nothing, changes nothing and is answered on the thread which
+serves the pipe, so a client may ask a run which is still preparing its sandbox.
+
+| Member | Meaning |
+| --- | --- |
+| `version` | Layout of the query (`1`). A version the master instance does not know is refused with `version_unsupported`. |
+| `stage` | Name of the last stage the run reported: `extracting_payload`, `preparing`, `loading_patches`, `mounting_sandbox` or `starting_application`. |
+| `prepared` | Whether the runtime of the sandbox exists, which a start request needs. |
+| `screen_shown`, `screen_closed` | Whether a startup screen was created for the session and whether it was closed again. Both are facts of the past: a run which closed its screen still reports that the screen was shown. |
+| `image_width`, `image_height` | Size of the startup image the screen decoded, zero while the session sets none or while the image could not be decoded. |
+| `image_error` | Reason the startup image could not be decoded, empty on success. |
+| `extraction_root` | Host folder a self-extracting program extracted its payload into, empty for a run which carries no payload. |
+| `queued_requests`, `queued_before_prepared` | Requests which waited for the control thread, and of those the ones which arrived before the sandbox was prepared. |
+| `handled_requests` | Requests whose programs the run created. |
+| `rolled_back_processes` | Processes a rollback terminated. The rollback runs before the client of the refused request receives its answer, so the count is complete when that client leaves. |
+| `programs` | Every program of the run in the order it was created: `pid`, `initial`, `request_id`, `exited`, `terminated` and `exit_code`. `terminated` names a program the rollback of its request terminated, which the exit code of the process alone cannot tell, because the termination of a job is asynchronous. |
+
+The answer is a fact of the protocol and not of the log of the run: a log file is
+a diagnostic artifact which a run writes for a reader of a failed run, and no
+client depends on its text.
+
+A client which may read the state is a client of the user of the run at the
+integrity level of the run; the image of the client is not compared, unlike the
+one of a start request, because the query starts nothing. The pipe itself admits
+its owner, `SYSTEM` and the administrators only.
+
 ### What the master instance starts
 
 The selection names startup files of the configuration of the master instance and
@@ -393,7 +426,9 @@ already created are terminated and the request is answered with `refused`, so a
 run never carries half a request. A refused request never terminates a program of
 the run or of another request. Only the programs of the configuration decide the
 exit code of the run; a program of a request belongs to the launcher which asked
-for it, and a refused request is no reason for the run to fail.
+for it, and a refused request is no reason for the run to fail. The rollback and
+the programs it terminated are reported by
+[the state of the run](#the-state-of-a-run).
 
 ### The working directory of a request
 
@@ -473,7 +508,8 @@ facts match its own identity:
 An image or a user which differs is answered with `unauthorized`, another
 integrity level with `integrity_mismatch`. The environment messages of the
 sandboxed processes are not affected by the check, because every sandboxed
-process connects to the same pipe.
+process connects to the same pipe. The read-only state query keeps a rule of its
+own, see [The state of a run](#the-state-of-a-run).
 
 The image is the only fact of the program which is compared, because the
 injection module leaves every launcher alone: a launcher runs the file it was

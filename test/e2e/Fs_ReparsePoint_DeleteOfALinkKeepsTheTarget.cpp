@@ -1,4 +1,5 @@
 #include "probe/ReparsePoint.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -83,7 +84,7 @@ TEST_F(E2E_Fs, ReparsePoint_DeleteOfALinkKeepsTheTarget)
     target_after.path = appbox::WideToUTF8(folder + L"\\target\\data.txt");
     req.items.push_back(target_after);
 
-    const auto rsp = ProbeReparsePoint.Call(req, GetCWD(), config).get<ProtocolReparsePoint::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolReparsePoint>(req);
     ASSERT_EQ(rsp.items.size(), static_cast<size_t>(5));
 
     /* The entry the caller spelled is the junction itself. */

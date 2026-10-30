@@ -1,4 +1,5 @@
 #include "probe/RegWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "Random.hpp"
@@ -36,7 +37,7 @@ TEST_F(E2E_Reg, WriteValue_NewKey)
     req.Value = "TestValue";
     req.Data = expected;
 
-    auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+    auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
     ASSERT_EQ(rsp.create_code, 0u);
     ASSERT_EQ(rsp.set_code, 0u);
     ASSERT_EQ(rsp.query_code, 0u);

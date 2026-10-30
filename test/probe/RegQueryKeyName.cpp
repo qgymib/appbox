@@ -12,9 +12,10 @@
  * private mount (\REGISTRY\A\{GUID}\...), so the sandboxed process cannot
  * observe the implementation detail of the registry isolation.
  */
-static nlohmann::json ProbeRegQueryKeyName_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegQueryKeyName::Rsp appbox::test::ProbeRegQueryKeyName_Entry(
+    const appbox::test::ProtocolRegQueryKeyName::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolRegQueryKeyName::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegQueryKeyName::Rsp rsp;
 
@@ -79,5 +80,3 @@ static nlohmann::json ProbeRegQueryKeyName_Entry(const nlohmann::json& data)
     RegCloseKey(key);
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegQueryKeyName("RegQueryKeyName", ProbeRegQueryKeyName_Entry);

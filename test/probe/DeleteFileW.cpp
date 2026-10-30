@@ -3,10 +3,11 @@
 
 using namespace appbox::test;
 
-static nlohmann::json ProbeDeleteFileW_Entry(const nlohmann::json& data)
+appbox::test::ProtocolDeleteFileW::Rsp appbox::test::ProbeDeleteFileW_Entry(
+    const appbox::test::ProtocolDeleteFileW::Req& request)
 {
-    auto req = data.template get<ProtocolDeleteFileW::Req>();
-    auto wFileName = appbox::UTF8ToWide(req.FileName);
+    const auto& req = request;
+    auto        wFileName = appbox::UTF8ToWide(req.FileName);
 
     ProtocolDeleteFileW::Rsp rsp;
     if (!DeleteFileW(wFileName.c_str()))
@@ -16,5 +17,3 @@ static nlohmann::json ProbeDeleteFileW_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeDeleteFileW("DeleteFileW", ProbeDeleteFileW_Entry);

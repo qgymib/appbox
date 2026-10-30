@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REMOVEDIRECTORY_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <string>
 #include <nlohmann/json.hpp>
 
@@ -11,6 +10,8 @@ namespace appbox::test
 
 struct ProtocolRemoveDirectory
 {
+    static constexpr const char* Method = "RemoveDirectory";
+
     struct Req
     {
         std::string PathName;
@@ -26,8 +27,11 @@ struct ProtocolRemoveDirectory
 
 /**
  * @brief RemoveDirectoryW probe.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRemoveDirectory;
+ProtocolRemoveDirectory::Rsp ProbeRemoveDirectory_Entry(const ProtocolRemoveDirectory::Req& request);
 
 } // namespace appbox::test
 

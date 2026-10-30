@@ -11,7 +11,7 @@ namespace appbox::test
 /**
  * @brief Client which writes and reads the frames of a control pipe itself.
  *
- * The client of `common/RemoteClient.hpp` sends what a launcher sends and
+ * The client of `common/RemoteConnector.hpp` sends what a launcher sends and
  * refuses to build a frame which is no request, so a case which exercises the
  * robustness of the master instance against a client which is not a launcher
  * talks to the pipe directly: it writes the payload of a frame as it is and
@@ -92,6 +92,19 @@ public:
     std::uint32_t LastError() const;
 
 private:
+    /**
+     * @brief Open the client end of the pipe, waiting for a free instance.
+     *
+     * The server creates the next instance of the pipe once a connection was
+     * established, so a burst of clients can find every instance busy. The
+     * connection is retried until the budget is used up, which is what a client
+     * of the launcher does as well.
+     *
+     * @return true when the handle is usable.
+     */
+    bool Connect();
+
+    std::string   pipe_path_;  /* Name of the pipe the client connects to. */
     void*         handle_;     /* Client end of the pipe, `INVALID_HANDLE_VALUE` when it cannot be opened. */
     std::uint32_t last_error_; /* Win32 code of the last failed operation. */
 };

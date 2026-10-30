@@ -3,14 +3,13 @@
 #include "ReadFileFull.hpp"
 #include "WString.hpp"
 
-static nlohmann::json ProbeReadFile_Entry(const nlohmann::json& data)
+appbox::test::ProtocolReadFileFull::Rsp appbox::test::ProbeReadFileFull_Entry(
+    const appbox::test::ProtocolReadFileFull::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolReadFileFull::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolReadFileFull::Rsp rsp;
     rsp.code = appbox::test::ReadFileFull(appbox::UTF8ToWide(req.FileName), rsp.data);
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeReadFileFull("ReadFile", ProbeReadFile_Entry);

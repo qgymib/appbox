@@ -85,9 +85,10 @@ bool ContainsText(const std::vector<BYTE>& data, const std::string& text)
  * The call runs inside the sandbox, so the registry isolation has to export the
  * merged view of the key instead of the raw hive layer.
  */
-static nlohmann::json ProbeRegSaveKey_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegSaveKey::Rsp appbox::test::ProbeRegSaveKey_Entry(
+    const appbox::test::ProtocolRegSaveKey::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolRegSaveKey::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegSaveKey::Rsp rsp;
 
@@ -170,5 +171,3 @@ static nlohmann::json ProbeRegSaveKey_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegSaveKey("RegSaveKey", ProbeRegSaveKey_Entry);

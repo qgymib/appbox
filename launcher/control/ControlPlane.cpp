@@ -13,7 +13,7 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "RemoteClient.hpp"
+#include "RemoteConnector.hpp"
 #include "KnownFolder.hpp"
 #include "WString.hpp"
 #include "utils/HostPath.hpp"
@@ -178,11 +178,11 @@ std::string CurrentDirectory()
  * which occupied the name of the control pipe of a sandbox is therefore refused
  * before the request of this run is sent to it.
  *
- * @param[in] client Client which is connected to the pipe.
+ * @param[in] session Session which is connected to the pipe.
  * @param[out] error_message Reason the server is not trusted, empty on success.
  * @return true when the server may receive the request.
  */
-bool VerifyMasterInstance(appbox::RemoteClient& client, std::string& error_message)
+bool VerifyMasterInstance(const appbox::RemoteSession& session, std::string& error_message)
 {
     error_message.clear();
 
@@ -193,7 +193,7 @@ bool VerifyMasterInstance(appbox::RemoteClient& client, std::string& error_messa
         return false;
     }
 
-    const DWORD server_pid = client.ServerProcessId();
+    const DWORD server_pid = session.PeerProcessId();
     if (server_pid == 0)
     {
         error_message = "the process at the other end of the control pipe is unknown";
@@ -391,8 +391,13 @@ appbox::SecondaryHandover appbox::RunSecondaryInstance(const std::string& pipe, 
 {
     SecondaryHandover handover;
 
-    auto client = appbox::RemoteClient::Create(pipe);
-    if (!client->Start(kSecondaryConnectTimeoutMs))
+    /*
+     * The connector owns the IO thread the session runs on, so it is declared
+     * before the session and released after it.
+     */
+    auto connector = appbox::RemoteConnector::Create(pipe);
+    auto session = connector->Connect(kSecondaryConnectTimeoutMs);
+    if (!session)
     {
         /*
          * The pipe was named by the race which this run lost, so it existed a
@@ -412,7 +417,7 @@ appbox::SecondaryHandover appbox::RunSecondaryInstance(const std::string& pipe, 
      * sandbox.
      */
     std::string server_error;
-    if (!VerifyMasterInstance(*client, server_error))
+    if (!VerifyMasterInstance(*session, server_error))
     {
         SPDLOG_ERROR("the server of the control pipe is not the master instance of the sandbox: {}", server_error);
         handover.exit_code = ERROR_ACCESS_DENIED;
@@ -421,7 +426,7 @@ appbox::SecondaryHandover appbox::RunSecondaryInstance(const std::string& pipe, 
 
     SPDLOG_INFO("hand the start request over to the master instance of the sandbox");
 
-    const auto result = client->Call(MsgLauncherStart::Method, nlohmann::json(request), kSecondaryStartTimeoutMs);
+    const auto result = session->Call<MsgLauncherStart>(request, kSecondaryStartTimeoutMs);
     if (!result.has_value())
     {
         if (result.error().code == static_cast<int>(ERROR_TIMEOUT))
@@ -429,6 +434,14 @@ appbox::SecondaryHandover appbox::RunSecondaryInstance(const std::string& pipe, 
             /* The master instance is alive but does not answer, which is no race to retry. */
             SPDLOG_ERROR("the master instance did not answer the start request: {}", result.error().message);
             handover.exit_code = ERROR_TIMEOUT;
+            return handover;
+        }
+
+        if (result.error().code == appbox::kResponseDecodeErrorCode)
+        {
+            /* The server answered, but not with the protocol this run speaks. */
+            SPDLOG_ERROR("the answer of the master instance cannot be read: {}", result.error().message);
+            handover.exit_code = ERROR_INVALID_DATA;
             return handover;
         }
 
@@ -444,17 +457,7 @@ appbox::SecondaryHandover appbox::RunSecondaryInstance(const std::string& pipe, 
         return handover;
     }
 
-    MsgLauncherStart::Rsp response;
-    try
-    {
-        response = result.value().get<MsgLauncherStart::Rsp>();
-    }
-    catch (const nlohmann::json::exception& e)
-    {
-        SPDLOG_ERROR("the answer of the master instance cannot be read: {}", e.what());
-        handover.exit_code = ERROR_INVALID_DATA;
-        return handover;
-    }
+    const MsgLauncherStart::Rsp& response = result.value();
 
     /*
      * The answer names the sandbox of the server which sent it: a server of
@@ -494,12 +497,12 @@ appbox::SecondaryHandover appbox::RunSecondaryInstance(const std::string& pipe, 
 
 struct appbox::ControlPlane::Data
 {
-    Data(appbox::RemoteServer::Ptr pipe_server, std::wstring root)
-        : server(std::move(pipe_server)), sandbox_root(std::move(root))
+    Data(appbox::RemoteAccepter::Ptr pipe_accepter, std::wstring root)
+        : accepter(std::move(pipe_accepter)), sandbox_root(std::move(root))
     {
     }
 
-    appbox::RemoteServer::Ptr                 server;       /* Pipe server which serves the sandbox. */
+    appbox::RemoteAccepter::Ptr               accepter;     /* Accepter which serves the sandbox. */
     std::wstring                              sandbox_root; /* Host directory which carries the sandbox. */
     std::deque<LauncherStartRequest>          queue;        /* Requests which wait for the control thread. */
     mutable std::mutex                        mutex;        /* Guards the queue, which the IO thread fills. */
@@ -512,10 +515,20 @@ struct appbox::ControlPlane::Data
     std::atomic<bool>                         shutting_down{ false };  /* True once the run ends. */
     std::atomic<bool>                         accept_failed{ false };  /* True once the pipe serves no connection. */
     std::atomic<DWORD>                        accept_error{ 0 };       /* Code of the failure of the accept loop. */
+
+    /*
+     * The counters describe what the run did with the requests of the other
+     * launchers: they are the facts the state query of the run reports instead
+     * of the lines the log of the run happens to carry.
+     */
+    std::atomic<std::uint64_t> queued_requests{ 0 };        /* Requests which waited for the control thread. */
+    std::atomic<std::uint64_t> queued_before_prepared{ 0 }; /* Requests which arrived before the sandbox existed. */
+    std::atomic<std::uint64_t> handled_requests{ 0 };       /* Requests whose programs were created. */
+    std::atomic<std::uint64_t> rolled_back_processes{ 0 };  /* Processes a rollback terminated. */
 };
 
-appbox::ControlPlane::ControlPlane(appbox::RemoteServer::Ptr server, const std::wstring& sandbox_root)
-    : data_(new Data(std::move(server), sandbox_root))
+appbox::ControlPlane::ControlPlane(appbox::RemoteAccepter::Ptr accepter, const std::wstring& sandbox_root)
+    : data_(new Data(std::move(accepter), sandbox_root))
 {
     /*
      * The identity of the run is read once: every request of another launcher is
@@ -532,20 +545,21 @@ appbox::ControlPlane::ControlPlane(appbox::RemoteServer::Ptr server, const std::
 appbox::ControlPlane::~ControlPlane()
 {
     /*
-     * The server is stopped before the queue is released: a handler which is in
-     * flight answers over it, and the stop waits for the handlers of the pipe.
+     * The accepter is stopped before the queue is released: a handler which is
+     * in flight answers over its session, and the stop waits for the handlers of
+     * the pipe.
      */
-    if (data_->server)
+    if (data_->accepter)
     {
-        data_->server->Stop();
+        data_->accepter->Stop();
     }
 
     delete data_;
 }
 
-const appbox::RemoteServer::Ptr& appbox::ControlPlane::Server() const
+const appbox::RemoteAccepter::Ptr& appbox::ControlPlane::Server() const
 {
-    return data_->server;
+    return data_->accepter;
 }
 
 const std::wstring& appbox::ControlPlane::SandboxRoot() const
@@ -581,7 +595,8 @@ const appbox::ViewPathResolver& appbox::ControlPlane::Resolver() const
     return *data_->resolver;
 }
 
-bool appbox::ControlPlane::Authenticate(std::uint64_t rpc_id, std::string& error_code, std::string& error_message)
+bool appbox::ControlPlane::Authenticate(const appbox::RemoteSession::Ptr& session, std::uint64_t rpc_id,
+                                        std::string& error_code, std::string& error_message)
 {
     error_code.clear();
     error_message.clear();
@@ -592,7 +607,7 @@ bool appbox::ControlPlane::Authenticate(std::uint64_t rpc_id, std::string& error
      * sandbox runs, so only the process which sent the request tells whether the
      * request may start a program at all.
      */
-    const DWORD peer_pid = data_->server != nullptr ? data_->server->PeerProcessIdOfRequest(rpc_id) : 0;
+    const DWORD peer_pid = session != nullptr ? session->PeerProcessIdOfRequest(rpc_id) : 0;
     if (peer_pid == 0)
     {
         error_code = launcher_start_error::kUnauthorized;
@@ -628,6 +643,81 @@ bool appbox::ControlPlane::Authenticate(std::uint64_t rpc_id, std::string& error
 
     SPDLOG_WARN("the start request of the process {} is refused: {} ({})", peer_pid, error_code, error_message);
     return false;
+}
+
+bool appbox::ControlPlane::AuthenticateQuery(const appbox::RemoteSession::Ptr& session, std::uint64_t rpc_id,
+                                             std::string& error_code, std::string& error_message)
+{
+    error_code.clear();
+    error_message.clear();
+
+    /*
+     * The query starts nothing, so the process at the other end is only asked
+     * for the user and the integrity level of the run: a client which may read
+     * the state of the sandbox is a client of the user who runs it.
+     */
+    const DWORD peer_pid = session != nullptr ? session->PeerProcessIdOfRequest(rpc_id) : 0;
+    if (peer_pid == 0)
+    {
+        error_code = run_state_error::kUnauthorized;
+        error_message = "the process at the other end of the control pipe is unknown";
+        SPDLOG_WARN("the state query is refused: {}", error_message);
+        return false;
+    }
+
+    appbox::control::ProcessIdentity peer;
+    if (!appbox::control::QueryProcessIdentity(peer_pid, peer))
+    {
+        error_code = run_state_error::kUnauthorized;
+        error_message = "the identity of the process " + std::to_string(peer_pid) + " cannot be read";
+        SPDLOG_WARN("the state query is refused: {}", error_message);
+        return false;
+    }
+
+    switch (appbox::control::AuthorizeQuery(peer, data_->own_identity, error_message))
+    {
+    case appbox::control::PeerVerdict::Authorized:
+        SPDLOG_DEBUG("the state query of the process {} is authorized", peer_pid);
+        return true;
+
+    case appbox::control::PeerVerdict::IntegrityMismatch:
+        error_code = run_state_error::kIntegrityMismatch;
+        break;
+
+    case appbox::control::PeerVerdict::Unauthorized:
+    default:
+        error_code = run_state_error::kUnauthorized;
+        break;
+    }
+
+    SPDLOG_WARN("the state query of the process {} is refused: {} ({})", peer_pid, error_code, error_message);
+    return false;
+}
+
+void appbox::ControlPlane::FillRunState(appbox::MsgRunState::Rsp& state)
+{
+    state.queued_requests = data_->queued_requests.load();
+    state.queued_before_prepared = data_->queued_before_prepared.load();
+    state.handled_requests = data_->handled_requests.load();
+    state.rolled_back_processes = data_->rolled_back_processes.load();
+
+    std::vector<appbox::JobState> jobs;
+    data_->jobs.Snapshot(jobs);
+
+    state.programs.clear();
+    state.programs.reserve(jobs.size());
+
+    for (const auto& job : jobs)
+    {
+        appbox::MsgRunState::Program program;
+        program.pid = job.pid;
+        program.initial = job.origin == appbox::JobOrigin::Initial;
+        program.request_id = job.request_id;
+        program.exited = job.exited;
+        program.terminated = job.terminated;
+        program.exit_code = job.exit_code;
+        state.programs.push_back(std::move(program));
+    }
 }
 
 appbox::EnqueueResult appbox::ControlPlane::Enqueue(LauncherStartRequest request)
@@ -666,6 +756,17 @@ appbox::EnqueueResult appbox::ControlPlane::Enqueue(LauncherStartRequest request
      */
     data_->jobs.Wake();
 
+    /*
+     * A request which arrived before the runtime of the sandbox exists waited
+     * for the preparation of the run, which is the window a launcher of an
+     * archive which is still being unpacked sends its request in.
+     */
+    data_->queued_requests.fetch_add(1);
+    if (!LauncherApp().run_facts.prepared.load())
+    {
+        data_->queued_before_prepared.fetch_add(1);
+    }
+
     SPDLOG_INFO("the start request of the sandbox is queued, {} request(s) wait", QueuedRequests());
     return EnqueueResult::Queued;
 }
@@ -692,8 +793,8 @@ void appbox::ControlPlane::Shutdown()
 
     for (const auto& request : pending)
     {
-        ReplyStatus(request.rpc_id, launcher_start_status::kShuttingDown, launcher_start_error::kShuttingDown,
-                    "the sandbox ends its run", 0);
+        ReplyStatus(request.session, request.rpc_id, launcher_start_status::kShuttingDown,
+                    launcher_start_error::kShuttingDown, "the sandbox ends its run", 0);
     }
 
     if (!pending.empty())
@@ -701,9 +802,9 @@ void appbox::ControlPlane::Shutdown()
         SPDLOG_INFO("%zu start request(s) are answered with the end of the run", pending.size());
     }
 
-    if (data_->server)
+    if (data_->accepter)
     {
-        data_->server->Stop();
+        data_->accepter->Stop();
     }
 }
 
@@ -810,14 +911,15 @@ void appbox::ControlPlane::DrainQueue()
     }
 }
 
-void appbox::ControlPlane::Refuse(std::uint64_t rpc_id, const std::string& error_code, const std::string& error_message,
-                                  DWORD win32_error)
+void appbox::ControlPlane::Refuse(const appbox::RemoteSession::Ptr& session, std::uint64_t rpc_id,
+                                  const std::string& error_code, const std::string& error_message, DWORD win32_error)
 {
     SPDLOG_WARN("the start request is refused: {} ({})", error_code, error_message);
-    ReplyStatus(rpc_id, launcher_start_status::kRefused, error_code, error_message, win32_error);
+    ReplyStatus(session, rpc_id, launcher_start_status::kRefused, error_code, error_message, win32_error);
 }
 
-void appbox::ControlPlane::ReplyStatus(std::uint64_t rpc_id, const std::string& status, const std::string& error_code,
+void appbox::ControlPlane::ReplyStatus(const appbox::RemoteSession::Ptr& session, std::uint64_t rpc_id,
+                                       const std::string& status, const std::string& error_code,
                                        const std::string& error_message, DWORD win32_error)
 {
     MsgLauncherStart::Rsp response;
@@ -827,18 +929,19 @@ void appbox::ControlPlane::ReplyStatus(std::uint64_t rpc_id, const std::string& 
     response.error_message = error_message;
     response.win32_error = static_cast<int>(win32_error);
 
-    Reply(rpc_id, response);
+    Reply(session, rpc_id, response);
 }
 
-void appbox::ControlPlane::Reply(std::uint64_t rpc_id, const MsgLauncherStart::Rsp& response)
+void appbox::ControlPlane::Reply(const appbox::RemoteSession::Ptr& session, std::uint64_t rpc_id,
+                                 const MsgLauncherStart::Rsp& response)
 {
-    if (!data_->server)
+    if (!session)
     {
-        SPDLOG_ERROR("the sandbox has no pipe server, the answer of the request is dropped");
+        SPDLOG_ERROR("the request has no session, the answer of the request is dropped");
         return;
     }
 
-    data_->server->SendResponse(rpc_id, nlohmann::json(response));
+    session->SendResponse(rpc_id, nlohmann::json(response));
 }
 
 bool appbox::ControlPlane::BuildRequestTargets(const MsgLauncherStart::Req& request, std::vector<LaunchTarget>& targets,
@@ -944,14 +1047,15 @@ void appbox::ControlPlane::ProcessRequest(LauncherStartRequest& request)
     std::string               error_message;
     if (!BuildRequestTargets(request.request, targets, error_code, error_message))
     {
-        Refuse(request.rpc_id, error_code, error_message);
+        Refuse(request.session, request.rpc_id, error_code, error_message);
         return;
     }
 
     const auto& runtime = LauncherApp().runtime;
     if (!runtime)
     {
-        Refuse(request.rpc_id, launcher_start_error::kStartFailed, "the sandbox of the run is not prepared");
+        Refuse(request.session, request.rpc_id, launcher_start_error::kStartFailed,
+               "the sandbox of the run is not prepared");
         return;
     }
 
@@ -984,7 +1088,7 @@ void appbox::ControlPlane::ProcessRequest(LauncherStartRequest& request)
     std::string  cwd_error;
     if (!ResolveRequestDirectory(request.request, current_directory, cwd_error))
     {
-        Refuse(request.rpc_id, launcher_start_error::kCwdNotFound, cwd_error);
+        Refuse(request.session, request.rpc_id, launcher_start_error::kCwdNotFound, cwd_error);
         return;
     }
 
@@ -1012,10 +1116,12 @@ void appbox::ControlPlane::ProcessRequest(LauncherStartRequest& request)
              * programs of another request are not touched.
              */
             const auto terminated = jobs.TerminateRequest(request.request_id);
+            data_->rolled_back_processes.fetch_add(terminated);
+
             SPDLOG_ERROR("failed to start '{}' of the request: {}, {} process(es) of the request terminated",
                          target.name, ret, terminated);
-            Refuse(request.rpc_id, launcher_start_error::kStartFailed, "the program of the request cannot be created",
-                   ret);
+            Refuse(request.session, request.rpc_id, launcher_start_error::kStartFailed,
+                   "the program of the request cannot be created", ret);
             return;
         }
 
@@ -1023,7 +1129,10 @@ void appbox::ControlPlane::ProcessRequest(LauncherStartRequest& request)
         response.pids.push_back(job != nullptr ? job->ProcessId() : 0u);
     }
 
-    Reply(request.rpc_id, response);
+    Reply(request.session, request.rpc_id, response);
+
+    /* Every program of the request was created, which the state query reports. */
+    data_->handled_requests.fetch_add(1);
 
     for (const auto pid : response.pids)
     {

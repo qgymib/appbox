@@ -1,4 +1,5 @@
 #include "probe/RegReadValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -66,7 +67,7 @@ TEST_F(E2E_Reg, Full_HidesRealValue)
     shared.Key = appbox::WideToUTF8(subkey);
     shared.Value = "Shared";
 
-    const auto shared_rsp = ProbeRegReadValue.Call(shared, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
+    const auto shared_rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(shared);
     ASSERT_EQ(shared_rsp.open_code, 0u);
     ASSERT_EQ(shared_rsp.query_code, 0u);
     EXPECT_EQ(shared_rsp.data, "sandbox");
@@ -75,7 +76,7 @@ TEST_F(E2E_Reg, Full_HidesRealValue)
     hidden.Key = appbox::WideToUTF8(subkey);
     hidden.Value = "RealOnly";
 
-    const auto hidden_rsp = ProbeRegReadValue.Call(hidden, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
+    const auto hidden_rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(hidden);
     EXPECT_EQ(hidden_rsp.open_code, 0u);
     EXPECT_EQ(hidden_rsp.query_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
 

@@ -1,4 +1,5 @@
 #include "probe/ResolveName.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/NetworkIsolationBuilder.hpp"
@@ -77,7 +78,7 @@ TEST_F(E2E_Net, Dns_EveryResolutionApiIsRedirected)
         req.questions.push_back({ kUnlistedName, api, AF_UNSPEC, DNS_TYPE_A });
     }
 
-    const auto rsp = ProbeResolveName.Call(req, GetCWD(), config).get<ProtocolResolveName::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolResolveName>(req);
     ASSERT_EQ(rsp.answers.size(), req.questions.size());
 
     /* Every API of the name resolution answers the redirected hostname. */

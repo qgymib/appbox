@@ -1,5 +1,6 @@
 #include "probe/ReadFileFull.hpp"
 #include "probe/SetInformationFile.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -79,7 +80,7 @@ ProtocolSetInformationFile::Rsp SetNames(const std::vector<SetNameAction>& actio
         req.items.push_back(item);
     }
 
-    return ProbeSetInformationFile.Call(req, cwd, config).get<ProtocolSetInformationFile::Rsp>();
+    return Probe(cwd, config).Call<ProtocolSetInformationFile>(req);
 }
 
 } // namespace
@@ -138,7 +139,7 @@ TEST_F(E2E_Fs, Marker_RenameToAReservedNameIsRefused)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(FolderPath() + L"\\source.txt");
 
-        const auto read = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        const auto read = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(read.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(read.data, "packed");
     }

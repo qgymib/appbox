@@ -5,6 +5,7 @@
 #include <vector>
 #include "WString.hpp"
 #include "StartupStarted.hpp"
+#include "probe/__init__.hpp"
 
 namespace
 {
@@ -276,15 +277,15 @@ std::vector<std::string> EnvironmentEntries()
 
 } // namespace
 
-static nlohmann::json ProbeStartupStarted_Entry(const nlohmann::json& data)
+appbox::test::ProtocolStartupStarted::Rsp appbox::test::ProbeStartupStarted_Entry(
+    const appbox::test::ProtocolStartupStarted::Req& request)
 {
     /*
      * The task data is empty for a plain report. A case which checks the
      * directory of the process names the files the process reads and writes
      * with a relative name, which is what the view has to answer.
      */
-    const auto task = data.is_object() ? data.get<appbox::test::ProtocolStartupStarted::Req>()
-                                       : appbox::test::ProtocolStartupStarted::Req{};
+    const auto& task = request;
 
     appbox::test::ProtocolStartupStarted::Rsp rsp;
     rsp.marker = appbox::test::StartupMarker();
@@ -321,5 +322,3 @@ static nlohmann::json ProbeStartupStarted_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeStartupStarted("StartupStarted", ProbeStartupStarted_Entry);

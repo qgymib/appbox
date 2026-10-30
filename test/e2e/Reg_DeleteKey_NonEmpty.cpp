@@ -1,4 +1,5 @@
 #include "probe/RegDeleteKey.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/RealHkcuKey.hpp"
@@ -52,7 +53,7 @@ TEST_F(E2E_Reg, DeleteKey_NonEmpty)
     blocked.Key = appbox::WideToUTF8(subkey);
     blocked.Mode = ProtocolRegDeleteKey::ModeKind::Reg;
 
-    const auto blocked_rsp = ProbeRegDeleteKey.Call(blocked, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();
+    const auto blocked_rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteKey>(blocked);
     EXPECT_EQ(blocked_rsp.delete_code, static_cast<DWORD>(ERROR_ACCESS_DENIED));
     EXPECT_EQ(blocked_rsp.reopen_code, static_cast<DWORD>(ERROR_SUCCESS));
 
@@ -61,11 +62,11 @@ TEST_F(E2E_Reg, DeleteKey_NonEmpty)
     child.Key = appbox::WideToUTF8(subkey + L"\\HostChild");
     child.Mode = ProtocolRegDeleteKey::ModeKind::Reg;
 
-    const auto child_rsp = ProbeRegDeleteKey.Call(child, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();
+    const auto child_rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteKey>(child);
     EXPECT_EQ(child_rsp.delete_code, static_cast<DWORD>(ERROR_SUCCESS));
 
     /* Now the key holds no visible sub key and the delete succeeds. */
-    const auto deleted_rsp = ProbeRegDeleteKey.Call(blocked, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();
+    const auto deleted_rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteKey>(blocked);
     EXPECT_EQ(deleted_rsp.delete_code, static_cast<DWORD>(ERROR_SUCCESS));
     EXPECT_EQ(deleted_rsp.reopen_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
 

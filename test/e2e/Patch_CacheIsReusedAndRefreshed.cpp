@@ -1,4 +1,5 @@
 #include "probe/ReadFileFull.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/PatchBuilder.hpp"
@@ -49,7 +50,7 @@ std::string ReadPatchFile(const std::wstring& folder, const std::filesystem::pat
     ProtocolReadFileFull::Req req;
     req.FileName = appbox::WideToUTF8(folder + L"\\" + kName);
 
-    const auto rsp = ProbeReadFileFull.Call(req, cwd, config).get<ProtocolReadFileFull::Rsp>();
+    const auto rsp = Probe(cwd, config).Call<ProtocolReadFileFull>(req);
     EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     return rsp.data;
 }

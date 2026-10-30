@@ -1,8 +1,6 @@
 #ifndef APPBOX_TEST_PROBE_STARTUP_STARTED_HPP
 #define APPBOX_TEST_PROBE_STARTUP_STARTED_HPP
 
-#include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <cstdint>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -13,6 +11,8 @@ namespace appbox::test
 
 struct ProtocolStartupStarted
 {
+    static constexpr const char* Method = "StartupStarted";
+
     /**
      * @brief One operation the process runs with a name of its own directory.
      */
@@ -54,7 +54,7 @@ struct ProtocolStartupStarted
     struct OperationResult
     {
         /** @brief Error code of the operation, zero on success. */
-        DWORD code = 0;
+        std::uint32_t code = 0;
 
         /** @brief Content the operation read, empty for the other kinds. */
         std::string data;
@@ -141,8 +141,11 @@ struct ProtocolStartupStarted
  * what pins that the launcher created the process itself, that it created it
  * from the layer which holds the image and that the process works in the
  * directory of the view.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeStartupStarted;
+ProtocolStartupStarted::Rsp ProbeStartupStarted_Entry(const ProtocolStartupStarted::Req& request);
 
 } // namespace appbox::test
 

@@ -1,5 +1,6 @@
 #include "probe/RegOpenWriteValue.hpp"
 #include "probe/RegReadValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -50,7 +51,7 @@ TEST_F(E2E_Reg, Full_HidesRealKey)
     req.Key = appbox::WideToUTF8(subkey);
     req.Value = "TestValue";
 
-    const auto rsp = ProbeRegReadValue.Call(req, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);
 
     /* The host entry is invisible for the sandbox. */
     EXPECT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -62,8 +63,7 @@ TEST_F(E2E_Reg, Full_HidesRealKey)
     write_req.Value = "TestValue";
     write_req.Data = "sandbox";
 
-    const auto write_rsp =
-        ProbeRegOpenWriteValue.Call(write_req, GetCWD(), config).get<ProtocolRegOpenWriteValue::Rsp>();
+    const auto write_rsp = Probe(GetCWD(), config).Call<ProtocolRegOpenWriteValue>(write_req);
     EXPECT_EQ(write_rsp.open_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
 
     /* The key of the host registry is untouched. */

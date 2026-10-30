@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGTWOPROCESSES_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -36,6 +35,7 @@ constexpr const char* kRegChildObservationValue = "ChildSawParent";
  */
 struct ProtocolRegTwoProcesses
 {
+    static constexpr const char* Method = "RegTwoProcesses";
 
     struct Req
     {
@@ -98,8 +98,11 @@ struct ProtocolRegTwoProcesses
  * @brief Registry probe which runs a child process of the sandbox: the parent
  *        writes a value, the child reads it and writes its own, the parent
  *        reads the value of the child while the child is alive.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegTwoProcesses;
+ProtocolRegTwoProcesses::Rsp ProbeRegTwoProcesses_Entry(const ProtocolRegTwoProcesses::Req& request);
 
 } // namespace appbox::test
 

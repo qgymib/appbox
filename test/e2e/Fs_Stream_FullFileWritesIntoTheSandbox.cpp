@@ -1,5 +1,6 @@
 #include "probe/ReadFileFull.hpp"
 #include "probe/WriteFile.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -87,7 +88,7 @@ TEST_F(E2E_Fs, Stream_FullFileWritesIntoTheSandbox)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream");
 
-        const auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.data, "host-stream");
     }
@@ -98,7 +99,7 @@ TEST_F(E2E_Fs, Stream_FullFileWritesIntoTheSandbox)
         req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream");
         req.Data = "written";
 
-        const auto rsp = ProbeWriteFile.Call(req, GetCWD(), config).get<ProtocolWriteFile::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolWriteFile>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.readback, "written");
     }
@@ -110,7 +111,7 @@ TEST_F(E2E_Fs, Stream_FullFileWritesIntoTheSandbox)
         req.Data = "created";
         req.dwCreationDisposition = CREATE_NEW;
 
-        const auto rsp = ProbeWriteFile.Call(req, GetCWD(), config).get<ProtocolWriteFile::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolWriteFile>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.readback, "created");
     }
@@ -121,7 +122,7 @@ TEST_F(E2E_Fs, Stream_FullFileWritesIntoTheSandbox)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt");
 
-        const auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.data, "host");
     }
@@ -129,7 +130,7 @@ TEST_F(E2E_Fs, Stream_FullFileWritesIntoTheSandbox)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(FolderPath() + L"\\g.txt");
 
-        const auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.data, "g-host");
     }

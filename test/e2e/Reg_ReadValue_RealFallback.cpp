@@ -1,4 +1,5 @@
 #include "probe/RegReadValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "Random.hpp"
@@ -64,7 +65,7 @@ TEST_F(E2E_Reg, ReadValue_RealFallback)
     req.Key = appbox::WideToUTF8(subkey);
     req.Value = "TestValue";
 
-    auto rsp = ProbeRegReadValue.Call(req, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
+    auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);
     ASSERT_EQ(rsp.open_code, 0u);
     ASSERT_EQ(rsp.query_code, 0u);
     ASSERT_EQ(rsp.data, expected);

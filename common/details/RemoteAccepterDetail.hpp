@@ -1,18 +1,16 @@
-#ifndef APPBOX_COMMON_DETAILS_REMOTE_SERVER_DETAIL_HPP
-#define APPBOX_COMMON_DETAILS_REMOTE_SERVER_DETAIL_HPP
+#ifndef APPBOX_COMMON_DETAILS_REMOTE_ACCEPTER_DETAIL_HPP
+#define APPBOX_COMMON_DETAILS_REMOTE_ACCEPTER_DETAIL_HPP
 
 /*
- * Implementation of `common/RemoteServer.hpp`: the internal state of the server,
- * the pipe handling on the private IO thread and the members of the class. The
- * header is included by the public header and is not meant to be included on its
- * own.
+ * Implementation of `common/RemoteAccepter.hpp`: the internal state of the
+ * accepter, the pipe handling on the private IO thread and the members of the
+ * class. The header is included by the public header and is not meant to be
+ * included on its own.
  */
 
-#include "RemoteServer.hpp"
+#include "RemoteAccepter.hpp"
 #include <aclapi.h>
 #include <sddl.h>
-#include <asio.hpp>
-#include <spdlog/spdlog.h>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -42,7 +40,7 @@ namespace detail
  * owner of the object, which is the user of the launcher; every other user is
  * denied.
  */
-constexpr const char* kRemoteServerPipeDacl = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;OW)";
+constexpr const char* kRemoteAccepterPipeDacl = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;OW)";
 
 /**
  * @brief DACL and mandatory label of the pipe of a sandbox.
@@ -55,7 +53,7 @@ constexpr const char* kRemoteServerPipeDacl = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA
  * manager, which reports ERROR_ACCESS_DENIED for the system access control
  * entry of a pipe handle.
  */
-constexpr const char* kRemoteServerPipeSddl = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;OW)S:(ML;;NW;;;ME)";
+constexpr const char* kRemoteAccepterPipeSddl = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;OW)S:(ML;;NW;;;ME)";
 
 /**
  * @brief Map an error of CreateNamedPipe() to the result of the creation.
@@ -72,7 +70,7 @@ constexpr const char* kRemoteServerPipeSddl = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA
  *                           server of this user.
  * @return The outcome of the creation.
  */
-inline ServerCreateStatus ClassifyRemoteServerCreateError(DWORD error, bool peer_reachable)
+inline ServerCreateStatus ClassifyAccepterCreateError(DWORD error, bool peer_reachable)
 {
     if (error == ERROR_SUCCESS)
     {
@@ -98,7 +96,7 @@ inline ServerCreateStatus ClassifyRemoteServerCreateError(DWORD error, bool peer
  * @param[in] error Error code of the failed instance creation.
  * @return The kind of the failure.
  */
-inline AcceptFailureKind ClassifyRemoteServerAcceptError(DWORD error)
+inline AcceptFailureKind ClassifyAccepterAcceptError(DWORD error)
 {
     switch (error)
     {
@@ -123,7 +121,7 @@ inline AcceptFailureKind ClassifyRemoteServerAcceptError(DWORD error)
  * @param[in] error Error code of the failed connect.
  * @return true when the connection was abandoned by the client.
  */
-inline bool RemoteServerConnectionWasAbandoned(DWORD error)
+inline bool AccepterConnectionWasAbandoned(DWORD error)
 {
     switch (error)
     {
@@ -152,7 +150,7 @@ inline bool RemoteServerConnectionWasAbandoned(DWORD error)
  *         of the pipe serves a client, false when the name carries no pipe which
  *         this user may use.
  */
-inline bool RemoteServerPeerIsReachable(const std::string& pipe)
+inline bool AccepterPeerIsReachable(const std::string& pipe)
 {
     const HANDLE h = ::CreateFileA(pipe.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
     if (h != INVALID_HANDLE_VALUE)
@@ -170,18 +168,18 @@ inline bool RemoteServerPeerIsReachable(const std::string& pipe)
 /**
  * @brief Self-relative security descriptor which is released with LocalFree().
  */
-class RemoteServerSecurityDescriptor
+class RemoteAccepterSecurityDescriptor
 {
 public:
-    RemoteServerSecurityDescriptor() = default;
+    RemoteAccepterSecurityDescriptor() = default;
 
-    ~RemoteServerSecurityDescriptor()
+    ~RemoteAccepterSecurityDescriptor()
     {
         Reset();
     }
 
-    RemoteServerSecurityDescriptor(const RemoteServerSecurityDescriptor&) = delete;
-    RemoteServerSecurityDescriptor& operator=(const RemoteServerSecurityDescriptor&) = delete;
+    RemoteAccepterSecurityDescriptor(const RemoteAccepterSecurityDescriptor&) = delete;
+    RemoteAccepterSecurityDescriptor& operator=(const RemoteAccepterSecurityDescriptor&) = delete;
 
     /**
      * @brief Build the descriptor from a security descriptor definition string.
@@ -256,47 +254,12 @@ private:
 } // namespace detail
 
 /**
- * @brief Internal state of one RemoteServer.
+ * @brief Internal state of one RemoteAccepter.
  */
-struct RemoteServer::Data : std::enable_shared_from_this<Data>
+struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
 {
     /**
-     * @brief One request received from a client, kept until its response is sent.
-     */
-    struct IncomingRequest
-    {
-        typedef std::shared_ptr<IncomingRequest> Ptr;
-
-        IncomingRequest(uint64_t id, uint64_t session_id) : uid(id), session_id(session_id)
-        {
-        }
-
-        const uint64_t uid;        /* Global unique id */
-        const uint64_t session_id; /* Session id */
-        nlohmann::json request;    /* Client request */
-        std::string    method;     /* Request method */
-        nlohmann::json id;         /* Request id in the request object */
-    };
-
-    /**
-     * @brief One connected client.
-     */
-    struct SessionEntry
-    {
-        RemoteSession::Ptr session;  /* Session of the connection */
-        DWORD              peer_pid; /* Process at the other end, zero when unknown */
-
-        SessionEntry() : peer_pid(0)
-        {
-        }
-
-        SessionEntry(RemoteSession::Ptr s, DWORD pid) : session(std::move(s)), peer_pid(pid)
-        {
-        }
-    };
-
-    /**
-     * @brief Lifecycle of the server.
+     * @brief Lifecycle of the accepter.
      */
     enum class Lifecycle
     {
@@ -305,9 +268,7 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
         Stopped,  /* The IO thread ended */
     };
 
-    typedef std::map<std::string, MethodCallback>    MethodCallbackMap;
-    typedef std::map<uint64_t, SessionEntry>         SessionMap;
-    typedef std::map<uint64_t, IncomingRequest::Ptr> IncomingRequestMap;
+    typedef std::map<std::uint64_t, RemoteSession::Ptr> SessionMap;
 
     Data() : io_context(std::make_shared<asio::io_context>()), uid_gen(0)
     {
@@ -504,7 +465,7 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
             }
 
             const DWORD error = static_cast<DWORD>(ec.value());
-            if (detail::RemoteServerConnectionWasAbandoned(error))
+            if (detail::AccepterConnectionWasAbandoned(error))
             {
                 /*
                  * A client which connects and leaves before the connection was
@@ -530,8 +491,6 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
             listener.reset();
         }
 
-        const uint64_t session_id = uid_gen++;
-
         DWORD peer_pid = 0;
         if (!::GetNamedPipeClientProcessId(pipe->native_handle(), &peer_pid))
         {
@@ -540,28 +499,93 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
             peer_pid = 0;
         }
 
-        auto self = shared_from_this();
-        auto session =
-            RemoteSession::Create(pipe, [self, session_id](const asio::error_code& ec, RemoteSession::MsgPtr data) {
-                if (ec)
-                {
-                    std::lock_guard<std::mutex> guard(self->session_map_mutex);
-                    self->session_map.erase(session_id);
-                    return;
-                }
-                self->OnDataReceived(session_id, std::move(data));
-            });
+        auto session = RemoteSession::Create(pipe, peer_pid, io_context);
+        session->SetMaxRequestSize(options.max_request_size);
 
-        /* Save session */
+        /*
+         * The methods of the session are registered before it reads its first
+         * message, so a peer which sends a request at once finds its handler.
+         */
+        SessionCallback callback;
+        {
+            std::lock_guard<std::mutex> lock(callback_mutex);
+            callback = session_callback;
+        }
+
+        if (callback)
+        {
+            try
+            {
+                callback(session);
+            }
+            catch (const std::exception& e)
+            {
+                SPDLOG_ERROR("the session callback failed: {}", e.what());
+            }
+            catch (...)
+            {
+                SPDLOG_ERROR("the session callback failed");
+            }
+        }
+
+        /*
+         * The accepter owns the session, so it keeps the pipe of the connection
+         * open while the peer uses it. The session reports the end of its
+         * connection, which is what releases the entry again; the handler holds
+         * the accepter weakly, because a strong reference would keep both alive
+         * for ever.
+         */
+        const std::uint64_t session_id = uid_gen++;
+        std::weak_ptr<Data> weak_self = shared_from_this();
+        session->SetClosedHandler([weak_self, session_id]() {
+            if (auto self = weak_self.lock())
+            {
+                self->OnSessionClosed(session_id);
+            }
+        });
+
         {
             std::lock_guard<std::mutex> lock(session_map_mutex);
-            session_map[session_id] = SessionEntry(session, peer_pid);
+            session_map[session_id] = session;
         }
 
         session->Start();
 
         /* Keep at least one instance of the pipe alive for the next client. */
         AcceptNext();
+    }
+
+    /**
+     * @brief Release one session whose connection ended.
+     *
+     * The session reports its own end, so the table never holds a connection
+     * which serves nothing: the accepter is the owner of every session it
+     * accepted, which is what keeps the pipe of the connection open while the
+     * peer uses it.
+     *
+     * @param[in] session_id Id of the session which ended.
+     */
+    void OnSessionClosed(std::uint64_t session_id)
+    {
+        std::lock_guard<std::mutex> lock(session_map_mutex);
+        session_map.erase(session_id);
+    }
+
+    /**
+     * @brief Collect the sessions which are still connected.
+     * @return The sessions, in the order they were accepted in.
+     */
+    std::vector<RemoteSession::Ptr> LiveSessions()
+    {
+        std::vector<RemoteSession::Ptr> sessions;
+
+        std::lock_guard<std::mutex> lock(session_map_mutex);
+        for (const auto& item : session_map)
+        {
+            sessions.push_back(item.second);
+        }
+
+        return sessions;
     }
 
     /**
@@ -576,11 +600,11 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
      */
     void ReportAcceptFailure(DWORD error)
     {
-        const AcceptFailureKind kind = detail::ClassifyRemoteServerAcceptError(error);
+        const AcceptFailureKind kind = detail::ClassifyAccepterAcceptError(error);
 
         if (kind == AcceptFailureKind::StillServing && accept_retry < kAcceptRetryDelaysMs.size() && !stopping)
         {
-            const uint32_t delay_ms = kAcceptRetryDelaysMs[accept_retry++];
+            const std::uint32_t delay_ms = kAcceptRetryDelaysMs[accept_retry++];
 
             SPDLOG_WARN("cannot create a pipe instance: {}, retry {} in {} ms", error, accept_retry, delay_ms);
 
@@ -634,266 +658,8 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
     }
 
     /**
-     * @brief Parse one received message and dispatch it to the registered callback.
-     *
-     * Every request is answered, also when it is malformed: the failure is
-     * reported as a JSON-RPC error instead of ending the IO thread.
-     *
-     * @param[in] session_id Id of the session which received the message.
-     * @param[in] data Message payload.
-     */
-    void OnDataReceived(uint64_t session_id, RemoteSession::MsgPtr data)
-    {
-        if (!data)
-        {
-            return;
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(state_mutex);
-            ++inflight;
-        }
-
-        auto req = std::make_shared<IncomingRequest>(uid_gen++, session_id);
-
-        if (data->size() > options.max_request_size)
-        {
-            SPDLOG_WARN("request of {} bytes exceeds the limit of {} bytes", data->size(), options.max_request_size);
-            RegisterRequest(req);
-            SendError(req->uid, -32600, "Invalid Request");
-            return;
-        }
-
-        try
-        {
-            req->request = nlohmann::json::parse(*data);
-        }
-        catch (const std::exception& e)
-        {
-            SPDLOG_WARN("malformed request: {}", e.what());
-            RegisterRequest(req);
-            SendError(req->uid, -32700, "Parse error");
-            return;
-        }
-
-        if (!req->request.is_object())
-        {
-            SPDLOG_WARN("request is not an object");
-            RegisterRequest(req);
-            SendError(req->uid, -32600, "Invalid Request");
-            return;
-        }
-
-        const auto it_id = req->request.find("id");
-        if (it_id != req->request.end())
-        {
-            req->id = *it_id;
-        }
-
-        const auto it_method = req->request.find("method");
-        if (it_method == req->request.end() || !it_method->is_string() || it_id == req->request.end())
-        {
-            SPDLOG_WARN("request has no method or no id");
-            RegisterRequest(req);
-            SendError(req->uid, -32600, "Invalid Request");
-            return;
-        }
-
-        req->method = it_method->get<std::string>();
-
-        /* Save to request map */
-        RegisterRequest(req);
-
-        MethodCallback fn;
-        {
-            std::lock_guard<std::mutex> lock(method_map_mutex);
-            const auto                  it = method_callbacks.find(req->method);
-            if (it == method_callbacks.end())
-            {
-                SPDLOG_ERROR("method not found: {}", req->method);
-                SendError(req->uid, -32601, "Method not found");
-                return;
-            }
-            fn = it->second;
-        }
-
-        const auto           it_params = req->request.find("params");
-        const nlohmann::json param = (it_params == req->request.end()) ? nlohmann::json(nullptr) : *it_params;
-
-        try
-        {
-            fn(req->uid, param);
-        }
-        catch (const std::exception& e)
-        {
-            SPDLOG_ERROR("the handler of {} failed: {}", req->method, e.what());
-            SendError(req->uid, -32603, "Internal error");
-        }
-        catch (...)
-        {
-            SPDLOG_ERROR("the handler of {} failed", req->method);
-            SendError(req->uid, -32603, "Internal error");
-        }
-    }
-
-    /**
-     * @brief Keep one request until its response is sent.
-     * @param[in] req Request to keep.
-     */
-    void RegisterRequest(const IncomingRequest::Ptr& req)
-    {
-        std::lock_guard<std::mutex> lock(request_map_mutex);
-        request_map.insert(IncomingRequestMap::value_type(req->uid, req));
-    }
-
-    /**
-     * @brief Post one handler to the IO thread.
-     * @param[in] fn Handler to run on the IO thread.
-     */
-    void PostToIo(std::function<void()> fn)
-    {
-        std::lock_guard<std::mutex> lock(io_post_mutex);
-        if (!io_context)
-        {
-            SPDLOG_WARN("the pipe server is stopped, the message is dropped");
-            return;
-        }
-
-        asio::post(*io_context, std::move(fn));
-    }
-
-    /**
-     * @brief Send a success response for the given request.
-     * @param[in] id Request id.
-     * @param[in] result Result value.
-     */
-    void SendResponse(uint64_t id, const nlohmann::json& result)
-    {
-        auto rsp = std::make_shared<nlohmann::json>();
-        (*rsp)["jsonrpc"] = "2.0";
-        (*rsp)["result"] = result;
-
-        auto self = shared_from_this();
-        PostToIo([self, id, rsp]() { self->SendResponseMsg(id, rsp); });
-    }
-
-    /**
-     * @brief Send an error response for the given request.
-     * @param[in] id Request id.
-     * @param[in] errcode Error code.
-     * @param[in] err_msg Error message.
-     * @param[in] err_data Additional error data.
-     */
-    void SendError(uint64_t id, int errcode, const std::string& err_msg, const nlohmann::json& err_data = nullptr)
-    {
-        nlohmann::json err;
-        err["code"] = errcode;
-        err["message"] = err_msg;
-        if (!err_data.is_null())
-        {
-            err["data"] = err_data;
-        }
-
-        auto rsp = std::make_shared<nlohmann::json>();
-        (*rsp)["jsonrpc"] = "2.0";
-        (*rsp)["error"] = err;
-
-        auto self = shared_from_this();
-        PostToIo([self, id, rsp]() { self->SendResponseMsg(id, rsp); });
-    }
-
-    /**
-     * @brief Send one response message to the session which issued the request.
-     * @param[in] id Id of the request.
-     * @param[in] msg Response message object, the request id is filled in.
-     */
-    void SendResponseMsg(uint64_t id, std::shared_ptr<nlohmann::json> msg)
-    {
-        IncomingRequest::Ptr req;
-        {
-            std::lock_guard<std::mutex> lock(request_map_mutex);
-            const auto                  it = request_map.find(id);
-            if (it != request_map.end())
-            {
-                req = it->second;
-                request_map.erase(it);
-            }
-        }
-
-        if (req)
-        {
-            RemoteSession::Ptr session;
-            {
-                std::lock_guard<std::mutex> lock(session_map_mutex);
-                const auto                  it = session_map.find(req->session_id);
-                if (it != session_map.end())
-                {
-                    session = it->second.session;
-                }
-            }
-
-            if (session)
-            {
-                (*msg)["id"] = req->id;
-                session->Send(std::make_shared<std::string>(msg->dump()));
-            }
-            else
-            {
-                SPDLOG_ERROR("session id {} not found", req->session_id);
-            }
-        }
-        else
-        {
-            SPDLOG_ERROR("SendResponse(id={}): not found", id);
-        }
-
-        /*
-         * The request counts as answered when its answer is queued for the
-         * client, also when its session is gone. A stop which observes no
-         * in-flight request may therefore drain the sessions without losing an
-         * answer which was produced but not handed to the transport.
-         */
-        {
-            std::lock_guard<std::mutex> lock(state_mutex);
-            if (inflight > 0)
-            {
-                --inflight;
-            }
-        }
-        state_cv.notify_all();
-    }
-
-    /**
-     * @brief Query the process at the other end of the session of a request.
-     * @param[in] request_id Id of the request.
-     * @return Process id of the client, zero when it is unknown.
-     */
-    DWORD PeerProcessIdOfRequest(uint64_t request_id) const
-    {
-        uint64_t session_id = 0;
-        {
-            std::lock_guard<std::mutex> lock(request_map_mutex);
-            const auto                  it = request_map.find(request_id);
-            if (it == request_map.end())
-            {
-                return 0;
-            }
-            session_id = it->second->session_id;
-        }
-
-        std::lock_guard<std::mutex> lock(session_map_mutex);
-        const auto                  it = session_map.find(session_id);
-        if (it == session_map.end())
-        {
-            return 0;
-        }
-
-        return it->second.peer_pid;
-    }
-
-    /**
      * @brief Start the IO thread and the accept loop.
-     * @return true when the server is listening, otherwise false.
+     * @return true when the accepter is listening, otherwise false.
      */
     bool Start()
     {
@@ -917,7 +683,7 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
         asio::post(*context, [self]() { self->BeginAccept(); });
 
         /*
-         * The thread does not log when it ends: the server may be destroyed by
+         * The thread does not log when it ends: the accepter may be destroyed by
          * a static destructor of the process, which runs after the logger of
          * the process is gone.
          */
@@ -929,8 +695,9 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
     /**
      * @brief Stop accepting connections and end the IO thread.
      *
-     * The call is idempotent. The pending requests are answered first, then the
-     * sessions are released and the IO thread ends.
+     * The call is idempotent. The requests which are already handled are
+     * answered first, then the sessions are drained and released, and the IO
+     * thread ends.
      */
     void Stop()
     {
@@ -969,28 +736,44 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
         }
         listener_to_close.reset();
 
-        /* Wait for the requests which are already being handled. */
+        /*
+         * Wait for the requests which the sessions are already handling. The
+         * budget belongs to the whole stop, so a session which is idle costs
+         * nothing and the stop is bounded whatever the number of sessions is.
+         */
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kInflightTimeoutMs);
+        std::vector<RemoteSession::Ptr> sessions = LiveSessions();
+        for (const auto& session : sessions)
         {
-            std::unique_lock<std::mutex> lock(state_mutex);
-            state_cv.wait_for(lock, std::chrono::milliseconds(kInflightTimeoutMs), [this] { return inflight == 0; });
-            if (inflight != 0)
+            const auto left =
+                std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+            if (left.count() <= 0)
             {
-                SPDLOG_WARN("{} request(s) are still unanswered", inflight);
+                SPDLOG_WARN("the requests of the sessions are still unanswered, the sessions are drained");
+                break;
             }
+
+            session->WaitForIncomingResponses(static_cast<std::uint32_t>(left.count()));
         }
 
-        /* Let the answers reach the clients, then release the sessions. */
-        SessionMap sessions;
+        /* Let the answers reach the peers, then release the sessions. */
+        for (const auto& session : sessions)
         {
-            std::lock_guard<std::mutex> lock(session_map_mutex);
-            sessions.swap(session_map);
-        }
-        for (auto& item : sessions)
-        {
-            item.second.session->WaitForPendingWrites(kSessionDrainTimeoutMs);
-            item.second.session->Close();
+            session->WaitForPendingWrites(kSessionDrainTimeoutMs);
+            session->Close();
         }
         sessions.clear();
+
+        /*
+         * The table is released outside of its lock: a session reports the end of
+         * its connection when it is destroyed, and that report takes the lock.
+         */
+        SessionMap remaining;
+        {
+            std::lock_guard<std::mutex> lock(session_map_mutex);
+            remaining.swap(session_map);
+        }
+        remaining.clear();
 
         /* Stop the IO thread and release the handlers which are still queued. */
         if (io_context)
@@ -1011,10 +794,7 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
             }
         }
 
-        {
-            std::lock_guard<std::mutex> lock(io_post_mutex);
-            io_context.reset();
-        }
+        io_context.reset();
 
         {
             std::lock_guard<std::mutex> lock(state_mutex);
@@ -1023,71 +803,53 @@ struct RemoteServer::Data : std::enable_shared_from_this<Data>
         state_cv.notify_all();
     }
 
-    /**
-     * @brief Register a method callback.
-     * @param[in] method Method name.
-     * @param[in] callback Callback of the method.
-     */
-    void RegisterMethod(const std::string& method, MethodCallback callback)
-    {
-        std::lock_guard<std::mutex> lock(method_map_mutex);
-        method_callbacks[method] = std::move(callback);
-    }
-
     /* Delays of the retries of a transient accept failure, in milliseconds. */
-    static constexpr std::array<uint32_t, 3> kAcceptRetryDelaysMs = { 50, 100, 200 };
+    static constexpr std::array<std::uint32_t, 3> kAcceptRetryDelaysMs = { 50, 100, 200 };
 
-    /* Upper bound of the wait for the pending requests of a stop, in milliseconds. */
-    static constexpr uint32_t kInflightTimeoutMs = 5000;
+    /* Upper bound of the wait for the requests of the sessions of a stop, in milliseconds. */
+    static constexpr std::uint32_t kInflightTimeoutMs = 5000;
 
     /* Upper bound of the wait for the answers of one session, in milliseconds. */
-    static constexpr uint32_t kSessionDrainTimeoutMs = 2000;
+    static constexpr std::uint32_t kSessionDrainTimeoutMs = 2000;
 
-    std::string       pipe_path;        /* Name of the pipe */
-    Options           options;          /* Options of the server */
-    MethodCallbackMap method_callbacks; /* Registered methods */
+    std::string pipe_path; /* Name of the pipe */
+    Options     options;   /* Options of the accepter */
 
-    detail::RemoteServerSecurityDescriptor security;           /* DACL and label of the pipe */
-    detail::RemoteServerSecurityDescriptor security_dacl_only; /* DACL of the pipe without the label */
+    detail::RemoteAccepterSecurityDescriptor security;           /* DACL and label of the pipe */
+    detail::RemoteAccepterSecurityDescriptor security_dacl_only; /* DACL of the pipe without the label */
 
     std::shared_ptr<asio::io_context> io_context; /* IO context of the private IO thread */
 
     std::thread          thread;  /* Working thread */
-    std::atomic_uint64_t uid_gen; /* Request id generator */
+    std::atomic_uint64_t uid_gen; /* Session id generator */
 
     std::shared_ptr<asio::windows::stream_handle> listener;               /* Instance which waits for a client */
     bool                                          first_instance = false; /* First creation of the pipe */
     std::mutex                                    listener_mutex;         /* Listener lock */
 
-    IncomingRequestMap request_map;       /* Incoming request map */
-    mutable std::mutex request_map_mutex; /* Incoming request map lock */
-
-    SessionMap         session_map;       /* Session map */
+    SessionMap         session_map;       /* Sessions which are still connected */
     mutable std::mutex session_map_mutex; /* Session map lock */
 
-    std::mutex method_map_mutex; /* Method callback map lock */
+    SessionCallback session_callback; /* Callback which registers the methods of a session */
 
     AcceptFailureCallback accept_failure_callback; /* Fatal accept failure callback */
     std::mutex            callback_mutex;          /* Callback lock */
 
-    Lifecycle               state = Lifecycle::Running; /* Lifecycle of the server */
-    mutable std::mutex      state_mutex;                /* State and in-flight lock */
+    Lifecycle               state = Lifecycle::Running; /* Lifecycle of the accepter */
+    mutable std::mutex      state_mutex;                /* State lock */
     std::condition_variable state_cv;                   /* Signals a state change */
-    std::size_t             inflight = 0;               /* Requests which are not answered */
     std::size_t             accept_retry = 0;           /* Retries of the accept loop */
     std::atomic_bool        stopping = false;           /* Stop was requested */
     std::atomic_bool        accept_failed = false;      /* The accept loop is dead */
-
-    std::mutex io_post_mutex; /* Guards the IO context against the shutdown */
 };
 
 /* Definition of the contract on the declaration. */
-inline RemoteServer::RemoteServer() : data_(std::make_shared<Data>())
+inline RemoteAccepter::RemoteAccepter() : data_(std::make_shared<Data>())
 {
 }
 
 /* Definition of the contract on the declaration. */
-inline RemoteServer::~RemoteServer()
+inline RemoteAccepter::~RemoteAccepter()
 {
     if (data_)
     {
@@ -1097,33 +859,33 @@ inline RemoteServer::~RemoteServer()
 }
 
 /* Definition of the contract on the declaration. */
-inline RemoteServer::Ptr RemoteServer::Create(const std::string& pipe)
+inline RemoteAccepter::Ptr RemoteAccepter::Create(const std::string& pipe)
 {
     Options options;
     options.first_instance = false;
 
     CreateResult result = CreateCompetitive(pipe, options);
-    if (result.status != ServerCreateStatus::Created || !result.server)
+    if (result.status != ServerCreateStatus::Created || !result.accepter)
     {
         throw std::system_error(static_cast<int>(result.error_code), std::system_category(),
                                 "CreateNamedPipe() failed");
     }
 
-    return result.server;
+    return result.accepter;
 }
 
 /* Definition of the contract on the declaration. */
-inline RemoteServer::CreateResult RemoteServer::CreateCompetitive(const std::string& pipe, const Options& options)
+inline RemoteAccepter::CreateResult RemoteAccepter::CreateCompetitive(const std::string& pipe, const Options& options)
 {
     CreateResult result;
 
-    Ptr obj(new RemoteServer);
+    Ptr obj(new RemoteAccepter);
     obj->data_->pipe_path = pipe;
     obj->data_->options = options;
     obj->data_->first_instance = options.first_instance;
 
-    if (options.restrict_to_current_user && (!obj->data_->security.Build(detail::kRemoteServerPipeSddl) ||
-                                             !obj->data_->security_dacl_only.Build(detail::kRemoteServerPipeDacl)))
+    if (options.restrict_to_current_user && (!obj->data_->security.Build(detail::kRemoteAccepterPipeSddl) ||
+                                             !obj->data_->security_dacl_only.Build(detail::kRemoteAccepterPipeDacl)))
     {
         const DWORD error = ::GetLastError();
         SPDLOG_ERROR("cannot build the security descriptor of the pipe: {}", error);
@@ -1137,9 +899,9 @@ inline RemoteServer::CreateResult RemoteServer::CreateCompetitive(const std::str
     const HANDLE handle = obj->data_->CreateInstance(error);
     if (handle == INVALID_HANDLE_VALUE)
     {
-        const bool peer_reachable = (error == ERROR_ACCESS_DENIED) && detail::RemoteServerPeerIsReachable(pipe);
+        const bool peer_reachable = (error == ERROR_ACCESS_DENIED) && detail::AccepterPeerIsReachable(pipe);
 
-        result.status = detail::ClassifyRemoteServerCreateError(error, peer_reachable);
+        result.status = detail::ClassifyAccepterCreateError(error, peer_reachable);
         result.error_code = error;
 
         SPDLOG_DEBUG("cannot create the pipe '{}': {} ({})", pipe, error, static_cast<int>(result.status));
@@ -1162,24 +924,25 @@ inline RemoteServer::CreateResult RemoteServer::CreateCompetitive(const std::str
 
     result.status = ServerCreateStatus::Created;
     result.error_code = ERROR_SUCCESS;
-    result.server = obj;
+    result.accepter = obj;
     return result;
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteServer::RegisterMethod(const std::string& method, MethodCallback callback)
+inline void RemoteAccepter::SetSessionCallback(SessionCallback callback)
 {
-    data_->RegisterMethod(method, std::move(callback));
+    std::lock_guard<std::mutex> lock(data_->callback_mutex);
+    data_->session_callback = std::move(callback);
 }
 
 /* Definition of the contract on the declaration. */
-inline bool RemoteServer::Start()
+inline bool RemoteAccepter::Start()
 {
     return data_->Start();
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteServer::Stop()
+inline void RemoteAccepter::Stop()
 {
     if (data_)
     {
@@ -1188,31 +951,12 @@ inline void RemoteServer::Stop()
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteServer::SetAcceptFailureCallback(AcceptFailureCallback callback)
+inline void RemoteAccepter::SetAcceptFailureCallback(AcceptFailureCallback callback)
 {
     std::lock_guard<std::mutex> lock(data_->callback_mutex);
     data_->accept_failure_callback = std::move(callback);
 }
 
-/* Definition of the contract on the declaration. */
-inline void RemoteServer::SendResponse(uint64_t id, const RemoteResult& result)
-{
-    if (result.has_value())
-    {
-        data_->SendResponse(id, result.value());
-        return;
-    }
-
-    auto err = result.error();
-    data_->SendError(id, err.code, err.message, err.data);
-}
-
-/* Definition of the contract on the declaration. */
-inline DWORD RemoteServer::PeerProcessIdOfRequest(uint64_t request_id) const
-{
-    return data_->PeerProcessIdOfRequest(request_id);
-}
-
 } // namespace appbox
 
-#endif
+#endif // APPBOX_COMMON_DETAILS_REMOTE_ACCEPTER_DETAIL_HPP

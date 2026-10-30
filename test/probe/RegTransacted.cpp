@@ -179,13 +179,13 @@ bool BuildViewPath(const std::string& root, const std::wstring& key, std::wstrin
  * the transaction and reads the key again afterwards. Every step is reported,
  * so a test can pin the transaction of the caller and the isolation at once.
  */
-static nlohmann::json ProbeRegTransacted_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegTransacted::Rsp appbox::test::ProbeRegTransacted_Entry(
+    const appbox::test::ProtocolRegTransacted::Req& request)
 {
     using AccessKind = appbox::test::ProtocolRegTransacted::AccessKind;
     using ApiKind = appbox::test::ProtocolRegTransacted::ApiKind;
     using EndKind = appbox::test::ProtocolRegTransacted::EndKind;
-
-    auto req = data.get<appbox::test::ProtocolRegTransacted::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegTransacted::Rsp rsp;
 
@@ -324,5 +324,3 @@ static nlohmann::json ProbeRegTransacted_Entry(const nlohmann::json& data)
     }
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegTransacted("RegTransacted", ProbeRegTransacted_Entry);

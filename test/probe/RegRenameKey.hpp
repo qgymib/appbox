@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGRENAMEKEY_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <map>
 #include <string>
@@ -19,6 +18,8 @@ namespace appbox::test
  */
 struct ProtocolRegRenameKey
 {
+    static constexpr const char* Method = "RegRenameKey";
+
     /**
      * @brief Layer of the handle the rename runs on.
      *
@@ -80,8 +81,11 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolRegRenameKey::ModeKind,
  * The response reports the string values of the old name and of the new name as
  * the view shows them, plus the sub key names of the parent key, so a test can
  * pin which of the two names the merged view holds.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegRenameKey;
+ProtocolRegRenameKey::Rsp ProbeRegRenameKey_Entry(const ProtocolRegRenameKey::Req& request);
 
 } // namespace appbox::test
 

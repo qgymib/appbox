@@ -1,4 +1,5 @@
 #include "probe/ListDirNt.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/NtDirectoryQuery.hpp"
@@ -133,7 +134,7 @@ TEST_F(E2E_Fs, ListDir_InformationClasses)
             req.extended = extended;
             req.info_class = cls;
 
-            auto rsp = ProbeListDirNt.Call(req, GetCWD(), config).get<ProtocolListDirNt::Rsp>();
+            auto rsp = Probe(GetCWD(), config).Call<ProtocolListDirNt>(req);
 
             if (rsp.status == STATUS_INVALID_INFO_CLASS)
             {

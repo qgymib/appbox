@@ -152,9 +152,10 @@ void ReadValue(HKEY key, const std::wstring& name, appbox::test::ProtocolRegRead
 
 } // namespace
 
-static nlohmann::json ProbeRegReadValues_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegReadValues::Rsp appbox::test::ProbeRegReadValues_Entry(
+    const appbox::test::ProtocolRegReadValues::Req& request)
 {
-    const auto req = data.get<appbox::test::ProtocolRegReadValues::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegReadValues::Rsp rsp;
 
@@ -187,5 +188,3 @@ static nlohmann::json ProbeRegReadValues_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegReadValues("RegReadValues", ProbeRegReadValues_Entry);

@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_ENVIRONMENT_WRITE_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -24,6 +23,8 @@ namespace appbox::test
  */
 struct ProtocolEnvironmentWrite
 {
+    static constexpr const char* Method = "EnvironmentWrite";
+
     /**
      * @brief Entry point the probe writes through.
      *
@@ -133,8 +134,11 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolEnvironmentWrite::Entry,
 
 /**
  * @brief Modify the environment of the sandboxed application.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeEnvironmentWrite;
+ProtocolEnvironmentWrite::Rsp ProbeEnvironmentWrite_Entry(const ProtocolEnvironmentWrite::Req& request);
 
 } // namespace appbox::test
 

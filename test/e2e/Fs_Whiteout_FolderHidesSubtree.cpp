@@ -2,6 +2,7 @@
 #include "probe/CreateFileW.hpp"
 #include "probe/QueryAttributes.hpp"
 #include "probe/ReadFileFull.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -56,7 +57,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
         ProtocolQueryAttributes::Req req;
         req.FileName = appbox::WideToUTF8(folder);
 
-        auto rsp = ProbeQueryAttributes.Call(req, GetCWD(), config).get<ProtocolQueryAttributes::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         EXPECT_EQ(rsp.attributes, static_cast<DWORD>(INVALID_FILE_ATTRIBUTES));
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
@@ -64,7 +65,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(folder + L"\\packed.txt");
 
-        auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
 
@@ -73,7 +74,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
         ProtocolCreateDirectoryW::Req req;
         req.PathName = appbox::WideToUTF8(folder);
 
-        auto rsp = ProbeCreateDirectoryW.Call(req, GetCWD(), config).get<ProtocolCreateDirectoryW::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateDirectoryW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     }
 
@@ -82,7 +83,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
         ProtocolQueryAttributes::Req req;
         req.FileName = appbox::WideToUTF8(folder);
 
-        auto rsp = ProbeQueryAttributes.Call(req, GetCWD(), config).get<ProtocolQueryAttributes::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.attributes & FILE_ATTRIBUTE_DIRECTORY, static_cast<DWORD>(FILE_ATTRIBUTE_DIRECTORY));
     }
@@ -90,7 +91,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(folder + L"\\packed.txt");
 
-        auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
 
@@ -101,7 +102,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 
-        auto rsp = ProbeCreateFileW.Call(req, GetCWD(), config).get<ProtocolCreateFileW::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateFileW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     }
 

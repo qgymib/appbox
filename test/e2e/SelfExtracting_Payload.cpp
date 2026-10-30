@@ -4,8 +4,10 @@
 #include "utils/ProbeCall.hpp"
 #include "utils/ProbePath.hpp"
 #include "utils/ReadFileFull.hpp"
+#include "utils/RunState.hpp"
 #include "utils/SelfExtractingProgram.hpp"
 #include "src/core/PackService.hpp"
+#include "SandboxId.hpp"
 #include "SandboxLayout.hpp"
 #include "WString.hpp"
 #include <gtest/gtest.h>
@@ -13,8 +15,6 @@
 #include <cctype>
 #include <chrono>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -31,9 +31,6 @@ constexpr const wchar_t* kProgramName = appbox::test::kSelfExtractingProgramName
 
 /** Marker the probe process reports back; it tells that the payload ran. */
 constexpr const char* kMarker = "sfx";
-
-/** Name of the directory the run of a case writes its log files into. */
-constexpr const wchar_t* kLogDirName = appbox::test::kCaseLogDirName;
 
 /** Number of attempts of a check which waits for the run to finish its work. */
 constexpr int kSettleAttempts = 40;
@@ -106,41 +103,6 @@ std::vector<std::filesystem::path> ExtractionFolders(const std::wstring& stem)
 
     std::sort(folders.begin(), folders.end());
     return folders;
-}
-
-/**
- * @brief Read the log files the run of a case wrote.
- *
- * The launcher writes a log file of its own into the log directory of the case
- * and every process of its sandbox writes one as well, so the directory is read
- * as a whole: a case looks for a message of the run and not for the file which
- * carries it.
- *
- * @param[in] root Root directory of the filesystem of the case.
- * @return The content of the log files, empty when the run wrote none.
- */
-std::string ReadLog(const std::filesystem::path& root)
-{
-    std::string     text;
-    std::error_code ec;
-
-    for (const auto& entry : std::filesystem::directory_iterator(root / kLogDirName, ec))
-    {
-        if (!entry.is_regular_file(ec) || entry.path().extension() != L".log")
-        {
-            continue;
-        }
-
-        std::ifstream stream(entry.path(), std::ios::binary);
-        if (!stream.is_open())
-        {
-            continue;
-        }
-
-        text.append(std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()));
-    }
-
-    return text;
 }
 
 } // namespace
@@ -251,25 +213,42 @@ TEST_F(E2E_SelfExtracting, ThePatchesBesideTheProgramAreMerged)
  *    the session.
  *
  * Expected:
- * 1. The run exits with zero.
- * 2. The log reports that the payload was extracted into a temporary folder of
- *    the run.
+ * 1. The run exits with zero and the probe of the payload reports its marker.
+ * 2. The payload was extracted into a temporary folder of the run, which the
+ *    state of the run reports.
  * 3. The startup screen covered the run: it was shown and closed before the
  *    launcher returned.
  */
 TEST_F(E2E_SelfExtracting, TheStartupScreenCoversTheExtraction)
 {
     std::string error;
-    ASSERT_TRUE(PackProbeSelfExtracting(GetCWD(), L"app", appbox::StartupScreen{}, error)) << error;
+    std::string program_id;
+    ASSERT_TRUE(PackProbeSelfExtracting(GetCWD(), L"app", appbox::StartupScreen{}, error, &program_id)) << error;
+    ASSERT_TRUE(appbox::IsValidSandboxId(program_id)) << program_id;
 
-    const auto run = ProbeStartupRunEmbedded(GetCWDString(), (GetCWD() / kProgramName).wstring(), "", kMarker);
+    StartupRunHandle run(GetCWDString(), (GetCWD() / kProgramName).wstring(), "", kMarker);
+    ASSERT_TRUE(run.WaitForSessions(kProbeBindQuietMs, kProbeBindTimeoutMs)) << "the run never started the payload";
 
-    EXPECT_EQ(run.exit_code, 0u);
-    EXPECT_EQ(run.started, std::vector<std::string>({ kMarker }));
+    const auto& reports = run.Collect();
+    EXPECT_EQ(reports.started, std::vector<std::string>({ kMarker }));
+    ASSERT_EQ(reports.reports.size(), static_cast<std::size_t>(1));
 
-    const auto log = ReadLog(GetCWD());
-    EXPECT_NE(log.find("the payload of '"), std::string::npos) << log;
-    EXPECT_NE(log.find(" is extracted to "), std::string::npos) << log;
-    EXPECT_NE(log.find("the startup screen is shown"), std::string::npos) << log;
-    EXPECT_NE(log.find("the startup screen is closed"), std::string::npos) << log;
+    /*
+     * The state of the run reports the screen of the session and the folder the
+     * payload was extracted into: the screen covers the extraction, which is the
+     * temporary folder of the run, and it was closed once the payload started.
+     */
+    appbox::MsgRunState::Rsp state;
+    ASSERT_TRUE(QueryRunState(program_id, state)) << "the state of the run cannot be read";
+
+    EXPECT_TRUE(state.screen_shown);
+    EXPECT_TRUE(state.screen_closed);
+    ASSERT_FALSE(state.extraction_root.empty()) << "the run reported no extraction folder";
+
+    const auto root = Lower(StripTrailingSeparators(appbox::UTF8ToWide(state.extraction_root)));
+    const auto temporary = Lower(StripTrailingSeparators(std::filesystem::temp_directory_path().wstring()));
+    EXPECT_EQ(root.rfind(temporary, 0), static_cast<std::size_t>(0)) << state.extraction_root;
+
+    run.Exit(0);
+    EXPECT_EQ(run.Wait(), 0u);
 }

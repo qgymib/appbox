@@ -1,5 +1,6 @@
 #include "probe/CreateDirectoryW.hpp"
 #include "probe/CreateFileW.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/RealFsFolder.hpp"
@@ -70,7 +71,7 @@ TEST_F(E2E_Fs, DefaultMerge_CreatesTheEntriesInTheHost)
         ProtocolCreateDirectoryW::Req req;
         req.PathName = appbox::WideToUTF8(FolderPath() + L"\\created");
 
-        const auto rsp = ProbeCreateDirectoryW.Call(req, GetCWD(), config).get<ProtocolCreateDirectoryW::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateDirectoryW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     }
 
@@ -81,7 +82,7 @@ TEST_F(E2E_Fs, DefaultMerge_CreatesTheEntriesInTheHost)
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 
-        const auto rsp = ProbeCreateFileW.Call(req, GetCWD(), config).get<ProtocolCreateFileW::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateFileW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     }
 

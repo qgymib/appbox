@@ -1,19 +1,45 @@
-#include <spdlog/spdlog.h>
-#include <nlohmann/json.hpp>
+/*
+ * The RPC headers pull in winsock2.h through asio, they have to come before
+ * <windows.h> which would otherwise include the winsock.h version 1 header.
+ */
+#include "RemoteConnector.hpp"
+#include <windows.h>
+#include <atomic>
+#include <cstdint>
 #include <map>
 #include <memory>
-#include <mutex>
-#include "RemoteClient.hpp"
+#include <stdexcept>
+#include <string>
+#include <spdlog/spdlog.h>
+#include "Bind.hpp"
+#include "Exit.hpp"
 #include "__init__.hpp"
 
 #define PROBE_COMMAND "probe"
+
+/** Budget of the connection to the test executable, in milliseconds. */
+constexpr std::uint32_t kConnectTimeoutMs = 30000;
+
+/** Budget of the bind request which tells the test executable who owns this process. */
+constexpr std::uint32_t kBindTimeoutMs = 30000;
+
+/** Budget of the flush of the answer of the exit request, in milliseconds. */
+constexpr std::uint32_t kFlushTimeoutMs = 5000;
+
+/** Delay between two polls of the exit request, in milliseconds. */
+constexpr std::uint32_t kPollDelayMs = 10;
 
 struct ProbeCtx
 {
     typedef std::shared_ptr<ProbeCtx> Ptr;
 
-    appbox::RemoteClient::Ptr rpc_client; /* RPC client */
-    std::string               probe_key;
+    /*
+     * The connector owns the IO thread the session runs on, so it is kept beside
+     * the session and released after it.
+     */
+    appbox::RemoteConnector::Ptr connector; /* Connector of the control pipe */
+    appbox::RemoteSession::Ptr   session;   /* Session of the connection */
+    std::string                  probe_key; /* Key of the handle which started this process */
 };
 
 /**
@@ -27,23 +53,45 @@ static ProbeCtx::Ptr s_probe_ctx;
 static std::string s_startup_marker;
 
 /**
- * @brief Time this process stays alive after it reported its result.
- *
- * A case which runs another launcher while this process works needs a program
- * which outlives the handshake: a probe which leaves as soon as it reported
- * would end the run of the launcher which started it, and the case would race
- * with the end of the run instead of observing it.
+ * @brief The handlers of the probes of this executable, by method.
  */
-static std::uint32_t s_probe_hold_ms = 0;
+static std::map<std::string, appbox::test::ProbeHandler> s_handlers;
 
 /**
- * @brief Exit code this process reports after it sent its result.
+ * @brief Bind one handler of a probe to the session it is registered on.
  *
- * A case which checks that the exit code of a program a request started does
- * not decide the exit code of the run needs a program which leaves with a code
- * of its own; the code of the probe is zero unless the case names one.
+ * A session answers its own requests, so the handler needs the session it
+ * serves. The handler is stored inside the session and therefore holds it
+ * weakly: a strong reference would keep the connection alive for ever.
+ *
+ * @param[in] session Session the handler is registered on.
+ * @param[in] handler Handler of the probe.
+ * @return The handler to register on the session.
  */
-static std::uint32_t s_probe_exit_code = 0;
+static appbox::RemoteSession::MethodHandler BindHandler(const appbox::RemoteSession::Ptr& session,
+                                                        const appbox::test::ProbeHandler& handler)
+{
+    std::weak_ptr<appbox::RemoteSession> weak_session = session;
+
+    return [weak_session, handler](uint64_t id, const nlohmann::json& param) {
+        auto bound = weak_session.lock();
+        if (!bound)
+        {
+            return;
+        }
+
+        try
+        {
+            bound->SendResponse(id, handler(param));
+        }
+        catch (const nlohmann::json::exception& e)
+        {
+            SPDLOG_ERROR("the parameters of a probe cannot be read: {}", e.what());
+            bound->SendResponse(id, tl::unexpected<appbox::RemoteError>(appbox::RemoteError{
+                                        appbox::test::kInvalidParamsCode, "Invalid params", nlohmann::json() }));
+        }
+    };
+}
 
 /**
  * @brief Store the marker a case names for this process.
@@ -61,111 +109,126 @@ static void SetProbeMarker(const std::string& marker)
     s_startup_marker = marker;
 }
 
+/**
+ * @brief Connect this process to the test executable which started it.
+ * @param[in] url Path of the control pipe of the case.
+ * @throws std::runtime_error The pipe cannot be opened.
+ */
 static void ParseProbePipe(const std::wstring& url)
 {
     SPDLOG_INFO("connect the probe to '{}'", CLI::narrow(url));
 
-    s_probe_ctx->rpc_client = appbox::RemoteClient::Create(CLI::narrow(url));
-    if (!s_probe_ctx->rpc_client->Start())
+    s_probe_ctx->connector = appbox::RemoteConnector::Create(CLI::narrow(url));
+    s_probe_ctx->session = s_probe_ctx->connector->Connect(kConnectTimeoutMs);
+    if (!s_probe_ctx->session)
     {
-        SPDLOG_ERROR("Failed to start RPC client");
-        throw std::runtime_error("Failed to start RPC client");
+        SPDLOG_ERROR("Failed to connect the probe to the pipe");
+        throw std::runtime_error("Failed to connect the probe to the pipe");
     }
 }
 
-static nlohmann::json GetProbeRequest(std::string& name)
+/**
+ * @brief Serve the requests of the test executable until it asks this process
+ *        to leave.
+ *
+ * The process reports which handle it belongs to first, so a run which starts
+ * several probes lets the case tell them apart. It then answers the requests of
+ * the case until the exit request arrives; the answer of that request is
+ * flushed before the process leaves, because a process which left earlier would
+ * drop it and the caller would wait for its whole budget.
+ *
+ * A pipe which ends without an exit request means that the test executable is
+ * gone: no request can reach this process any more, so it leaves as well. A
+ * probe which kept waiting would keep the launcher of its run alive, and that
+ * launcher holds the state of the sandbox, which the artifact of a failed run
+ * has to carry.
+ *
+ * @throws CLI::RuntimeError The exit request named a non zero code, the process
+ *                           could not bind itself to its handle, or the pipe of
+ *                           the case ended without an exit request.
+ */
+static void Serve()
 {
-    appbox::test::ProbeRequest::Req req;
-    req.key = s_probe_ctx->probe_key;
+    const auto& session = s_probe_ctx->session;
 
-    auto rsp = s_probe_ctx->rpc_client->Call<appbox::test::ProbeRequest>(req).get();
-    if (!rsp.has_value())
+    /*
+     * The report of the end of the connection is what ends a process the case
+     * did not ask to leave, so it is registered before the process answers
+     * anything: a case which is gone before the bind is answered is told apart
+     * by the failure of the bind below.
+     */
+    auto connection_closed = std::make_shared<std::atomic_bool>(false);
+    session->SetClosedHandler([connection_closed]() { *connection_closed = true; });
+
+    for (const auto& probe : s_handlers)
     {
-        SPDLOG_ERROR("ProbeRequest failed");
+        session->RegisterMethod(probe.first, BindHandler(session, probe.second));
+    }
+
+    appbox::test::ProtocolBind::Req bind;
+    bind.key = s_probe_ctx->probe_key;
+
+    const auto bound = session->Call<appbox::test::ProtocolBind>(bind, kBindTimeoutMs);
+    if (!bound.has_value())
+    {
+        SPDLOG_ERROR("ProtocolBind failed: {}", bound.error().message);
         throw CLI::RuntimeError(EXIT_FAILURE);
     }
 
-    name = rsp->name;
-    return rsp->data;
-}
+    SPDLOG_INFO("the probe serves the handle '{}'", s_probe_ctx->probe_key);
 
-static nlohmann::json ProbeCallLocal(const std::string& name, const nlohmann::json& data)
-{
-    auto& m = appbox::test::Probe::GetMap();
-
-    auto it = m.find(name);
-    if (it == m.end())
+    while (!appbox::test::ExitRequested() && !connection_closed->load())
     {
-        throw std::invalid_argument(name + " does not exist");
+        ::Sleep(kPollDelayMs);
     }
 
-    auto probe = it->second;
-    return probe(data);
-}
-
-static void ProbeRun()
-{
-    std::string name;
-    auto        data = GetProbeRequest(name);
-
-    SPDLOG_INFO("run the probe task '{}'", name);
-
-    appbox::test::ProbeResponse::Req ret;
-    ret.key = s_probe_ctx->probe_key;
-    ret.result = ProbeCallLocal(name, data);
-
-    /*
-     * The report has to be acknowledged before this process leaves: the message
-     * is written asynchronously by the IO thread of the client, so leaving
-     * right after the call could drop it and the caller of ProbeCall() would
-     * wait for the result of this probe forever.
-     */
-    auto ack = s_probe_ctx->rpc_client->Call<appbox::test::ProbeResponse>(ret).get();
-    if (!ack.has_value())
+    if (!appbox::test::ExitRequested())
     {
-        SPDLOG_ERROR("ProbeResponse failed: {}", ack.error().message);
+        /*
+         * The pipe is gone, so there is nothing to flush and no code to report:
+         * the process leaves the way a program of a launcher which ended does.
+         */
+        SPDLOG_ERROR("the pipe of the case ended, the probe leaves");
         throw CLI::RuntimeError(EXIT_FAILURE);
     }
 
-    SPDLOG_INFO("the probe task '{}' reported its result", name);
-
     /*
-     * The result is visible to the case now, so a probe which is asked to stay
-     * alive keeps the run of its launcher alive as well.
+     * The exit request is answered by the handler of the IO thread, which may
+     * still be running: the wait for the incoming requests covers it, the wait
+     * for the pending writes covers the answer itself.
      */
-    if (s_probe_hold_ms != 0)
-    {
-        ::Sleep(s_probe_hold_ms);
-    }
+    session->WaitForIncomingResponses(kFlushTimeoutMs);
+    session->WaitForPendingWrites(kFlushTimeoutMs);
 
-    /*
-     * A program which leaves with a code of its own is what a case which checks
-     * the exit code of a run needs: the code is reported after the result of
-     * this process is visible to the case.
-     */
-    if (s_probe_exit_code != 0)
+    const auto code = appbox::test::ExitCode();
+    SPDLOG_INFO("the probe leaves with code {}", code);
+
+    if (code != 0)
     {
-        throw CLI::RuntimeError(static_cast<int>(s_probe_exit_code));
+        throw CLI::RuntimeError(code);
     }
 
     throw CLI::Success();
 }
 
+void appbox::test::RegisterProbeMethod(const std::string& method, ProbeHandler handler)
+{
+    s_handlers[method] = std::move(handler);
+}
+
 void appbox::test::ProbeInit(CLI::App& app)
 {
     s_probe_ctx = std::make_shared<ProbeCtx>();
+    RegisterProbes();
 
     app.add_option("--startup_marker", s_startup_marker, "Marker of the startup file which started this process");
     app.add_option_function<std::string>("--probe_marker", SetProbeMarker,
                                          "Marker of this process, which overrides the marker of the startup file");
-    app.add_option("--probe_hold_ms", s_probe_hold_ms,
-                   "Time this process stays alive after it reported its result, in milliseconds");
-    app.add_option("--probe_exit_code", s_probe_exit_code, "Exit code this process reports after it sent its result");
 
     auto cmd = app.add_subcommand(PROBE_COMMAND);
     cmd->add_option_function<std::wstring>("--probe_pipe", ParseProbePipe)->required();
     cmd->add_option("--probe_key", s_probe_ctx->probe_key)->required();
-    cmd->final_callback(ProbeRun);
+    cmd->final_callback(Serve);
 }
 
 const std::string& appbox::test::StartupMarker()

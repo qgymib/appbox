@@ -1,4 +1,5 @@
 #include "probe/ListDir.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/RealFsFolder.hpp"
@@ -69,7 +70,7 @@ TEST_F(E2E_Snapshot, WhiteoutHidesAHostEntry)
     req.method = ProtocolListDir::Req::Method::Std;
 
     ProtocolListDir::Rsp rsp;
-    ProbeListDir.Call(req, GetCWD(), config).get_to(rsp);
+    rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);
 
     const auto listed = [&rsp](const std::string& entry) {
         return std::any_of(rsp.entries.begin(), rsp.entries.end(),

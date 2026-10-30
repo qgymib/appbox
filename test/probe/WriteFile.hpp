@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_WRITEFILE_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <string>
 #include <nlohmann/json.hpp>
 
@@ -11,6 +10,8 @@ namespace appbox::test
 
 struct ProtocolWriteFile
 {
+    static constexpr const char* Method = "WriteFile";
+
     struct Req
     {
         std::string FileName;
@@ -33,8 +34,11 @@ struct ProtocolWriteFile
  * The probe opens the file for reading and writing, writes the content at the
  * beginning of the file, truncates the file to the content and reads it back,
  * so a case pins what the view holds after the write.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeWriteFile;
+ProtocolWriteFile::Rsp ProbeWriteFile_Entry(const ProtocolWriteFile::Req& request);
 
 } // namespace appbox::test
 

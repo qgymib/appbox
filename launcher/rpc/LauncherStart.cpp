@@ -49,7 +49,7 @@ APPBOX_LAUNCHER_RPC_DEFINE(MsgLauncherStart, id, param)
     std::string error_message;
     if (!appbox::ValidateLauncherStartRequest(param, error_code, error_message))
     {
-        control->Refuse(id, error_code, error_message);
+        control->Refuse(session, id, error_code, error_message);
         return;
     }
 
@@ -59,15 +59,15 @@ APPBOX_LAUNCHER_RPC_DEFINE(MsgLauncherStart, id, param)
      * sandbox runs, so the process at the other end of the pipe is the only
      * boundary which decides whether a program may be started at all.
      */
-    if (!control->Authenticate(id, error_code, error_message))
+    if (!control->Authenticate(session, id, error_code, error_message))
     {
-        control->Refuse(id, error_code, error_message);
+        control->Refuse(session, id, error_code, error_message);
         return;
     }
 
     if (param.sandbox_id != LauncherApp().launcher_config.sandbox_id)
     {
-        control->Refuse(id, appbox::launcher_start_error::kSandboxMismatch,
+        control->Refuse(session, id, appbox::launcher_start_error::kSandboxMismatch,
                         "the request belongs to the sandbox '" + param.sandbox_id + "'");
         return;
     }
@@ -80,12 +80,17 @@ APPBOX_LAUNCHER_RPC_DEFINE(MsgLauncherStart, id, param)
      */
     if (!appbox::SameHostPath(appbox::UTF8ToWide(param.sandbox_root), control->SandboxRoot()))
     {
-        control->Refuse(id, appbox::launcher_start_error::kSandboxMismatch,
+        control->Refuse(session, id, appbox::launcher_start_error::kSandboxMismatch,
                         "the sandbox of the request lives in another directory");
         return;
     }
 
+    /*
+     * The session travels with the request: the control thread answers it later,
+     * when the programs of the request were created.
+     */
     appbox::LauncherStartRequest request;
+    request.session = session;
     request.request = param;
     request.rpc_id = id;
 
@@ -99,13 +104,13 @@ APPBOX_LAUNCHER_RPC_DEFINE(MsgLauncherStart, id, param)
          * The run ends, but the sandbox may be started again at once: the client
          * races for the control pipe again instead of reporting a failure.
          */
-        control->ReplyStatus(id, appbox::launcher_start_status::kShuttingDown,
+        control->ReplyStatus(session, id, appbox::launcher_start_status::kShuttingDown,
                              appbox::launcher_start_error::kShuttingDown, "the sandbox ends its run", 0);
         return;
 
     case appbox::EnqueueResult::Busy:
     default:
-        control->Refuse(id, appbox::launcher_start_error::kBusy, "the request queue of the sandbox is full");
+        control->Refuse(session, id, appbox::launcher_start_error::kBusy, "the request queue of the sandbox is full");
         return;
     }
 }

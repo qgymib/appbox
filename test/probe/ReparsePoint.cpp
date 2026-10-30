@@ -541,10 +541,11 @@ static void ReadText(const ReparseApi& api, const appbox::test::ProtocolReparseP
     api.close(handle);
 }
 
-static nlohmann::json ProbeReparsePoint_Entry(const nlohmann::json& data)
+appbox::test::ProtocolReparsePoint::Rsp appbox::test::ProbeReparsePoint_Entry(
+    const appbox::test::ProtocolReparsePoint::Req& request)
 {
-    const auto req = data.get<appbox::test::ProtocolReparsePoint::Req>();
-    const auto api = LoadApi();
+    const auto& req = request;
+    const auto  api = LoadApi();
 
     appbox::test::ProtocolReparsePoint::Rsp rsp;
 
@@ -607,5 +608,3 @@ static nlohmann::json ProbeReparsePoint_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeReparsePoint("ReparsePoint", ProbeReparsePoint_Entry);

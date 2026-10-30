@@ -3,10 +3,11 @@
 
 using namespace appbox::test;
 
-static nlohmann::json ProbeCreateDirectoryW_Entry(const nlohmann::json& data)
+appbox::test::ProtocolCreateDirectoryW::Rsp appbox::test::ProbeCreateDirectoryW_Entry(
+    const appbox::test::ProtocolCreateDirectoryW::Req& request)
 {
-    auto req = data.template get<ProtocolCreateDirectoryW::Req>();
-    auto wPathName = appbox::UTF8ToWide(req.PathName);
+    const auto& req = request;
+    auto        wPathName = appbox::UTF8ToWide(req.PathName);
 
     ProtocolCreateDirectoryW::Rsp rsp;
     if (!CreateDirectoryW(wPathName.c_str(), nullptr))
@@ -16,5 +17,3 @@ static nlohmann::json ProbeCreateDirectoryW_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeCreateDirectoryW("CreateDirectoryW", ProbeCreateDirectoryW_Entry);

@@ -1,5 +1,6 @@
 #include "probe/RegDeleteKey.hpp"
 #include "probe/RegReadValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -67,7 +68,7 @@ TEST_F(E2E_Reg, DeleteKey_ImageKeyWhiteout)
         req.Key = appbox::WideToUTF8(subkey);
         req.Mode = ProtocolRegDeleteKey::ModeKind::Reg;
 
-        const auto rsp = ProbeRegDeleteKey.Call(req, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteKey>(req);
         EXPECT_EQ(rsp.delete_code, static_cast<DWORD>(ERROR_SUCCESS));
 
         /* The key of the image is hidden by the marker of the state hive. */
@@ -80,7 +81,7 @@ TEST_F(E2E_Reg, DeleteKey_ImageKeyWhiteout)
         req.Key = appbox::WideToUTF8(subkey);
         req.Value = "HostValue";
 
-        const auto rsp = ProbeRegReadValue.Call(req, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);
         EXPECT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
 }

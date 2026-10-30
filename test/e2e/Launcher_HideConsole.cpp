@@ -1,4 +1,5 @@
 #include "probe/ConsoleWindow.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "launcher/Config.hpp"
@@ -51,8 +52,7 @@ TEST_F(E2E_Launcher_HideConsole, ProbeConsoleWindowIsHidden)
 {
     const auto config = BuildConfig(GetCWD());
 
-    const auto rsp =
-        ProbeConsoleWindow.Call(nlohmann::json::object(), GetCWD(), config).get<ProtocolConsoleWindow::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolConsoleWindow>(nlohmann::json::object());
 
     EXPECT_TRUE(rsp.attached);
     EXPECT_FALSE(rsp.visible);

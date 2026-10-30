@@ -38,9 +38,10 @@ static std::wstring AsNtPath(const std::wstring& path)
     return nt_path;
 }
 
-static nlohmann::json ProbeQueryFullAttributes_Entry(const nlohmann::json& data)
+appbox::test::ProtocolQueryFullAttributes::Rsp appbox::test::ProbeQueryFullAttributes_Entry(
+    const appbox::test::ProtocolQueryFullAttributes::Req& request)
 {
-    const auto req = data.get<appbox::test::ProtocolQueryFullAttributes::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolQueryFullAttributes::Rsp rsp;
 
@@ -82,5 +83,3 @@ static nlohmann::json ProbeQueryFullAttributes_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeQueryFullAttributes("QueryFullAttributes", ProbeQueryFullAttributes_Entry);

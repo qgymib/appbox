@@ -115,6 +115,22 @@ public:
         return layout_;
     }
 
+    /**
+     * @brief Get the reason the startup image could not be decoded.
+     *
+     * The image is a decoration of the screen: a resource which cannot be
+     * decoded leaves the name and the progress in place. The reason is kept, so
+     * the state of the run reports why the screen shows no image instead of
+     * reporting a screen which simply carries none.
+     *
+     * @return The reason, empty while the image was decoded or while the
+     *         session sets none.
+     */
+    const std::string& ImageError() const
+    {
+        return image_error_;
+    }
+
 private:
     /**
      * @brief Create the window of the screen.
@@ -166,9 +182,10 @@ private:
 
     HWND window_ = nullptr; ///< The window of the screen, null while it is closed.
 
-    std::wstring  name_;   ///< Name of the packaged application.
-    StartupImage  image_;  ///< Startup image, invalid while the session sets none.
-    StartupLayout layout_; ///< Layout the screen draws with.
+    std::wstring  name_;        ///< Name of the packaged application.
+    StartupImage  image_;       ///< Startup image, invalid while the session sets none.
+    StartupLayout layout_;      ///< Layout the screen draws with.
+    std::string   image_error_; ///< Reason the startup image could not be decoded, empty on success.
 
     HFONT  font_ = nullptr;       ///< Font of the name of the application.
     HBRUSH background_ = nullptr; ///< Brush of the card the screen draws.

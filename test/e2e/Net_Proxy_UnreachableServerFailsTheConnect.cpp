@@ -1,4 +1,5 @@
 #include "probe/SocketTraffic.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/EchoServer.hpp"
 #include "utils/FsBuilder.hpp"
@@ -62,7 +63,7 @@ TEST_F(E2E_Net, Proxy_UnreachableServerFailsTheConnect)
     ProtocolSocketTraffic::Req req;
     req.steps.push_back(step);
 
-    const auto rsp = ProbeSocketTraffic.Call(req, GetCWD(), config).get<ProtocolSocketTraffic::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolSocketTraffic>(req);
     ASSERT_EQ(rsp.results.size(), 1u);
     EXPECT_EQ(rsp.results[0].code, -1);
     EXPECT_NE(rsp.results[0].error, 0);

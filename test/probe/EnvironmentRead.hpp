@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_ENVIRONMENT_READ_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -21,6 +20,8 @@ namespace appbox::test
  */
 struct ProtocolEnvironmentRead
 {
+    static constexpr const char* Method = "EnvironmentRead";
+
     /**
      * @brief The question of one probe call.
      */
@@ -124,8 +125,11 @@ struct ProtocolEnvironmentRead
 
 /**
  * @brief Read the environment of the sandboxed application.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeEnvironmentRead;
+ProtocolEnvironmentRead::Rsp ProbeEnvironmentRead_Entry(const ProtocolEnvironmentRead::Req& request);
 
 } // namespace appbox::test
 

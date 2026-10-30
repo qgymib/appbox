@@ -1,4 +1,5 @@
 #include "probe/QueryInformationByName.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -45,7 +46,7 @@ ProtocolQueryInformationByName::Rsp QueryInformationByName(const std::vector<std
         req.paths.push_back(appbox::WideToUTF8(path));
     }
 
-    return ProbeQueryInformationByName.Call(req, cwd, config).get<ProtocolQueryInformationByName::Rsp>();
+    return Probe(cwd, config).Call<ProtocolQueryInformationByName>(req);
 }
 
 } // namespace

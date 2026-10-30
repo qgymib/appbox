@@ -1,4 +1,5 @@
 #include "probe/RegDeleteKey.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -66,7 +67,7 @@ TEST_F(E2E_Reg, DeleteKey_ShadowKeyRemoved)
     req.Key = appbox::WideToUTF8(subkey);
     req.Mode = ProtocolRegDeleteKey::ModeKind::Reg;
 
-    const auto rsp = ProbeRegDeleteKey.Call(req, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteKey>(req);
     EXPECT_EQ(rsp.delete_code, static_cast<DWORD>(ERROR_SUCCESS));
     EXPECT_EQ(rsp.reopen_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
 

@@ -1,5 +1,6 @@
 #include "probe/RegReadValue.hpp"
 #include "probe/RegWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -78,7 +79,7 @@ TEST_F(E2E_Launcher, RegistryStateIsReset)
         req.Value = "TestValue";
         req.Data = "sandbox";
 
-        const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.set_code, 0u);
         ASSERT_EQ(rsp.readback, "sandbox");
     }
@@ -97,7 +98,7 @@ TEST_F(E2E_Launcher, RegistryStateIsReset)
         req.Key = appbox::WideToUTF8(subkey);
         req.Value = "TestValue";
 
-        const auto rsp = ProbeRegReadValue.Call(req, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);
         ASSERT_EQ(rsp.query_code, 0u);
         EXPECT_EQ(rsp.data, "packed");
     }

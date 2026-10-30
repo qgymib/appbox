@@ -2,14 +2,15 @@
  * The RPC headers pull in winsock2.h through asio, they have to come before
  * <windows.h> which would otherwise include the winsock.h version 1 header.
  */
-#include "RemoteClient.hpp"
-#include "RemoteServer.hpp"
+#include "RemoteAccepter.hpp"
+#include "RemoteConnector.hpp"
 #include <gtest/gtest.h>
 #include <windows.h>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <random>
@@ -21,6 +22,17 @@ namespace
 
 /** Method of the server of a case which echoes its parameter. */
 constexpr const char* kEchoMethod = "appbox_unit_echo";
+
+/** Method of the server of a case which answers after a delay. */
+constexpr const char* kDelayedMethod = "appbox_unit_delayed";
+
+/** Method of the server of a case which reports the peer of its request. */
+constexpr const char* kPeerMethod = "appbox_unit_peer";
+
+/**
+ * @brief Handler of a method which serves the session it is registered on.
+ */
+typedef std::function<void(const appbox::RemoteSession::Ptr&, uint64_t, const nlohmann::json&)> SessionHandler;
 
 /**
  * @brief Build a unique named pipe path.
@@ -35,22 +47,58 @@ std::string MakePipePath()
 }
 
 /**
- * @brief Options of a server which races for the name of its pipe.
+ * @brief Options of an accepter which races for the name of its pipe.
  * @return The options of the first instance of a pipe.
  */
-appbox::RemoteServer::Options FirstInstanceOptions()
+appbox::RemoteAccepter::Options FirstInstanceOptions()
 {
-    appbox::RemoteServer::Options options;
+    appbox::RemoteAccepter::Options options;
     options.first_instance = true;
     return options;
 }
 
 /**
+ * @brief Register a method on every session the accepter accepts.
+ *
+ * The accepter knows no method, so a case registers its handlers per session.
+ * The handler is stored inside the session, so it holds the session weakly: a
+ * strong reference would make the session own itself.
+ *
+ * @param[in] accepter Accepter to register the method on.
+ * @param[in] method Name of the method.
+ * @param[in] handler Implementation of the method.
+ */
+void RegisterOnSessions(const appbox::RemoteAccepter::Ptr& accepter, const std::string& method, SessionHandler handler)
+{
+    accepter->SetSessionCallback([method, handler](const appbox::RemoteSession::Ptr& session) {
+        std::weak_ptr<appbox::RemoteSession> weak_session = session;
+        session->RegisterMethod(method, [weak_session, handler](uint64_t id, const nlohmann::json& param) {
+            if (auto bound = weak_session.lock())
+            {
+                handler(bound, id, param);
+            }
+        });
+    });
+}
+
+/**
+ * @brief Register the method of a case which echoes its parameter.
+ * @param[in] accepter Accepter to register the method on.
+ */
+void RegisterEcho(const appbox::RemoteAccepter::Ptr& accepter)
+{
+    RegisterOnSessions(accepter, kEchoMethod,
+                       [](const appbox::RemoteSession::Ptr& session, uint64_t id, const nlohmann::json& param) {
+                           session->SendResponse(id, param);
+                       });
+}
+
+/**
  * @brief Client which writes and reads the frames of the transport itself.
  *
- * The client of the module refuses to send a payload which is no request, so
- * the cases which exercise the robustness of the server against a malformed
- * request talk to the pipe directly.
+ * A session refuses to send a payload which is no request, so the cases which
+ * exercise the robustness of the accepter against a malformed request talk to
+ * the pipe directly.
  */
 class RawPipeClient
 {
@@ -197,67 +245,64 @@ private:
 } // namespace
 
 /**
- * @brief The first instance of a pipe is created, and the server answers.
+ * @brief The first instance of a pipe is created, and the accepter serves.
  */
-TEST(Unit_RemoteServer, FirstInstanceCreates)
+TEST(Unit_RemoteAccepter, FirstInstanceCreates)
 {
     const std::string pipe = MakePipePath();
 
-    const auto created = appbox::RemoteServer::CreateCompetitive(pipe, FirstInstanceOptions());
+    const auto created = appbox::RemoteAccepter::CreateCompetitive(pipe, FirstInstanceOptions());
 
     ASSERT_EQ(created.status, appbox::ServerCreateStatus::Created);
-    ASSERT_NE(created.server, nullptr);
+    ASSERT_NE(created.accepter, nullptr);
     EXPECT_EQ(created.error_code, static_cast<DWORD>(ERROR_SUCCESS));
 
-    appbox::RemoteServer* server = created.server.get();
-    server->RegisterMethod(kEchoMethod,
-                           [server](uint64_t id, const nlohmann::json& param) { server->SendResponse(id, param); });
+    RegisterEcho(created.accepter);
+    ASSERT_TRUE(created.accepter->Start());
 
-    ASSERT_TRUE(server->Start());
+    auto connector = appbox::RemoteConnector::Create(pipe);
+    auto session = connector->Connect(5000);
+    ASSERT_NE(session, nullptr);
 
-    auto client = appbox::RemoteClient::Create(pipe);
-    ASSERT_TRUE(client->Start(5000));
-
-    const auto rsp = client->Call(kEchoMethod, "hello").get();
+    const auto rsp = session->Call(kEchoMethod, "hello").get();
 
     ASSERT_TRUE(rsp.has_value());
     EXPECT_EQ(rsp.value().get<std::string>(), "hello");
 
-    server->Stop();
+    created.accepter->Stop();
 }
 
 /**
- * @brief A second process which races for the same name learns that a server
- *        listens on the pipe, and the first server keeps serving.
+ * @brief A second process which races for the same name learns that an accepter
+ *        listens on the pipe, and the first one keeps serving.
  */
-TEST(Unit_RemoteServer, SecondInstanceReportsAlreadyRunning)
+TEST(Unit_RemoteAccepter, SecondInstanceReportsAlreadyRunning)
 {
     const std::string pipe = MakePipePath();
 
-    const auto first = appbox::RemoteServer::CreateCompetitive(pipe, FirstInstanceOptions());
+    const auto first = appbox::RemoteAccepter::CreateCompetitive(pipe, FirstInstanceOptions());
     ASSERT_EQ(first.status, appbox::ServerCreateStatus::Created);
-    ASSERT_NE(first.server, nullptr);
-    ASSERT_TRUE(first.server->Start());
+    ASSERT_NE(first.accepter, nullptr);
+    ASSERT_TRUE(first.accepter->Start());
 
-    const auto second = appbox::RemoteServer::CreateCompetitive(pipe, FirstInstanceOptions());
+    const auto second = appbox::RemoteAccepter::CreateCompetitive(pipe, FirstInstanceOptions());
 
     EXPECT_EQ(second.status, appbox::ServerCreateStatus::AlreadyRunning);
-    EXPECT_EQ(second.server, nullptr);
+    EXPECT_EQ(second.accepter, nullptr);
     EXPECT_EQ(second.error_code, static_cast<DWORD>(ERROR_ACCESS_DENIED));
 
-    appbox::RemoteServer* server = first.server.get();
-    server->RegisterMethod(kEchoMethod,
-                           [server](uint64_t id, const nlohmann::json& param) { server->SendResponse(id, param); });
+    RegisterEcho(first.accepter);
 
-    auto client = appbox::RemoteClient::Create(pipe);
-    ASSERT_TRUE(client->Start(5000));
+    auto connector = appbox::RemoteConnector::Create(pipe);
+    auto session = connector->Connect(5000);
+    ASSERT_NE(session, nullptr);
 
-    const auto rsp = client->Call(kEchoMethod, "hello").get();
+    const auto rsp = session->Call(kEchoMethod, "hello").get();
 
     ASSERT_TRUE(rsp.has_value());
     EXPECT_EQ(rsp.value().get<std::string>(), "hello");
 
-    server->Stop();
+    first.accepter->Stop();
 }
 
 /**
@@ -275,7 +320,7 @@ TEST(Unit_RemoteServer, SecondInstanceReportsAlreadyRunning)
  * decides the error of a second creation, and a bounded count reports the busy
  * pipe instead of the taken name.
  */
-TEST(Unit_RemoteServer, BusyPipeReportsAlreadyRunning)
+TEST(Unit_RemoteAccepter, BusyPipeReportsAlreadyRunning)
 {
     const std::string pipe = MakePipePath();
 
@@ -288,10 +333,10 @@ TEST(Unit_RemoteServer, BusyPipeReportsAlreadyRunning)
         ::CreateFileA(pipe.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
     ASSERT_NE(client, INVALID_HANDLE_VALUE) << ::GetLastError();
 
-    const auto created = appbox::RemoteServer::CreateCompetitive(pipe, FirstInstanceOptions());
+    const auto created = appbox::RemoteAccepter::CreateCompetitive(pipe, FirstInstanceOptions());
 
     EXPECT_EQ(created.status, appbox::ServerCreateStatus::AlreadyRunning);
-    EXPECT_EQ(created.server, nullptr);
+    EXPECT_EQ(created.accepter, nullptr);
     EXPECT_EQ(created.error_code, static_cast<DWORD>(ERROR_ACCESS_DENIED));
 
     ::CloseHandle(client);
@@ -305,31 +350,29 @@ TEST(Unit_RemoteServer, BusyPipeReportsAlreadyRunning)
  * of this user holds the name, so the probe has to report the other direction
  * as well.
  */
-TEST(Unit_RemoteServer, MissingPipeIsNotReachable)
+TEST(Unit_RemoteAccepter, MissingPipeIsNotReachable)
 {
-    EXPECT_FALSE(appbox::detail::RemoteServerPeerIsReachable(MakePipePath()));
+    EXPECT_FALSE(appbox::detail::AccepterPeerIsReachable(MakePipePath()));
 }
 
 /**
  * @brief A client which connects and leaves at once consumes the instance of
- *        the pipe, and the server keeps serving instead of ending its loop.
+ *        the pipe, and the accepter keeps serving instead of ending its loop.
  *
  * The launcher of a sandbox probes the pipe of its sandbox exactly that way
  * when it races for the name, so the probe of a second launcher must not stop
- * the server of the first one.
+ * the accepter of the first one.
  */
-TEST(Unit_RemoteServer, AbandonedConnectionKeepsServing)
+TEST(Unit_RemoteAccepter, AbandonedConnectionKeepsServing)
 {
     const std::string pipe = MakePipePath();
 
-    const auto created = appbox::RemoteServer::CreateCompetitive(pipe, FirstInstanceOptions());
+    const auto created = appbox::RemoteAccepter::CreateCompetitive(pipe, FirstInstanceOptions());
     ASSERT_EQ(created.status, appbox::ServerCreateStatus::Created);
-    ASSERT_NE(created.server, nullptr);
+    ASSERT_NE(created.accepter, nullptr);
 
-    appbox::RemoteServer* server = created.server.get();
-    server->RegisterMethod(kEchoMethod,
-                           [server](uint64_t id, const nlohmann::json& param) { server->SendResponse(id, param); });
-    ASSERT_TRUE(server->Start());
+    RegisterEcho(created.accepter);
+    ASSERT_TRUE(created.accepter->Start());
 
     /* Connect and leave again, which is how a launcher probes the name. */
     for (int attempt = 0; attempt < 16; ++attempt)
@@ -344,64 +387,65 @@ TEST(Unit_RemoteServer, AbandonedConnectionKeepsServing)
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    auto client = appbox::RemoteClient::Create(pipe);
-    ASSERT_TRUE(client->Start(5000));
+    auto connector = appbox::RemoteConnector::Create(pipe);
+    auto session = connector->Connect(5000);
+    ASSERT_NE(session, nullptr);
 
-    const auto rsp = client->Call(kEchoMethod, "hello").get();
+    const auto rsp = session->Call(kEchoMethod, "hello").get();
 
     ASSERT_TRUE(rsp.has_value());
     EXPECT_EQ(rsp.value().get<std::string>(), "hello");
 
-    server->Stop();
+    created.accepter->Stop();
 }
 
 /**
  * @brief An access denial of the creation is a running server only when the
  *        pipe can be connected.
  */
-TEST(Unit_RemoteServer, CreateResultMapsAccessDenied)
+TEST(Unit_RemoteAccepter, CreateResultMapsAccessDenied)
 {
     using appbox::ServerCreateStatus;
 
-    EXPECT_EQ(appbox::detail::ClassifyRemoteServerCreateError(ERROR_SUCCESS, false), ServerCreateStatus::Created);
-    EXPECT_EQ(appbox::detail::ClassifyRemoteServerCreateError(ERROR_SUCCESS, true), ServerCreateStatus::Created);
+    EXPECT_EQ(appbox::detail::ClassifyAccepterCreateError(ERROR_SUCCESS, false), ServerCreateStatus::Created);
+    EXPECT_EQ(appbox::detail::ClassifyAccepterCreateError(ERROR_SUCCESS, true), ServerCreateStatus::Created);
 
-    EXPECT_EQ(appbox::detail::ClassifyRemoteServerCreateError(ERROR_ACCESS_DENIED, true),
+    EXPECT_EQ(appbox::detail::ClassifyAccepterCreateError(ERROR_ACCESS_DENIED, true),
               ServerCreateStatus::AlreadyRunning);
-    EXPECT_EQ(appbox::detail::ClassifyRemoteServerCreateError(ERROR_ACCESS_DENIED, false),
+    EXPECT_EQ(appbox::detail::ClassifyAccepterCreateError(ERROR_ACCESS_DENIED, false),
               ServerCreateStatus::AccessDenied);
 
-    EXPECT_EQ(appbox::detail::ClassifyRemoteServerCreateError(ERROR_NOT_ENOUGH_MEMORY, false),
-              ServerCreateStatus::Failed);
-    EXPECT_EQ(appbox::detail::ClassifyRemoteServerCreateError(ERROR_INVALID_NAME, true), ServerCreateStatus::Failed);
+    EXPECT_EQ(appbox::detail::ClassifyAccepterCreateError(ERROR_NOT_ENOUGH_MEMORY, false), ServerCreateStatus::Failed);
+    EXPECT_EQ(appbox::detail::ClassifyAccepterCreateError(ERROR_INVALID_NAME, true), ServerCreateStatus::Failed);
 }
 
 /**
  * @brief Stopping refuses new connections, answers the requests which are in
  *        flight and may be repeated.
  */
-TEST(Unit_RemoteServer, StopRefusesNewConnections)
+TEST(Unit_RemoteAccepter, StopRefusesNewConnections)
 {
     const std::string pipe = MakePipePath();
 
-    const auto created = appbox::RemoteServer::CreateCompetitive(pipe, FirstInstanceOptions());
+    const auto created = appbox::RemoteAccepter::CreateCompetitive(pipe, FirstInstanceOptions());
     ASSERT_EQ(created.status, appbox::ServerCreateStatus::Created);
 
-    appbox::RemoteServer* server = created.server.get();
-    std::atomic_bool      entered = false;
+    std::atomic_bool entered = false;
 
-    server->RegisterMethod("appbox_unit_delayed", [server, &entered](uint64_t id, const nlohmann::json&) {
-        entered = true;
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        server->SendResponse(id, "done");
-    });
+    RegisterOnSessions(created.accepter, kDelayedMethod,
+                       [&entered](const appbox::RemoteSession::Ptr& session, uint64_t id, const nlohmann::json&) {
+                           entered = true;
+                           std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                           session->SendResponse(id, "done");
+                       });
 
-    ASSERT_TRUE(server->Start());
+    ASSERT_TRUE(created.accepter->Start());
 
-    auto client = appbox::RemoteClient::Create(pipe);
-    ASSERT_TRUE(client->Start(5000));
+    auto connector = appbox::RemoteConnector::Create(pipe);
+    auto session = connector->Connect(5000);
+    ASSERT_NE(session, nullptr);
 
-    auto future = client->Call("appbox_unit_delayed", nlohmann::json());
+    auto future = session->Call(kDelayedMethod, nlohmann::json());
 
     /* Wait until the request is handled, then stop while it is in flight. */
     for (int i = 0; i < 400 && !entered.load(); ++i)
@@ -410,7 +454,7 @@ TEST(Unit_RemoteServer, StopRefusesNewConnections)
     }
     ASSERT_TRUE(entered.load());
 
-    server->Stop();
+    created.accepter->Stop();
 
     /* The answer of the request which was in flight reached the client. */
     const auto rsp = future.get();
@@ -418,60 +462,58 @@ TEST(Unit_RemoteServer, StopRefusesNewConnections)
     EXPECT_EQ(rsp.value().get<std::string>(), "done");
 
     /* A client which connects afterwards is refused. */
-    auto late = appbox::RemoteClient::Create(pipe);
-    EXPECT_FALSE(late->Start(300));
+    auto late = appbox::RemoteConnector::Create(pipe);
+    EXPECT_EQ(late->Connect(300), nullptr);
 
     /* The stop is idempotent. */
-    server->Stop();
+    created.accepter->Stop();
 }
 
 /**
- * @brief The server reports the process at the other end of the session of a
- *        request, which the authentication of the requests needs.
+ * @brief The session reports the process at the other end of the connection of
+ *        a request, which the authentication of the requests needs.
  */
-TEST(Unit_RemoteServer, PeerProcessIdOfRequestIsAvailable)
+TEST(Unit_RemoteAccepter, PeerProcessIdOfRequestIsAvailable)
 {
     const std::string pipe = MakePipePath();
 
-    const auto created = appbox::RemoteServer::CreateCompetitive(pipe, FirstInstanceOptions());
+    const auto created = appbox::RemoteAccepter::CreateCompetitive(pipe, FirstInstanceOptions());
     ASSERT_EQ(created.status, appbox::ServerCreateStatus::Created);
 
-    appbox::RemoteServer* server = created.server.get();
-    server->RegisterMethod("appbox_unit_peer", [server](uint64_t id, const nlohmann::json&) {
-        server->SendResponse(id, server->PeerProcessIdOfRequest(id));
-    });
+    RegisterOnSessions(created.accepter, kPeerMethod,
+                       [](const appbox::RemoteSession::Ptr& session, uint64_t id, const nlohmann::json&) {
+                           session->SendResponse(id, session->PeerProcessIdOfRequest(id));
+                       });
 
-    ASSERT_TRUE(server->Start());
+    ASSERT_TRUE(created.accepter->Start());
 
-    auto client = appbox::RemoteClient::Create(pipe);
-    ASSERT_TRUE(client->Start(5000));
+    auto connector = appbox::RemoteConnector::Create(pipe);
+    auto session = connector->Connect(5000);
+    ASSERT_NE(session, nullptr);
 
-    const auto rsp = client->Call("appbox_unit_peer", nlohmann::json()).get();
+    const auto rsp = session->Call(kPeerMethod, nlohmann::json()).get();
 
     ASSERT_TRUE(rsp.has_value());
 
     /* The client of the case runs in the process of the test. */
     EXPECT_EQ(rsp.value().get<DWORD>(), ::GetCurrentProcessId());
 
-    server->Stop();
+    created.accepter->Stop();
 }
 
 /**
  * @brief A payload which is no JSON is answered with the parse error, and the
- *        server keeps serving.
+ *        accepter keeps serving.
  */
-TEST(Unit_RemoteServer, MalformedJsonKeepsServing)
+TEST(Unit_RemoteAccepter, MalformedJsonKeepsServing)
 {
     const std::string pipe = MakePipePath();
 
-    const auto created = appbox::RemoteServer::CreateCompetitive(pipe, FirstInstanceOptions());
+    const auto created = appbox::RemoteAccepter::CreateCompetitive(pipe, FirstInstanceOptions());
     ASSERT_EQ(created.status, appbox::ServerCreateStatus::Created);
 
-    appbox::RemoteServer* server = created.server.get();
-    server->RegisterMethod(kEchoMethod,
-                           [server](uint64_t id, const nlohmann::json& param) { server->SendResponse(id, param); });
-
-    ASSERT_TRUE(server->Start());
+    RegisterEcho(created.accepter);
+    ASSERT_TRUE(created.accepter->Start());
 
     RawPipeClient raw(pipe);
     ASSERT_TRUE(raw.Valid());
@@ -485,48 +527,50 @@ TEST(Unit_RemoteServer, MalformedJsonKeepsServing)
     EXPECT_EQ(rsp["error"]["code"].get<int>(), -32700);
     EXPECT_TRUE(rsp["id"].is_null());
 
-    /* The IO thread of the server survived the malformed request. */
-    auto client = appbox::RemoteClient::Create(pipe);
-    ASSERT_TRUE(client->Start(5000));
+    /* The IO thread of the accepter survived the malformed request. */
+    auto connector = appbox::RemoteConnector::Create(pipe);
+    auto session = connector->Connect(5000);
+    ASSERT_NE(session, nullptr);
 
-    const auto echoed = client->Call(kEchoMethod, "hello").get();
+    const auto echoed = session->Call(kEchoMethod, "hello").get();
     ASSERT_TRUE(echoed.has_value());
     EXPECT_EQ(echoed.value().get<std::string>(), "hello");
 
-    server->Stop();
+    created.accepter->Stop();
 }
 
 /**
  * @brief A method which is not registered is reported as a method error.
  */
-TEST(Unit_RemoteServer, UnknownMethodReturnsError)
+TEST(Unit_RemoteAccepter, UnknownMethodReturnsError)
 {
     const std::string pipe = MakePipePath();
 
-    const auto created = appbox::RemoteServer::CreateCompetitive(pipe, FirstInstanceOptions());
+    const auto created = appbox::RemoteAccepter::CreateCompetitive(pipe, FirstInstanceOptions());
     ASSERT_EQ(created.status, appbox::ServerCreateStatus::Created);
-    ASSERT_TRUE(created.server->Start());
+    ASSERT_TRUE(created.accepter->Start());
 
-    auto client = appbox::RemoteClient::Create(pipe);
-    ASSERT_TRUE(client->Start(5000));
+    auto connector = appbox::RemoteConnector::Create(pipe);
+    auto session = connector->Connect(5000);
+    ASSERT_NE(session, nullptr);
 
-    const auto rsp = client->Call("appbox_unit_missing_method", nlohmann::json::object()).get();
+    const auto rsp = session->Call("appbox_unit_missing_method", nlohmann::json::object()).get();
 
     ASSERT_FALSE(rsp.has_value());
     EXPECT_EQ(rsp.error().code, -32601);
 
-    created.server->Stop();
+    created.accepter->Stop();
 }
 
 /**
- * @brief A request which exceeds the limit of the server is answered with the
- *        invalid request error, and the server keeps serving.
+ * @brief A request which exceeds the limit of the accepter is answered with the
+ *        invalid request error, and the accepter keeps serving.
  *
  * The limit of the frame of the transport (64 MiB) is checked by the session,
  * which drops a stream that carries such a frame. The limit of a request is
- * checked by the server, which can answer it.
+ * checked by the session of the accepter as well, which can answer it.
  */
-TEST(Unit_RemoteServer, OversizedFrameReturnsError)
+TEST(Unit_RemoteAccepter, OversizedFrameReturnsError)
 {
     const std::string pipe = MakePipePath();
 
@@ -537,14 +581,11 @@ TEST(Unit_RemoteServer, OversizedFrameReturnsError)
     auto options = FirstInstanceOptions();
     options.max_request_size = 128;
 
-    const auto created = appbox::RemoteServer::CreateCompetitive(pipe, options);
+    const auto created = appbox::RemoteAccepter::CreateCompetitive(pipe, options);
     ASSERT_EQ(created.status, appbox::ServerCreateStatus::Created);
 
-    appbox::RemoteServer* server = created.server.get();
-    server->RegisterMethod(kEchoMethod,
-                           [server](uint64_t id, const nlohmann::json& param) { server->SendResponse(id, param); });
-
-    ASSERT_TRUE(server->Start());
+    RegisterEcho(created.accepter);
+    ASSERT_TRUE(created.accepter->Start());
 
     RawPipeClient raw(pipe);
     ASSERT_TRUE(raw.Valid());
@@ -561,21 +602,22 @@ TEST(Unit_RemoteServer, OversizedFrameReturnsError)
     ASSERT_TRUE(rsp.contains("error"));
     EXPECT_EQ(rsp["error"]["code"].get<int>(), -32600);
 
-    /* The server still answers a request which is within the limit. */
-    auto client = appbox::RemoteClient::Create(pipe);
-    ASSERT_TRUE(client->Start(5000));
+    /* The accepter still answers a request which is within the limit. */
+    auto connector = appbox::RemoteConnector::Create(pipe);
+    auto session = connector->Connect(5000);
+    ASSERT_NE(session, nullptr);
 
-    const auto echoed = client->Call(kEchoMethod, "hello").get();
+    const auto echoed = session->Call(kEchoMethod, "hello").get();
     ASSERT_TRUE(echoed.has_value());
 
-    server->Stop();
+    created.accepter->Stop();
 }
 
 /**
  * @brief A transient failure of the creation of the next instance is retried,
- *        and the server keeps serving after the retries.
+ *        and the accepter keeps serving after the retries.
  */
-TEST(Unit_RemoteServer, AcceptRetryKeepsServing)
+TEST(Unit_RemoteAccepter, AcceptRetryKeepsServing)
 {
     const std::string pipe = MakePipePath();
 
@@ -590,25 +632,25 @@ TEST(Unit_RemoteServer, AcceptRetryKeepsServing)
         return ERROR_SUCCESS;
     };
 
-    const auto created = appbox::RemoteServer::CreateCompetitive(pipe, options);
+    const auto created = appbox::RemoteAccepter::CreateCompetitive(pipe, options);
     ASSERT_EQ(created.status, appbox::ServerCreateStatus::Created);
 
-    appbox::RemoteServer* server = created.server.get();
-    server->RegisterMethod(kEchoMethod,
-                           [server](uint64_t id, const nlohmann::json& param) { server->SendResponse(id, param); });
+    RegisterEcho(created.accepter);
 
     std::atomic_int reported = 0;
-    server->SetAcceptFailureCallback([&reported](appbox::AcceptFailureKind, DWORD) { ++reported; });
+    created.accepter->SetAcceptFailureCallback([&reported](appbox::AcceptFailureKind, DWORD) { ++reported; });
 
-    ASSERT_TRUE(server->Start());
+    ASSERT_TRUE(created.accepter->Start());
 
     /* The connection of this client starts the failing creation of the next instance. */
-    auto first = appbox::RemoteClient::Create(pipe);
-    ASSERT_TRUE(first->Start(5000));
+    auto first_connector = appbox::RemoteConnector::Create(pipe);
+    auto first = first_connector->Connect(5000);
+    ASSERT_NE(first, nullptr);
 
-    /* The retries of the server run while this client waits for an instance. */
-    auto second = appbox::RemoteClient::Create(pipe);
-    ASSERT_TRUE(second->Start(5000));
+    /* The retries of the accepter run while this client waits for an instance. */
+    auto second_connector = appbox::RemoteConnector::Create(pipe);
+    auto second = second_connector->Connect(5000);
+    ASSERT_NE(second, nullptr);
 
     const auto rsp = second->Call(kEchoMethod, "hello").get();
     ASSERT_TRUE(rsp.has_value());
@@ -616,24 +658,22 @@ TEST(Unit_RemoteServer, AcceptRetryKeepsServing)
 
     EXPECT_EQ(reported.load(), 0);
 
-    server->Stop();
+    created.accepter->Stop();
 }
 
 /**
  * @brief A fatal failure of the accept loop is reported to the callback instead
  *        of ending the IO thread, and no client is accepted afterwards.
  */
-TEST(Unit_RemoteServer, AcceptNextFailureIsReported)
+TEST(Unit_RemoteAccepter, AcceptNextFailureIsReported)
 {
     const std::string pipe = MakePipePath();
 
     auto options = FirstInstanceOptions();
     options.create_instance_error = []() -> DWORD { return ERROR_INVALID_HANDLE; };
 
-    const auto created = appbox::RemoteServer::CreateCompetitive(pipe, options);
+    const auto created = appbox::RemoteAccepter::CreateCompetitive(pipe, options);
     ASSERT_EQ(created.status, appbox::ServerCreateStatus::Created);
-
-    appbox::RemoteServer* server = created.server.get();
 
     std::mutex                mutex;
     std::condition_variable   cv;
@@ -641,7 +681,7 @@ TEST(Unit_RemoteServer, AcceptNextFailureIsReported)
     appbox::AcceptFailureKind kind = appbox::AcceptFailureKind::StillServing;
     DWORD                     code = 0;
 
-    server->SetAcceptFailureCallback([&](appbox::AcceptFailureKind failure, DWORD error) {
+    created.accepter->SetAcceptFailureCallback([&](appbox::AcceptFailureKind failure, DWORD error) {
         {
             std::lock_guard<std::mutex> lock(mutex);
             reported = true;
@@ -651,11 +691,12 @@ TEST(Unit_RemoteServer, AcceptNextFailureIsReported)
         cv.notify_all();
     });
 
-    ASSERT_TRUE(server->Start());
+    ASSERT_TRUE(created.accepter->Start());
 
     /* The connection of this client starts the failing creation of the next instance. */
-    auto client = appbox::RemoteClient::Create(pipe);
-    ASSERT_TRUE(client->Start(5000));
+    auto connector = appbox::RemoteConnector::Create(pipe);
+    auto session = connector->Connect(5000);
+    ASSERT_NE(session, nullptr);
 
     {
         std::unique_lock<std::mutex> lock(mutex);
@@ -666,8 +707,8 @@ TEST(Unit_RemoteServer, AcceptNextFailureIsReported)
     EXPECT_EQ(code, static_cast<DWORD>(ERROR_INVALID_HANDLE));
 
     /* No instance waits for a client any more. */
-    auto late = appbox::RemoteClient::Create(pipe);
-    EXPECT_FALSE(late->Start(300));
+    auto late = appbox::RemoteConnector::Create(pipe);
+    EXPECT_EQ(late->Connect(300), nullptr);
 
-    server->Stop();
+    created.accepter->Stop();
 }

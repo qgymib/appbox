@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_READFILE_FULL_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 
 namespace appbox::test
@@ -10,6 +9,7 @@ namespace appbox::test
 
 struct ProtocolReadFileFull
 {
+    static constexpr const char* Method = "ReadFileFull";
 
     struct Req
     {
@@ -27,8 +27,11 @@ struct ProtocolReadFileFull
 
 /**
  * @brief ReadFile probe.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeReadFileFull;
+ProtocolReadFileFull::Rsp ProbeReadFileFull_Entry(const ProtocolReadFileFull::Req& request);
 
 } // namespace appbox::test
 

@@ -169,8 +169,11 @@ SplashScreen::SplashScreen(bool enabled, const std::wstring& display_name, std::
             /*
              * The image is a decoration of the screen: an image resource which
              * cannot be decoded leaves the name and the progress in place
-             * instead of failing the run.
+             * instead of failing the run. The reason is kept as well, so the
+             * state of the run reports a screen without an image instead of a
+             * screen which carries none at all.
              */
+            image_error_ = error;
             SPDLOG_WARN("the startup screen is shown without its image: {}", error);
         }
     }

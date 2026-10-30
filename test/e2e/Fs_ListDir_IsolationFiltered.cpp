@@ -1,5 +1,6 @@
 #include "probe/ListDir.hpp"
 #include "probe/ListDirNt.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -81,7 +82,7 @@ TEST_F(E2E_Fs, ListDir_IsolationFiltersTheEntries)
         req.path = appbox::WideToUTF8(folder);
         req.method = method;
 
-        auto rsp = ProbeListDir.Call(req, GetCWD(), config).get<ProtocolListDir::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);
 
         std::vector<std::string> names;
         for (const auto& entry : rsp.entries)
@@ -98,7 +99,7 @@ TEST_F(E2E_Fs, ListDir_IsolationFiltersTheEntries)
         req.path = appbox::WideToUTF8(folder);
         req.extended = extended;
 
-        auto rsp = ProbeListDirNt.Call(req, GetCWD(), config).get<ProtocolListDirNt::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolListDirNt>(req);
         ASSERT_EQ(rsp.status, 0L);
         ExpectVisibleEntriesOnly(rsp.names);
     }

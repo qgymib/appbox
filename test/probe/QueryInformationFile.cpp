@@ -69,11 +69,11 @@ static std::wstring QueryName(T_NtQueryInformationFileProbe fn_query, HANDLE han
     return NameOfAnswer(info_class, buffer, static_cast<ULONG>(buffer.size()));
 }
 
-static nlohmann::json ProbeQueryInformationFile_Entry(const nlohmann::json& data)
+appbox::test::ProtocolQueryInformationFile::Rsp appbox::test::ProbeQueryInformationFile_Entry(
+    const appbox::test::ProtocolQueryInformationFile::Req& request)
 {
     using Mode = appbox::test::ProtocolQueryInformationFile::Req::Item::Mode;
-
-    const auto req = data.get<appbox::test::ProtocolQueryInformationFile::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolQueryInformationFile::Rsp rsp;
 
@@ -118,5 +118,3 @@ static nlohmann::json ProbeQueryInformationFile_Entry(const nlohmann::json& data
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeQueryInformationFile("QueryInformationFile", ProbeQueryInformationFile_Entry);

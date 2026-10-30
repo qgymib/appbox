@@ -1,4 +1,5 @@
 #include "probe/ReadFileFull.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -33,7 +34,7 @@ ProtocolReadFileFull::Rsp ReadFile(const std::wstring& file, const std::filesyst
 {
     ProtocolReadFileFull::Req req;
     req.FileName = appbox::WideToUTF8(file);
-    return ProbeReadFileFull.Call(req, cwd, config).get<ProtocolReadFileFull::Rsp>();
+    return Probe(cwd, config).Call<ProtocolReadFileFull>(req);
 }
 
 } // namespace

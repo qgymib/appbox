@@ -4,9 +4,10 @@
 
 using namespace appbox::test;
 
-static nlohmann::json ProbeCreateFileW_Entry(const nlohmann::json& data)
+appbox::test::ProtocolCreateFileW::Rsp appbox::test::ProbeCreateFileW_Entry(
+    const appbox::test::ProtocolCreateFileW::Req& request)
 {
-    auto req = data.template get<ProtocolCreateFileW::Req>();
+    const auto& req = request;
 
     auto wFileName = appbox::UTF8ToWide(req.FileName);
     auto hFile = CreateFileW(wFileName.c_str(), req.dwDesiredAccess, req.dwShareMode, nullptr,
@@ -21,5 +22,3 @@ static nlohmann::json ProbeCreateFileW_Entry(const nlohmann::json& data)
     CloseHandle(hFile);
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeCreateFileW("CreateFileW", ProbeCreateFileW_Entry);

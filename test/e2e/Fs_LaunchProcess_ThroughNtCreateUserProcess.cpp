@@ -1,4 +1,5 @@
 #include "probe/LaunchProcess.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/TestKnownFolder.hpp"
@@ -49,7 +50,7 @@ TEST_F(E2E_Fs, LaunchProcess_ThroughNtCreateUserProcess)
         req.Arguments = { "/c", "exit 42" };
         req.Api = LaunchApi::RtlCreateUserProcess;
 
-        auto rsp = ProbeLaunchProcess.Call(req, GetCWD(), config).get<ProtocolLaunchProcess::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolLaunchProcess>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(0)) << "RtlCreateUserProcess failed with " << rsp.code;
         EXPECT_EQ(rsp.exit_code, static_cast<DWORD>(42));
     }

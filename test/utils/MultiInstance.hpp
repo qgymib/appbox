@@ -22,15 +22,6 @@ namespace appbox::test
 inline constexpr const wchar_t* kSecondaryConfigName = L"config.secondary.json";
 
 /**
- * @brief Time the programs of a master instance stay alive, in milliseconds.
- *
- * The run of a launcher ends with its last program, so a case which observes
- * the sandbox of a master instance while it works needs programs which outlive
- * the observation.
- */
-inline constexpr std::uint32_t kMasterHoldMs = 2000;
-
-/**
  * @brief Build the configuration of a sandbox which starts one probe process.
  *
  * The configuration carries the layout a packed archive uses: the state below
@@ -70,27 +61,6 @@ nlohmann::json MultiInstanceRequestDocument(const std::string& sandbox_id);
  * @return true when the pipe exists, false when the budget was used up.
  */
 bool WaitForControlPipe(const std::string& sandbox_id, int timeout_ms);
-
-/**
- * @brief Read the log files a run wrote into the log directory of a case.
- * @param[in] root Working directory of the case.
- * @return The content of every log file, empty when the run wrote none.
- */
-std::string ReadRunLog(const std::filesystem::path& root);
-
-/**
- * @brief Wait until the log files of a case carry a text.
- *
- * The call is the way a case observes a stage of a run which is still working:
- * the launcher reports the stage in its own log file, which the case reads
- * while the run goes on.
- *
- * @param[in] root Working directory of the case.
- * @param[in] text Text the log files have to carry.
- * @param[in] timeout_ms Budget of the wait.
- * @return true when the text appeared, false when the budget was used up.
- */
-bool WaitForRunLog(const std::filesystem::path& root, const std::string& text, int timeout_ms);
 
 /**
  * @brief Count the log files a case holds.

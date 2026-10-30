@@ -1,4 +1,5 @@
 #include "probe/RegWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -51,7 +52,7 @@ TEST_F(E2E_Reg, Hide_CreateInSandbox)
     req.Value = "TestValue";
     req.Data = expected;
 
-    const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
     ASSERT_EQ(rsp.create_code, 0u);
     ASSERT_EQ(rsp.set_code, 0u);
     ASSERT_EQ(rsp.query_code, 0u);

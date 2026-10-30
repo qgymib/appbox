@@ -81,8 +81,7 @@ TEST_F(E2E_Reg, VariableExpansion32)
     req.Key = appbox::WideToUTF8(subkey);
     req.Values = { "ProgramFiles", "ProgramFilesX64", "ProgramFilesCommon", "ProgramFilesCommonX64", "SystemX86" };
 
-    const auto rsp =
-        ProbeRegReadValues.Call(req, GetCWD(), config, ProbeBitness::Bit32).get<ProtocolRegReadValues::Rsp>();
+    const auto rsp = Probe(GetCWD(), config, ProbeBitness::Bit32).Call<ProtocolRegReadValues>(req);
     ASSERT_EQ(rsp.values.size(), req.Values.size());
 
     for (const auto& answer : rsp.values)

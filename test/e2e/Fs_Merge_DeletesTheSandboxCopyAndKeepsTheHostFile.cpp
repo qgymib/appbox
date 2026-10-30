@@ -1,4 +1,5 @@
 #include "probe/DeleteFileW.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -84,7 +85,7 @@ TEST_F(E2E_Fs, Merge_DeletesTheSandboxCopyAndKeepsTheHostFile)
         ProtocolDeleteFileW::Req req;
         req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt");
 
-        const auto rsp = ProbeDeleteFileW.Call(req, GetCWD(), config).get<ProtocolDeleteFileW::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolDeleteFileW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     }
 

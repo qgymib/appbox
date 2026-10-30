@@ -10,7 +10,8 @@
  *
  * @return The response of the probe.
  */
-static nlohmann::json ProbeConsoleWindow_Entry(const nlohmann::json&)
+appbox::test::ProtocolConsoleWindow::Rsp appbox::test::ProbeConsoleWindow_Entry(
+    const appbox::test::ProtocolConsoleWindow::Req& /*request*/)
 {
     const HWND hwnd = GetConsoleWindow();
 
@@ -20,5 +21,3 @@ static nlohmann::json ProbeConsoleWindow_Entry(const nlohmann::json&)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeConsoleWindow("ConsoleWindow", ProbeConsoleWindow_Entry);

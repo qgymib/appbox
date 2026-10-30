@@ -80,7 +80,7 @@ void ExpectExpansionAcrossBitness(const std::wstring& cwd, ProbeBitness parent, 
     req.ChildExecutable = appbox::WideToUTF8(ProbePath(child));
     req.ChildHoldMs = 1000;
 
-    const auto rsp = ProbeRegTwoProcesses.Call(req, cwd, launcher_config, parent).get<ProtocolRegTwoProcesses::Rsp>();
+    const auto rsp = Probe(cwd, launcher_config, parent).Call<ProtocolRegTwoProcesses>(req);
 
     const std::string report = fmt::format(
         "parent: create={} set={} readback='{}' (expected '{}')\n"

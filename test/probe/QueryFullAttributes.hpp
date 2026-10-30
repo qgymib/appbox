@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_QUERY_FULL_ATTRIBUTES_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -12,6 +11,8 @@ namespace appbox::test
 
 struct ProtocolQueryFullAttributes
 {
+    static constexpr const char* Method = "QueryFullAttributes";
+
     struct Req
     {
         std::vector<std::string> paths; /* File names encoding in UTF-8. */
@@ -43,8 +44,11 @@ struct ProtocolQueryFullAttributes
  * so it pins the redirection of a query which carries a name directly. Every
  * path of one request is queried by the same process, which keeps the number
  * of probe calls of a case low.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeQueryFullAttributes;
+ProtocolQueryFullAttributes::Rsp ProbeQueryFullAttributes_Entry(const ProtocolQueryFullAttributes::Req& request);
 
 } // namespace appbox::test
 

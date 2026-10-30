@@ -2,9 +2,10 @@
 #include "QueryAttributes.hpp"
 #include "WString.hpp"
 
-static nlohmann::json ProbeQueryAttributes_Entry(const nlohmann::json& data)
+appbox::test::ProtocolQueryAttributes::Rsp appbox::test::ProbeQueryAttributes_Entry(
+    const appbox::test::ProtocolQueryAttributes::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolQueryAttributes::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolQueryAttributes::Rsp rsp;
     rsp.attributes = GetFileAttributesW(appbox::UTF8ToWide(req.FileName).c_str());
@@ -12,5 +13,3 @@ static nlohmann::json ProbeQueryAttributes_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeQueryAttributes("QueryAttributes", ProbeQueryAttributes_Entry);

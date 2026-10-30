@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGREADVALUES_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -21,6 +20,8 @@ namespace appbox::test
  */
 struct ProtocolRegReadValues
 {
+    static constexpr const char* Method = "RegReadValues";
+
     /**
      * @brief The question of one probe call.
      */
@@ -110,8 +111,11 @@ struct ProtocolRegReadValues
 
 /**
  * @brief Read several values of one key of the sandbox view.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegReadValues;
+ProtocolRegReadValues::Rsp ProbeRegReadValues_Entry(const ProtocolRegReadValues::Req& request);
 
 } // namespace appbox::test
 

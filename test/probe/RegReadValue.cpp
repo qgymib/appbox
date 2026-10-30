@@ -10,9 +10,10 @@
  * deliver values which only exist in the real registry, while an entry which
  * may only be seen through the hive has to report that it does not exist.
  */
-static nlohmann::json ProbeRegReadValue_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegReadValue::Rsp appbox::test::ProbeRegReadValue_Entry(
+    const appbox::test::ProtocolRegReadValue::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolRegReadValue::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegReadValue::Rsp rsp;
 
@@ -41,5 +42,3 @@ static nlohmann::json ProbeRegReadValue_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegReadValue("RegReadValue", ProbeRegReadValue_Entry);

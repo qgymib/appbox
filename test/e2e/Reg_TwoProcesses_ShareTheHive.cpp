@@ -1,6 +1,7 @@
 #include "probe/RegChildProcess.hpp"
 #include "probe/RegReadValue.hpp"
 #include "probe/RegTwoProcesses.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/RegChildExitCode.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
@@ -86,18 +87,18 @@ TEST_F(E2E_Reg, TwoProcesses_ShareTheHive)
     req.ChildData = "child";
     req.ChildHoldMs = 2000;
 
-    const auto rsp = ProbeRegTwoProcesses.Call(req, GetCWD(), config).get<ProtocolRegTwoProcesses::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegTwoProcesses>(req);
 
     /* The second run mounts the hive of the state directory of the first run. */
     ProtocolRegReadValue::Req read_parent;
     read_parent.Key = req.Key;
     read_parent.Value = req.ParentValue;
-    const auto parent_again = ProbeRegReadValue.Call(read_parent, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
+    const auto parent_again = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(read_parent);
 
     ProtocolRegReadValue::Req read_child;
     read_child.Key = req.Key;
     read_child.Value = req.ChildValue;
-    const auto child_again = ProbeRegReadValue.Call(read_child, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
+    const auto child_again = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(read_child);
 
     const std::string report = FormatReport(rsp, parent_again, child_again);
 

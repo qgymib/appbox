@@ -14,9 +14,10 @@ using namespace appbox::test;
  * layers. A case which needs the answer of the file system itself calls the
  * shared function in its own process instead.
  */
-static nlohmann::json ProbeListDirNt_Entry(const nlohmann::json& data)
+appbox::test::ProtocolListDirNt::Rsp appbox::test::ProbeListDirNt_Entry(
+    const appbox::test::ProtocolListDirNt::Req& request)
 {
-    const auto req = data.get<ProtocolListDirNt::Req>();
+    const auto& req = request;
 
     NtDirectoryQuery query;
     query.path = appbox::UTF8ToWide(req.path);
@@ -33,5 +34,3 @@ static nlohmann::json ProbeListDirNt_Entry(const nlohmann::json& data)
     rsp.names = result.names;
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeListDirNt("ListDirNt", ProbeListDirNt_Entry);

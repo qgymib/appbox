@@ -80,10 +80,10 @@ static std::vector<ProtocolListDir::Rsp::Entry> ListDirCRT(const std::wstring& p
     return entries;
 }
 
-static nlohmann::json ProbeListDir_Entry(const nlohmann::json& data)
+appbox::test::ProtocolListDir::Rsp appbox::test::ProbeListDir_Entry(const appbox::test::ProtocolListDir::Req& request)
 {
-    auto req = data.get<ProtocolListDir::Req>();
-    auto wPath = CLI::widen(req.path);
+    const auto& req = request;
+    auto        wPath = CLI::widen(req.path);
     while (wPath.back() == L'\\')
     {
         wPath.pop_back();
@@ -109,5 +109,3 @@ static nlohmann::json ProbeListDir_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeListDir("ListDir", ProbeListDir_Entry);

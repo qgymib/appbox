@@ -1,4 +1,5 @@
 #include "probe/RegReadValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -96,7 +97,7 @@ ProtocolRegReadValue::Rsp ReadSandboxValue(const std::wstring& subkey, const std
     ProtocolRegReadValue::Req req;
     req.Key = appbox::WideToUTF8(subkey);
     req.Value = appbox::WideToUTF8(name);
-    return ProbeRegReadValue.Call(req, cwd, config).get<ProtocolRegReadValue::Rsp>();
+    return Probe(cwd, config).Call<ProtocolRegReadValue>(req);
 }
 
 } // namespace

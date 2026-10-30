@@ -1,4 +1,5 @@
 #include "probe/ReparsePoint.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -75,7 +76,7 @@ TEST_F(E2E_Fs, ReparsePoint_UnknownTagIsForwarded)
     read.path = appbox::WideToUTF8(folder + L"\\entry.txt");
     req.items.push_back(read);
 
-    const auto rsp = ProbeReparsePoint.Call(req, GetCWD(), config).get<ProtocolReparsePoint::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolReparsePoint>(req);
     ASSERT_EQ(rsp.items.size(), static_cast<size_t>(3));
 
     EXPECT_EQ(rsp.items[0].status, static_cast<long>(STATUS_SUCCESS));

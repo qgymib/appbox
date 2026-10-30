@@ -9,9 +9,10 @@
  * registry isolation has to deliver the sub keys of the hive layer and of the
  * real registry.
  */
-static nlohmann::json ProbeRegEnumKey_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegEnumKey::Rsp appbox::test::ProbeRegEnumKey_Entry(
+    const appbox::test::ProtocolRegEnumKey::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolRegEnumKey::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegEnumKey::Rsp rsp;
 
@@ -46,5 +47,3 @@ static nlohmann::json ProbeRegEnumKey_Entry(const nlohmann::json& data)
     RegCloseKey(key);
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegEnumKey("RegEnumKey", ProbeRegEnumKey_Entry);

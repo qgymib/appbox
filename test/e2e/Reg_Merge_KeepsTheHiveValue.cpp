@@ -1,4 +1,5 @@
 #include "probe/RegWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -72,7 +73,7 @@ TEST_F(E2E_Reg, Merge_KeepsTheHiveValue)
         req.Value = "Shared";
         req.Data = "sandbox";
 
-        const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.create_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.set_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_SUCCESS));

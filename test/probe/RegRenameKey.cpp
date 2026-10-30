@@ -115,11 +115,11 @@ void DumpSubKeyNames(HKEY root, const std::wstring& key_path, std::vector<std::s
  * of the old name visible next to the renamed key of the hive, and a rename
  * through a read through handle of the host layer must be refused.
  */
-static nlohmann::json ProbeRegRenameKey_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegRenameKey::Rsp appbox::test::ProbeRegRenameKey_Entry(
+    const appbox::test::ProtocolRegRenameKey::Req& request)
 {
     using ModeKind = appbox::test::ProtocolRegRenameKey::ModeKind;
-
-    auto req = data.get<appbox::test::ProtocolRegRenameKey::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegRenameKey::Rsp rsp;
 
@@ -168,5 +168,3 @@ static nlohmann::json ProbeRegRenameKey_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegRenameKey("RegRenameKey", ProbeRegRenameKey_Entry);

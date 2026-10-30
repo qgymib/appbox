@@ -1,15 +1,13 @@
 #include "utils/CommonFixture.hpp"
+#include "utils/JoinedThread.hpp"
 #include "utils/MultiInstance.hpp"
 #include "utils/ProbeCall.hpp"
 #include "utils/ProbePath.hpp"
 #include "utils/TestSandboxId.hpp"
 #include "WString.hpp"
 #include "launcher/Config.hpp"
-#include <chrono>
 #include <cstdint>
 #include <filesystem>
-#include <string>
-#include <thread>
 
 typedef appbox::test::CommonFixture E2E_MultiInstance;
 using namespace appbox::test;
@@ -17,53 +15,36 @@ using namespace appbox::test;
 namespace
 {
 
-/** Text the log of a master instance carries once its own program runs. */
-constexpr const char* kApplicationStarted = "the initial application of the sandbox was started";
-
-/** Budget of a case which waits for a stage of a run, in milliseconds. */
-constexpr int kStageTimeoutMs = 60000;
-
-/** Time the program of the master instance stays alive, in milliseconds. */
-constexpr std::uint32_t kShortHoldMs = 1500;
-
-/**
- * @brief Count the runs of a sandbox which started their own program.
- * @param[in] text Log files of the case.
- * @return The number of times a run reported that it started its application.
- */
-std::size_t ApplicationStarts(const std::string& text)
-{
-    std::size_t count = 0;
-    std::size_t position = text.find(kApplicationStarted);
-
-    while (position != std::string::npos)
-    {
-        ++count;
-        position = text.find(kApplicationStarted, position + 1);
-    }
-
-    return count;
-}
+/** Budget of a case which waits for the program of a run, in milliseconds. */
+constexpr std::uint32_t kStageTimeoutMs = 60000;
 
 } // namespace
 
 /**
  * Condition:
- * 1. A launcher serves a sandbox whose program leaves after a short time, so the
- *    run closes the control pipe of the sandbox while a client arrives.
- * 2. A second launcher of the same archive sends its request in that window.
+ * 1. A launcher serves a sandbox and its own program works.
+ * 2. The case ends the run of that launcher while a client of the same archive
+ *    sends its request, so the request arrives while the run closes the control
+ *    pipe of the sandbox.
  *
  * Expected:
  * 1. The request is not lost: the second launcher either hands it over to the
  *    run which still serves the sandbox, or it races for the pipe again and
- *    serves the sandbox itself once the first run left.
- * 2. The client reports neither a timeout nor a refusal, and the program of the
- *    request reports when the request was handed over.
+ *    serves the sandbox itself once the first run left. Neither a timeout nor a
+ *    refusal reaches the client, so the client leaves with zero.
+ * 2. The run of the first instance is complete.
  *
  * The case does not pin which of the two happened, because the window between
  * the last program of a run and the closing of its pipe is what the retry of the
  * shutdown race covers, and the case cannot place its request inside that window
- * on a machine it does not control.
+ * on a machine it does not control. The case ends the program of the run while
+ * the request is on its way, so the two overlap without a fixed hold.
+ *
+ * The code of the second launcher is the whole judgment: a request which is
+ * refused leaves with the code of the refusal and one which ran out of its
+ * budget leaves with `ERROR_TIMEOUT`, while a request which was served leaves
+ * with zero, whether the run which served it was the first one or the client
+ * itself.
  */
 TEST_F(E2E_MultiInstance, ShutdownRace)
 {
@@ -81,40 +62,34 @@ TEST_F(E2E_MultiInstance, ShutdownRace)
     secondary_config.startup.screen = false;
     secondary_config.startups[0].executable = appbox::WideToUTF8(ProbePath(ProbeBitness::Bit64));
 
-    StartupRun  master;
-    std::thread master_thread([&]() {
-        master =
-            ProbeStartupRun(GetCWDString(), master_config, "", false, LogRun{}, false, std::wstring(), kShortHoldMs);
-    });
+    StartupRunHandle master(cwd.wstring(), master_config);
+    ASSERT_TRUE(master.WaitForSessions(kProbeBindQuietMs, kStageTimeoutMs))
+        << "the master instance never started its application";
 
-    const auto running = WaitForRunLog(cwd, kApplicationStarted, kStageTimeoutMs);
+    const auto& master_reports = master.Collect();
+    ASSERT_EQ(master_reports.reports.size(), static_cast<std::size_t>(1)) << master_reports.reports.size();
 
+    /*
+     * The request is on its way while the case ends the run: the two overlap, so
+     * the request arrives while the sandbox of the run closes instead of after a
+     * fixed time.
+     */
     StartupRun    request;
     std::uint32_t secondary_exit = 1;
-    if (running)
-    {
-        /* The program of the run leaves after the hold, so the request arrives at its end. */
-        std::this_thread::sleep_for(std::chrono::milliseconds(kShortHoldMs - 100));
-
+    JoinedThread  requester([&]() {
         secondary_exit =
             ProbeRunSecondary(cwd.wstring(), nlohmann::json(secondary_config), "", "request", 0, LogRun{}, request);
-    }
+    });
 
-    master_thread.join();
+    master.Exit(0);
+    const auto master_exit = master.Wait();
 
-    ASSERT_TRUE(running) << "the master instance never started its application";
+    requester.Join();
 
-    const auto log = ReadRunLog(cwd);
-
-    /* The request was served, either by the first run or by the one which followed it. */
-    const bool handed_over = request.reports.size() == 1;
-    const bool served_again = ApplicationStarts(log) >= 2;
-    EXPECT_TRUE(handed_over || served_again)
-        << "the request was neither handed over nor served by a run which started afterwards";
-
+    /* The request was served by one of the two runs, so the client left with
+     * zero instead of the code of a refusal or of a budget which ran out. */
     EXPECT_EQ(secondary_exit, 0u) << "the second instance reported " << secondary_exit;
 
     /* The run of the first instance is complete, whatever the second one did. */
-    EXPECT_EQ(master.exit_code, 0u);
-    EXPECT_EQ(master.reports.size(), static_cast<std::size_t>(1)) << master.reports.size();
+    EXPECT_EQ(master_exit, 0u);
 }

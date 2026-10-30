@@ -87,8 +87,7 @@ TEST_F(E2E_Reg, VariableExpansion_PerProcessView)
         req.Value = "Path";
         req.Data = appbox::WideToUTF8(reference);
 
-        const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), launcher_config, ProbeBitness::Bit32)
-                             .get<ProtocolRegWriteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), launcher_config, ProbeBitness::Bit32).Call<ProtocolRegWriteValue>(req);
 
         const std::string report = fmt::format("write: create={} set={} read={} readback='{}'", rsp.create_code,
                                                rsp.set_code, rsp.query_code, rsp.readback);
@@ -105,8 +104,7 @@ TEST_F(E2E_Reg, VariableExpansion_PerProcessView)
         req.Key = appbox::WideToUTF8(subkey);
         req.Values = { "Path" };
 
-        const auto rsp = ProbeRegReadValues.Call(req, GetCWD(), launcher_config, ProbeBitness::Bit32)
-                             .get<ProtocolRegReadValues::Rsp>();
+        const auto rsp = Probe(GetCWD(), launcher_config, ProbeBitness::Bit32).Call<ProtocolRegReadValues>(req);
 
         ASSERT_EQ(rsp.values.size(), req.Values.size());
         ASSERT_EQ(rsp.values[0].query_code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -123,7 +121,7 @@ TEST_F(E2E_Reg, VariableExpansion_PerProcessView)
         req.Key = appbox::WideToUTF8(subkey);
         req.Values = { "Path" };
 
-        const auto rsp = ProbeRegReadValues.Call(req, GetCWD(), launcher_config).get<ProtocolRegReadValues::Rsp>();
+        const auto rsp = Probe(GetCWD(), launcher_config).Call<ProtocolRegReadValues>(req);
 
         ASSERT_EQ(rsp.values.size(), req.Values.size());
         ASSERT_EQ(rsp.values[0].query_code, static_cast<DWORD>(ERROR_SUCCESS));

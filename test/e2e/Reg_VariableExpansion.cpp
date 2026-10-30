@@ -1,4 +1,5 @@
 #include "probe/RegReadValues.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -138,7 +139,7 @@ TEST_F(E2E_Reg, VariableExpansion)
     req.Key = appbox::WideToUTF8(subkey);
     req.Values = { "Sz", "ExpandSz", "MultiSz", "Dword", "Binary", "System32Sz", "CaseSz" };
 
-    const auto rsp = ProbeRegReadValues.Call(req, GetCWD(), config).get<ProtocolRegReadValues::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValues>(req);
     ASSERT_EQ(rsp.values.size(), req.Values.size());
 
     for (const auto& answer : rsp.values)

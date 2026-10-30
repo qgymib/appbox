@@ -1,4 +1,5 @@
 #include "probe/ReadFileFull.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/TestKnownFolder.hpp"
@@ -42,7 +43,7 @@ TEST_F(E2E_Fs, ReadFile_WhiteoutInUpper)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt");
 
-        auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_NE(rsp.code, 0);
     }
 

@@ -1,6 +1,7 @@
 #include "probe/CreateFileW.hpp"
 #include "probe/FindStreams.hpp"
 #include "probe/ReadFileFull.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -110,7 +111,7 @@ TEST_F(E2E_Fs, Marker_StreamIsNotReported)
         ProtocolFindStreams::Req req;
         req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kFileName);
 
-        const auto rsp = ProbeFindStreams.Call(req, GetCWD(), config).get<ProtocolFindStreams::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolFindStreams>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.names.size(), 2u);
         EXPECT_TRUE(Carries(rsp.names, "note"));
@@ -122,7 +123,7 @@ TEST_F(E2E_Fs, Marker_StreamIsNotReported)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kFileName + L":" + kMarkerStream);
 
-        const auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
 
@@ -133,7 +134,7 @@ TEST_F(E2E_Fs, Marker_StreamIsNotReported)
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 
-        const auto rsp = ProbeCreateFileW.Call(req, GetCWD(), config).get<ProtocolCreateFileW::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateFileW>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_INVALID_NAME));
     }
 

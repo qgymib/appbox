@@ -1,4 +1,5 @@
 #include "probe/RegSaveKey.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -133,7 +134,7 @@ TEST_F(E2E_Reg, SaveKey_MergedSnapshot)
         req.Expect = { "SandboxValue", "sandbox", "HostValue", "host" };
         req.Reject = { "Hidden", "hidden" };
 
-        const auto rsp = ProbeRegSaveKey.Call(req, GetCWD(), config).get<ProtocolRegSaveKey::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegSaveKey>(req);
         ASSERT_EQ(rsp.privilege_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.save_code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -152,7 +153,7 @@ TEST_F(E2E_Reg, SaveKey_MergedSnapshot)
         req.Expect = { "OnlyValue", "only" };
         req.Reject = { "SandboxValue" };
 
-        const auto rsp = ProbeRegSaveKey.Call(req, GetCWD(), config).get<ProtocolRegSaveKey::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegSaveKey>(req);
         ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.save_code, static_cast<DWORD>(ERROR_SUCCESS));
 
@@ -227,7 +228,7 @@ TEST_F(E2E_Reg, SaveKeyEx_MergedSnapshot)
     req.Expect = { "SandboxValue", "sandbox", "HostValue", "host" };
     req.Reject = { "Hidden", "hidden" };
 
-    const auto rsp = ProbeRegSaveKey.Call(req, GetCWD(), config).get<ProtocolRegSaveKey::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegSaveKey>(req);
     ASSERT_EQ(rsp.privilege_code, static_cast<DWORD>(ERROR_SUCCESS));
     ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
     ASSERT_EQ(rsp.save_code, static_cast<DWORD>(ERROR_SUCCESS));

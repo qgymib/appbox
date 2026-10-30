@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGKEYAPI_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <cstdint>
 #include <string>
@@ -29,6 +28,8 @@ constexpr uint64_t kProbeWriteTime = 126227808000000000ULL;
  */
 struct ProtocolRegKeyApi
 {
+    static constexpr const char* Method = "RegKeyApi";
+
     /**
      * @brief Entry point the probe calls on the handle.
      *
@@ -118,8 +119,11 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolRegKeyApi::ModeKind,
  * `NtSetInformationKey(KeyWriteTimeInformation)` is the only call of the probe
  * which changes the key: it writes the fixed time of `kProbeWriteTime`, so the
  * caller of the probe can tell a key of the sandbox from a key of the host.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegKeyApi;
+ProtocolRegKeyApi::Rsp ProbeRegKeyApi_Entry(const ProtocolRegKeyApi::Req& request);
 
 } // namespace appbox::test
 

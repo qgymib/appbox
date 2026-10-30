@@ -1,4 +1,5 @@
 #include "probe/RegShadowRead.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "Random.hpp"
@@ -70,7 +71,7 @@ TEST_F(E2E_Reg, ShadowKey_ReadRealValue)
     req.Key = appbox::WideToUTF8(subkey);
     req.Value = "TestValue";
 
-    auto rsp = ProbeRegShadowRead.Call(req, GetCWD(), config).get<ProtocolRegShadowRead::Rsp>();
+    auto rsp = Probe(GetCWD(), config).Call<ProtocolRegShadowRead>(req);
     ASSERT_EQ(rsp.create_code, 0u);
     /* The disposition follows the merged view: the host holds the key. */
     ASSERT_EQ(rsp.disposition, static_cast<DWORD>(REG_OPENED_EXISTING_KEY));

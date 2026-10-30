@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_DELETEFILEW_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 
 namespace appbox::test
@@ -10,6 +9,8 @@ namespace appbox::test
 
 struct ProtocolDeleteFileW
 {
+    static constexpr const char* Method = "DeleteFileW";
+
     struct Req
     {
         std::string FileName;
@@ -25,8 +26,11 @@ struct ProtocolDeleteFileW
 
 /**
  * @brief DeleteFileW probe.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeDeleteFileW;
+ProtocolDeleteFileW::Rsp ProbeDeleteFileW_Entry(const ProtocolDeleteFileW::Req& request);
 
 } // namespace appbox::test
 

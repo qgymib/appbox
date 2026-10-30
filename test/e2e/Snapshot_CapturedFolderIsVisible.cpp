@@ -1,4 +1,5 @@
 #include "probe/ReadFileFull.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/LauncherPath.hpp"
 #include "utils/RealFsFolder.hpp"
@@ -188,7 +189,7 @@ TEST_F(E2E_Snapshot, CapturedFolderTravelsIntoTheArchive)
     ProtocolReadFileFull::Req req;
     req.FileName = appbox::WideToUTF8(path);
 
-    const auto rsp = ProbeReadFileFull.Call(req, GetCWD(), appbox::LauncherConfig{}).get<ProtocolReadFileFull::Rsp>();
+    const auto rsp = Probe(GetCWD(), appbox::LauncherConfig{}).Call<ProtocolReadFileFull>(req);
 
     ASSERT_EQ(rsp.code, 0u);
     EXPECT_EQ(rsp.data, "PACKED-BY-THE-CAPTURE");

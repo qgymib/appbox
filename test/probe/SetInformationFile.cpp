@@ -92,9 +92,10 @@ static bool ActionToClass(Action action, FILE_INFORMATION_CLASS& FileInformation
     return false;
 }
 
-static nlohmann::json ProbeSetInformationFile_Entry(const nlohmann::json& data)
+appbox::test::ProtocolSetInformationFile::Rsp appbox::test::ProbeSetInformationFile_Entry(
+    const appbox::test::ProtocolSetInformationFile::Req& request)
 {
-    const auto req = data.get<appbox::test::ProtocolSetInformationFile::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolSetInformationFile::Rsp rsp;
 
@@ -178,5 +179,3 @@ static nlohmann::json ProbeSetInformationFile_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeSetInformationFile("SetInformationFile", ProbeSetInformationFile_Entry);

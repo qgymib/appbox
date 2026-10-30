@@ -279,9 +279,10 @@ void QueryWithoutABuffer(const std::wstring& name, std::uint32_t& status, std::u
 
 } // namespace
 
-static nlohmann::json ProbeEnvironmentRead_Entry(const nlohmann::json& data)
+appbox::test::ProtocolEnvironmentRead::Rsp appbox::test::ProbeEnvironmentRead_Entry(
+    const appbox::test::ProtocolEnvironmentRead::Req& request)
 {
-    const auto req = data.get<appbox::test::ProtocolEnvironmentRead::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolEnvironmentRead::Rsp rsp;
 
@@ -342,5 +343,3 @@ static nlohmann::json ProbeEnvironmentRead_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeEnvironmentRead("EnvironmentRead", ProbeEnvironmentRead_Entry);

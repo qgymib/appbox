@@ -1,4 +1,5 @@
 #include "probe/RegReadValues.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -107,7 +108,7 @@ TEST_F(E2E_Patch, RegistryHiveOfTheLastLayerWins)
     req.Key = appbox::WideToUTF8(subkey);
     req.Values = { "Value", "Added", "AddedByBar", "Kept" };
 
-    const auto rsp = ProbeRegReadValues.Call(req, GetCWD(), config).get<ProtocolRegReadValues::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValues>(req);
     ASSERT_EQ(rsp.values.size(), 4u);
 
     /* The last package which names the entry wins over the layers below it. */

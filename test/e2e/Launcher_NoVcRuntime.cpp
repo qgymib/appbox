@@ -61,8 +61,7 @@ TEST_F(E2E_Launcher_NoVcRuntime, TheSandboxedProcessLoadsNoVcRuntime)
 {
     const auto config = BuildConfig(GetCWD());
 
-    const auto rsp =
-        ProbeLoadedModules.Call(nlohmann::json::object(), GetCWD(), config).get<ProtocolLoadedModules::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolLoadedModules>(nlohmann::json::object());
 
     ASSERT_FALSE(rsp.modules.empty());
     EXPECT_TRUE(HasModule(rsp.modules, appbox::layout::kSandbox64DllName)) << "the probe reported from the host";

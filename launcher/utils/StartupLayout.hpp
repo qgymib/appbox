@@ -30,6 +30,18 @@ enum class StartupStage
 std::size_t StartupStageCount();
 
 /**
+ * @brief Get the stable name of one stage.
+ *
+ * The name is what the state query of a run reports (see
+ * `appbox::MsgRunState`), so a client reads a stage without depending on the
+ * order of the enumeration.
+ *
+ * @param[in] stage Stage of the run.
+ * @return The name of the stage, in lower case with underscores.
+ */
+const char* StartupStageName(StartupStage stage);
+
+/**
  * @brief Get the overall progress of one stage.
  *
  * Every stage owns a slice of the progress bar and the fraction advances the

@@ -1,5 +1,6 @@
 #include "probe/EnvironmentRead.hpp"
 #include "probe/EnvironmentWrite.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/EnvironmentIsolationBuilder.hpp"
 #include "utils/FsBuilder.hpp"
@@ -48,7 +49,7 @@ TEST_F(E2E_Env, StringsWriteIsKept)
     write.values = { "changed" };
     write.read = { "APPBOX_ENV_HOST" };
 
-    const auto written = ProbeEnvironmentWrite.Call(write, GetCWD(), config).get<ProtocolEnvironmentWrite::Rsp>();
+    const auto written = Probe(GetCWD(), config).Call<ProtocolEnvironmentWrite>(write);
     ASSERT_EQ(written.stored.size(), 1u);
     EXPECT_TRUE(written.stored[0]);
     ASSERT_EQ(written.values.size(), 1u);
@@ -57,7 +58,7 @@ TEST_F(E2E_Env, StringsWriteIsKept)
     ProtocolEnvironmentRead::Req read;
     read.names = { "APPBOX_ENV_HOST" };
 
-    const auto rsp = ProbeEnvironmentRead.Call(read, GetCWD(), config).get<ProtocolEnvironmentRead::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolEnvironmentRead>(read);
     ASSERT_EQ(rsp.values.size(), 1u);
     EXPECT_TRUE(rsp.found[0]);
     EXPECT_EQ(rsp.values[0], "changed");

@@ -1,5 +1,6 @@
 #include "probe/RegEnumValue.hpp"
 #include "probe/RegWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -71,7 +72,7 @@ TEST_F(E2E_Reg, EnumerateValue_MergedWithImage)
         req.Value = entry.first;
         req.Data = entry.second;
 
-        const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.create_code, 0u);
         ASSERT_EQ(rsp.set_code, 0u);
         ASSERT_EQ(rsp.readback, entry.second);
@@ -81,7 +82,7 @@ TEST_F(E2E_Reg, EnumerateValue_MergedWithImage)
         ProtocolRegEnumValue::Req req;
         req.Key = appbox::WideToUTF8(subkey);
 
-        const auto rsp = ProbeRegEnumValue.Call(req, GetCWD(), config).get<ProtocolRegEnumValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegEnumValue>(req);
         ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.count_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.enum_code, 0u);

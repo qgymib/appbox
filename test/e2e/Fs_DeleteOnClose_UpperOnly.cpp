@@ -1,5 +1,6 @@
 #include "WinAPI.h" /* Must be first include file */
 #include "probe/CreateFileW.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -59,7 +60,7 @@ TEST_F(E2E_Fs, DeleteOnClose_UpperOnly)
         req.dwCreationDisposition = OPEN_EXISTING;
         req.dwFlagsAndAttributes = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE;
 
-        const auto rsp = ProbeCreateFileW.Call(req, GetCWD(), config).get<ProtocolCreateFileW::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateFileW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     }
 

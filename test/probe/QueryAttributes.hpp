@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_QUERY_ATTRIBUTES_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 
 namespace appbox::test
@@ -10,6 +9,7 @@ namespace appbox::test
 
 struct ProtocolQueryAttributes
 {
+    static constexpr const char* Method = "QueryAttributes";
 
     struct Req
     {
@@ -27,8 +27,11 @@ struct ProtocolQueryAttributes
 
 /**
  * @brief GetFileAttributes probe (NtQueryAttributesFile based).
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeQueryAttributes;
+ProtocolQueryAttributes::Rsp ProbeQueryAttributes_Entry(const ProtocolQueryAttributes::Req& request);
 
 } // namespace appbox::test
 

@@ -67,8 +67,9 @@ add_executable(AppBoxTests
     "unit/RegistryHive.cpp"
     "unit/RegistryModel.cpp"
     "unit/RegistryValueExpansion.cpp"
-    "unit/RemoteClient.cpp"
-    "unit/RemoteServer.cpp"
+    "unit/RemoteAccepter.cpp"
+    "unit/RemoteConnector.cpp"
+    "unit/RemoteSession.cpp"
     "unit/RpcCodec.cpp"
     "unit/SandboxId.cpp"
     "unit/Shell.cpp"
@@ -261,6 +262,7 @@ add_executable(AppBoxTests
     "e2e/Patch_RegistryStateBelowThePatchIsKept.cpp"
     "e2e/Patch_RegistryStateOverridesThePatch.cpp"
     "e2e/Patch_RegistryWithoutResourcesKeepsTheApp.cpp"
+    "e2e/Probe_Session.cpp"
     "e2e/RealtimeCapture_RecordsTheChangesOfARecording.cpp"
     "e2e/Reg_CompressKey_HiveHandle.cpp"
     "e2e/Reg_CompressKey_ReadHandle.cpp"
@@ -332,12 +334,9 @@ add_executable(AppBoxTests
 
     # The operations which are executed inside the sandbox are a program of
     # their own (`test/probe/CMakeLists.txt`), so they are not part of this
-    # executable: a case asks for the 32 bit or the 64 bit probe through
-    # `ProbeCall()`. The headers below `test/probe` stay here, because a case
-    # registers its request against the probe which implements it, and the
-    # registry file defines the probe objects of this executable, which carry
-    # the name of the probe only.
-    "probe/Registry.cpp"
+    # executable: a case asks for the 32 bit or the 64 bit probe through a
+    # `Probe` handle. The headers below `test/probe` stay here, because a case
+    # calls the protocol of the probe it asks for.
 
     # Test helpers.
     "utils/CommandLine.cpp"
@@ -349,6 +348,7 @@ add_executable(AppBoxTests
     "utils/FsBuilder.cpp"
     "utils/FsIsolationBuilder.cpp"
     "utils/HiveBuilder.cpp"
+    "utils/JoinedThread.cpp"
     "utils/LauncherConfigReader.cpp"
     "utils/MultiInstance.cpp"
     "utils/MultiInstancePipe.cpp"
@@ -362,8 +362,8 @@ add_executable(AppBoxTests
     "utils/RealHkcuKey.cpp"
     "utils/RegChildExitCode.cpp"
     "utils/RegistryRootKey.cpp"
+    "utils/RunState.cpp"
     "utils/SelfExtractingProgram.cpp"
-    "utils/Semaphore.cpp"
     "utils/Socks5Server.cpp"
     "utils/TestBitmap.cpp"
     "utils/TestFont.cpp"

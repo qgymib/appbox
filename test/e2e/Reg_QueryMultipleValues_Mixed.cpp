@@ -1,4 +1,5 @@
 #include "probe/RegQueryMultipleValues.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -73,8 +74,7 @@ TEST_F(E2E_Reg, QueryMultipleValues_Mixed)
         req.Key = appbox::WideToUTF8(subkey);
         req.Names = { "Sandbox", "HostA" };
 
-        const auto rsp =
-            ProbeRegQueryMultipleValues.Call(req, GetCWD(), config).get<ProtocolRegQueryMultipleValues::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegQueryMultipleValues>(req);
         ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.types.size(), 2u);
@@ -92,8 +92,7 @@ TEST_F(E2E_Reg, QueryMultipleValues_Mixed)
         req.Key = appbox::WideToUTF8(subkey);
         req.Names = { "Sandbox" };
 
-        const auto rsp =
-            ProbeRegQueryMultipleValues.Call(req, GetCWD(), config).get<ProtocolRegQueryMultipleValues::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegQueryMultipleValues>(req);
         ASSERT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.values.size(), 1u);
         EXPECT_EQ(rsp.values[0], "sandbox");
@@ -105,8 +104,7 @@ TEST_F(E2E_Reg, QueryMultipleValues_Mixed)
         req.Key = appbox::WideToUTF8(subkey);
         req.Names = { "HostA", "HostB" };
 
-        const auto rsp =
-            ProbeRegQueryMultipleValues.Call(req, GetCWD(), config).get<ProtocolRegQueryMultipleValues::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegQueryMultipleValues>(req);
         EXPECT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
 

@@ -1,4 +1,5 @@
 #include "probe/RegDeleteKey.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/RealHkcuKey.hpp"
@@ -43,7 +44,7 @@ TEST_F(E2E_Reg, DeleteKey_ReadHandle)
     req.Key = appbox::WideToUTF8(subkey);
     req.Mode = ProtocolRegDeleteKey::ModeKind::ReadHandle;
 
-    const auto rsp = ProbeRegDeleteKey.Call(req, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteKey>(req);
     ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
     EXPECT_EQ(rsp.delete_code, static_cast<DWORD>(STATUS_ACCESS_DENIED));
 

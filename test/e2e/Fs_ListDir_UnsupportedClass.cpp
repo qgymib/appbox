@@ -1,4 +1,5 @@
 #include "probe/ListDirNt.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/RealFsFolder.hpp"
@@ -88,7 +89,7 @@ TEST_F(E2E_Fs, ListDir_UnsupportedClass)
                 req.info_class = cls;
                 req.create_file = create_file;
 
-                auto rsp = ProbeListDirNt.Call(req, GetCWD(), config).get<ProtocolListDirNt::Rsp>();
+                auto rsp = Probe(GetCWD(), config).Call<ProtocolListDirNt>(req);
 
                 EXPECT_EQ(rsp.status, STATUS_NOT_SUPPORTED);
                 EXPECT_TRUE(rsp.names.empty());

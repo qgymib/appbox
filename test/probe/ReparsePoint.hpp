@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REPARSE_POINT_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -12,6 +11,8 @@ namespace appbox::test
 
 struct ProtocolReparsePoint
 {
+    static constexpr const char* Method = "ReparsePoint";
+
     struct Req
     {
         struct Item
@@ -145,8 +146,11 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolReparsePoint::Req::Item::Action,
  * `FSCTL_GET_REPARSE_POINT`. It reports the status of the entry point, the
  * attributes of the entry and the two names the data of a link carries, so a
  * case can pin what the view stored and what it reports.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeReparsePoint;
+ProtocolReparsePoint::Rsp ProbeReparsePoint_Entry(const ProtocolReparsePoint::Req& request);
 
 } // namespace appbox::test
 

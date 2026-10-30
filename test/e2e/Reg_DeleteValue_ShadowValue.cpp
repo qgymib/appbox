@@ -1,4 +1,5 @@
 #include "probe/RegDeleteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -67,7 +68,7 @@ TEST_F(E2E_Reg, DeleteValue_ShadowValue)
     req.Key = appbox::WideToUTF8(subkey);
     req.Value = "Shared";
 
-    const auto rsp = ProbeRegDeleteValue.Call(req, GetCWD(), config).get<ProtocolRegDeleteValue::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteValue>(req);
     ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
     EXPECT_EQ(rsp.delete_code, static_cast<DWORD>(ERROR_SUCCESS));
 

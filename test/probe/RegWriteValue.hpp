@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGWRITEVALUE_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 
 namespace appbox::test
@@ -10,6 +9,7 @@ namespace appbox::test
 
 struct ProtocolRegWriteValue
 {
+    static constexpr const char* Method = "RegWriteValue";
 
     struct Req
     {
@@ -34,8 +34,11 @@ struct ProtocolRegWriteValue
 
 /**
  * @brief Registry write probe: create the key, write a value and read it back.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegWriteValue;
+ProtocolRegWriteValue::Rsp ProbeRegWriteValue_Entry(const ProtocolRegWriteValue::Req& request);
 
 } // namespace appbox::test
 

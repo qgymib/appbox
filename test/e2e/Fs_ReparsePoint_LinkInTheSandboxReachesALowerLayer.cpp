@@ -1,4 +1,5 @@
 #include "probe/ReparsePoint.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -103,7 +104,7 @@ TEST_F(E2E_Fs, ReparsePoint_LinkInTheSandboxReachesALowerLayer)
     not_a_link.path = appbox::WideToUTF8(folder + L"\\packed\\data.txt");
     req.items.push_back(not_a_link);
 
-    const auto rsp = ProbeReparsePoint.Call(req, GetCWD(), config).get<ProtocolReparsePoint::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolReparsePoint>(req);
     ASSERT_EQ(rsp.items.size(), static_cast<size_t>(6));
 
     EXPECT_EQ(rsp.items[0].status, static_cast<long>(STATUS_SUCCESS));

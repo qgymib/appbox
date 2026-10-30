@@ -10,9 +10,10 @@
  * survive: a value which only the host holds is recorded as deleted in the
  * sandbox hive instead (a whiteout).
  */
-static nlohmann::json ProbeRegDeleteValue_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegDeleteValue::Rsp appbox::test::ProbeRegDeleteValue_Entry(
+    const appbox::test::ProtocolRegDeleteValue::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolRegDeleteValue::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegDeleteValue::Rsp rsp;
 
@@ -71,5 +72,3 @@ static nlohmann::json ProbeRegDeleteValue_Entry(const nlohmann::json& data)
     RegCloseKey(probe);
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegDeleteValue("RegDeleteValue", ProbeRegDeleteValue_Entry);

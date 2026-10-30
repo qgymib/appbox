@@ -1,4 +1,5 @@
 #include "probe/ListDir.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/TestKnownFolder.hpp"
@@ -73,7 +74,7 @@ ProtocolListDir::Rsp ListLayer(const std::wstring& layer, const std::filesystem:
     req.method = ProtocolListDir::Req::Method::Std;
 
     ProtocolListDir::Rsp rsp;
-    ProbeListDir.Call(req, cwd, config).get_to(rsp);
+    rsp = Probe(cwd, config).Call<ProtocolListDir>(req);
     return rsp;
 }
 

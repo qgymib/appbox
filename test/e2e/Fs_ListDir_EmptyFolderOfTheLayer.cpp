@@ -1,5 +1,6 @@
 #include "probe/CreateFileW.hpp"
 #include "probe/ListDir.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -64,7 +65,7 @@ TEST_F(E2E_Fs, ListDir_EmptyFolderOfTheLayer)
         req.method = ProtocolListDir::Req::Method::Std;
 
         ProtocolListDir::Rsp rsp;
-        ProbeListDir.Call(req, GetCWD(), config).get_to(rsp);
+        rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);
 
         const auto it = std::find_if(rsp.entries.begin(), rsp.entries.end(),
                                      [](const auto& e) { return e.name == "logs" && !e.file; });
@@ -78,7 +79,7 @@ TEST_F(E2E_Fs, ListDir_EmptyFolderOfTheLayer)
         req.method = ProtocolListDir::Req::Method::Std;
 
         ProtocolListDir::Rsp rsp;
-        ProbeListDir.Call(req, GetCWD(), config).get_to(rsp);
+        rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);
         ASSERT_TRUE(rsp.entries.empty());
     }
 
@@ -88,7 +89,7 @@ TEST_F(E2E_Fs, ListDir_EmptyFolderOfTheLayer)
         req.FileName = appbox::WideToUTF8(logs + L"\\" + wName);
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
-        auto rsp = ProbeCreateFileW.Call(req, GetCWD(), config).get<ProtocolCreateFileW::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateFileW>(req);
         ASSERT_EQ(rsp.code, 0);
     }
 

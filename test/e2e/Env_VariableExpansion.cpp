@@ -1,4 +1,5 @@
 #include "probe/EnvironmentRead.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/EnvironmentIsolationBuilder.hpp"
 #include "utils/FsBuilder.hpp"
@@ -87,7 +88,7 @@ TEST_F(E2E_Env, VariableExpansion)
                   "APPBOX_ENV_EXPAND_WINDOWS",   "APPBOX_ENV_EXPAND_PROGRAMS",    "APPBOX_ENV_EXPAND_PROGRAMS64",
                   "APPBOX_ENV_EXPAND_COMMON64",  "APPBOX_ENV_EXPAND_SYSTEMX86",   "APPBOX_ENV_EXPAND_NAME_CASE" };
 
-    const auto rsp = ProbeEnvironmentRead.Call(req, GetCWD(), config).get<ProtocolEnvironmentRead::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolEnvironmentRead>(req);
     ASSERT_EQ(rsp.values.size(), req.names.size());
     ASSERT_EQ(rsp.ansi_values.size(), req.names.size());
 

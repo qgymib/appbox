@@ -1,7 +1,7 @@
 #include "utils/CommonFixture.hpp"
 #include "utils/MultiInstance.hpp"
 #include "utils/ProbeCall.hpp"
-#include "utils/ProbePath.hpp"
+#include "utils/RunState.hpp"
 #include "utils/SelfExtractingProgram.hpp"
 #include "utils/TestSandboxId.hpp"
 #include "SandboxId.hpp"
@@ -10,8 +10,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
-#include <thread>
-#include <vector>
 
 typedef appbox::test::CommonFixture E2E_MultiInstance;
 using namespace appbox::test;
@@ -19,31 +17,8 @@ using namespace appbox::test;
 namespace
 {
 
-/**
- * @brief Text the log of a master instance carries once its own program runs.
- *
- * The line is the last stage of the preparation of a run, so a case which waits
- * for it knows that the sandbox exists and that the program of the run works.
- */
-constexpr const char* kApplicationStarted = "the initial application of the sandbox was started";
-
-/** Text the log of a master instance carries once it handled a request. */
-constexpr const char* kRequestStarted = "the start request started the process";
-
-/** Text the log of a master instance carries once a request is queued. */
-constexpr const char* kRequestQueued = "is queued";
-
-/**
- * @brief Text the log of a sandboxed process carries once its sandbox is ready.
- *
- * The line is written after the module table of the process was initialized, so
- * a case which waits for it knows that the sandbox of the process mounted its
- * hive and wrote the entries of its state.
- */
-constexpr const char* kSandboxInitialized = "AppBox Sandbox initialized for ";
-
-/** Budget of a case which waits for a stage of a run, in milliseconds. */
-constexpr int kStageTimeoutMs = 60000;
+/** Budget of a case which waits for the program of a run, in milliseconds. */
+constexpr std::uint32_t kStageTimeoutMs = 60000;
 
 } // namespace
 
@@ -59,7 +34,11 @@ constexpr int kStageTimeoutMs = 60000;
  * 2. The master instance created the program of the request, so the program of
  *    the request reported and names the master instance as the process which
  *    created it, like the program of the run does.
- * 3. The master instance reports the request it handled in its log.
+ * 3. The state of the master instance reports the request it handled.
+ *
+ * The case holds the run of the master instance: the connection of its program
+ * is what proves that the sandbox of the run exists, and the case ends the run
+ * after the request was answered instead of waiting for a fixed time.
  */
 TEST_F(E2E_MultiInstance, JoinsTheRunningSandbox)
 {
@@ -67,42 +46,37 @@ TEST_F(E2E_MultiInstance, JoinsTheRunningSandbox)
     const auto id = SandboxIdForPath(GetCWDString());
     const auto run_config = MultiInstanceConfig(cwd, id, "app");
 
-    StartupRun  master;
-    std::thread master_thread([&]() {
-        master = ProbeStartupRun(GetCWDString(), run_config, "", false, LogRun{}, false, std::wstring(), kMasterHoldMs);
-    });
+    StartupRunHandle master(cwd.wstring(), run_config);
+    ASSERT_TRUE(master.WaitForSessions(kProbeBindQuietMs, kStageTimeoutMs))
+        << "the master instance never started its application";
 
-    /*
-     * The request is sent while the program of the master instance works: the
-     * log line proves that the sandbox of the run is prepared and that its
-     * application is running.
-     */
-    const auto running = WaitForRunLog(cwd, kApplicationStarted, kStageTimeoutMs);
+    const auto& master_reports = master.Collect();
+    ASSERT_EQ(master_reports.reports.size(), static_cast<std::size_t>(1)) << master_reports.reports.size();
 
-    StartupRun    request;
-    std::uint32_t secondary_exit = 1;
-    if (running)
-    {
-        secondary_exit =
-            ProbeRunSecondary(cwd.wstring(), MultiInstanceRequestDocument(id), "", "request", 0, LogRun{}, request);
-    }
+    /* The request is sent while the program of the master instance works. */
+    StartupRun request;
+    const auto secondary_exit =
+        ProbeRunSecondary(cwd.wstring(), MultiInstanceRequestDocument(id), "", "request", 0, LogRun{}, request);
 
-    master_thread.join();
+    /* The run handled the request, which its state counts. */
+    appbox::MsgRunState::Rsp state;
+    ASSERT_TRUE(QueryRunState(id, state)) << "the state of the run cannot be read";
+    EXPECT_EQ(state.handled_requests, static_cast<std::uint64_t>(1));
 
-    ASSERT_TRUE(running) << "the master instance never started its application";
+    master.Exit(0);
+    const auto master_exit = master.Wait();
+
     EXPECT_EQ(secondary_exit, 0u);
-    EXPECT_EQ(master.exit_code, 0u);
+    EXPECT_EQ(master_exit, 0u);
 
     /* The master instance started its own program and the program of the request. */
-    ASSERT_EQ(master.reports.size(), static_cast<std::size_t>(1)) << master.reports.size();
     ASSERT_EQ(request.reports.size(), static_cast<std::size_t>(1)) << request.reports.size();
 
-    EXPECT_EQ(master.reports[0].parent_pid, master.launcher_pid) << "the program of the run is not its own";
-    EXPECT_EQ(request.reports[0].parent_pid, master.launcher_pid) << "the program of the request is not its own";
-    EXPECT_NE(master.reports[0].pid, request.reports[0].pid);
-
-    const auto log = ReadRunLog(cwd);
-    EXPECT_NE(log.find(kRequestStarted), std::string::npos) << log;
+    EXPECT_EQ(master_reports.reports[0].parent_pid, master_reports.launcher_pid)
+        << "the program of the run is not its own";
+    EXPECT_EQ(request.reports[0].parent_pid, master_reports.launcher_pid)
+        << "the program of the request is not its own";
+    EXPECT_NE(master_reports.reports[0].pid, request.reports[0].pid);
 }
 
 /**
@@ -116,8 +90,18 @@ TEST_F(E2E_MultiInstance, JoinsTheRunningSandbox)
  *    waits for the answer instead of failing.
  * 2. The master instance handles the request once its own program started and
  *    the second launcher leaves with zero.
- * 3. The log of the master instance names both the queued request and the
- *    process it started.
+ * 3. The state of the master instance counts the request it queued and the one
+ *    request it handled.
+ *
+ * The case holds the run of the master instance and sends its request before it
+ * waits for the program of that run, so the request arrives while the master
+ * instance is still preparing its sandbox or while it starts its program. The
+ * case does not pin which of the two it was: the preparation of the sandbox and
+ * the start of the client take the same order of time on a machine the case does
+ * not control, so a case which required the request to arrive before the
+ * preparation would pass or fail for the speed of the machine. The state of the
+ * run reports both counters, so a reader of a failed artifact sees which of the
+ * two happened.
  */
 TEST_F(E2E_MultiInstance, QueuesRequestDuringPreparation)
 {
@@ -125,37 +109,46 @@ TEST_F(E2E_MultiInstance, QueuesRequestDuringPreparation)
     const auto id = SandboxIdForPath(GetCWDString());
     const auto run_config = MultiInstanceConfig(cwd, id, "app");
 
-    StartupRun  master;
-    std::thread master_thread([&]() {
-        master = ProbeStartupRun(GetCWDString(), run_config, "", false, LogRun{}, false, std::wstring(), kMasterHoldMs);
-    });
+    StartupRunHandle master(cwd.wstring(), run_config);
 
     /*
      * The pipe exists from the moment the master instance won the race for it,
      * which is before it extracted its payload and mounted its layers.
      */
-    const auto serving = WaitForControlPipe(id, kStageTimeoutMs);
-
-    StartupRun    request;
-    std::uint32_t secondary_exit = 1;
-    if (serving)
-    {
-        secondary_exit =
-            ProbeRunSecondary(cwd.wstring(), MultiInstanceRequestDocument(id), "", "request", 0, LogRun{}, request);
-    }
-
-    master_thread.join();
-
+    const auto serving = WaitForControlPipe(id, static_cast<int>(kStageTimeoutMs));
     ASSERT_TRUE(serving) << "the master instance never opened its control pipe";
+
+    StartupRun request;
+    const auto secondary_exit =
+        ProbeRunSecondary(cwd.wstring(), MultiInstanceRequestDocument(id), "", "request", 0, LogRun{}, request);
+
+    /* The queued request was handled after the initial target started. */
+    ASSERT_TRUE(master.WaitForSessions(kProbeBindQuietMs, kStageTimeoutMs))
+        << "the master instance never started its application";
+
+    const auto& master_reports = master.Collect();
+    ASSERT_EQ(master_reports.reports.size(), static_cast<std::size_t>(1)) << master_reports.reports.size();
+
+    /*
+     * The request waited for the control thread instead of being refused, which
+     * the state of the run counts: the master instance handled it once its
+     * sandbox existed. The state reports as well how many requests arrived
+     * before the sandbox was prepared, which the case does not pin, because the
+     * window depends on the speed of the machine (see the comment above).
+     */
+    appbox::MsgRunState::Rsp state;
+    ASSERT_TRUE(QueryRunState(id, state)) << "the state of the run cannot be read";
+    EXPECT_EQ(state.queued_requests, static_cast<std::uint64_t>(1));
+    EXPECT_LE(state.queued_before_prepared, state.queued_requests);
+    EXPECT_EQ(state.handled_requests, static_cast<std::uint64_t>(1));
+
+    master.Exit(0);
+    const auto master_exit = master.Wait();
+
     EXPECT_EQ(secondary_exit, 0u);
-    EXPECT_EQ(master.exit_code, 0u);
+    EXPECT_EQ(master_exit, 0u);
 
-    ASSERT_EQ(master.reports.size(), static_cast<std::size_t>(1)) << master.reports.size();
     ASSERT_EQ(request.reports.size(), static_cast<std::size_t>(1)) << request.reports.size();
-
-    const auto log = ReadRunLog(cwd);
-    EXPECT_NE(log.find(kRequestQueued), std::string::npos) << log;
-    EXPECT_NE(log.find(kRequestStarted), std::string::npos) << log;
 }
 
 /**
@@ -178,17 +171,18 @@ TEST_F(E2E_MultiInstance, SecondInstanceWritesNoState)
     const auto id = SandboxIdForPath(GetCWDString());
     const auto run_config = MultiInstanceConfig(cwd, id, "app");
 
-    StartupRun  master;
-    std::thread master_thread([&]() {
-        master = ProbeStartupRun(GetCWDString(), run_config, "", false, LogRun{}, false, std::wstring(), kMasterHoldMs);
-    });
+    StartupRunHandle master(cwd.wstring(), run_config);
+    ASSERT_TRUE(master.WaitForSessions(kProbeBindQuietMs, kStageTimeoutMs))
+        << "the master instance never started its application";
 
     /*
      * The state of the sandbox is compared once its own process initialized the
-     * sandbox: mounting the hive and writing the files of the process are the
-     * work of that process and not of the second instance.
+     * sandbox: the report of that program is what proves that it runs inside
+     * the sandbox, because mounting the hive and writing the files of the
+     * process are the work of that process and not of the second instance.
      */
-    const auto running = WaitForRunLog(cwd, kSandboxInitialized, kStageTimeoutMs);
+    const auto& run_reports = master.Collect();
+    ASSERT_EQ(run_reports.reports.size(), static_cast<std::size_t>(1)) << run_reports.reports.size();
 
     /* The state of the sandbox and the logs of the case before the second run. */
     const auto state = TreeSnapshot(cwd / appbox::layout::kStateDirNameW);
@@ -198,20 +192,17 @@ TEST_F(E2E_MultiInstance, SecondInstanceWritesNoState)
     silent.pass_level = false;
     silent.pass_dir = false;
 
-    std::uint32_t secondary_exit = 1;
-    if (running)
-    {
-        secondary_exit =
-            ProbeRunRawConfig(GetCWDString(), MultiInstanceRequestDocument(id), silent, kSecondaryConfigName);
-    }
+    const auto secondary_exit =
+        ProbeRunRawConfig(GetCWDString(), MultiInstanceRequestDocument(id), silent, kSecondaryConfigName);
 
     const auto state_after = TreeSnapshot(cwd / appbox::layout::kStateDirNameW);
     const auto logs_after = LogFileCount(cwd);
 
-    master_thread.join();
+    master.Exit(0);
+    const auto master_exit = master.Wait();
 
-    ASSERT_TRUE(running) << "the sandbox of the master instance never initialized";
     EXPECT_EQ(secondary_exit, 0u);
+    EXPECT_EQ(master_exit, 0u);
 
     EXPECT_EQ(state_after, state) << "the second instance wrote into the state of the sandbox";
     EXPECT_EQ(logs_after, logs) << "the second instance wrote a log file";
@@ -241,27 +232,22 @@ TEST_F(E2E_MultiInstance, ConfigFileAndSelfExtracting)
     {
         const auto run_config = MultiInstanceConfig(cwd, id, "app");
 
-        StartupRun  master;
-        std::thread master_thread([&]() {
-            master =
-                ProbeStartupRun(GetCWDString(), run_config, "", false, LogRun{}, false, std::wstring(), kMasterHoldMs);
-        });
+        StartupRunHandle master(cwd.wstring(), run_config);
+        ASSERT_TRUE(master.WaitForSessions(kProbeBindQuietMs, kStageTimeoutMs))
+            << "the master instance of the configuration layout never started";
 
-        const auto running = WaitForRunLog(cwd, kApplicationStarted, kStageTimeoutMs);
+        const auto& master_reports = master.Collect();
+        ASSERT_EQ(master_reports.reports.size(), static_cast<std::size_t>(1)) << master_reports.reports.size();
 
-        StartupRun    request;
-        std::uint32_t exit_code = 1;
-        if (running)
-        {
-            exit_code =
-                ProbeRunSecondary(cwd.wstring(), MultiInstanceRequestDocument(id), "", "request", 0, LogRun{}, request);
-        }
+        StartupRun request;
+        const auto exit_code =
+            ProbeRunSecondary(cwd.wstring(), MultiInstanceRequestDocument(id), "", "request", 0, LogRun{}, request);
 
-        master_thread.join();
+        master.Exit(0);
+        const auto master_exit = master.Wait();
 
-        ASSERT_TRUE(running) << "the master instance of the configuration layout never started";
         EXPECT_EQ(exit_code, 0u);
-        EXPECT_EQ(master.exit_code, 0u);
+        EXPECT_EQ(master_exit, 0u);
         EXPECT_EQ(request.reports.size(), static_cast<std::size_t>(1));
     }
 
@@ -278,32 +264,30 @@ TEST_F(E2E_MultiInstance, ConfigFileAndSelfExtracting)
         const auto program = root / kSelfExtractingProgramName;
         ASSERT_TRUE(std::filesystem::is_regular_file(program));
 
-        StartupRun  master;
-        std::thread master_thread([&]() {
-            master = ProbeStartupRunEmbedded(root.wstring(), program.wstring(), "", "app", LogRun{}, kMasterHoldMs);
-        });
+        /* The run reads the configuration of the archive in the image of the
+         * program itself, which is what a packed archive does. */
+        StartupRunHandle master(root.wstring(), program.wstring(), "", "app", LogRun{});
+        ASSERT_TRUE(master.WaitForSessions(kProbeBindQuietMs, kStageTimeoutMs))
+            << "the master instance of the self-extracting layout never started";
 
-        const auto running = WaitForRunLog(root, kApplicationStarted, kStageTimeoutMs);
+        const auto& master_reports = master.Collect();
+        ASSERT_EQ(master_reports.reports.size(), static_cast<std::size_t>(1)) << master_reports.reports.size();
 
-        StartupRun    request;
-        std::uint32_t exit_code = 1;
-        if (running)
-        {
-            /*
-             * The second instance of a self-extracting archive is the archive
-             * itself: the client runs the program of the master instance, which
-             * is what makes the request a request of the same sandbox.
-             */
-            exit_code =
-                ProbeRunSecondary(root.wstring(), MultiInstanceRequestDocument(program_id), "", "request", 0, LogRun{},
-                                  request, std::wstring(), nlohmann::json::object(), program.wstring());
-        }
+        StartupRun request;
+        /*
+         * The second instance of a self-extracting archive is the archive
+         * itself: the client runs the program of the master instance, which is
+         * what makes the request a request of the same sandbox.
+         */
+        const auto exit_code =
+            ProbeRunSecondary(root.wstring(), MultiInstanceRequestDocument(program_id), "", "request", 0, LogRun{},
+                              request, std::wstring(), nlohmann::json::object(), program.wstring());
 
-        master_thread.join();
+        master.Exit(0);
+        const auto master_exit = master.Wait();
 
-        ASSERT_TRUE(running) << "the master instance of the self-extracting layout never started";
         EXPECT_EQ(exit_code, 0u);
-        EXPECT_EQ(master.exit_code, 0u);
+        EXPECT_EQ(master_exit, 0u);
         EXPECT_EQ(request.reports.size(), static_cast<std::size_t>(1));
     }
 }

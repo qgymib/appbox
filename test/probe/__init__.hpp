@@ -2,66 +2,116 @@
 #define APPBOX_TEST_PROBE_INIT_HPP
 
 #include <CLI/CLI.hpp>
-#include <map>
-#include "utils/ProbeCall.hpp"
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <nlohmann/json.hpp>
 
 namespace appbox::test
 {
 
 /**
- * @brief Probe node.
- * It must be global variable so that it can be registered on application start.
+ * @brief The probes the probe executable serves.
+ *
+ * The list is the only place which names a probe: it is expanded into the table
+ * of registrars of `test/probe/Methods.cpp`, so a probe which is added to the
+ * tree is added here, and a probe which is missing here fails to link.
  */
-struct Probe
+/* clang-format off */
+#define APPBOX_PROBE_METHODS(xx) \
+    xx(ConsoleWindow)            \
+    xx(CreateDirectoryW)         \
+    xx(CreateFileW)              \
+    xx(DeleteFileW)              \
+    xx(EnvironmentRead)          \
+    xx(EnvironmentWrite)         \
+    xx(Exit)                     \
+    xx(FindStreams)              \
+    xx(Fonts)                    \
+    xx(Job)                      \
+    xx(LaunchProcess)            \
+    xx(ListDir)                  \
+    xx(ListDirNt)                \
+    xx(LoadedModules)            \
+    xx(QueryAttributes)          \
+    xx(QueryFullAttributes)      \
+    xx(QueryInformationByName)   \
+    xx(QueryInformationFile)     \
+    xx(ReadFileFull)             \
+    xx(RegDeleteKey)             \
+    xx(RegDeleteValue)           \
+    xx(RegEnumKey)               \
+    xx(RegEnumValue)             \
+    xx(RegKeyApi)                \
+    xx(RegOpenWriteValue)        \
+    xx(RegQueryKeyName)          \
+    xx(RegQueryMultipleValues)   \
+    xx(RegReadValue)             \
+    xx(RegReadValues)            \
+    xx(RegRenameKey)             \
+    xx(RegSaveKey)               \
+    xx(RegShadowRead)            \
+    xx(RegTransacted)            \
+    xx(RegTwoProcesses)          \
+    xx(RegWriteValue)            \
+    xx(RemoveDirectory)          \
+    xx(ReparsePoint)             \
+    xx(ResolveName)              \
+    xx(SetInformationFile)       \
+    xx(SocketTraffic)            \
+    xx(StartupStarted)           \
+    xx(WriteFile)
+/* clang-format on */
+
+/**
+ * @brief Error code of a request whose parameters cannot be read.
+ *
+ * The code is the one of the JSON-RPC error object, so a caller of a probe can
+ * tell a request the probe could not read from an answer it could not decode.
+ */
+constexpr int kInvalidParamsCode = -32602;
+
+/**
+ * @brief Handler of one probe: answers the parameters of a request.
+ *
+ * The handler is what the probe runtime registers on its session, so the
+ * runtime knows no probe of its own and the session type stays out of the
+ * headers of the probes.
+ */
+typedef std::function<nlohmann::json(const nlohmann::json& params)> ProbeHandler;
+
+/**
+ * @brief Register one probe under the method of its protocol.
+ *
+ * The probe executable calls it for every probe of `APPBOX_PROBE_METHODS` once,
+ * before it serves anything.
+ *
+ * @param[in] method Method of the probe, which is the name of its protocol.
+ * @param[in] handler Handler of the probe.
+ */
+void RegisterProbeMethod(const std::string& method, ProbeHandler handler);
+
+/**
+ * @brief Register every probe of the probe executable.
+ *
+ * The call expands `APPBOX_PROBE_METHODS` into one registration per probe, so a
+ * probe which is added to the tree is added in one place only.
+ */
+void RegisterProbes();
+
+/**
+ * @brief Adapt the typed entry of a probe to the JSON dispatch of the runtime.
+ *
+ * @tparam Protocol Protocol struct of the probe, see `test/probe/<Name>.hpp`.
+ * @param[in] entry Implementation of the probe.
+ */
+template <typename Protocol>
+void RegisterProbe(typename Protocol::Rsp (*entry)(const typename Protocol::Req&))
 {
-    typedef nlohmann::json (*Fn)(const nlohmann::json& data);
-    typedef std::map<std::string, Fn> Map;
-
-    /**
-     * @brief Register a probe function.
-     *
-     * The probe executable defines the object of a probe with the function
-     * which implements it, so the constructor registers the function. The test
-     * executable defines the same object without a function: it only carries
-     * the name, because the work runs in the probe process, and a null function
-     * registers nothing.
-     *
-     * @param[in] name The name of the probe function.
-     * @param[in] fn The probe function, null in the test executable.
-     */
-    Probe(const std::string& name, Fn fn = nullptr)
-    {
-        this->name = name;
-        if (fn != nullptr)
-        {
-            GetMap()[name] = fn;
-        }
-    }
-
-    /**
-     * @brief Call the probe function.
-     * The probe function is called in subprocess hooked by sandbox.
-     * @param[in] data The data to be passed to the probe function.
-     * @param[in] cwd The current working directory.
-     * @param[in] launcher_config The launcher configuration.
-     * @param[in] bitness The bit size of the probe process which runs the
-     *                    function, see ProbeBitness.
-     * @return The result of the probe function.
-     */
-    nlohmann::json Call(const nlohmann::json& data, const std::wstring& cwd, const LauncherConfig& launcher_config,
-                        ProbeBitness bitness = ProbeBitness::Bit64)
-    {
-        return ProbeCall(name, data, cwd, launcher_config, LogRun{}, bitness);
-    }
-
-    static Map& GetMap()
-    {
-        static Map probe_map;
-        return probe_map;
-    }
-
-    std::string name;
-};
+    RegisterProbeMethod(Protocol::Method, [entry](const nlohmann::json& params) -> nlohmann::json {
+        return entry(params.get<typename Protocol::Req>());
+    });
+}
 
 /**
  * @brief Initialize the probe module and register the probe command.

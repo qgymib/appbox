@@ -170,9 +170,10 @@ DWORD WriteStringValue(HKEY key, const std::wstring& name, const std::wstring& t
  * the case tells a registry view which both processes share from a state which
  * is only written back to the hive file when a process leaves.
  */
-static nlohmann::json ProbeRegTwoProcesses_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegTwoProcesses::Rsp appbox::test::ProbeRegTwoProcesses_Entry(
+    const appbox::test::ProtocolRegTwoProcesses::Req& request)
 {
-    const auto req = data.get<appbox::test::ProtocolRegTwoProcesses::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegTwoProcesses::Rsp rsp;
     rsp.role = "parent";
@@ -282,5 +283,3 @@ static nlohmann::json ProbeRegTwoProcesses_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegTwoProcesses("RegTwoProcesses", ProbeRegTwoProcesses_Entry);

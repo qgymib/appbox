@@ -1,4 +1,5 @@
 #include "probe/SetInformationFile.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -85,7 +86,7 @@ TEST_F(E2E_Fs, Link_LowerLayer)
         item.access = ProtocolSetInformationFile::Req::Item::Access::Read;
         req.items.push_back(item);
 
-        const auto rsp = ProbeSetInformationFile.Call(req, GetCWD(), config).get<ProtocolSetInformationFile::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolSetInformationFile>(req);
         ASSERT_EQ(rsp.items.size(), static_cast<size_t>(1));
         EXPECT_EQ(rsp.items[0].status, static_cast<long>(STATUS_SUCCESS));
     }

@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGENUMVALUE_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <map>
 #include <string>
@@ -13,6 +12,7 @@ namespace appbox::test
 
 struct ProtocolRegEnumValue
 {
+    static constexpr const char* Method = "RegEnumValue";
 
     struct Req
     {
@@ -35,8 +35,11 @@ struct ProtocolRegEnumValue
 /**
  * @brief Registry value enumeration probe: open the key below HKCU, enumerate
  *        every value name and read the REG_SZ data of each value back.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegEnumValue;
+ProtocolRegEnumValue::Rsp ProbeRegEnumValue_Entry(const ProtocolRegEnumValue::Req& request);
 
 } // namespace appbox::test
 

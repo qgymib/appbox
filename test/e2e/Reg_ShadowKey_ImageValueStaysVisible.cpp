@@ -1,5 +1,6 @@
 #include "probe/RegReadValues.hpp"
 #include "probe/RegWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -69,7 +70,7 @@ TEST_F(E2E_Reg, ShadowKey_ImageValueStaysVisible)
         req.Value = "Value";
         req.Data = "sandbox";
 
-        const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.create_code, 0u);
         /* The key exists in the view, because the image holds it. */
         EXPECT_EQ(rsp.disposition, static_cast<DWORD>(REG_OPENED_EXISTING_KEY));
@@ -82,7 +83,7 @@ TEST_F(E2E_Reg, ShadowKey_ImageValueStaysVisible)
         req.Key = appbox::WideToUTF8(subkey);
         req.Values = { "Value", "Other" };
 
-        const auto rsp = ProbeRegReadValues.Call(req, GetCWD(), config).get<ProtocolRegReadValues::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValues>(req);
         ASSERT_EQ(rsp.values.size(), 2u);
 
         EXPECT_EQ(rsp.values[0].query_code, 0u);

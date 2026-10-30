@@ -1,4 +1,5 @@
 #include "probe/Fonts.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/PatchBuilder.hpp"
@@ -72,7 +73,7 @@ TEST_F(E2E_Patch, FontOfTheLastLayerWins)
     req.absent_family = appbox::WideToUTF8(app_font.family);
     req.view_path = appbox::WideToUTF8(GetKnownFolderPath(L"#Fonts#", false) + L"\\" + packed_name);
 
-    const auto rsp = ProbeFonts.Call(req, GetCWD(), config).get<ProtocolFonts::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolFonts>(req);
 
     /* The font of the package is the font of the name: the layer of a package
      * comes before the layer of the archive in the view. */

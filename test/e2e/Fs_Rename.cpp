@@ -1,4 +1,5 @@
 #include "probe/SetInformationFile.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -76,7 +77,7 @@ ProtocolSetInformationFile::Rsp Rename(const std::vector<RenameAction>& actions,
         req.items.push_back(item);
     }
 
-    return ProbeSetInformationFile.Call(req, cwd, config).get<ProtocolSetInformationFile::Rsp>();
+    return Probe(cwd, config).Call<ProtocolSetInformationFile>(req);
 }
 
 /**

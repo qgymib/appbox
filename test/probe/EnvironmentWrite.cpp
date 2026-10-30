@@ -291,11 +291,11 @@ bool WriteVariable(appbox::test::ProtocolEnvironmentWrite::Entry entry, const st
 
 } // namespace
 
-static nlohmann::json ProbeEnvironmentWrite_Entry(const nlohmann::json& data)
+appbox::test::ProtocolEnvironmentWrite::Rsp appbox::test::ProbeEnvironmentWrite_Entry(
+    const appbox::test::ProtocolEnvironmentWrite::Req& request)
 {
     using Entry = appbox::test::ProtocolEnvironmentWrite::Entry;
-
-    const auto req = data.get<appbox::test::ProtocolEnvironmentWrite::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolEnvironmentWrite::Rsp rsp;
 
@@ -355,5 +355,3 @@ static nlohmann::json ProbeEnvironmentWrite_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeEnvironmentWrite("EnvironmentWrite", ProbeEnvironmentWrite_Entry);

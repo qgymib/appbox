@@ -1,4 +1,5 @@
 #include "probe/QueryAttributes.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/TestKnownFolder.hpp"
@@ -29,7 +30,7 @@ ProtocolQueryAttributes::Rsp QueryAttributes(const std::wstring& path, const std
     ProtocolQueryAttributes::Req req;
     req.FileName = appbox::WideToUTF8(path);
 
-    return ProbeQueryAttributes.Call(req, cwd, config).get<ProtocolQueryAttributes::Rsp>();
+    return Probe(cwd, config).Call<ProtocolQueryAttributes>(req);
 }
 
 } // namespace

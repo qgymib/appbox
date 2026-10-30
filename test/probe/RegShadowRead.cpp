@@ -9,9 +9,10 @@
  * key with the same name, so the key handle is a shadow. Reading the value
  * through the shadow exercises the read through of NtQueryValueKey.
  */
-static nlohmann::json ProbeRegShadowRead_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegShadowRead::Rsp appbox::test::ProbeRegShadowRead_Entry(
+    const appbox::test::ProtocolRegShadowRead::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolRegShadowRead::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegShadowRead::Rsp rsp;
 
@@ -34,5 +35,3 @@ static nlohmann::json ProbeRegShadowRead_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegShadowRead("RegShadowRead", ProbeRegShadowRead_Entry);

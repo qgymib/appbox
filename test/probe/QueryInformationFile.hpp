@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_QUERY_INFORMATION_FILE_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -12,6 +11,8 @@ namespace appbox::test
 
 struct ProtocolQueryInformationFile
 {
+    static constexpr const char* Method = "QueryInformationFile";
+
     struct Req
     {
         struct Item
@@ -104,8 +105,11 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolQueryInformationFile::Req::Item::Mode,
  * The probe opens the file of an item with the access of the item and asks the
  * three information classes which report a name, so a case pins what the
  * sandbox reports for a handle of every layer of the view.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeQueryInformationFile;
+ProtocolQueryInformationFile::Rsp ProbeQueryInformationFile_Entry(const ProtocolQueryInformationFile::Req& request);
 
 } // namespace appbox::test
 

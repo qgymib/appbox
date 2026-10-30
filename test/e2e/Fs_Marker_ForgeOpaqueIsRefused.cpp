@@ -1,6 +1,7 @@
 #include "probe/CreateFileW.hpp"
 #include "probe/ListDir.hpp"
 #include "probe/ReadFileFull.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -82,7 +83,7 @@ TEST_F(E2E_Fs, Marker_ForgeOpaqueIsRefused)
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 
-        const auto rsp = ProbeCreateFileW.Call(req, GetCWD(), config).get<ProtocolCreateFileW::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateFileW>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_INVALID_NAME));
     }
 
@@ -93,7 +94,7 @@ TEST_F(E2E_Fs, Marker_ForgeOpaqueIsRefused)
         req.method = ProtocolListDir::Req::Method::Std;
 
         ProtocolListDir::Rsp rsp;
-        ProbeListDir.Call(req, GetCWD(), config).get_to(rsp);
+        rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);
         ASSERT_EQ(rsp.entries.size(), 1u);
         EXPECT_EQ(rsp.entries[0].name, CLI::narrow(L"inside.txt"));
     }
@@ -101,7 +102,7 @@ TEST_F(E2E_Fs, Marker_ForgeOpaqueIsRefused)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(FolderPath() + L"\\inside.txt");
 
-        const auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.data, "packed");
     }

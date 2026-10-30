@@ -10,9 +10,10 @@
  * through of the value query stay consistent. The default value of the key is
  * enumerated with an empty name like every other value.
  */
-static nlohmann::json ProbeRegEnumValue_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegEnumValue::Rsp appbox::test::ProbeRegEnumValue_Entry(
+    const appbox::test::ProtocolRegEnumValue::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolRegEnumValue::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegEnumValue::Rsp rsp;
 
@@ -57,5 +58,3 @@ static nlohmann::json ProbeRegEnumValue_Entry(const nlohmann::json& data)
     RegCloseKey(key);
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegEnumValue("RegEnumValue", ProbeRegEnumValue_Entry);

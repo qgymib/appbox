@@ -1,5 +1,6 @@
 #include "probe/RegChildProcess.hpp"
 #include "probe/RegTwoProcesses.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/ProbePath.hpp"
@@ -71,7 +72,7 @@ void ExpectChildProcess(const std::wstring& cwd, ProbeBitness parent, ProbeBitne
     req.ChildExecutable = appbox::WideToUTF8(ProbePath(child));
     req.ChildHoldMs = 2000;
 
-    const auto rsp = ProbeRegTwoProcesses.Call(req, cwd, launcher_config, parent).get<ProtocolRegTwoProcesses::Rsp>();
+    const auto rsp = Probe(cwd, launcher_config, parent).Call<ProtocolRegTwoProcesses>(req);
 
     const std::string report =
         fmt::format("parent: create={} disposition={} set={} readback='{}'\n"

@@ -1,11 +1,10 @@
 #include "utils/CommonFixture.hpp"
 #include "utils/MultiInstance.hpp"
 #include "utils/ProbeCall.hpp"
+#include "utils/RunState.hpp"
 #include "utils/TestSandboxId.hpp"
-#include <windows.h>
 #include <cstdint>
 #include <string>
-#include <thread>
 
 typedef appbox::test::CommonFixture E2E_MultiInstance;
 using namespace appbox::test;
@@ -13,49 +12,30 @@ using namespace appbox::test;
 namespace
 {
 
-/** Text the log of a master instance carries once its own program runs. */
-constexpr const char* kApplicationStarted = "the initial application of the sandbox was started";
-
-/** Text the log of a master instance carries once it started a program of a request. */
-constexpr const char* kRequestStarted = "the start request started the process";
-
-/** Budget of a case which waits for a stage of a run, in milliseconds. */
-constexpr int kStageTimeoutMs = 60000;
-
-/**
- * @brief Time the initial program of a master instance stays alive, in milliseconds.
- *
- * The program outlives every request of a case, so a case which measures how
- * long a request waits tells the handling of the control loop apart from the end
- * of the run.
- */
-constexpr std::uint32_t kRunHoldMs = 6000;
-
-/**
- * @brief Budget a request has to be handled in while the program of the run works.
- *
- * The budget is the acceptance threshold of the multiple instances of
- * `docs/Launcher.md`: a request which is only handled when the program of the
- * run exits needs at least the time that program stays alive, which is far
- * above the budget.
- */
-constexpr ULONGLONG kRequestBudgetMs = 2000;
+/** Budget of a case which waits for the program of a run, in milliseconds. */
+constexpr std::uint32_t kStageTimeoutMs = 60000;
 
 } // namespace
 
 /**
  * Condition:
- * 1. A launcher serves a sandbox and its own program works for a while.
+ * 1. A launcher serves a sandbox and its own program works.
  * 2. A second launcher of the same archive sends its request while that program
  *    works.
  *
  * Expected:
  * 1. The request is handled at once instead of being queued until the program
- *    of the run exits: the second launcher leaves within the acceptance
- *    threshold, which is far below the time the program of the run stays alive.
+ *    of the run exits: the program of the run still answers the case after the
+ *    request was answered, which a program which left cannot do.
  * 2. The master instance started the program of the request and kept its own
  *    program running.
  * 3. Both programs name the master instance as the process which created them.
+ *
+ * The case names no budget of its own: it holds the run of the master instance
+ * and ends that run after the request was answered, so the program of the run
+ * cannot leave on its own. A master instance which handled the request only at
+ * the end of its run would never answer it, and the second launcher would leave
+ * with the code of its own request budget instead of zero.
  */
 TEST_F(E2E_MultiInstance, RequestWhileRunning)
 {
@@ -63,49 +43,59 @@ TEST_F(E2E_MultiInstance, RequestWhileRunning)
     const auto id = SandboxIdForPath(GetCWDString());
     const auto launcher_config = MultiInstanceConfig(cwd, id, "app");
 
-    StartupRun  master;
-    std::thread master_thread([&]() {
-        master =
-            ProbeStartupRun(GetCWDString(), launcher_config, "", false, LogRun{}, false, std::wstring(), kRunHoldMs);
-    });
+    /*
+     * The case holds the run of the master instance: its program reports to the
+     * case and stays alive until the case ends it, so the run serves the request
+     * below and leaves as soon as the case asks it to.
+     */
+    StartupRunHandle master(cwd.wstring(), launcher_config);
+    ASSERT_TRUE(master.WaitForSessions(kProbeBindQuietMs, kStageTimeoutMs))
+        << "the master instance never started its application";
+
+    const auto& master_reports = master.Collect();
+    ASSERT_EQ(master_reports.reports.size(), static_cast<std::size_t>(1)) << master_reports.reports.size();
 
     /* The request is sent while the program of the master instance works. */
-    const auto running = WaitForRunLog(cwd, kApplicationStarted, kStageTimeoutMs);
+    StartupRun request;
+    const auto secondary_exit =
+        ProbeRunSecondary(cwd.wstring(), MultiInstanceRequestDocument(id), "", "request", 0, LogRun{}, request);
 
-    StartupRun    request;
-    std::uint32_t secondary_exit = 1;
-    ULONGLONG     elapsed = 0;
-    if (running)
-    {
-        const ULONGLONG started = GetTickCount64();
-        secondary_exit =
-            ProbeRunSecondary(cwd.wstring(), MultiInstanceRequestDocument(id), "", "request", 0, LogRun{}, request);
-        elapsed = GetTickCount64() - started;
-    }
+    /*
+     * The program of the run answered the case again after the request was
+     * answered, so the master instance served the request while that program
+     * worked instead of waiting for it to exit.
+     */
+    EXPECT_EQ(master.Ping(), static_cast<std::size_t>(1)) << "the request waited for the program of the run to exit";
 
-    master_thread.join();
+    /*
+     * The run handled the request: the state of the run counts the request
+     * whose programs it created, which is what the log of the run used to
+     * report.
+     */
+    appbox::MsgRunState::Rsp state;
+    ASSERT_TRUE(QueryRunState(id, state)) << "the state of the run cannot be read";
+    EXPECT_EQ(state.handled_requests, static_cast<std::uint64_t>(1));
 
-    ASSERT_TRUE(running) << "the master instance never started its application";
+    master.Exit(0);
+    const auto master_exit = master.Wait();
+
     EXPECT_EQ(secondary_exit, 0u);
-    EXPECT_EQ(master.exit_code, 0u);
-
-    /* The request was handled while the program of the run was still working. */
-    EXPECT_LT(elapsed, kRequestBudgetMs) << "the request waited for the program of the run to exit";
-    EXPECT_NE(ReadRunLog(cwd).find(kRequestStarted), std::string::npos);
+    EXPECT_EQ(master_exit, 0u);
 
     /* The program of the run and the program of the request were created by the
      * master instance, and they are two different processes. */
-    ASSERT_EQ(master.reports.size(), static_cast<std::size_t>(1)) << master.reports.size();
     ASSERT_EQ(request.reports.size(), static_cast<std::size_t>(1)) << request.reports.size();
 
-    EXPECT_EQ(master.reports[0].parent_pid, master.launcher_pid) << "the program of the run is not its own";
-    EXPECT_EQ(request.reports[0].parent_pid, master.launcher_pid) << "the program of the request is not its own";
-    EXPECT_NE(master.reports[0].pid, request.reports[0].pid);
+    EXPECT_EQ(master_reports.reports[0].parent_pid, master_reports.launcher_pid)
+        << "the program of the run is not its own";
+    EXPECT_EQ(request.reports[0].parent_pid, master_reports.launcher_pid)
+        << "the program of the request is not its own";
+    EXPECT_NE(master_reports.reports[0].pid, request.reports[0].pid);
 }
 
 /**
  * Condition:
- * 1. A launcher serves a sandbox and its own program works for a while.
+ * 1. A launcher serves a sandbox and its own program works.
  * 2. Two second launchers of the same sandbox send a request one after the
  *    other, each with a marker of its own.
  *
@@ -115,6 +105,8 @@ TEST_F(E2E_MultiInstance, RequestWhileRunning)
  *    none of the other request: the arguments of a request are a copy which is
  *    appended to the arguments of the startup file and never reach the
  *    configuration or another request.
+ * 3. The run of the master instance serves both requests, so it still works
+ *    after the second one and leaves with zero when the case ends it.
  */
 TEST_F(E2E_MultiInstance, ArgsIsolation)
 {
@@ -122,32 +114,30 @@ TEST_F(E2E_MultiInstance, ArgsIsolation)
     const auto id = SandboxIdForPath(GetCWDString());
     const auto launcher_config = MultiInstanceConfig(cwd, id, "app");
 
-    StartupRun  master;
-    std::thread master_thread([&]() {
-        master =
-            ProbeStartupRun(GetCWDString(), launcher_config, "", false, LogRun{}, false, std::wstring(), kRunHoldMs);
-    });
+    StartupRunHandle master(cwd.wstring(), launcher_config);
+    ASSERT_TRUE(master.WaitForSessions(kProbeBindQuietMs, kStageTimeoutMs))
+        << "the master instance never started its application";
 
-    const auto running = WaitForRunLog(cwd, kApplicationStarted, kStageTimeoutMs);
+    const auto& master_reports = master.Collect();
+    ASSERT_EQ(master_reports.reports.size(), static_cast<std::size_t>(1)) << master_reports.reports.size();
 
-    StartupRun    first;
-    StartupRun    second;
-    std::uint32_t first_exit = 1;
-    std::uint32_t second_exit = 1;
-    if (running)
-    {
-        first_exit =
-            ProbeRunSecondary(cwd.wstring(), MultiInstanceRequestDocument(id), "", "first", 0, LogRun{}, first);
-        second_exit =
-            ProbeRunSecondary(cwd.wstring(), MultiInstanceRequestDocument(id), "", "second", 0, LogRun{}, second);
-    }
+    StartupRun first;
+    StartupRun second;
+    const auto first_exit =
+        ProbeRunSecondary(cwd.wstring(), MultiInstanceRequestDocument(id), "", "first", 0, LogRun{}, first);
+    const auto second_exit =
+        ProbeRunSecondary(cwd.wstring(), MultiInstanceRequestDocument(id), "", "second", 0, LogRun{}, second);
 
-    master_thread.join();
+    /* The run served both requests, so its own program is still the one of the
+     * case and the requests changed nothing about it. */
+    EXPECT_EQ(master.Ping(), static_cast<std::size_t>(1));
 
-    ASSERT_TRUE(running) << "the master instance never started its application";
+    master.Exit(0);
+    const auto master_exit = master.Wait();
+
     EXPECT_EQ(first_exit, 0u);
     EXPECT_EQ(second_exit, 0u);
-    EXPECT_EQ(master.exit_code, 0u);
+    EXPECT_EQ(master_exit, 0u);
 
     ASSERT_EQ(first.reports.size(), static_cast<std::size_t>(1)) << first.reports.size();
     ASSERT_EQ(second.reports.size(), static_cast<std::size_t>(1)) << second.reports.size();

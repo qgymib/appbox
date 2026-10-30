@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_FONTS_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <cstddef>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -12,6 +11,8 @@ namespace appbox::test
 
 struct ProtocolFonts
 {
+    static constexpr const char* Method = "Fonts";
+
     struct Req
     {
         std::string family;        /* Family name the case expects to be usable. Encoding in UTF-8. */
@@ -38,8 +39,11 @@ struct ProtocolFonts
 
 /**
  * @brief Font probe: the font table of the sandboxed process and the font file of the view.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeFonts;
+ProtocolFonts::Rsp ProbeFonts_Entry(const ProtocolFonts::Req& request);
 
 } // namespace appbox::test
 

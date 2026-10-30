@@ -295,11 +295,12 @@ which died is the first one to open:
 | `test/CMakeLists.txt` | The build of the suite: the sources of the test executable, the two foreign builds of the probe (`probe_x86_build` and `probe_x64_build`, which install below `resource/probe`), and the CTest entries which pass the paths of the products to the executable. |
 | `test/unit/` | The in-process unit tests, one file per module (`<Module>.cpp`); the suite of a file is named `Unit_<Module>`. |
 | `test/e2e/` | The end-to-end cases, one file per case (`<Domain>_<Case>.cpp`); the suite of a file is named `E2E_<Domain>`. |
-| `test/probe/` | The operations which are executed **inside** the sandbox. A probe registers itself by name (`test/probe/__init__.hpp`) and is called from a case through `ProbeCall`; the sources are a program of their own (`test/probe/CMakeLists.txt`), built as `AppBoxProbe32.exe` and `AppBoxProbe64.exe`. |
+| `test/probe/` | The operations which are executed **inside** the sandbox. A probe declares a protocol struct (`Method`, `Req`, `Rsp`) and a typed entry in its header, and the probe executable serves it until the case ends the process, or until the pipe of the case ends (`test/probe/__init__.hpp`); the sources are a program of their own (`test/probe/CMakeLists.txt`), built as `AppBoxProbe32.exe` and `AppBoxProbe64.exe`. |
 | `test/probe/CMakeLists.txt` | The project of the probe executable: it builds `AppBoxProbe32` and `AppBoxProbe64` with the static runtime and installs the executable below `resource/probe` of the build tree, which is where the cases find it. The probe is not part of the package, because the only product of the repository which is installed is the packer. |
-| `test/probe/Registry.cpp` | The probe objects of the test executable: they carry the name of a probe only, because the work runs in the probe process. |
+| `test/probe/Methods.cpp` | The method table of the probe executable: `APPBOX_PROBE_METHODS` (`test/probe/__init__.hpp`) is expanded into one registration per probe, so a probe which is added to the tree is added in one place. |
 | `test/utils/` | The builders and helpers which the cases share, see [Test helpers](#test-helpers). |
-| `test/utils/ProbeCall.*` | The call of a probe: it starts the launcher for the case, serves the probe over the pipe and reports the logs of the processes of the run when the case fails. The log options of the run (`appbox::test::LogRun`) decide whether a case asks for log files at all and which directory it names. |
+| `test/utils/ProbeCall.*` | The handle of a probe (`Probe`, `ProbeRun`): it starts the launcher for the case on a worker thread, binds the sessions of the probes to the run by their key, answers the requests of the case and ends the processes with `Exit()`. It reports the logs of the processes of the run when a case fails. The log options of the run (`appbox::test::LogRun`) decide whether a case asks for log files at all and which directory it names. A run reports what its programs reported: a probe which cannot answer is reported in the log and left out, `WaitForLauncher()` tells whether the launcher of a second instance ended, and `ExitCode()` carries the code which tells a served request from a refused one. |
+| `test/utils/JoinedThread.*` | The thread of a case which is joined when its owner is released: a case which fails while a launcher run works reports its failure instead of ending the test executable, and a failure inside the thread is reported by `Join()`. |
 | `test/utils/TestTimeout.*` | The timeout of a test case: the GoogleTest hook, the watchdog thread and the options of a run. |
 | `test/utils/TestLog.*` | The backtrace of the program log of a run: it silences the messages of the test executable, keeps them in a `spdlog` backtrace and dumps them when a case fails or times out. |
 | `test/utils/Coredump.*` | The coredump writer: the full memory dump of a process, the walk of a process tree and the termination of its processes. |
@@ -857,41 +858,51 @@ executable carries itself:
   directory which is created for it, the level which suppresses a message, and
   the report a fatal exception leaves in the file of the process which raised
   it (`Unit_LogFile.CrashReportNamesTheExceptionOfTheProcess`).
-* `test/unit/RemoteServer.cpp`, `test/unit/RemoteClient.cpp`,
-  `test/unit/RpcCodec.cpp` — the RPC layer which carries the requests of the
-  probes. The server cases cover the race for the name of the pipe
-  (`Unit_RemoteServer.FirstInstanceCreates`,
-  `Unit_RemoteServer.SecondInstanceReportsAlreadyRunning`), the pipe whose
+* `test/unit/RemoteAccepter.cpp`, `test/unit/RemoteConnector.cpp`,
+  `test/unit/RemoteSession.cpp`, `test/unit/RpcCodec.cpp` — the RPC layer which
+  carries the requests of the probes, in the three roles of `common/`: the
+  accepter owns the name of the pipe, the connector opens it, and the session is
+  the symmetric end of one connection which sends requests as well as it answers
+  them. The accepter cases cover the race for the name of the pipe
+  (`Unit_RemoteAccepter.FirstInstanceCreates`,
+  `Unit_RemoteAccepter.SecondInstanceReportsAlreadyRunning`), the pipe whose
   instances all serve a client, which is a running server and no pipe of another
-  user (`Unit_RemoteServer.BusyPipeReportsAlreadyRunning`), the name which carries
-  no pipe at all and is therefore not reachable
-  (`Unit_RemoteServer.MissingPipeIsNotReachable`), the mapping of an
-  access denial of the creation to a running server or to a refused run
-  (`Unit_RemoteServer.CreateResultMapsAccessDenied`), the stop which refuses new
-  connections but answers the requests in flight
-  (`Unit_RemoteServer.StopRefusesNewConnections`), and the robustness against a
+  user (`Unit_RemoteAccepter.BusyPipeReportsAlreadyRunning`), the name which
+  carries no pipe at all and is therefore not reachable
+  (`Unit_RemoteAccepter.MissingPipeIsNotReachable`), the mapping of an access
+  denial of the creation to a running server or to a refused run
+  (`Unit_RemoteAccepter.CreateResultMapsAccessDenied`), the stop which refuses
+  new connections but answers the requests in flight
+  (`Unit_RemoteAccepter.StopRefusesNewConnections`), and the robustness against a
   malformed request: a payload which is no JSON is answered with the parse error,
-  a request above the limit of the server and an unknown method with their own
+  a request above the limit of the session and an unknown method with their own
   errors, and the IO thread keeps serving
-  (  `Unit_RemoteServer.MalformedJsonKeepsServing`,
-  `Unit_RemoteServer.OversizedFrameReturnsError`,
-  `Unit_RemoteServer.UnknownMethodReturnsError`). The process at the other end of
-  a session is reported for the authentication of a request
-  (`Unit_RemoteServer.PeerProcessIdOfRequestIsAvailable`). A client which connects
-  and leaves before the connection was established consumes the instance of the
-  pipe without starting a session, and the server creates the next instance
-  instead of ending its loop
-  (`Unit_RemoteServer.AbandonedConnectionKeepsServing`), which is what a launcher
-  does when it probes the pipe of its sandbox. The retry and the fatal report
-  of the accept loop are driven by an injected creation error
-  (`Unit_RemoteServer.AcceptRetryKeepsServing`,
-  `Unit_RemoteServer.AcceptNextFailureIsReported`). The client cases cover the
-  budget of a call (`Unit_RemoteClient.CallTimesOut`), the retries of the
+  (`Unit_RemoteAccepter.MalformedJsonKeepsServing`,
+  `Unit_RemoteAccepter.OversizedFrameReturnsError`,
+  `Unit_RemoteAccepter.UnknownMethodReturnsError`). The process at the other end
+  of a session is reported for the authentication of a request
+  (`Unit_RemoteAccepter.PeerProcessIdOfRequestIsAvailable`). A client which
+  connects and leaves before the connection was established consumes the instance
+  of the pipe without starting a session, and the accepter creates the next
+  instance instead of ending its loop
+  (`Unit_RemoteAccepter.AbandonedConnectionKeepsServing`), which is what a
+  launcher does when it probes the pipe of its sandbox. The retry and the fatal
+  report of the accept loop are driven by an injected creation error
+  (`Unit_RemoteAccepter.AcceptRetryKeepsServing`,
+  `Unit_RemoteAccepter.AcceptNextFailureIsReported`). The connector cases cover
+  the budget of a call (`Unit_RemoteConnector.CallTimesOut`), the retries of the
   connection while the pipe does not exist yet
-  (`Unit_RemoteClient.RetriesOnBrokenPipe`), the process of the server
-  (`Unit_RemoteClient.ServerProcessIdIsAvailable`) and the reason why the
-  strong-typed call cannot carry a budget
-  (`Unit_RemoteClient.DeferredCallCannotBeUsedForTimeout`).
+  (`Unit_RemoteConnector.RetriesOnBrokenPipe`), the process of the accepter
+  (`Unit_RemoteConnector.ServerProcessIdIsAvailable`) and the budget of the
+  strong-typed call, whose late answer is dropped while the session keeps serving
+  (`Unit_RemoteConnector.StrongTypedCallHonoursBudget`). The session cases cover
+  the symmetry of the two directions: a session answers a request of its peer
+  while a request of its own is pending
+  (`Unit_RemoteSession.AnswersWhileOwnRequestIsPending`), an answer which arrives
+  after the budget of its caller is dropped without breaking the session
+  (`Unit_RemoteSession.LateAnswerIsDropped`), and two sessions of one accepter do
+  not share their request tables
+  (`Unit_RemoteSession.SessionsDoNotShareRequestTables`).
 * `test/unit/LauncherStartMessage.cpp` — the request a second launcher instance
   hands to the master instance of its sandbox (`launcher/msg/LauncherStart.hpp`).
   The cases cover the round trip of the request and of the answer, including the
@@ -1017,14 +1028,34 @@ The timeout and the coredumps of a run have a unit test of their own:
 ## End-to-end tests
 
 `AppBoxTests` runs every case through the real chain: the case writes its
-`LauncherConfig`, `test/utils/ProbeCall.*` starts the **launcher** with
-`--X-AppBox-ConfigFile`, the launcher launches the **probe executable** of the
-case with the sandbox DLL injected, and the probe asks the test process for its
-task over a named pipe and reports the result back. The probe is
-`AppBoxProbe64.exe` unless the case asks for `ProbeBitness::Bit32`, which runs
-the operations inside a 32 bit process. One probe call costs about two seconds,
-so a case which asks several questions of one sandbox asks them in one call where
-the protocol allows it.
+`LauncherConfig`, a `Probe` handle of `test/utils/ProbeCall.*` starts the
+**launcher** with `--X-AppBox-ConfigFile`, the launcher launches the **probe
+executable** of the case with the sandbox DLL injected, and the probe connects to
+the test process over a named pipe, reports which handle it belongs to and then
+answers the requests of the case. The probe is `AppBoxProbe64.exe` unless the
+case asks for `ProbeBitness::Bit32`, which runs the operations inside a 32 bit
+process. One launcher run costs about two seconds, so a case which asks several
+questions of one sandbox asks them through one handle, which keeps the probe
+process alive between the calls.
+
+### Probe handle cases
+
+The cases of `test/e2e/Probe_Session.cpp` pin the contract of the handle itself,
+which every other case relies on: a probe is a service of the case, so one handle
+answers several requests of one process, and a handle which is left without an
+explicit `Exit()` still ends its probe and with it the run of the launcher.
+
+The contract also covers the two ends of a run which the sandbox itself ends: a
+program which left reports nothing, because a master instance terminates the
+programs of a request it has to roll back, and a probe whose pipe is gone leaves
+instead of waiting for a request which nobody sends any more.
+
+| Case | Observation | Expected |
+| --- | --- | --- |
+| `ServesTwoRequestsInOneProcess` | ask one handle twice for the report of its probe | both answers name the same process and the same working directory, and the process is the one the handle reports |
+| `DestructorEndsTheRun` | leave the scope of a handle which answered one request | the probe process ends within the budget of the case, so a case which returns early leaves no process and no launcher behind |
+| `LeftProgramIsNotAsked` | terminate the program of a handle, like the rollback of a refused request does, and then ask the run of the handle for the reports | the run reports nothing and the case is not refused: a program which left has nothing to report |
+| `LeavesWhenTheCaseIsGone` | start a probe on a pipe of the case and close that pipe without asking the probe to leave | the probe process leaves with its pipe, so an abnormal end of the test executable leaves neither a probe nor a launcher behind |
 
 ### Filesystem isolation cases
 
@@ -1676,26 +1707,36 @@ pipe (`LauncherStart`) and leaves as soon as the master instance answered. The
 master instance starts the programs the request selects inside the sandbox it
 prepared, so a request never unpacks an archive or mounts a layer a second time.
 
-A case runs the master instance in a thread of its own and observes its stages
-through the log files of the case, which the run writes while it works
-(`appbox::test::WaitForRunLog()`): the line "the initial application of the
-sandbox was started" proves that the sandbox exists and that its program works,
-and the line "AppBox Sandbox initialized for " proves that the process of the
-sandbox initialized itself. The pipe of the sandbox is watched by name
+A case holds the run of the master instance with
+`appbox::test::StartupRunHandle` and observes the run itself through the state
+query of the control pipe (`appbox::test::RunStateClient`, see
+[docs/Launcher.md](../docs/Launcher.md#the-state-of-a-run)): the answer names the
+stage of the run, the requests it queued and handled, the programs a rollback
+terminated and every program it created. The connection of the program of the run
+(`WaitForSessions()`) is the signal a case waits for before it sends its request:
+a probe which connected runs, so the sandbox of the run exists and its program
+works, and its report (`Collect()`) proves that the sandbox of that process
+initialized itself. A log file of a run is a diagnostic artifact of a failed
+case, and no case reads one. The pipe of the sandbox is watched by name
 (`appbox::test::WaitForControlPipe()`), which is the window in which the master
 instance is still preparing its sandbox. The helpers of
 `test/utils/MultiInstance.*` build the configuration of a master instance, the
 document of a second instance and the description of a directory tree; the second
 instance writes its configuration into `config.secondary.json`, because both
-launchers share the directory which carries the sandbox. `ProbeStartupRun()` and
-`ProbeStartupRunEmbedded()` take `hold_ms`, which the probe passes to
-`--probe_hold_ms`: the probe reports, waits and leaves, so the run of a master
-instance outlives the handshake a case observes. `ProbeRunSecondary()` is the
-client side of a request: it starts a second launcher whose request carries the
-arguments of the probe (`probe --probe_pipe --probe_key`), so the programs the
-master instance starts for the request report to the case as well; the call
-waits for that report within a bounded budget, because the second launcher leaves
-before its programs are ready. The call names the program of the client and the
+launchers share the directory which carries the sandbox. The handle starts the
+run without blocking, waits for the connections of its programs
+(`WaitForSessions()`), collects their reports (`Collect()`), answers the question
+whether those programs still work (`Ping()`) and ends the run with the `Exit`
+request of the probe (`Exit()`), so the lifetime of a run is the one the case
+gives it and no case waits for a fixed time. `ProbeStartupRun()` and
+`ProbeStartupRunEmbedded()` are built on that handle: they collect the reports of
+the run and end it at once, so a case which needs the run alive while it works
+holds the run itself instead of asking for a hold. `ProbeRunSecondary()` is
+the client side of a request: it starts a second launcher whose request carries
+the arguments of the probe (`probe --probe_pipe --probe_key`), so the programs
+the master instance starts for the request connect to the case as well; the call
+waits for those connections within a bounded budget, because the second launcher
+leaves before its programs are ready. The call names the program of the client and the
 file its configuration is written into as well: a case of a self-extracting
 archive runs the archive itself, and two clients which run at the same time name
 a file of their own, because both of them write it into the directory of the
@@ -1703,8 +1744,8 @@ sandbox. Each case is documented in its own header comment.
 
 | Case | Observation | Expected |
 | --- | --- | --- |
-| `JoinsTheRunningSandbox` | run a second launcher of the same archive while the program of the master instance works | the second launcher exits with zero, the program of the run and the program of the request report with the master instance as the process which created them, and the log of the master instance names the started process |
-| `QueuesRequestDuringPreparation` | send the request as soon as the control pipe exists, which is before the master instance prepared its sandbox | the request is queued and handled after the initial target started: the second launcher exits with zero and the log of the master instance names both the queued request and the started process |
+| `JoinsTheRunningSandbox` | run a second launcher of the same archive while the program of the master instance works | the second launcher exits with zero, the program of the run and the program of the request report with the master instance as the process which created them, and the state of the master instance counts one handled request |
+| `QueuesRequestDuringPreparation` | send the request as soon as the control pipe exists, which is before the master instance started its own program | the request is queued and handled after the initial target started: the second launcher exits with zero and the state of the master instance counts the queued request and one handled request. Whether the request arrived before the sandbox was prepared is reported by the state as well and not pinned, because that window depends on the speed of the machine |
 | `SecondInstanceWritesNoState` | describe the `data` directory and count the log files of the case before and after a second launcher runs without any log option | the state holds the same entries with the same sizes and write times, the log directory holds the same number of files, and no extraction folder appears |
 | `ConfigFileAndSelfExtracting` | hand a request over in the layout of a configuration file and in the layout of a self-extracting program | the request is accepted in both layouts: the second launcher exits with zero and the master instance started the program of the request; the client of the self-extracting layout runs the archive itself, which is the image of the master instance |
 
@@ -1737,18 +1778,32 @@ passed on, and `StartupReport::environment` pins the environment the sandbox
 composed. The probe names its own marker with `--probe_marker`, because the
 launcher appends the arguments of a request to the arguments of the startup file,
 which already carries `--startup_marker`, and the parser refuses an option which
-is given twice; `--probe_exit_code` makes a probe leave with a code of its own,
-which is what the case of the exit code needs. The case of the environment starts
+is given twice; the `Exit` request of a handle makes a probe leave with a code of
+its own, which is what the case of the exit code needs. The case of the environment starts
 a master instance whose isolation file joins a value to the value of the host, so
-the program of a request observes the value the sandbox composed.
+the program of a request observes the value the sandbox composed. Every case of
+the group holds the master run with `StartupRunHandle` and ends it once its work
+is done, so the program of the run cannot leave on its own and no case waits for
+a fixed hold. The case of the request asks the program of the run for its report
+once the request was answered (`StartupRunHandle::Ping()`): a program which still
+answers proves that the master instance served the request while its program
+worked, which is the fact a fixed threshold of the latency used to pin.
+
+The reports are collected for a request which was served only: the launcher of a
+second instance leaves with zero when the master instance started the programs of
+the request and with the code of the refusal otherwise, and a refused request has
+nothing to report because the master instance terminates the programs it already
+started for it. A probe which cannot answer at all, because the sandbox removed
+its process, is reported in the log of the case and left out of the reports, so a
+case which needs every program to answer checks the number of the reports itself.
 
 | Case | Observation | Expected |
 | --- | --- | --- |
-| `RequestWhileRunning` | send a request while the program of the master instance stays alive for six seconds, and measure how long the second launcher needs | the request is handled within the acceptance threshold of two seconds, the master instance keeps its own program running, and both programs report with the master instance as the process which created them |
+| `RequestWhileRunning` | send a request while the program of the master instance works, and ask that program for its report once the request was answered | the program of the run still answers, so the request was handled while it worked instead of being queued until it exited; the master instance keeps its own program running, the state of the run counts one handled request, and both programs report with the master instance as the process which created them |
 | `ArgsIsolation` | send two requests one after the other, each with a marker of its own, and read the command line of the programs they started | every request starts exactly one program, whose command line carries the marker of its own request and none of the other one |
-| `AutoRollback` | run a master instance whose configuration lists two auto start files, the second of them a file which is no program, and send a request which asks for the auto start files | the request is refused with the code of the failed creation, the log of the run reports that the process of the request was terminated, and the program of the run keeps working and decides the exit code |
-| `ExitCodeIsolation` | start a program of a request which leaves with a code of its own | the request is accepted, the log reports that code for the program of the request, and the exit code of the run stays the one of its own program |
-| `EnvironmentComposedByTheSandbox` | send a request from a launcher of the host, whose environment is not composed yet | the program of the request sees the value joined once, because the sandbox of the created process composes it |
+| `AutoRollback` | run a master instance whose configuration lists two auto start files, the second of them a file which is no program, and send a request which asks for the auto start files | the request is refused with the code of the failed creation, the state of the run reports the program of the request as terminated by the rollback and counts one rolled back process, the refused request reports no program, and the program of the run keeps working and decides the exit code |
+| `ExitCodeIsolation` | start a program of a request which leaves with a code of its own | the request is accepted, the state of the run reports that code for the program of the request, and the exit code of the run stays the one of its own program |
+| `EnvironmentComposedByTheSandbox` | send a request from a launcher of the host, whose environment is not composed yet, and end the master run of the case once the request is served | the program of the request sees the value joined once, because the sandbox of the created process composes it, and the master run ends within the budget of the case instead of after a fixed hold |
 
 ### Multi-instance refusal cases
 
@@ -1760,8 +1815,8 @@ instance. Each case is documented in its own header comment.
 
 | Case | Observation | Expected |
 | --- | --- | --- |
-| `RefusesDifferentRoot` | run a copy of the archive, which carries the identifier of the running sandbox but lives in another directory | the request is refused with `sandbox_mismatch`, the second launcher exits with `ERROR_ACCESS_DENIED` (5), and the master instance exits with zero and started nothing for the request |
-| `RefusesDifferentSandboxId` | run a launcher which carries another identifier in a directory of its own | the second launcher races for the pipe of its own sandbox, prepares it and exits with zero, while the first sandbox ran only its own program |
+| `RefusesDifferentRoot` | run a copy of the archive, which carries the identifier of the running sandbox but lives in another directory | the request is refused with `sandbox_mismatch`, the second launcher exits with `ERROR_ACCESS_DENIED` (5), the state of the run counts no handled request and no program beside the one of the run, and the master instance exits with zero |
+| `RefusesDifferentSandboxId` | run a launcher which carries another identifier in a directory of its own | the second launcher races for the pipe of its own sandbox, prepares it and exits with zero, while the first sandbox ran only its own program, which its state reports |
 
 ### Multi-instance security cases
 
@@ -1782,13 +1837,13 @@ pipe. Each case is documented in its own header comment.
 | --- | --- | --- |
 | `UnauthorizedClient` | connect to the control pipe of a running sandbox from the process of the case and send a start request which names the identifier and the root of the sandbox | the request is refused with `unauthorized`, the same connection reads the environment state of the sandbox afterwards, and the run of the master instance started its own program only |
 | `IntegrityMismatch` | run a second launcher of the archive with a token whose integrity level was lowered to the low level of Windows | the client leaves with `ERROR_ACCESS_DENIED` (5) and the master instance started no program for it. The case skips itself when the machine does not allow the case to lower the level of a token or to create the client with that token; the decision itself is covered by `Unit_PeerIdentity` |
-| `ServerIdentityMismatch` | let the process of the case occupy the name of the control pipe of a sandbox and answer a start request as if it were the master instance, then run a launcher of that sandbox | the launcher refuses the server before it sends its request, leaves with `ERROR_ACCESS_DENIED` (5) and its log names the reason (`is not the master instance`) |
+| `ServerIdentityMismatch` | let the process of the case occupy the name of the control pipe of a sandbox and answer a start request as if it were the master instance, then run a launcher of that sandbox | the launcher refuses the server before it sends its request, leaves with `ERROR_ACCESS_DENIED` (5), and the process which occupied the pipe receives no request at all |
 
 ### Multi-instance robustness cases
 
 The robustness cases (`test/e2e/MultiInstance_Robustness.cpp`) pin that the
 control pipe of a sandbox survives what a client which is no launcher sends, and
-that the two methods of the pipe do not block each other. The malformed payloads
+that the methods of the pipe do not block each other. The malformed payloads
 are written by the client of `test/utils/MultiInstancePipe.*`, which sends the
 bytes of a frame as they are. Each case is documented in its own header comment.
 
@@ -1805,15 +1860,17 @@ master instance answers the requests which still wait with `shutting_down` and
 closes its pipe, and the client races for the pipe again within the budget of the
 shutdown race (`appbox::NextShutdownRetry()`, see `launcher/control/ShutdownRetry.hpp`),
 so it either hands its request over to the run which still serves the sandbox or
-becomes the master instance itself. The case cannot place its request inside the
-window between the last program of a run and the closing of its pipe on a machine
-it does not control, so it does not pin which of the two happened: it pins that
-the client reports no failure and that the request was served either way. The
-policy of the wait is covered by `Unit_ShutdownRetry`.
+becomes the master instance itself. The case ends the program of the run itself
+while the request of the second launcher is on its way, so the two overlap
+without a fixed time; it cannot place the request inside the window between the
+last program of a run and the closing of its pipe on a machine it does not
+control, so it does not pin which of the two happened: it pins that the client
+reports no failure and that the request was served either way. The policy of the
+wait is covered by `Unit_ShutdownRetry`.
 
 | Case | Observation | Expected |
 | --- | --- | --- |
-| `ShutdownRace` | run a master instance whose program leaves after a short time and send a request of a second launcher of the archive at the end of that time | the second launcher leaves with zero, and the request was either handed over (its program reported) or served by a run which started the sandbox afterwards (the log of the case carries a second `the initial application of the sandbox was started`) |
+| `ShutdownRace` | hold the run of a master instance and end it while a request of a second launcher of the archive is on its way | the second launcher leaves with zero, which is neither the code of a refusal nor the code of a budget which ran out, so the request was served by one of the two runs; the run of the first instance is complete |
 
 ### Launcher startup script cases
 
@@ -1892,24 +1949,27 @@ image is a resource of the launcher payload itself
 `launcher/EmbeddedResourceIds.h`); a session which turns the screen off
 (`startup.screen`) runs without a window at all.
 
-The cases read the log the launcher writes into the directory of the run, which
-reports that the screen was shown, whether it carried its image and that it was
-closed again: the window lives for a few milliseconds only, so its lifetime is
-pinned through those reports instead of through the window itself. The cases are
-the only ones which turn the screen on, because the harness turns it off for
-every other case: a window which pops up for every case would cover the work of
-the user, like the console window the harness hides.
+The cases read the state of the run over the control pipe
+(`appbox::test::RunStateClient`, see
+[docs/Launcher.md](../docs/Launcher.md#the-state-of-a-run)): it reports that the
+screen of the session was shown, which image the screen decoded and that the
+screen was closed again. The window lives for a few milliseconds only, so its
+lifetime is pinned through the facts of the run instead of through the window
+itself. The cases are the only ones which turn the screen on, because the harness
+turns it off for every other case: a window which pops up for every case would
+cover the work of the user, like the console window the harness hides.
 
 A case which checks the image patches a copy of the launcher under test with
 `EmbedLauncherResources()`, which is the very call a pack run uses, and starts
-that copy with `ProbeStartupRun(..., launcher_path)`.
+that copy with `StartupRunHandle(..., launcher_path)`, which holds the run while
+the case reads its state.
 
 | Case | Steps | Expected |
 | --- | --- | --- |
-| `TheScreenIsShownWhileTheApplicationStarts` | the launcher payload carries an image resource of an 8x4 bitmap | the startup file is started, the launcher exits with zero, and the log reports a shown screen which decoded the image of 8x4 pixels and which was closed again |
-| `AScreenWithoutAnImageResourceKeepsTheRunAlive` | the unpatched launcher payload carries no image resource | the run is not refused, and the log reports a screen which is shown with an image of 0x0 pixels |
-| `AnImageWhichCannotBeDecodedKeepsTheRunAlive` | the image resource holds text instead of an image | the run is not refused, and the log reports a screen which is shown without its image |
-| `ASessionWithoutAScreenCreatesNoWindow` | the payload carries the image resource and the configuration turns the screen off | the startup file is started, and the log reports neither a shown nor a closed screen |
+| `TheScreenIsShownWhileTheApplicationStarts` | the launcher payload carries an image resource of an 8x4 bitmap | the startup file is started, the launcher exits with zero, and the state of the run reports a screen which was shown and closed again, decoded the image of 8x4 pixels and reached the stage `starting_application` |
+| `AScreenWithoutAnImageResourceKeepsTheRunAlive` | the unpatched launcher payload carries no image resource | the run is not refused, and the state of the run reports a screen which was shown and closed again with an image of 0x0 pixels and no reason for a missing image |
+| `AnImageWhichCannotBeDecodedKeepsTheRunAlive` | the image resource holds text instead of an image | the run is not refused, and the state of the run reports a screen which was shown and closed again with an image of 0x0 pixels and the reason the image could not be decoded |
+| `ASessionWithoutAScreenCreatesNoWindow` | the payload carries the image resource and the configuration turns the screen off | the startup file is started, and the state of the run reports neither a shown nor a closed screen |
 
 ### Launcher log cases
 
@@ -1920,8 +1980,10 @@ into the directory the run names (see
 [Launcher](../docs/Launcher.md#logging)). The cases change the log options of the
 harness (`appbox::test::LogRun`), so they are the only ones which decide where
 their log files land, and every case which looks for a message of a run asks for
-`info`, the level the messages are reported at. Each case is documented in its
-own header comment.
+`info`, the level the messages are reported at. These cases are the only ones
+which judge a run by its log files: every other case observes the run through its
+state, its programs and its exit code, because a log file is a diagnostic
+artifact and never a contract. Each case is documented in its own header comment.
 
 | Case | Log options | Expected |
 | --- | --- | --- |
@@ -2016,7 +2078,7 @@ in its own header comment.
 | --- | --- | --- |
 | `ThePayloadRunsFromATemporaryFolder` | the session starts the probe as `MyApp\app.exe` and is packed into the working directory of the case | the run exits with zero, the probe reports its marker, the image it ran is a file of the extraction folder below the temporary directory, the state is created beside the program, no `app` directory appears beside it and no extraction folder stays behind |
 | `ThePatchesBesideTheProgramAreMerged` | the `patch` directory beside the program carries a package which overrides a file of the filesystem | the run exits with zero, the package was extracted into `data/cache` beside the program and no `app` directory appears beside it |
-| `TheStartupScreenCoversTheExtraction` | the session is packed with the startup screen of the session | the run exits with zero, the log reports the extraction of the payload into its temporary folder, and the screen was shown and closed during the run |
+| `TheStartupScreenCoversTheExtraction` | the session is packed with the startup screen of the session | the run exits with zero, and the state of the run reports the extraction folder below the temporary directory of the machine together with a screen which was shown and closed during the run |
 
 ### Patch layer cases
 
@@ -2151,19 +2213,27 @@ They are documented in their own header comments.
   list of a sandboxed process share them, so the two cannot drift apart.
 * `test/utils/CWD.*` — the working directory itself: `Create()` makes it,
   `NoCleanup()` keeps it after the case.
-* `test/utils/ProbeCall.*` — writes the `LauncherConfig` to `config.json`, starts the
-  **launcher** with `--X-AppBox-ConfigFile`, which launches the probe executable of the
-  case (`AppBoxProbe32.exe` or `AppBoxProbe64.exe`) with the sandbox DLL injected; the
-  probe asks the test process for its task over a named pipe and reports the result back.
-  `ProbeCall()` takes the bit size of the probe as its last argument and defaults to the
-  64 bit one, so a case which asks for the 32 bit probe names `ProbeBitness::Bit32` and
-  nothing else changes. Every configuration it hands to the
-  launcher enables `hide_console`, so the probe process of a case does not open a console
-  window (see [Launcher console case](#launcher-console-case)). The log options of the run
-  (`appbox::test::LogRun`) are passed as `--X-AppBox-LogLevel` and `--X-AppBox-LogDir` and
-  collect the log files of a case in the `log` directory of that case; a case which checks
-  the options leaves one of them out (see [Launcher log cases](#launcher-log-cases)).
-  `ProbeStartupRun()` runs the
+* `test/utils/ProbeCall.*` — the handle of the probes of a case. `Probe` writes the
+  `LauncherConfig` to `config.json`, starts the **launcher** with `--X-AppBox-ConfigFile`
+  on a worker thread (the launcher returns only when its last program left) and launches
+  the probe executable of the case (`AppBoxProbe32.exe` or `AppBoxProbe64.exe`) with the
+  sandbox DLL injected. The probe connects over a named pipe, reports the key of its run
+  with the `Bind` request and then answers the requests of the case until the handle ends
+  it, so one handle asks one probe process as many questions as the case needs and the
+  destructor of the handle leaves no process behind. `Call<Protocol>()` sends the request
+  of a protocol and returns its answer; `CallAll<Protocol>()` asks every probe of the run,
+  which is what a run with several startup files needs, and leaves out a probe which cannot
+  answer, because a master instance terminates the programs of a request it has to roll
+  back; a case which needs every answer checks the number of the reports itself.
+  `Probe` takes the bit size of the
+  probe as its third argument and defaults to the 64 bit one, so a case which asks for the
+  32 bit probe names `ProbeBitness::Bit32` and nothing else changes. Every configuration it
+  hands to the launcher enables `hide_console`, so the probe process of a case does not open
+  a console window (see [Launcher console case](#launcher-console-case)). The log options of
+  the run (`appbox::test::LogRun`) are passed as `--X-AppBox-LogLevel` and
+  `--X-AppBox-LogDir` and collect the log files of a case in the `log` directory of that
+  case; a case which checks the options leaves one of them out (see
+  [Launcher log cases](#launcher-log-cases)). `ProbeStartupRun()` runs the
   launcher for a startup file selection instead: it passes `--X-AppBox-Startup` when a
   trigger is given and reports the markers of the startup files the launcher started
   together with its exit code, the process id of the launcher and the report of every
@@ -2172,9 +2242,28 @@ They are documented in their own header comments.
   the configuration spells through the last argument of the call (see
   [Launcher startup image cases](#launcher-startup-image-cases)). `ProbeShellRun()`
   passes `--X-AppBox-Shell` with the
-  command of the case and collects the markers which arrived until the launcher left; it
-  does not wait for a probe, because the shell runs the command of the case instead of
-  the probe (see [Launcher shell cases](#launcher-shell-cases)).
+  command of the case and collects the markers of the probes which connected until the
+  launcher left; it does not wait for a probe, because the shell runs the command of the
+  case instead of the probe (see [Launcher shell cases](#launcher-shell-cases)).
+* `test/utils/RunState.*` — the state query of a run. `RunStateClient` connects to the
+  control pipe of a sandbox once and reads the answer of the `RunState` method (see
+  [Launcher](../docs/Launcher.md#the-state-of-a-run)), which reports the stage of the run,
+  the startup screen of the session, the extraction folder of a self-extracting program,
+  the requests the run queued and handled, the processes a rollback terminated and every
+  program the run created with its origin, its request, its exit state and its exit code.
+  `WaitFor()` asks the run again until a condition holds, so a case which waits for the end
+  of a program needs no fixed delay, and `QueryRunState()` reads one state of a case which
+  needs no connection of its own. `RequestPrograms()` and `RunningPrograms()` read the
+  programs of the requests and the programs which still work. The helper is the way a case
+  observes a run: a log file of a run is a diagnostic artifact of a failed case and never a
+  judgment of a case.
+* `test/utils/JoinedThread.*` — the thread a case starts a launcher run on. The run
+  returns only when its last program left, so a case works with the run while the thread
+  waits for it, and the object joins that thread when it is released: a case which fails
+  while the run works reports the failure instead of ending the test executable, which
+  would take every case after it down and leave the programs of the run without the process
+  which asked for them. A failure inside the thread is kept and reported by `Join()`, so a
+  run which throws is a failure of the case and not the end of the process.
 * `test/utils/HiveBuilder.*` — builds the registry artifacts of a case, so an
   end-to-end test owns what the sandbox mounts. The builder writes the hive file and
   the isolation file into the registry domain of the resources of the case
@@ -2262,8 +2351,6 @@ They are documented in their own header comments.
   with its own table of the classes.
 * `test/utils/ReadFileFull.*` / `test/utils/WriteFileFull.*` — file I/O
   helpers.
-* `test/utils/Semaphore.*` — synchronization between the test process and the
-  probe process.
 * `test/probe/*` — the operations executed inside the sandbox (`CreateFileW`,
   `CreateDirectoryW`, `DeleteFileW`, `RemoveDirectoryW`, `WriteFile`,
   `ListDir`, `ListDirNt`, `ReadFileFull`), plus the probes of the remaining
@@ -2351,13 +2438,14 @@ They are documented in their own header comments.
   load order, taken with a tool help snapshot of the process itself, which is
   the list the case about the runtime library of a sandboxed process reads (see
   [Launcher runtime library case](#launcher-runtime-library-case)).
-* `test/probe/__init__.hpp` — the probe registry: a probe registers itself by
-  name on start and `ProbeInit` registers the command which the launcher starts
-  in the probe executable (`test/probe/main.cpp`). The test executable defines
-  the same objects without a function (`test/probe/Registry.cpp`), because it
-  only names the probe a case asks for. `--startup_marker` carries the marker of
-  the startup file a probe process was started for, which `StartupMarker()`
-  returns.
+* `test/probe/__init__.hpp` — the probe runtime: `APPBOX_PROBE_METHODS` names
+  every probe of the executable once, `RegisterProbe<Protocol>()` adapts the typed
+  entry of a probe to the JSON dispatch of the session, and `ProbeInit` registers
+  the command which the launcher starts in the probe executable
+  (`test/probe/main.cpp`). `test/probe/Methods.cpp` expands the list, because the
+  headers of the probes and the socket headers of the runtime cannot share a
+  translation unit. `--startup_marker` carries the marker of the startup file a
+  probe process was started for, which `StartupMarker()` returns.
 * `test/probe/main.cpp` — the entry point of the probe executable: the command
   line of the probe (`probe --probe_pipe … --probe_key …`), the `paramcheck`
   worker of the process parameter cases, the `regchild` worker of the registry
@@ -2414,6 +2502,11 @@ They are documented in their own header comments.
 * **The timeout and the coredumps of a run are verified by hand.** The test
   suite does not test itself (see
   [Timeouts and coredumps](#timeouts-and-coredumps)).
+* **A run of `ProbeProgramRun()` cannot be observed.** The call starts the
+  programs the configuration spells without replacing them by a probe, which is
+  what a case needs to check how the launcher starts a program of its own; a
+  program which is no probe connects to nothing, so the call reports the exit
+  code of the launcher alone.
 * **The fallback of a process which cannot name its job has no case.** The
   launcher puts a process into its job through the attribute of the creation, and
   falls back to assigning the process afterwards on a platform which does not

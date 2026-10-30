@@ -1,5 +1,6 @@
 #include "probe/RegReadValue.hpp"
 #include "probe/RegWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -41,7 +42,7 @@ ProtocolRegReadValue::Rsp ReadSandboxValue(const std::wstring& subkey, const std
     ProtocolRegReadValue::Req req;
     req.Key = appbox::WideToUTF8(subkey);
     req.Value = appbox::WideToUTF8(name);
-    return ProbeRegReadValue.Call(req, cwd, config).get<ProtocolRegReadValue::Rsp>();
+    return Probe(cwd, config).Call<ProtocolRegReadValue>(req);
 }
 
 } // namespace
@@ -96,7 +97,7 @@ TEST_F(E2E_Reg, Hide_WriteThenRestart)
         req.Value = "Written";
         req.Data = "run1";
 
-        const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.create_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.set_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_SUCCESS));

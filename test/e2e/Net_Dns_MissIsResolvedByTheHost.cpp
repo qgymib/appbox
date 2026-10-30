@@ -1,4 +1,5 @@
 #include "probe/ResolveName.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/NetworkIsolationBuilder.hpp"
@@ -38,7 +39,7 @@ TEST_F(E2E_Net, Dns_MissIsResolvedByTheHost)
     };
     /* clang-format on */
 
-    const auto rsp = ProbeResolveName.Call(req, GetCWD(), config).get<ProtocolResolveName::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolResolveName>(req);
     ASSERT_EQ(rsp.answers.size(), 1u);
 
     EXPECT_EQ(rsp.answers[0].code, 0);

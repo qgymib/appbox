@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_RESOLVE_NAME_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -12,6 +11,8 @@ namespace appbox::test
 
 struct ProtocolResolveName
 {
+    static constexpr const char* Method = "ResolveName";
+
     /**
      * @brief Name resolution API the probe calls.
      *
@@ -78,8 +79,11 @@ struct ProtocolResolveName
 
 /**
  * @brief Resolve hostnames with the name resolution of the application.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeResolveName;
+ProtocolResolveName::Rsp ProbeResolveName_Entry(const ProtocolResolveName::Req& request);
 
 } // namespace appbox::test
 

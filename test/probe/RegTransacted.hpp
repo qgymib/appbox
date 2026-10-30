@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGTRANSACTED_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -31,6 +30,8 @@ namespace appbox::test
  */
 struct ProtocolRegTransacted
 {
+    static constexpr const char* Method = "RegTransacted";
+
     /**
      * @brief Transacted entry point the probe calls.
      *
@@ -156,8 +157,11 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolRegTransacted::EndKind,
  * The transaction is created by the probe, so a test can tell a call which the
  * isolation answered from a call which reached the real registry: the host
  * registry of a case never receives the key, the value or the rollback.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegTransacted;
+ProtocolRegTransacted::Rsp ProbeRegTransacted_Entry(const ProtocolRegTransacted::Req& request);
 
 } // namespace appbox::test
 

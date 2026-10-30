@@ -1,5 +1,6 @@
 #include "probe/LaunchProcess.hpp"
 #include "probe/ParamCheck.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/ProbePath.hpp"
@@ -82,7 +83,7 @@ void ExpectChildParameters(const std::filesystem::path& cwd, const appbox::Launc
         request.Arguments.push_back(appbox::WideToUTF8(expected_directory));
     }
 
-    const auto rsp = ProbeLaunchProcess.Call(request, cwd.wstring(), launcher_config).get<ProtocolLaunchProcess::Rsp>();
+    const auto rsp = Probe(cwd.wstring(), launcher_config).Call<ProtocolLaunchProcess>(request);
     const auto report = FormatReport(api, rsp, expected_image, expected_directory);
 
     ASSERT_EQ(rsp.code, static_cast<DWORD>(0)) << report;

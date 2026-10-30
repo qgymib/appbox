@@ -157,6 +157,9 @@ static void CloseStartupScreen(std::unique_ptr<appbox::SplashScreen>& splash)
 {
     LauncherApp().splash = nullptr;
     splash.reset();
+
+    /* The screen of the run is gone, which the state query of the run reports. */
+    LauncherApp().RecordStartupScreenClosed();
 }
 
 /**
@@ -509,11 +512,11 @@ static void StopServing()
  * lost.
  *
  * @param[in,out] opt The command line options of the run.
- * @param[in] server Pipe server which won the race for the control pipe.
+ * @param[in] accepter Accepter which won the race for the control pipe.
  * @param[in] pipe Name of the control pipe of the sandbox.
  * @return The exit code of the run.
  */
-static DWORD RunMasterInstance(appbox::CommandLineOptions& opt, appbox::RemoteServer::Ptr server,
+static DWORD RunMasterInstance(appbox::CommandLineOptions& opt, appbox::RemoteAccepter::Ptr accepter,
                                const std::string& pipe)
 {
     /*
@@ -536,7 +539,7 @@ static DWORD RunMasterInstance(appbox::CommandLineOptions& opt, appbox::RemoteSe
          * pipe has to serve the requests of a second instance while this run
          * is still preparing its sandbox.
          */
-        auto control = std::make_shared<appbox::ControlPlane>(std::move(server), LauncherApp().sandbox_paths.root);
+        auto control = std::make_shared<appbox::ControlPlane>(std::move(accepter), LauncherApp().sandbox_paths.root);
         LauncherApp().control = control;
 
         /*
@@ -555,8 +558,15 @@ static DWORD RunMasterInstance(appbox::CommandLineOptions& opt, appbox::RemoteSe
             }
         });
 
-        /* Methods must register before rpc server start. */
-        appbox::RpcInit(control->Server());
+        /*
+         * The methods of the launcher are registered per session, so the accepter
+         * is told what to do with a connection before it starts: the callback
+         * runs on the IO thread of the accepter, before the session of the
+         * connection reads its first message.
+         */
+        control->Server()->SetSessionCallback(
+            [](const appbox::RemoteSession::Ptr& session) { appbox::RpcInit(session); });
+
         if (!control->Server()->Start())
         {
             throw std::runtime_error("the control pipe of the sandbox cannot be served");
@@ -601,6 +611,13 @@ static DWORD RunMasterInstance(appbox::CommandLineOptions& opt, appbox::RemoteSe
         LauncherApp().splash = splash.get();
 
         /*
+         * The screen is a fact of the run as well: the state query reports
+         * whether the session shows one and which image it decoded, so a client
+         * reads the screen of the run without looking at the window.
+         */
+        LauncherApp().RecordStartupScreen(*splash);
+
+        /*
          * A self-extracting program carries the resources of the application
          * behind its own image. The payload is extracted into a temporary
          * folder of the run, which becomes the resource root of the sandbox:
@@ -625,11 +642,21 @@ static DWORD RunMasterInstance(appbox::CommandLineOptions& opt, appbox::RemoteSe
         {
             LauncherApp().sandbox_paths.SetResourceRoot(
                 (std::filesystem::path(extraction.Root()) / appbox::layout::kAppDirNameW).wstring());
+
+            /* The folder is a fact of the run, which its state query reports. */
+            LauncherApp().RecordExtractionRoot(appbox::WideToUTF8(extraction.Root()));
         }
 
         ReportStartupStage(appbox::StartupStage::Preparing, 1.0);
 
         LauncherApp().runtime = std::make_shared<AppBoxLauncherRuntime>(opt.log_level, opt.log_dir, pipe);
+
+        /*
+         * The sandbox exists now, so a request of another launcher may start
+         * its programs: a request which arrived before this point waited for
+         * the control thread, which the state query of the run reports.
+         */
+        LauncherApp().run_facts.prepared.store(true);
 
         /*
          * The view of the run is built from the injection data, which exists
@@ -751,7 +778,7 @@ static DWORD RunLauncher()
         return ERROR_INVALID_DATA;
     }
 
-    appbox::RemoteServer::Options options;
+    appbox::RemoteAccepter::Options options;
     options.first_instance = true;
 
     bool          logging_ready = false;
@@ -770,7 +797,7 @@ static DWORD RunLauncher()
      */
     for (;;)
     {
-        const auto created = appbox::RemoteServer::CreateCompetitive(pipe, options);
+        const auto created = appbox::RemoteAccepter::CreateCompetitive(pipe, options);
 
         /*
          * The log files are set up once the role of the run is known: the options
@@ -788,7 +815,7 @@ static DWORD RunLauncher()
         switch (created.status)
         {
         case appbox::ServerCreateStatus::Created:
-            return RunMasterInstance(opt, created.server, pipe);
+            return RunMasterInstance(opt, created.accepter, pipe);
 
         case appbox::ServerCreateStatus::AlreadyRunning: {
             const auto handover = HandOverToMaster(opt, pipe);

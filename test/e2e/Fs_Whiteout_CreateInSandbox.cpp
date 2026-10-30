@@ -2,6 +2,7 @@
 #include "probe/ListDir.hpp"
 #include "probe/QueryAttributes.hpp"
 #include "probe/ReadFileFull.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -61,7 +62,7 @@ TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(file);
 
-        auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
 
@@ -72,7 +73,7 @@ TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 
-        auto rsp = ProbeCreateFileW.Call(req, GetCWD(), config).get<ProtocolCreateFileW::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateFileW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     }
 
@@ -81,7 +82,7 @@ TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(file);
 
-        auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_TRUE(rsp.data.empty());
     }
@@ -89,7 +90,7 @@ TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
         ProtocolQueryAttributes::Req req;
         req.FileName = appbox::WideToUTF8(file);
 
-        auto rsp = ProbeQueryAttributes.Call(req, GetCWD(), config).get<ProtocolQueryAttributes::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.attributes & FILE_ATTRIBUTE_DIRECTORY, static_cast<DWORD>(0));
     }
@@ -98,7 +99,7 @@ TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
         req.path = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName);
         req.method = ProtocolListDir::Req::Method::WinAPI;
 
-        auto rsp = ProbeListDir.Call(req, GetCWD(), config).get<ProtocolListDir::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);
         EXPECT_TRUE(std::any_of(rsp.entries.begin(), rsp.entries.end(),
                                 [](const ProtocolListDir::Rsp::Entry& entry) { return entry.name == "data.txt"; }));
     }

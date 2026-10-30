@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGQUERYMULTIPLEVALUES_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -19,6 +18,8 @@ namespace appbox::test
  */
 struct ProtocolRegQueryMultipleValues
 {
+    static constexpr const char* Method = "RegQueryMultipleValues";
+
     struct Req
     {
         std::string              Root;  /* Root key name, empty means HKEY_CURRENT_USER. */
@@ -49,8 +50,12 @@ struct ProtocolRegQueryMultipleValues
  *
  * The data of a `REG_SZ` value is reported as its text, every other type as a
  * hexadecimal byte dump.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegQueryMultipleValues;
+ProtocolRegQueryMultipleValues::Rsp ProbeRegQueryMultipleValues_Entry(
+    const ProtocolRegQueryMultipleValues::Req& request);
 
 } // namespace appbox::test
 

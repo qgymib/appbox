@@ -52,6 +52,24 @@ struct WaitResult
 };
 
 /**
+ * @brief One job of a set, as a snapshot of the set describes it.
+ *
+ * The entry is what the state query of a run reports about one program: the
+ * process the job created, the origin of the job, the request which asked for
+ * it, whether it exited and with which code, and whether a rollback terminated
+ * it. It describes the accounting of the run and not a line of a log.
+ */
+struct JobState
+{
+    std::uint32_t pid = 0;                     /*!< Process id of the created process. */
+    JobOrigin     origin = JobOrigin::Initial; /*!< Why the job exists. */
+    std::uint64_t request_id = 0;              /*!< Request the job belongs to, zero for the initial run. */
+    bool          exited = false;              /*!< True once the job reported that its processes exited. */
+    bool          terminated = false;          /*!< True when a rollback of its request terminated the job. */
+    DWORD         exit_code = 0;               /*!< Exit code, meaningful only while `exited` is set. */
+};
+
+/**
  * @brief The processes one run of the launcher starts, and the wait for all of them.
  *
  * Every job of the set reports to one IO completion port, so a run waits for
@@ -169,6 +187,19 @@ struct ProcessJobSet
      * @return The number of jobs which were terminated.
      */
     std::size_t TerminateRequest(std::uint64_t request_id);
+
+    /**
+     * @brief Describe every job of the set.
+     *
+     * The call copies what the set accounts for, so the caller reads the state
+     * of the run without holding the lock of the set: a reader of the state
+     * query runs on the RPC thread while the control thread starts and waits
+     * for the processes. A job which did not report its end carries no exit
+     * code, because the system reports a running process as still active.
+     *
+     * @param[out] jobs The description of the jobs, in the order they joined.
+     */
+    void Snapshot(std::vector<JobState>& jobs);
 
     /**
      * @brief Get the number of jobs of the set.

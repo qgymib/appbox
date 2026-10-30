@@ -41,9 +41,10 @@ static std::wstring AsNtPath(const std::wstring& path)
     return nt_path;
 }
 
-static nlohmann::json ProbeQueryInformationByName_Entry(const nlohmann::json& data)
+appbox::test::ProtocolQueryInformationByName::Rsp appbox::test::ProbeQueryInformationByName_Entry(
+    const appbox::test::ProtocolQueryInformationByName::Req& request)
 {
-    const auto req = data.get<appbox::test::ProtocolQueryInformationByName::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolQueryInformationByName::Rsp rsp;
 
@@ -87,6 +88,3 @@ static nlohmann::json ProbeQueryInformationByName_Entry(const nlohmann::json& da
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeQueryInformationByName("QueryInformationByName",
-                                                              ProbeQueryInformationByName_Entry);

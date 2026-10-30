@@ -3,6 +3,7 @@
 #include "probe/DeleteFileW.hpp"
 #include "probe/QueryAttributes.hpp"
 #include "probe/RemoveDirectory.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -94,7 +95,7 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
         ProtocolCreateDirectoryW::Req req;
         req.PathName = appbox::WideToUTF8(created);
 
-        const auto rsp = ProbeCreateDirectoryW.Call(req, GetCWD(), config).get<ProtocolCreateDirectoryW::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateDirectoryW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     }
 
@@ -103,7 +104,7 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
         ProtocolQueryAttributes::Req req;
         req.FileName = appbox::WideToUTF8(created);
 
-        const auto rsp = ProbeQueryAttributes.Call(req, GetCWD(), config).get<ProtocolQueryAttributes::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_NE(rsp.attributes & FILE_ATTRIBUTE_DIRECTORY, static_cast<DWORD>(0));
     }
@@ -119,7 +120,7 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 
-        const auto rsp = ProbeCreateFileW.Call(req, GetCWD(), config).get<ProtocolCreateFileW::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateFileW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     }
 
@@ -128,7 +129,7 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
         ProtocolRemoveDirectory::Req req;
         req.PathName = appbox::WideToUTF8(created);
 
-        const auto rsp = ProbeRemoveDirectory.Call(req, GetCWD(), config).get<ProtocolRemoveDirectory::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRemoveDirectory>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_DIR_NOT_EMPTY));
     }
 
@@ -137,14 +138,14 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
         ProtocolDeleteFileW::Req req;
         req.FileName = appbox::WideToUTF8(file);
 
-        const auto rsp = ProbeDeleteFileW.Call(req, GetCWD(), config).get<ProtocolDeleteFileW::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolDeleteFileW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     }
     {
         ProtocolRemoveDirectory::Req req;
         req.PathName = appbox::WideToUTF8(created);
 
-        const auto rsp = ProbeRemoveDirectory.Call(req, GetCWD(), config).get<ProtocolRemoveDirectory::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRemoveDirectory>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     }
 
@@ -153,7 +154,7 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
         ProtocolQueryAttributes::Req req;
         req.FileName = appbox::WideToUTF8(created);
 
-        const auto rsp = ProbeQueryAttributes.Call(req, GetCWD(), config).get<ProtocolQueryAttributes::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
     EXPECT_FALSE(std::filesystem::exists(CreatedDirectoryInOverlay(GetCWDString())));

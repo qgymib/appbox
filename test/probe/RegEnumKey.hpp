@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGENUMKEY_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -12,6 +11,7 @@ namespace appbox::test
 
 struct ProtocolRegEnumKey
 {
+    static constexpr const char* Method = "RegEnumKey";
 
     struct Req
     {
@@ -33,8 +33,11 @@ struct ProtocolRegEnumKey
 /**
  * @brief Registry sub key enumeration probe: open the key below HKCU, report
  *        the sub key count and enumerate every sub key name.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegEnumKey;
+ProtocolRegEnumKey::Rsp ProbeRegEnumKey_Entry(const ProtocolRegEnumKey::Req& request);
 
 } // namespace appbox::test
 

@@ -247,9 +247,10 @@ DWORD LaunchThroughCreateProcess(const std::wstring& file, std::wstring& command
 
 } // namespace
 
-static nlohmann::json ProbeLaunchProcess_Entry(const nlohmann::json& data)
+appbox::test::ProtocolLaunchProcess::Rsp appbox::test::ProbeLaunchProcess_Entry(
+    const appbox::test::ProtocolLaunchProcess::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolLaunchProcess::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolLaunchProcess::Rsp rsp;
 
@@ -294,5 +295,3 @@ static nlohmann::json ProbeLaunchProcess_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeLaunchProcess("LaunchProcess", ProbeLaunchProcess_Entry);

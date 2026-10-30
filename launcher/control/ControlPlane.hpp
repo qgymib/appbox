@@ -6,11 +6,12 @@
  * winsock 2 header has to precede the <windows.h> the headers below reach
  * through `WinAPI.h`, so it is included first.
  */
-#include "RemoteServer.hpp"
+#include "RemoteAccepter.hpp"
 #include "Config.hpp"
 #include "control/PeerIdentity.hpp"
 #include "control/ShutdownRetry.hpp"
 #include "msg/LauncherStart.hpp"
+#include "msg/RunState.hpp"
 #include "sandbox/Config.hpp"
 #include "utils/ProcessJobSet.hpp"
 #include "utils/ViewPathResolver.hpp"
@@ -63,12 +64,17 @@ struct LaunchTarget
 
 /**
  * @brief One request of another launcher which waits for the control thread.
+ *
+ * The request keeps the session it arrived on, because the control thread
+ * answers it: a session is the only place which knows the request id of its
+ * peer, and the connection of a request may end while the request still waits.
  */
 struct LauncherStartRequest
 {
-    MsgLauncherStart::Req request;        /*!< Request of the second instance. */
-    std::uint64_t         rpc_id = 0;     /*!< Request id of the session which has to be answered. */
-    std::uint64_t         request_id = 0; /*!< Id the run assigned, which names the jobs of the request. */
+    appbox::RemoteSession::Ptr session;        /*!< Session which sent the request. */
+    MsgLauncherStart::Req      request;        /*!< Request of the second instance. */
+    std::uint64_t              rpc_id = 0;     /*!< Request id of the session which has to be answered. */
+    std::uint64_t              request_id = 0; /*!< Id the run assigned, which names the jobs of the request. */
 };
 
 /**
@@ -227,20 +233,20 @@ public:
 
     /**
      * @brief Build the control layer of one run.
-     * @param[in] server Pipe server which serves the control pipe of the sandbox.
+     * @param[in] accepter Accepter which serves the control pipe of the sandbox.
      * @param[in] sandbox_root Host directory which carries the sandbox.
      */
-    ControlPlane(appbox::RemoteServer::Ptr server, const std::wstring& sandbox_root);
+    ControlPlane(appbox::RemoteAccepter::Ptr accepter, const std::wstring& sandbox_root);
     ~ControlPlane();
 
     ControlPlane(const ControlPlane&) = delete;
     ControlPlane& operator=(const ControlPlane&) = delete;
 
     /**
-     * @brief Get the pipe server of the run.
-     * @return The server, which answers every RPC method of the launcher.
+     * @brief Get the accepter of the run.
+     * @return The accepter, which owns the control pipe of the sandbox.
      */
-    const appbox::RemoteServer::Ptr& Server() const;
+    const appbox::RemoteAccepter::Ptr& Server() const;
 
     /**
      * @brief Get the host directory which carries the sandbox.
@@ -277,6 +283,7 @@ public:
      * which costs a constant number of queries; it neither creates a process nor
      * blocks on the control thread.
      *
+     * @param[in] session Session which sent the request.
      * @param[in] rpc_id Id of the request of the session which sent it.
      * @param[out] error_code Stable identifier of the reason, see
      *                        `launcher_start_error`; empty when the client is
@@ -285,7 +292,41 @@ public:
      *                           client is authorized.
      * @return true when the client may send a start request.
      */
-    bool Authenticate(std::uint64_t rpc_id, std::string& error_code, std::string& error_message);
+    bool Authenticate(const appbox::RemoteSession::Ptr& session, std::uint64_t rpc_id, std::string& error_code,
+                      std::string& error_message);
+
+    /**
+     * @brief Authenticate the client which asks for the state of the run.
+     *
+     * The state query starts nothing, so the check is the one of a read-only
+     * client of the run: it runs as the user of the master instance at the
+     * integrity level of the master instance (see
+     * `appbox::control::AuthorizeQuery()`). The image of the client is not part
+     * of the check, unlike the one of a start request.
+     *
+     * @param[in] session Session which sent the query.
+     * @param[in] rpc_id Id of the request of the session which sent it.
+     * @param[out] error_code Stable identifier of the reason, see
+     *                        `run_state_error`; empty when the client is
+     *                        authorized.
+     * @param[out] error_message Human readable description, empty when the
+     *                           client is authorized.
+     * @return true when the client may read the state of the run.
+     */
+    bool AuthenticateQuery(const appbox::RemoteSession::Ptr& session, std::uint64_t rpc_id, std::string& error_code,
+                           std::string& error_message);
+
+    /**
+     * @brief Fill the control layer members of a state answer.
+     *
+     * The call reports the requests the run queued and handled, the processes a
+     * rollback terminated and every program of the run with its origin, its
+     * request and its exit code. The facts of the run itself belong to the
+     * launcher, which fills them (see `AppBoxLauncher::FillRunState()`).
+     *
+     * @param[out] state Answer to fill, whose run facts are left untouched.
+     */
+    void FillRunState(appbox::MsgRunState::Rsp& state);
 
     /**
      * @brief Queue a request which passed the validation and the authentication.
@@ -376,16 +417,18 @@ public:
 
     /**
      * @brief Answer a request with the reason it is refused.
+     * @param[in] session Session which sent the request.
      * @param[in] rpc_id Request id of the session to answer.
      * @param[in] error_code Stable identifier of the reason.
      * @param[in] error_message Human readable description.
      * @param[in] win32_error Win32 code of a failed creation, zero otherwise.
      */
-    void Refuse(std::uint64_t rpc_id, const std::string& error_code, const std::string& error_message,
-                DWORD win32_error = 0);
+    void Refuse(const appbox::RemoteSession::Ptr& session, std::uint64_t rpc_id, const std::string& error_code,
+                const std::string& error_message, DWORD win32_error = 0);
 
     /**
      * @brief Answer a request with a status and the reason of it.
+     * @param[in] session Session which sent the request.
      * @param[in] rpc_id Request id of the session to answer.
      * @param[in] status Status of the answer, see `launcher_start_status`.
      * @param[in] error_code Stable identifier of the reason, empty for a status
@@ -393,8 +436,8 @@ public:
      * @param[in] error_message Human readable description of the reason.
      * @param[in] win32_error Win32 code of a failed creation, zero otherwise.
      */
-    void ReplyStatus(std::uint64_t rpc_id, const std::string& status, const std::string& error_code,
-                     const std::string& error_message, DWORD win32_error);
+    void ReplyStatus(const appbox::RemoteSession::Ptr& session, std::uint64_t rpc_id, const std::string& status,
+                     const std::string& error_code, const std::string& error_message, DWORD win32_error);
 
 private:
     /**
@@ -442,10 +485,11 @@ private:
 
     /**
      * @brief Answer a request.
+     * @param[in] session Session which sent the request.
      * @param[in] rpc_id Request id of the session to answer.
      * @param[in] response Answer to send.
      */
-    void Reply(std::uint64_t rpc_id, const MsgLauncherStart::Rsp& response);
+    void Reply(const appbox::RemoteSession::Ptr& session, std::uint64_t rpc_id, const MsgLauncherStart::Rsp& response);
 
     struct Data;
     Data* data_;

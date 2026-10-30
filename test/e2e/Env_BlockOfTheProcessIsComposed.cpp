@@ -1,4 +1,5 @@
 #include "probe/EnvironmentRead.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/EnvironmentIsolationBuilder.hpp"
 #include "utils/FsBuilder.hpp"
@@ -44,7 +45,7 @@ TEST_F(E2E_Env, BlockOfTheProcessIsComposed)
     ProtocolEnvironmentRead::Req req;
     req.names = { "APPBOX_ENV_BLOCK" };
 
-    const auto rsp = ProbeEnvironmentRead.Call(req, GetCWD(), config).get<ProtocolEnvironmentRead::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolEnvironmentRead>(req);
     ASSERT_EQ(rsp.block_values.size(), 1u);
     ASSERT_EQ(rsp.block_found.size(), 1u);
 

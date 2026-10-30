@@ -1,4 +1,5 @@
 #include "probe/EnvironmentWrite.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/EnvironmentIsolationBuilder.hpp"
 #include "utils/FsBuilder.hpp"
@@ -47,7 +48,7 @@ TEST_F(E2E_Env, ModificationStaysInTheSandbox)
     req.remove = { "APPBOX_ENV_GONE" };
     req.read = { "APPBOX_ENV_HOST", "APPBOX_ENV_GONE" };
 
-    const auto rsp = ProbeEnvironmentWrite.Call(req, GetCWD(), config).get<ProtocolEnvironmentWrite::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolEnvironmentWrite>(req);
     ASSERT_EQ(rsp.stored.size(), 1u);
     EXPECT_TRUE(rsp.stored[0]);
     ASSERT_EQ(rsp.removed.size(), 1u);

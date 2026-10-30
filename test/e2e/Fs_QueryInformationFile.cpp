@@ -1,4 +1,5 @@
 #include "probe/QueryInformationFile.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -76,7 +77,7 @@ ProtocolQueryInformationFile::Rsp QueryInformationFile(const std::vector<QueryAc
         req.items.push_back(item);
     }
 
-    return ProbeQueryInformationFile.Call(req, cwd, config).get<ProtocolQueryInformationFile::Rsp>();
+    return Probe(cwd, config).Call<ProtocolQueryInformationFile>(req);
 }
 
 } // namespace

@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_LIST_DIR_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -12,6 +11,8 @@ namespace appbox::test
 
 struct ProtocolListDir
 {
+    static constexpr const char* Method = "ListDir";
+
     struct Req
     {
         enum class Method
@@ -43,8 +44,11 @@ struct ProtocolListDir
 
 /**
  * @brief List directory entries.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeListDir;
+ProtocolListDir::Rsp ProbeListDir_Entry(const ProtocolListDir::Req& request);
 
 } // namespace appbox::test
 

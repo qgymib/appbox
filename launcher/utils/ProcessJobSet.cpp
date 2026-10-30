@@ -28,7 +28,8 @@ constexpr ULONG_PTR kWakeKey = 1;
  *
  * The code is the one the system reports for a cancelled operation, which is
  * what a terminated request is. The processes of a request never decide the
- * exit code of the run, so the value is only visible in the log.
+ * exit code of the run, so the value is reported by the state query of the run
+ * and by the log of the rollback alone.
  */
 constexpr DWORD kTerminatedExitCode = ERROR_CANCELLED;
 
@@ -39,6 +40,7 @@ struct JobEntry
 {
     std::unique_ptr<appbox::ProcessJob> job;        /* Job of the entry. */
     bool                                reported;   /* True once the job reported that it is empty. */
+    bool                                terminated; /* True once a rollback terminated the job. */
     appbox::JobOrigin                   origin;     /* Why the job exists. */
     std::uint64_t                       request_id; /* Request the job belongs to, zero for the initial run. */
 };
@@ -151,6 +153,7 @@ void appbox::ProcessJobSet::Adopt(std::unique_ptr<appbox::ProcessJob> job, JobOr
         JobEntry entry;
         entry.job = std::move(job);
         entry.reported = empty;
+        entry.terminated = false;
         entry.origin = origin;
         entry.request_id = request_id;
         data_->entries.push_back(std::move(entry));
@@ -317,10 +320,37 @@ std::size_t appbox::ProcessJobSet::TerminateRequest(std::uint64_t request_id)
             continue;
         }
 
+        /*
+         * The rollback is recorded on the entry and not read from the exit code
+         * of the process later: the termination of a job is asynchronous, so the
+         * exit code of a process may still be the one of a running process when
+         * the state of the run is read.
+         */
+        entry.terminated = true;
         ++terminated;
     }
 
     return terminated;
+}
+
+void appbox::ProcessJobSet::Snapshot(std::vector<JobState>& jobs)
+{
+    std::lock_guard<std::mutex> lock(data_->mutex);
+
+    jobs.clear();
+    jobs.reserve(data_->entries.size());
+
+    for (auto& entry : data_->entries)
+    {
+        JobState state;
+        state.pid = static_cast<std::uint32_t>(entry.job->ProcessId());
+        state.origin = entry.origin;
+        state.request_id = entry.request_id;
+        state.exited = entry.reported;
+        state.terminated = entry.terminated;
+        state.exit_code = entry.reported ? entry.job->GetExitCode() : 0;
+        jobs.push_back(state);
+    }
 }
 
 std::size_t appbox::ProcessJobSet::Size() const

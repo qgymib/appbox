@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGSHADOWREAD_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -11,6 +10,7 @@ namespace appbox::test
 
 struct ProtocolRegShadowRead
 {
+    static constexpr const char* Method = "RegShadowRead";
 
     struct Req
     {
@@ -34,8 +34,11 @@ struct ProtocolRegShadowRead
  * @brief Shadow key probe: create the key inside the sandbox (which shadows a
  *        key of the real registry) and read a value which only exists in the
  *        real registry through the shadow.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegShadowRead;
+ProtocolRegShadowRead::Rsp ProbeRegShadowRead_Entry(const ProtocolRegShadowRead::Req& request);
 
 } // namespace appbox::test
 

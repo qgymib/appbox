@@ -750,9 +750,10 @@ Result RunStep(const Step& step)
 
 } // namespace
 
-static nlohmann::json ProbeSocketTraffic_Entry(const nlohmann::json& data)
+appbox::test::ProtocolSocketTraffic::Rsp appbox::test::ProbeSocketTraffic_Entry(
+    const appbox::test::ProtocolSocketTraffic::Req& request)
 {
-    const auto req = data.get<appbox::test::ProtocolSocketTraffic::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolSocketTraffic::Rsp rsp;
     rsp.results.reserve(req.steps.size());
@@ -763,5 +764,3 @@ static nlohmann::json ProbeSocketTraffic_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeSocketTraffic("SocketTraffic", ProbeSocketTraffic_Entry);

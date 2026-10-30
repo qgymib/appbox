@@ -1,4 +1,5 @@
 #include "probe/EnvironmentRead.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/EnvironmentIsolationBuilder.hpp"
 #include "utils/FsBuilder.hpp"
@@ -38,7 +39,7 @@ TEST_F(E2E_Env, MalformedIsolationFile_FallsBack)
     ProtocolEnvironmentRead::Req req;
     req.names = { "APPBOX_ENV_HOST" };
 
-    const auto rsp = ProbeEnvironmentRead.Call(req, GetCWD(), config).get<ProtocolEnvironmentRead::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolEnvironmentRead>(req);
     ASSERT_EQ(rsp.values.size(), 1u);
 
     EXPECT_TRUE(rsp.found[0]);

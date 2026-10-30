@@ -67,8 +67,7 @@ TEST_F(E2E_Env, VariableExpansion32)
     req.names = { "APPBOX_ENV32_PROGRAM_FILES", "APPBOX_ENV32_PROGRAM_FILES_X64", "APPBOX_ENV32_COMMON",
                   "APPBOX_ENV32_COMMON_X64",    "APPBOX_ENV32_SYSTEM32",          "APPBOX_ENV32_SYSTEM_X86" };
 
-    const auto rsp =
-        ProbeEnvironmentRead.Call(req, GetCWD(), config, ProbeBitness::Bit32).get<ProtocolEnvironmentRead::Rsp>();
+    const auto rsp = Probe(GetCWD(), config, ProbeBitness::Bit32).Call<ProtocolEnvironmentRead>(req);
     ASSERT_EQ(rsp.values.size(), req.names.size());
     ASSERT_EQ(rsp.ansi_values.size(), req.names.size());
 

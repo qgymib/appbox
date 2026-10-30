@@ -1,4 +1,5 @@
 #include "probe/RegOpenWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/RealHkcuKey.hpp"
@@ -48,7 +49,7 @@ TEST_F(E2E_Reg, WriteCopy_WriteOpen_CopyUp)
     req.Value = "TestValue";
     req.Data = expected;
 
-    const auto rsp = ProbeRegOpenWriteValue.Call(req, GetCWD(), config).get<ProtocolRegOpenWriteValue::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegOpenWriteValue>(req);
     ASSERT_EQ(rsp.open_code, 0u);
     ASSERT_EQ(rsp.set_code, 0u);
     ASSERT_EQ(rsp.query_code, 0u);
@@ -78,7 +79,6 @@ TEST_F(E2E_Reg, WriteCopy_WriteOpen_CopyUp)
     missing.Value = "TestValue";
     missing.Data = expected;
 
-    const auto missing_rsp =
-        ProbeRegOpenWriteValue.Call(missing, GetCWD(), config).get<ProtocolRegOpenWriteValue::Rsp>();
+    const auto missing_rsp = Probe(GetCWD(), config).Call<ProtocolRegOpenWriteValue>(missing);
     EXPECT_EQ(missing_rsp.open_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
 }

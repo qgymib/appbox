@@ -1,4 +1,5 @@
 #include "probe/ListDir.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/TestKnownFolder.hpp"
@@ -64,7 +65,7 @@ TEST_F(E2E_Fs, ListDir_WhiteoutInUpper)
         ProtocolListDir::Req req;
         req.path = CLI::narrow(GetKnownFolderPath(L"#USERPROFILE#", false));
         req.method = ProtocolListDir::Req::Method::Std;
-        ProbeListDir.Call(req, GetCWD(), config).get_to(rsp);
+        rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);
 
         /* Target file should not be found. */
         auto it = std::find_if(rsp.entries.begin(), rsp.entries.end(),

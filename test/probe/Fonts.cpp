@@ -90,9 +90,9 @@ bool CreateFontOfFamily(const std::wstring& family, std::wstring& face)
 
 } // namespace
 
-static nlohmann::json ProbeFonts_Entry(const nlohmann::json& data)
+appbox::test::ProtocolFonts::Rsp appbox::test::ProbeFonts_Entry(const appbox::test::ProtocolFonts::Req& request)
 {
-    const auto req = data.get<appbox::test::ProtocolFonts::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolFonts::Rsp rsp;
 
@@ -139,5 +139,3 @@ static nlohmann::json ProbeFonts_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeFonts("Fonts", ProbeFonts_Entry);

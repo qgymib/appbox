@@ -1,8 +1,6 @@
 #include "WinAPI.h" /* Must be first include file */
 #include <algorithm>
 #include <chrono>
-#include <fstream>
-#include <iterator>
 #include <thread>
 #include <vector>
 #include "SandboxId.hpp"
@@ -83,50 +81,6 @@ bool appbox::test::WaitForControlPipe(const std::string& sandbox_id, int timeout
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-}
-
-std::string appbox::test::ReadRunLog(const std::filesystem::path& root)
-{
-    std::string     text;
-    std::error_code ec;
-
-    for (const auto& entry : std::filesystem::directory_iterator(root / kCaseLogDirName, ec))
-    {
-        if (!entry.is_regular_file(ec) || entry.path().extension() != L".log")
-        {
-            continue;
-        }
-
-        std::ifstream stream(entry.path(), std::ios::binary);
-        if (!stream.is_open())
-        {
-            continue;
-        }
-
-        text.append(std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()));
-    }
-
-    return text;
-}
-
-bool appbox::test::WaitForRunLog(const std::filesystem::path& root, const std::string& text, int timeout_ms)
-{
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-
-    for (;;)
-    {
-        if (ReadRunLog(root).find(text) != std::string::npos)
-        {
-            return true;
-        }
-
-        if (std::chrono::steady_clock::now() >= deadline)
-        {
-            return false;
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
 }
 

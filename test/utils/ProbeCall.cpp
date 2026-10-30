@@ -2,23 +2,25 @@
  * The RPC headers pull in winsock2.h through asio, they have to come before
  * <windows.h> which would otherwise include the winsock.h version 1 header.
  */
-#include "RemoteServer.hpp"
-#include "RemoteClient.hpp"
+#include "RemoteAccepter.hpp"
 #include <windows.h>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <exception>
 #include <filesystem>
-#include <memory>
+#include <fstream>
+#include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
+#include <stdexcept>
+#include <string>
 #include <thread>
 #include <vector>
 #include <spdlog/spdlog.h>
-#include <base64.hpp>
 #include <CLI/Encoding.hpp>
-#include "utils/Semaphore.hpp"
 #include "launcher/Config.hpp"
 #include "Random.hpp"
 #include "WString.hpp"
@@ -28,118 +30,145 @@
 #include "ProbePath.hpp"
 #include "Test.hpp"
 #include "TestSandboxId.hpp"
+#include "probe/Bind.hpp"
+#include "probe/Exit.hpp"
+#include "probe/StartupStarted.hpp"
 
-struct ProbeContext
+namespace
 {
-    typedef std::shared_ptr<ProbeContext> Ptr;
 
-    std::string                 name;         /* Probe name */
-    nlohmann::json              data;         /* Probe data */
-    nlohmann::json              result;       /* Probe result */
-    std::vector<nlohmann::json> results;      /* Probe results of every process which reported */
-    std::mutex                  result_mutex; /* Result mutex */
-    appbox::Semaphore           sem;          /* Semaphore */
-};
-typedef std::map<std::string, ProbeContext::Ptr> ProbeContextMap;
+/** Budget of the exit request of a probe, in milliseconds. */
+constexpr std::uint32_t kProbeExitTimeoutMs = 5000;
 
+/** Budget of a run of the shell, in milliseconds. */
+constexpr std::uint32_t kShellTimeoutMs = 60000;
+
+/** Delay between two polls of the state of a run, in milliseconds. */
+constexpr std::uint32_t kPollDelayMs = 5;
+
+/**
+ * @brief Budget of the end of one launcher run, in milliseconds.
+ *
+ * The launcher returns when its last program left, so a run which does not end
+ * means a probe which never left: the budget turns that into a failure of the
+ * case instead of a wait which hides the defect.
+ */
+constexpr std::uint32_t kProbeRunTimeoutMs = 120000;
+
+/**
+ * @brief Budget of a case which waits for the programs of a request to report.
+ *
+ * The programs of a request are created by the master instance before it
+ * answers the request, so they need the time of a process start to reach the
+ * probe server of the case.
+ */
+constexpr std::uint32_t kSecondaryReportTimeoutMs = 10000;
+
+/**
+ * @brief The probes of a case and the runs which own them.
+ */
 struct ProbeServer
 {
     typedef std::shared_ptr<ProbeServer> Ptr;
 
-    std::string               pipe_path;  /* Pipe path */
-    appbox::RemoteServer::Ptr rpc_server; /* RPC server */
+    std::string                 pipe_path; /* Pipe path */
+    appbox::RemoteAccepter::Ptr accepter;  /* Accepter of the probes */
+    std::atomic_uint64_t        key_id;    /* Key generator */
 
-    std::atomic_uint64_t rpc_id;            /* RPC ID generator */
-    ProbeContextMap      context_map;       /* Context map */
-    std::mutex           context_map_mutex; /* Context map mutex */
-};
+    std::mutex mutex; /* Mutex of the owners */
 
-struct ProbeKey
-{
-    ProbeKey(const std::string& name, const nlohmann::json& data);
-    ~ProbeKey();
-
-    std::string       key;
-    ProbeContext::Ptr ctx;
+    /**
+     * @brief Binder of every live run, by key.
+     *
+     * A run registers itself before it starts its launcher, so the first probe
+     * which connects finds it. The binder returns false when the run is gone or
+     * is ending, which tells the server to end the process instead of keeping
+     * it alive for a handle nobody holds any more.
+     */
+    std::map<std::string, std::function<bool(const appbox::RemoteSession::Ptr&)>> owners;
 };
 
 /**
  * @brief Global probe server context.
  */
-static ProbeServer::Ptr s_probe_srv;
+ProbeServer::Ptr s_probe_srv;
 
-static void OnProbeRequest(uint64_t id, const nlohmann::json& req)
+/**
+ * @brief Bind one probe handler to the session it is registered on.
+ *
+ * A probe session answers its own requests, so the handler needs the session it
+ * serves. The handler is stored inside the session and therefore holds it
+ * weakly: a strong reference would keep every connection of a case alive.
+ *
+ * @param[in] session Session the handler is registered on.
+ * @param[in] handler Implementation of the probe method.
+ * @return The handler to register.
+ */
+appbox::RemoteSession::MethodHandler BindSession(const appbox::RemoteSession::Ptr& session,
+                                                 void (*handler)(const appbox::RemoteSession::Ptr&, uint64_t,
+                                                                 const nlohmann::json&))
 {
-    appbox::test::ProbeRequest::Req c_req = req;
+    std::weak_ptr<appbox::RemoteSession> weak_session = session;
 
-    ProbeContext::Ptr ctx;
-    {
-        std::lock_guard<std::mutex> lock(s_probe_srv->context_map_mutex);
-        auto                        it = s_probe_srv->context_map.find(c_req.key);
-        if (it == s_probe_srv->context_map.end())
+    return [weak_session, handler](uint64_t id, const nlohmann::json& param) {
+        if (auto bound = weak_session.lock())
         {
-            appbox::RemoteError err;
-            err.code = -1;
-            err.message = "Probe key not found";
-            s_probe_srv->rpc_server->SendResponse(id, tl::unexpected(err));
-            return;
+            handler(bound, id, param);
         }
-        ctx = it->second;
-    }
-
-    appbox::test::ProbeRequest::Rsp c_rsp;
-    c_rsp.name = ctx->name;
-    c_rsp.data = ctx->data;
-
-    nlohmann::json j_rsp = c_rsp;
-    s_probe_srv->rpc_server->SendResponse(id, j_rsp);
+    };
 }
 
-static void OnProbeResponse(uint64_t id, const nlohmann::json& req)
+/**
+ * @brief Attach the session of a probe process to the run which started it.
+ *
+ * A probe sends this request before it answers anything, so the run knows which
+ * sessions belong to it. A process whose run is gone is ended at once, because
+ * a probe which kept serving would keep the launcher of its run alive and the
+ * case would wait for the end of a run nobody owns any more.
+ *
+ * @param[in] session Session of the probe process.
+ * @param[in] id Id of the request.
+ * @param[in] req Parameters of the request.
+ */
+void OnProbeBind(const appbox::RemoteSession::Ptr& session, uint64_t id, const nlohmann::json& req)
 {
-    appbox::test::ProbeResponse::Req c_req = req;
-
-    ProbeContext::Ptr ctx;
+    appbox::test::ProtocolBind::Req bind;
+    try
     {
-        std::lock_guard<std::mutex> lock(s_probe_srv->context_map_mutex);
-        auto                        it = s_probe_srv->context_map.find(c_req.key);
-        if (it == s_probe_srv->context_map.end())
+        bind = req;
+    }
+    catch (const nlohmann::json::exception& e)
+    {
+        SPDLOG_ERROR("the parameters of {} cannot be read: {}", appbox::test::ProtocolBind::Method, e.what());
+        session->SendResponse(
+            id, tl::unexpected<appbox::RemoteError>(appbox::RemoteError{ -32602, "Invalid params", nlohmann::json() }));
+        return;
+    }
+
+    std::function<bool(const appbox::RemoteSession::Ptr&)> owner;
+    {
+        std::lock_guard<std::mutex> lock(s_probe_srv->mutex);
+        auto                        it = s_probe_srv->owners.find(bind.key);
+        if (it != s_probe_srv->owners.end())
         {
-            appbox::RemoteError err;
-            err.code = -1;
-            err.message = "Probe key not found";
-            s_probe_srv->rpc_server->SendResponse(id, tl::unexpected(err));
-            return;
+            owner = it->second;
         }
-        ctx = it->second;
     }
 
+    if (!owner || !owner(session))
     {
-        /*
-         * Several probe processes may report for the same key: the launcher
-         * starts one process per startup file, so the results are collected in
-         * a list as well.
-         */
-        std::lock_guard<std::mutex> lock(ctx->result_mutex);
-        ctx->result = c_req.result;
-        ctx->results.push_back(c_req.result);
+        SPDLOG_WARN("the probe of the key '{}' has no run any more, it is ended", bind.key);
+        appbox::test::ProtocolExit::Req exit_request;
+        session->Call(appbox::test::ProtocolExit::Method, nlohmann::json(exit_request));
     }
 
-    /*
-     * The semaphore is released before the acknowledgment is sent: the probe
-     * waits for the acknowledgment before it leaves, so a received
-     * acknowledgment proves that the result is visible to ProbeCall(). The
-     * response is written by the IO thread after this handler returned, which
-     * keeps the order of the two steps above intact.
-     */
-    ctx->sem.Release();
-
-    appbox::test::ProbeResponse::Rsp c_rsp{};
-    nlohmann::json                   j_rsp = c_rsp;
-    s_probe_srv->rpc_server->SendResponse(id, j_rsp);
+    session->SendResponse(id, nlohmann::json(appbox::test::ProtocolBind::Rsp{}));
 }
 
-static void InitProbeServer()
+/**
+ * @brief Create the probe server of the case.
+ */
+void InitProbeServer()
 {
     s_probe_srv = std::make_shared<ProbeServer>();
 
@@ -149,13 +178,19 @@ static void InitProbeServer()
         s_probe_srv->pipe_path = fmt::format(R"(\\.\pipe\appbox-test-{}-{})", timestamp, random_str);
     }
 
-    s_probe_srv->rpc_id = 0;
-    s_probe_srv->rpc_server = appbox::RemoteServer::Create(s_probe_srv->pipe_path);
+    s_probe_srv->key_id = 0;
+    s_probe_srv->accepter = appbox::RemoteAccepter::Create(s_probe_srv->pipe_path);
 
-    s_probe_srv->rpc_server->RegisterMethod(appbox::test::ProbeRequest::Method, OnProbeRequest);
-    s_probe_srv->rpc_server->RegisterMethod(appbox::test::ProbeResponse::Method, OnProbeResponse);
+    /*
+     * Every probe process connects with a session of its own, so the bind is
+     * registered on each of them: the answer of a request belongs to the
+     * session which received it.
+     */
+    s_probe_srv->accepter->SetSessionCallback([](const appbox::RemoteSession::Ptr& session) {
+        session->RegisterMethod(appbox::test::ProtocolBind::Method, BindSession(session, OnProbeBind));
+    });
 
-    s_probe_srv->rpc_server->Start();
+    s_probe_srv->accepter->Start();
 }
 
 /**
@@ -168,7 +203,7 @@ static void InitProbeServer()
  *
  * @return The server.
  */
-static ProbeServer::Ptr EnsureProbeServer()
+ProbeServer::Ptr EnsureProbeServer()
 {
     static std::once_flag once;
     std::call_once(once, InitProbeServer);
@@ -177,68 +212,43 @@ static ProbeServer::Ptr EnsureProbeServer()
 
 /**
  * @brief Generate a temporary key by process id and global counter.
+ * @return The key of a new run.
  */
-static std::string GenTempKey()
+std::string GenTempKey()
 {
     auto pid = GetCurrentProcessId();
-    return fmt::format("{}-{}", pid, s_probe_srv->rpc_id++);
+    return fmt::format("{}-{}", pid, s_probe_srv->key_id++);
 }
 
-ProbeKey::ProbeKey(const std::string& name, const nlohmann::json& data)
+/**
+ * @brief Report the log files the processes of a case wrote.
+ *
+ * The launcher writes a log file of its own into the log directory of the case
+ * and every process the sandbox is injected into writes one as well, named
+ * after the program, the UTC time it started at and its process id. A run which
+ * fails names those files, so a reader of the artifact of a failed run knows
+ * which file belongs to which process without guessing.
+ *
+ * @param[in] cwd Directory of the case.
+ */
+void ReportSandboxLogs(const std::wstring& cwd)
 {
-    key = GenTempKey();
+    std::error_code                    ec;
+    std::vector<std::filesystem::path> logs;
 
-    ctx = std::make_shared<ProbeContext>();
-    ctx->name = name;
-    ctx->data = data;
-
+    const auto dir = std::filesystem::path(cwd) / appbox::test::kCaseLogDirName;
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
     {
-        std::lock_guard lock(s_probe_srv->context_map_mutex);
-        s_probe_srv->context_map.insert(ProbeContextMap::value_type(key, ctx));
+        if (entry.is_regular_file(ec) && entry.path().extension() == L".log")
+        {
+            logs.push_back(entry.path());
+        }
     }
-}
 
-ProbeKey::~ProbeKey()
-{
-    std::lock_guard lock(s_probe_srv->context_map_mutex);
-    s_probe_srv->context_map.erase(key);
-}
-
-/**
- * @brief Budget of a case which waits for the programs of a request to report.
- *
- * The programs of a request are created by the master instance before it
- * answers the request, so they need the time of a process start to reach the
- * probe server of the case.
- */
-constexpr int kSecondaryReportTimeoutMs = 10000;
-
-/**
- * @brief Wait until a probe of a key reported its result.
- *
- * @param[in] key Key of the report.
- * @param[in] timeout_ms Budget of the wait.
- */
-void WaitForProbeResults(const ProbeKey& key, int timeout_ms)
-{
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-
-    for (;;)
+    std::sort(logs.begin(), logs.end());
+    for (const auto& log : logs)
     {
-        {
-            std::lock_guard<std::mutex> lock(key.ctx->result_mutex);
-            if (!key.ctx->results.empty())
-            {
-                return;
-            }
-        }
-
-        if (std::chrono::steady_clock::now() >= deadline)
-        {
-            return;
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        SPDLOG_ERROR("log of the run: {}", appbox::WideToUTF8(log.filename().wstring()));
     }
 }
 
@@ -262,8 +272,8 @@ void WaitForProbeResults(const ProbeKey& key, int timeout_ms)
  *                    is the path the launcher resolves.
  * @return The configuration of the probe run.
  */
-static appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& config, const std::wstring& probe_path,
-                                             bool override_executable = true)
+appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& config, const std::wstring& probe_path,
+                                      bool override_executable = true)
 {
     appbox::LauncherConfig copy_config = config;
 
@@ -329,14 +339,15 @@ static appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& confi
  *                             directory of the sandbox, so the second instance
  *                             of a case writes its configuration beside the
  *                             file of the master instance.
+ * @param[in] working_directory Directory the launcher works in, empty to
+ *                             inherit the directory of the test process.
  * @return The exit code of the launcher.
  */
-static DWORD RunLauncherJson(const std::wstring& cwd, const nlohmann::json& config,
-                             const std::vector<std::wstring>& args, const appbox::test::LogRun& log,
-                             std::uint32_t*      launcher_pid = nullptr,
-                             const std::wstring& executable_path = std::wstring(), bool pass_config_file = true,
-                             const std::wstring& config_file_name = L"config.json",
-                             const std::wstring& working_directory = std::wstring())
+DWORD RunLauncherJson(const std::wstring& cwd, const nlohmann::json& config, const std::vector<std::wstring>& args,
+                      const appbox::test::LogRun& log, std::uint32_t* launcher_pid = nullptr,
+                      const std::wstring& executable_path = std::wstring(), bool pass_config_file = true,
+                      const std::wstring& config_file_name = L"config.json",
+                      const std::wstring& working_directory = std::wstring())
 {
     const auto& launcher_path = executable_path.empty() ? appbox::test::config.launcher_path : executable_path;
 
@@ -452,13 +463,15 @@ static DWORD RunLauncherJson(const std::wstring& cwd, const nlohmann::json& conf
  *                             the flag.
  * @param[in] config_file_name Name of the file the configuration is written
  *                             into, see RunLauncherJson().
+ * @param[in] working_directory Directory the launcher works in, empty to
+ *                             inherit the directory of the test process.
  * @return The exit code of the launcher.
  */
-static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& config,
-                         const std::vector<std::wstring>& args, const appbox::test::LogRun& log,
-                         std::uint32_t* launcher_pid = nullptr, const std::wstring& executable_path = std::wstring(),
-                         bool pass_config_file = true, const std::wstring& config_file_name = L"config.json",
-                         const std::wstring& working_directory = std::wstring())
+DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& config, const std::vector<std::wstring>& args,
+                  const appbox::test::LogRun& log, std::uint32_t* launcher_pid = nullptr,
+                  const std::wstring& executable_path = std::wstring(), bool pass_config_file = true,
+                  const std::wstring& config_file_name = L"config.json",
+                  const std::wstring& working_directory = std::wstring())
 {
     nlohmann::json document = config;
 
@@ -473,20 +486,16 @@ static DWORD RunLauncher(const std::wstring& cwd, const appbox::LauncherConfig& 
 }
 
 /**
- * @brief Run the launcher so it starts the probe process of a case.
- * @param[in] key Probe key passed to the probe processes.
- * @param[in] cwd The current working directory.
- * @param[in] config The launcher configuration.
- * @param[in] trigger Trigger for `--X-AppBox-Startup`, empty to omit the
- *                    option so the launcher starts the auto start files.
- * @param[in] log The log options of the run, see LogRun.
- * @param[out] launcher_pid Process id of the launcher which was started, may be
- *                          null.
- * @return The exit code of the launcher.
+ * @brief Build the arguments which make a launcher start the probe of a run.
+ *
+ * @param[in] key Probe key of the run, which the probe reports to.
+ * @param[in] trigger Trigger for `--X-AppBox-Startup`, empty to omit the option
+ *                    so the launcher starts the auto start files.
+ * @param[in] marker Marker of the probe processes, empty to omit it.
+ * @return The arguments of the launcher.
  */
-static std::vector<std::wstring> ProbeArgs(const std::string& key, const std::string& trigger,
-                                           const std::string& marker = std::string(), std::uint32_t hold_ms = 0,
-                                           std::uint32_t exit_code = 0)
+std::vector<std::wstring> ProbeArgs(const std::string& key, const std::string& trigger,
+                                    const std::string& marker = std::string())
 {
     std::vector<std::wstring> args;
     if (!trigger.empty())
@@ -512,27 +521,6 @@ static std::vector<std::wstring> ProbeArgs(const std::string& key, const std::st
         args.push_back(CLI::widen(marker));
     }
 
-    /*
-     * The time the probe stays alive after it reported is a global option of the
-     * probe as well, so it precedes the subcommand for the same reason.
-     */
-    if (hold_ms != 0)
-    {
-        args.push_back(L"--probe_hold_ms");
-        args.push_back(std::to_wstring(hold_ms));
-    }
-
-    /*
-     * The exit code of the probe is a global option as well: a case which
-     * checks the exit code of a run needs a program which leaves with a code of
-     * its own.
-     */
-    if (exit_code != 0)
-    {
-        args.push_back(L"--probe_exit_code");
-        args.push_back(std::to_wstring(exit_code));
-    }
-
     args.push_back(L"probe");
     args.push_back(L"--probe_pipe");
     args.push_back(CLI::widen(s_probe_srv->pipe_path));
@@ -541,88 +529,468 @@ static std::vector<std::wstring> ProbeArgs(const std::string& key, const std::st
     return args;
 }
 
-static DWORD RunLauncherForProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config,
-                                 const std::string& trigger, const appbox::test::LogRun& log,
-                                 std::uint32_t*      launcher_pid = nullptr,
-                                 const std::wstring& executable_path = std::wstring(), std::uint32_t hold_ms = 0,
-                                 const std::wstring& working_directory = std::wstring())
-{
-    return RunLauncher(cwd, config, ProbeArgs(key, trigger, std::string(), hold_ms), log, launcher_pid, executable_path,
-                       true, L"config.json", working_directory);
-}
-
-std::uint32_t appbox::test::ProbeRunRawConfig(const std::wstring& cwd, const nlohmann::json& document,
-                                              const LogRun& log, const std::wstring& config_file_name,
-                                              std::uint32_t* launcher_pid, const std::vector<std::wstring>& args)
-{
-    /*
-     * The document is written as it is, so a case can describe a configuration
-     * the type of `LauncherConfig` cannot express: a member which is missing,
-     * or a value of another type.
-     */
-    return static_cast<std::uint32_t>(
-        RunLauncherJson(cwd, document, args, log, launcher_pid, std::wstring(), true, config_file_name));
-}
-
 /**
- * @brief Report the log files the processes of a case wrote.
+ * @brief Run the launcher of a configuration so it starts the probes of a run.
  *
- * The launcher writes a log file of its own into the log directory of the case
- * and every process the sandbox is injected into writes one as well, named
- * after the program, the UTC time it started at and its process id. A run which
- * fails names those files, so a reader of the artifact of a failed run knows
- * which file belongs to which process without guessing.
- *
- * @param[in] cwd Directory of the case.
- */
-static void ReportSandboxLogs(const std::wstring& cwd)
-{
-    std::error_code                    ec;
-    std::vector<std::filesystem::path> logs;
-
-    const auto dir = std::filesystem::path(cwd) / appbox::test::kCaseLogDirName;
-    for (const auto& entry : std::filesystem::directory_iterator(dir, ec))
-    {
-        if (entry.is_regular_file(ec) && entry.path().extension() == L".log")
-        {
-            logs.push_back(entry.path());
-        }
-    }
-
-    std::sort(logs.begin(), logs.end());
-    for (const auto& log : logs)
-    {
-        SPDLOG_ERROR("log of the run: {}", appbox::WideToUTF8(log.filename().wstring()));
-    }
-}
-
-/**
- * @brief Run the launcher so it starts the probe process of a case.
- * @param[in] key Probe key passed to the probe process.
+ * @param[in] key Probe key of the run.
  * @param[in] cwd The current working directory.
  * @param[in] config The launcher configuration, already pointed at the probe.
+ * @param[in] trigger Trigger for `--X-AppBox-Startup`, empty to omit the option.
  * @param[in] log The log options of the run, see LogRun.
- * @throws std::runtime_error The probe process did not leave with code 0.
+ * @param[out] launcher_pid Process id of the launcher which was started, may be
+ *                          null.
+ * @param[in] launcher_path Program of the run, empty to run the launcher of the
+ *                          test configuration.
+ * @param[in] working_directory Directory the launcher works in, empty to
+ *                          inherit the directory of the test process.
+ * @return The exit code of the launcher.
  */
-static void RunProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config,
-                     const appbox::test::LogRun& log)
+DWORD RunLauncherForProbe(const std::string& key, const std::wstring& cwd, const appbox::LauncherConfig& config,
+                          const std::string& trigger, const appbox::test::LogRun& log,
+                          std::uint32_t* launcher_pid = nullptr, const std::wstring& launcher_path = std::wstring(),
+                          const std::wstring& working_directory = std::wstring())
 {
-    const auto exit_code = RunLauncherForProbe(key, cwd, config, std::string(), log);
-    if (exit_code != 0)
-    {
-        ReportSandboxLogs(cwd);
-
-        auto msg = fmt::format("Probe exited with code {}", exit_code);
-        SPDLOG_ERROR(msg);
-        throw std::runtime_error(msg);
-    }
+    return RunLauncher(cwd, config, ProbeArgs(key, trigger), log, launcher_pid, launcher_path, true, L"config.json",
+                       working_directory);
 }
 
-nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::json& data, const std::wstring& cwd,
-                                       const LauncherConfig& launcher_config, const LogRun& log, ProbeBitness bitness)
+/**
+ * @brief Build the runner which starts the launcher of a configuration.
+ *
+ * The runner captures the configuration and the layout of the run by value, so
+ * the handle it belongs to owns everything the thread of the launcher reads.
+ *
+ * @param[in] cwd The current working directory.
+ * @param[in] launcher_config The launcher configuration.
+ * @param[in] trigger Trigger for `--X-AppBox-Startup`, empty to omit the option.
+ * @param[in] startup_screen Whether the run shows the startup screen.
+ * @param[in] log The log options of the run, see LogRun.
+ * @param[in] use_configured_executable Whether every startup file keeps the
+ *                    executable the configuration spells.
+ * @param[in] launcher_path Program of the run, empty to run the launcher of the
+ *                    test configuration.
+ * @param[in] working_directory Directory the launcher works in, empty to
+ *                    inherit the directory of the test process.
+ * @return The runner of the launcher.
+ */
+std::function<std::uint32_t(const std::string&, std::uint32_t*)> MakeLauncherRunner(
+    const std::wstring& cwd, const appbox::LauncherConfig& launcher_config, const std::string& trigger,
+    bool startup_screen, const appbox::test::LogRun& log, bool use_configured_executable,
+    const std::wstring& launcher_path, const std::wstring& working_directory)
+{
+    auto copy_config = OverrideConfig(launcher_config, appbox::test::ProbePath(appbox::test::ProbeBitness::Bit64),
+                                      !use_configured_executable);
+    copy_config.startup.screen = startup_screen;
+
+    return [cwd, copy_config, trigger, log, launcher_path, working_directory](const std::string& key,
+                                                                              std::uint32_t*     launcher_pid) {
+        return static_cast<std::uint32_t>(
+            RunLauncherForProbe(key, cwd, copy_config, trigger, log, launcher_pid, launcher_path, working_directory));
+    };
+}
+
+/**
+ * @brief Build the request of a probe which reports the startup file of its
+ *        process.
+ * @param[in] probe_data Task data of the probe, empty for a plain report.
+ * @return The request of the probe.
+ */
+appbox::test::ProtocolStartupStarted::Req StartupRequest(const nlohmann::json& probe_data)
+{
+    if (!probe_data.is_object() || probe_data.empty())
+    {
+        return appbox::test::ProtocolStartupStarted::Req{};
+    }
+
+    return probe_data.get<appbox::test::ProtocolStartupStarted::Req>();
+}
+
+/**
+ * @brief Fill the report of one startup file from the answer of its probe.
+ * @param[in] rsp Answer of the probe process of the startup file.
+ * @return The report of the startup file.
+ */
+appbox::test::StartupReport MakeStartupReport(const appbox::test::ProtocolStartupStarted::Rsp& rsp)
+{
+    appbox::test::StartupReport report;
+    report.marker = rsp.marker;
+    report.pid = rsp.pid;
+    report.parent_pid = rsp.parent_pid;
+    report.module_path = rsp.module_path;
+    report.command_line = rsp.command_line;
+    report.environment = rsp.environment;
+    report.cwd = rsp.cwd;
+
+    for (const auto& operation : rsp.relative_ops)
+    {
+        appbox::test::StartupReport::RelativeOperation outcome;
+        outcome.code = operation.code;
+        outcome.data = operation.data;
+        report.relative_ops.push_back(std::move(outcome));
+    }
+
+    return report;
+}
+
+/**
+ * @brief Fill the reports of a run from the answers of its probes.
+ * @param[in,out] run Run to fill.
+ * @param[in] answers Answers of the probes of the run.
+ */
+void FillStartupRun(appbox::test::StartupRun&                                     run,
+                    const std::vector<appbox::test::ProtocolStartupStarted::Rsp>& answers)
+{
+    for (const auto& answer : answers)
+    {
+        run.started.push_back(answer.marker);
+        run.reports.push_back(MakeStartupReport(answer));
+    }
+
+    std::sort(run.started.begin(), run.started.end());
+}
+
+} // namespace
+
+/**
+ * @brief Internal state of one launcher run.
+ */
+struct appbox::test::ProbeRun::Data
+{
+    std::wstring                                     cwd;      /* Directory of the case */
+    std::string                                      key;      /* Key of the run */
+    std::function<std::uint32_t(const std::string&)> launcher; /* Runner of the launcher */
+    std::thread                                      worker;   /* Thread the launcher runs on */
+
+    mutable std::mutex                      mutex;    /* Mutex of the sessions */
+    std::vector<appbox::RemoteSession::Ptr> sessions; /* Sessions of the probes of the run */
+
+    std::atomic_bool     finished{ false }; /* Whether the launcher left */
+    std::atomic_bool     stopping{ false }; /* Whether the run ends its probes */
+    std::atomic_bool     exited{ false };   /* Whether the probes were asked to leave */
+    std::uint64_t        start_tick = 0;    /* Tick the launcher was started at */
+    std::atomic_uint64_t finish_tick{ 0 };  /* Tick the launcher left at */
+    std::uint32_t        exit_code = 0;     /* Exit code of the launcher */
+    std::exception_ptr   error;             /* Failure of the launcher */
+};
+
+appbox::test::ProbeRun::ProbeRun(const std::wstring& cwd, std::function<std::uint32_t(const std::string&)> launcher)
+    : data_(std::make_shared<Data>())
 {
     EnsureProbeServer();
 
+    data_->cwd = cwd;
+    data_->launcher = std::move(launcher);
+    data_->key = GenTempKey();
+
+    /*
+     * The run is registered before its launcher starts: a probe which connects
+     * first must find the run, otherwise the server ends it.
+     */
+    std::weak_ptr<Data> weak = data_;
+    {
+        std::lock_guard<std::mutex> lock(s_probe_srv->mutex);
+        s_probe_srv->owners[data_->key] = [weak](const appbox::RemoteSession::Ptr& session) {
+            auto run = weak.lock();
+            if (!run || run->stopping)
+            {
+                return false;
+            }
+
+            SPDLOG_INFO("a probe of the run '{}' connected", run->key);
+
+            std::lock_guard<std::mutex> session_lock(run->mutex);
+            run->sessions.push_back(session);
+            return true;
+        };
+    }
+
+    /*
+     * The launcher returns only when its last program left, so it runs on a
+     * worker thread: the caller decides when the probes of the run leave.
+     */
+    data_->start_tick = GetTickCount64();
+    data_->worker = std::thread([data = data_]() {
+        try
+        {
+            data->exit_code = data->launcher(data->key);
+        }
+        catch (...)
+        {
+            data->error = std::current_exception();
+            data->exit_code = 1;
+        }
+
+        /*
+         * The end of the launcher is reported after the tick it ended at, so a
+         * caller which sees the end reads the tick of the same moment.
+         */
+        data->finish_tick = GetTickCount64();
+        data->finished = true;
+    });
+}
+
+appbox::test::ProbeRun::~ProbeRun()
+{
+    try
+    {
+        ExitAll(0);
+        Wait();
+    }
+    catch (const std::exception& e)
+    {
+        SPDLOG_ERROR("the run of '{}' failed while it ended: {}", data_->key, e.what());
+    }
+
+    std::lock_guard<std::mutex> lock(s_probe_srv->mutex);
+    s_probe_srv->owners.erase(data_->key);
+}
+
+const std::string& appbox::test::ProbeRun::Key() const
+{
+    return data_->key;
+}
+
+std::size_t appbox::test::ProbeRun::SessionCount() const
+{
+    std::lock_guard<std::mutex> lock(data_->mutex);
+    return data_->sessions.size();
+}
+
+bool appbox::test::ProbeRun::WaitForSessions(std::uint32_t quiet_ms, std::uint32_t timeout_ms, bool wait_for_launcher)
+{
+    const auto  deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    auto        quiet = std::chrono::steady_clock::now() + std::chrono::milliseconds(quiet_ms);
+    std::size_t last = 0;
+
+    for (;;)
+    {
+        {
+            std::lock_guard<std::mutex> lock(data_->mutex);
+            if (data_->sessions.size() != last)
+            {
+                last = data_->sessions.size();
+                quiet = std::chrono::steady_clock::now() + std::chrono::milliseconds(quiet_ms);
+            }
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        if (last > 0 && now >= quiet)
+        {
+            return true;
+        }
+
+        if (data_->finished)
+        {
+            /*
+             * A launcher which left started no program, or started the programs
+             * of another launcher: the set of probes cannot grow any more.
+             */
+            if (data_->exit_code != 0 || wait_for_launcher)
+            {
+                return last > 0;
+            }
+        }
+
+        if (now >= deadline)
+        {
+            if (last == 0)
+            {
+                SPDLOG_WARN("no probe connected for the run '{}' in {} ms", data_->key, timeout_ms);
+            }
+
+            return last > 0;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(kPollDelayMs));
+    }
+}
+
+void appbox::test::ProbeRun::ExitAll(std::int32_t code)
+{
+    data_->stopping = true;
+
+    /*
+     * The call is idempotent: a probe which already left answers nothing, and
+     * a second request would wait for its whole budget before the case fails
+     * for no reason.
+     */
+    if (data_->exited.exchange(true))
+    {
+        return;
+    }
+
+    /*
+     * A launcher which left does not mean that its probes left: the programs of
+     * a request are created by another launcher and outlive the instance which
+     * asked for them, so the sessions are ended whether the launcher runs or
+     * not.
+     */
+    std::vector<appbox::RemoteSession::Ptr> sessions;
+    {
+        std::lock_guard<std::mutex> lock(data_->mutex);
+        sessions = data_->sessions;
+    }
+
+    appbox::test::ProtocolExit::Req request;
+    request.code = code;
+
+    for (const auto& session : sessions)
+    {
+        const auto answer = session->Call<appbox::test::ProtocolExit>(request, kProbeExitTimeoutMs);
+        if (!answer.has_value())
+        {
+            SPDLOG_WARN("the exit request of a probe failed: {}", answer.error().message);
+        }
+    }
+}
+
+bool appbox::test::ProbeRun::Finished() const
+{
+    return data_->finished;
+}
+
+std::uint32_t appbox::test::ProbeRun::Wait()
+{
+    /*
+     * The wait is bounded: a probe which does not leave keeps its launcher
+     * alive, and a case which waited for ever would hide the defect behind the
+     * timeout of the test executable.
+     */
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kProbeRunTimeoutMs);
+    while (!data_->finished && std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(kPollDelayMs));
+    }
+
+    if (!data_->finished)
+    {
+        SPDLOG_ERROR("the run '{}' did not end: {} probe(s) connected", data_->key, SessionCount());
+        ReportSandboxLogs(data_->cwd);
+        throw std::runtime_error(fmt::format("the launcher run '{}' did not end", data_->key));
+    }
+
+    if (data_->worker.joinable())
+    {
+        data_->worker.join();
+    }
+
+    if (data_->error)
+    {
+        std::rethrow_exception(data_->error);
+    }
+
+    return data_->exit_code;
+}
+
+bool appbox::test::ProbeRun::WaitForLauncher(std::uint32_t timeout_ms)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (!data_->finished && std::chrono::steady_clock::now() < deadline)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(kPollDelayMs));
+    }
+
+    if (!data_->finished)
+    {
+        SPDLOG_WARN("the launcher of the run '{}' did not end in {} ms", data_->key, timeout_ms);
+    }
+
+    return data_->finished;
+}
+
+std::uint32_t appbox::test::ProbeRun::ExitCode() const
+{
+    return data_->exit_code;
+}
+
+std::uint32_t appbox::test::ProbeRun::LauncherLifetimeMs() const
+{
+    const auto finish = data_->finish_tick.load();
+    if (finish == 0 || finish < data_->start_tick)
+    {
+        return 0;
+    }
+
+    return static_cast<std::uint32_t>(finish - data_->start_tick);
+}
+
+std::uint32_t appbox::test::ProbeRun::Pid() const
+{
+    std::lock_guard<std::mutex> lock(data_->mutex);
+    if (data_->sessions.empty())
+    {
+        return 0;
+    }
+
+    return data_->sessions.front()->PeerProcessId();
+}
+
+nlohmann::json appbox::test::ProbeRun::CallRaw(const std::string& method, const nlohmann::json& params,
+                                               std::uint32_t timeout_ms)
+{
+    if (!WaitForSessions(0))
+    {
+        ReportSandboxLogs(data_->cwd);
+        throw std::runtime_error(fmt::format("no probe connected for '{}'", method));
+    }
+
+    appbox::RemoteSession::Ptr session;
+    {
+        std::lock_guard<std::mutex> lock(data_->mutex);
+        session = data_->sessions.front();
+    }
+
+    const auto answer = session->Call(method, params, timeout_ms);
+    if (!answer.has_value())
+    {
+        ReportSandboxLogs(data_->cwd);
+        throw std::runtime_error(fmt::format("the probe failed '{}': {}", method, answer.error().message));
+    }
+
+    return answer.value();
+}
+
+std::vector<nlohmann::json> appbox::test::ProbeRun::CallAllRaw(const std::string& method, const nlohmann::json& params,
+                                                               std::uint32_t timeout_ms)
+{
+    if (!WaitForSessions())
+    {
+        ReportSandboxLogs(data_->cwd);
+        throw std::runtime_error(fmt::format("no probe connected for '{}'", method));
+    }
+
+    std::vector<appbox::RemoteSession::Ptr> sessions;
+    {
+        std::lock_guard<std::mutex> lock(data_->mutex);
+        sessions = data_->sessions;
+    }
+
+    std::vector<nlohmann::json> answers;
+    for (const auto& session : sessions)
+    {
+        const auto answer = session->Call(method, params, timeout_ms);
+        if (!answer.has_value())
+        {
+            /*
+             * A program of the run may be gone: a master instance terminates the
+             * programs of a request it has to roll back, so a run reports what
+             * its programs reported and a case which needs every answer checks
+             * the number of the reports itself.
+             */
+            SPDLOG_WARN("the probe of the run '{}' did not answer '{}': {}", data_->key, method,
+                        answer.error().message);
+            continue;
+        }
+
+        answers.push_back(answer.value());
+    }
+
+    return answers;
+}
+
+appbox::test::Probe::Probe(const std::wstring& cwd, const LauncherConfig& launcher_config, ProbeBitness bitness,
+                           const LogRun& log, const std::string& marker, const std::vector<std::wstring>& args)
+{
     /*
      * The probe is a program of its own, so the path of the executable is the
      * one the run named for the bit size: a case which asks for a probe the run
@@ -641,78 +1009,185 @@ nlohmann::json appbox::test::ProbeCall(const std::string& name, const nlohmann::
 
     auto copy_config = OverrideConfig(launcher_config, probe_path);
 
-    ProbeKey key(name, data);
-    RunProbe(key.key, cwd, copy_config, log);
-
-    key.ctx->sem.Acquire();
-    return key.ctx->result;
+    run_ = std::make_unique<ProbeRun>(cwd, [cwd, copy_config, log, marker, args](const std::string& key) {
+        auto full_args = ProbeArgs(key, std::string(), marker);
+        full_args.insert(full_args.end(), args.begin(), args.end());
+        return static_cast<std::uint32_t>(RunLauncher(cwd, copy_config, full_args, log));
+    });
 }
 
-/**
- * @brief Collect the reports the probe processes of a run sent.
- * @param[in] key Probe key of the run.
- * @param[in,out] run Run to fill.
- */
-static void CollectStartupResults(const ProbeKey& key, appbox::test::StartupRun& run)
+appbox::test::Probe::~Probe()
 {
-    std::lock_guard<std::mutex> lock(key.ctx->result_mutex);
-    for (const auto& result : key.ctx->results)
+    try
     {
-        const auto marker = result.find("marker");
-        if (marker != result.end() && marker->is_string())
-        {
-            run.started.push_back(marker->get<std::string>());
-        }
+        Exit(0);
+    }
+    catch (const std::exception& e)
+    {
+        SPDLOG_ERROR("the probe of the run failed while it ended: {}", e.what());
+    }
+}
 
-        appbox::test::StartupReport report;
-        if (marker != result.end() && marker->is_string())
-        {
-            report.marker = marker->get<std::string>();
-        }
-        report.pid = result.value("pid", 0u);
-        report.parent_pid = result.value("parent_pid", 0u);
-        report.module_path = result.value("module_path", std::string());
-        report.command_line = result.value("command_line", std::string());
-        if (result.contains("environment") && result["environment"].is_array())
-        {
-            report.environment = result["environment"].get<std::vector<std::string>>();
-        }
-        report.cwd = result.value("cwd", std::string());
-        if (result.contains("relative_ops") && result["relative_ops"].is_array())
-        {
-            for (const auto& operation : result["relative_ops"])
-            {
-                appbox::test::StartupReport::RelativeOperation outcome;
-                outcome.code = operation.value("code", 0u);
-                outcome.data = operation.value("data", std::string());
-                report.relative_ops.push_back(std::move(outcome));
-            }
-        }
-        run.reports.push_back(std::move(report));
+void appbox::test::Probe::Exit(std::int32_t code)
+{
+    if (run_)
+    {
+        run_->ExitAll(code);
+        run_->Wait();
+    }
+}
+
+std::uint32_t appbox::test::Probe::Wait()
+{
+    return run_ ? run_->Wait() : 0;
+}
+
+std::uint32_t appbox::test::Probe::Pid() const
+{
+    return run_ ? run_->Pid() : 0;
+}
+
+appbox::test::ProbeRun& appbox::test::Probe::Run()
+{
+    return *run_;
+}
+
+appbox::test::StartupRunHandle::StartupRunHandle(const std::wstring& cwd, LauncherRunner launcher)
+{
+    /*
+     * The launcher thread writes the process id of the launcher into the
+     * reports of the handle, so it holds those reports by pointer. The member
+     * which owns the run is declared after the reports, which ends the run
+     * before the reports go away.
+     */
+    StartupRun* reports = &run_;
+
+    probe_run_ = std::make_unique<ProbeRun>(cwd, [launcher = std::move(launcher), reports](const std::string& key) {
+        return launcher(key, &reports->launcher_pid);
+    });
+}
+
+appbox::test::StartupRunHandle::StartupRunHandle(const std::wstring& cwd, const appbox::LauncherConfig& launcher_config,
+                                                 const std::string& trigger, bool startup_screen,
+                                                 const appbox::test::LogRun& log, bool use_configured_executable,
+                                                 const std::wstring&   launcher_path,
+                                                 const std::wstring&   working_directory,
+                                                 const nlohmann::json& probe_data)
+    : StartupRunHandle(cwd, MakeLauncherRunner(cwd, launcher_config, trigger, startup_screen, log,
+                                               use_configured_executable, launcher_path, working_directory))
+{
+    probe_data_ = probe_data;
+}
+
+appbox::test::StartupRunHandle::StartupRunHandle(const std::wstring& cwd, const std::wstring& launcher_path,
+                                                 const std::string& trigger, const std::string& marker,
+                                                 const appbox::test::LogRun& log)
+    : StartupRunHandle(cwd, [cwd, launcher_path, trigger, marker, log](const std::string& key,
+                                                                       std::uint32_t*     launcher_pid) {
+          return static_cast<std::uint32_t>(RunLauncher(cwd, appbox::LauncherConfig{}, ProbeArgs(key, trigger, marker),
+                                                        log, launcher_pid, launcher_path, false));
+      })
+{
+}
+
+appbox::test::StartupRunHandle::~StartupRunHandle()
+{
+    try
+    {
+        Exit(0);
+        Wait();
+    }
+    catch (const std::exception& e)
+    {
+        SPDLOG_ERROR("the run of the case failed while it ended: {}", e.what());
+    }
+}
+
+bool appbox::test::StartupRunHandle::WaitForSessions(std::uint32_t quiet_ms, std::uint32_t timeout_ms)
+{
+    return probe_run_ != nullptr && probe_run_->WaitForSessions(quiet_ms, timeout_ms);
+}
+
+const appbox::test::StartupRun& appbox::test::StartupRunHandle::Collect()
+{
+    if (probe_run_)
+    {
+        FillStartupRun(run_, probe_run_->CallAll<ProtocolStartupStarted>(StartupRequest(probe_data_)));
     }
 
-    std::sort(run.started.begin(), run.started.end());
+    return run_;
+}
+
+std::size_t appbox::test::StartupRunHandle::Ping()
+{
+    if (!probe_run_)
+    {
+        return 0;
+    }
+
+    /*
+     * The reports of the call are counted and not stored, so the answers a case
+     * collected before stay the ones of its run.
+     */
+    return probe_run_->CallAll<ProtocolStartupStarted>(StartupRequest(probe_data_)).size();
+}
+
+const appbox::test::StartupRun& appbox::test::StartupRunHandle::Run() const
+{
+    return run_;
+}
+
+void appbox::test::StartupRunHandle::Exit(std::int32_t code)
+{
+    if (probe_run_)
+    {
+        probe_run_->ExitAll(code);
+    }
+}
+
+std::uint32_t appbox::test::StartupRunHandle::Wait()
+{
+    if (!probe_run_)
+    {
+        return run_.exit_code;
+    }
+
+    run_.exit_code = probe_run_->Wait();
+    run_.launcher_ms = probe_run_->LauncherLifetimeMs();
+    return run_.exit_code;
+}
+
+std::uint32_t appbox::test::ProbeRunRawConfig(const std::wstring& cwd, const nlohmann::json& document,
+                                              const LogRun& log, const std::wstring& config_file_name,
+                                              std::uint32_t* launcher_pid, const std::vector<std::wstring>& args)
+{
+    /*
+     * The document is written as it is, so a case can describe a configuration
+     * the type of `LauncherConfig` cannot express: a member which is missing,
+     * or a value of another type.
+     */
+    return static_cast<std::uint32_t>(
+        RunLauncherJson(cwd, document, args, log, launcher_pid, std::wstring(), true, config_file_name));
 }
 
 appbox::test::StartupRun appbox::test::ProbeStartupRun(const std::wstring& cwd, const LauncherConfig& launcher_config,
                                                        const std::string& trigger, bool startup_screen,
                                                        const LogRun& log, bool use_configured_executable,
-                                                       const std::wstring& launcher_path, std::uint32_t hold_ms,
+                                                       const std::wstring&   launcher_path,
                                                        const std::wstring&   working_directory,
                                                        const nlohmann::json& probe_data)
 {
-    EnsureProbeServer();
+    StartupRunHandle handle(cwd, launcher_config, trigger, startup_screen, log, use_configured_executable,
+                            launcher_path, working_directory, probe_data);
 
-    auto copy_config = OverrideConfig(launcher_config, ProbePath(ProbeBitness::Bit64), !use_configured_executable);
-    copy_config.startup.screen = startup_screen;
+    if (handle.WaitForSessions())
+    {
+        handle.Collect();
+    }
 
-    ProbeKey key("StartupStarted", probe_data);
-
-    StartupRun run;
-    run.exit_code = static_cast<std::uint32_t>(RunLauncherForProbe(
-        key.key, cwd, copy_config, trigger, log, &run.launcher_pid, launcher_path, hold_ms, working_directory));
-    CollectStartupResults(key, run);
-    return run;
+    handle.Exit(0);
+    handle.Wait();
+    return handle.Run();
 }
 
 std::uint32_t appbox::test::ProbeRunSecondary(const std::wstring& cwd, const nlohmann::json& document,
@@ -721,58 +1196,75 @@ std::uint32_t appbox::test::ProbeRunSecondary(const std::wstring& cwd, const nlo
                                               const std::wstring& working_directory, const nlohmann::json& probe_data,
                                               const std::wstring& launcher_path, const std::wstring& config_file_name)
 {
-    EnsureProbeServer();
+    ProbeRun probe_run(cwd, [&](const std::string& key) {
+        /*
+         * The arguments of a second instance are the arguments of the request:
+         * the master instance appends them to the arguments of every program it
+         * starts for the request, so they are what makes those programs report
+         * to the case.
+         */
+        const auto args = ProbeArgs(key, trigger, marker);
 
-    ProbeKey key("StartupStarted", probe_data);
-
-    /*
-     * The arguments of a second instance are the arguments of the request: the
-     * master instance appends them to the arguments of every program it starts
-     * for the request, so they are what makes those programs report to the
-     * case.
-     */
-    const auto args = ProbeArgs(key.key, trigger, marker, 0, exit_code);
-
-    /*
-     * The directory of the client is the directory the request asks for, so the
-     * launcher is started in the directory of the case rather than in the
-     * directory the test process happens to work in.
-     */
-    const auto file_name = config_file_name.empty() ? std::wstring(kSecondaryConfigName) : config_file_name;
-    run.exit_code = static_cast<std::uint32_t>(RunLauncherJson(cwd, document, args, log, &run.launcher_pid,
-                                                               launcher_path, true, file_name, working_directory));
+        /*
+         * The directory of the client is the directory the request asks for, so
+         * the launcher is started in the directory of the case rather than in
+         * the directory the test process happens to work in.
+         */
+        const auto file_name = config_file_name.empty() ? std::wstring(kSecondaryConfigName) : config_file_name;
+        return static_cast<std::uint32_t>(RunLauncherJson(cwd, document, args, log, &run.launcher_pid, launcher_path,
+                                                          true, file_name, working_directory));
+    });
 
     /*
-     * The programs of the request report after the second launcher left: it
-     * leaves as soon as the master instance created them, while they are still
-     * starting. The key of the report is only known to this call, so the case
-     * waits for the report before it releases the key. A refused request starts
-     * no program of its own which could report, so the call does not wait.
+     * The programs of the request connect after the second launcher left: it
+     * leaves as soon as the master instance answered the request, while they
+     * are still starting. A refused request starts no program of its own, so
+     * the run ends the wait as soon as its launcher left with a non zero code.
      */
-    if (run.exit_code == 0)
+    const bool connected = probe_run.WaitForSessions(kProbeBindQuietMs, kSecondaryReportTimeoutMs, false);
+
+    /*
+     * The code of the launcher tells whether the request was served: zero is the
+     * answer of a master instance which started the programs of the request, and
+     * any other code is the answer of a master instance which refused it. A
+     * refused request has nothing to report, because the master instance
+     * terminates the programs it already started for it, so the reports are
+     * collected for a served request only.
+     */
+    const bool served = probe_run.WaitForLauncher(kSecondaryReportTimeoutMs) && probe_run.ExitCode() == 0;
+
+    /*
+     * The lifetime of the client is the latency of the answer of the master
+     * instance: the client leaves as soon as it received that answer, while the
+     * programs of the request start and report afterwards.
+     */
+    run.launcher_ms = probe_run.LauncherLifetimeMs();
+
+    if (connected && served)
     {
-        WaitForProbeResults(key, kSecondaryReportTimeoutMs);
+        FillStartupRun(run, probe_run.CallAll<ProtocolStartupStarted>(StartupRequest(probe_data)));
     }
 
-    CollectStartupResults(key, run);
+    probe_run.ExitAll(static_cast<std::int32_t>(exit_code));
+    run.exit_code = probe_run.Wait();
     return run.exit_code;
 }
 
 appbox::test::StartupRun appbox::test::ProbeStartupRunEmbedded(const std::wstring& cwd,
                                                                const std::wstring& launcher_path,
                                                                const std::string& trigger, const std::string& marker,
-                                                               const LogRun& log, std::uint32_t hold_ms)
+                                                               const LogRun& log)
 {
-    EnsureProbeServer();
+    StartupRunHandle handle(cwd, launcher_path, trigger, marker, log);
 
-    ProbeKey key("StartupStarted", nlohmann::json::object());
+    if (handle.WaitForSessions())
+    {
+        handle.Collect();
+    }
 
-    StartupRun run;
-    run.exit_code = static_cast<std::uint32_t>(RunLauncher(cwd, appbox::LauncherConfig{},
-                                                           ProbeArgs(key.key, trigger, marker, hold_ms), log,
-                                                           &run.launcher_pid, launcher_path, false));
-    CollectStartupResults(key, run);
-    return run;
+    handle.Exit(0);
+    handle.Wait();
+    return handle.Run();
 }
 
 appbox::test::StartupRun appbox::test::ProbeStartupRunConfigFile(const std::wstring&   cwd,
@@ -780,16 +1272,21 @@ appbox::test::StartupRun appbox::test::ProbeStartupRunConfigFile(const std::wstr
                                                                  const LauncherConfig& launcher_config,
                                                                  const std::string& trigger, const LogRun& log)
 {
-    EnsureProbeServer();
-
     auto copy_config = OverrideConfig(launcher_config, ProbePath(ProbeBitness::Bit64));
 
-    ProbeKey key("StartupStarted", nlohmann::json::object());
-
     StartupRun run;
-    run.exit_code = static_cast<std::uint32_t>(
-        RunLauncher(cwd, copy_config, ProbeArgs(key.key, trigger), log, &run.launcher_pid, launcher_path, true));
-    CollectStartupResults(key, run);
+    ProbeRun   probe_run(cwd, [&](const std::string& key) {
+        return static_cast<std::uint32_t>(
+            RunLauncher(cwd, copy_config, ProbeArgs(key, trigger), log, &run.launcher_pid, launcher_path, true));
+    });
+
+    if (probe_run.WaitForSessions())
+    {
+        FillStartupRun(run, probe_run.CallAll<ProtocolStartupStarted>(ProtocolStartupStarted::Req{}));
+    }
+
+    probe_run.ExitAll(0);
+    run.exit_code = probe_run.Wait();
     return run;
 }
 
@@ -815,11 +1312,7 @@ appbox::test::ShellRun appbox::test::ProbeShellRun(const std::wstring& cwd, cons
                                                    const std::vector<std::string>& shell_command,
                                                    const std::string& trigger, const LogRun& log)
 {
-    EnsureProbeServer();
-
     auto copy_config = OverrideConfig(launcher_config, ProbePath(ProbeBitness::Bit64));
-
-    ProbeKey key("StartupStarted", nlohmann::json::object());
 
     std::vector<std::wstring> args;
     if (!trigger.empty())
@@ -839,25 +1332,36 @@ appbox::test::ShellRun appbox::test::ProbeShellRun(const std::wstring& cwd, cons
     }
 
     ShellRun run;
-    run.exit_code = static_cast<std::uint32_t>(RunLauncher(cwd, copy_config, args, log));
+    ProbeRun probe_run(
+        cwd, [&](const std::string&) { return static_cast<std::uint32_t>(RunLauncher(cwd, copy_config, args, log)); });
 
     /*
-     * The command of the case is run by the shell instead of the probe, so no
-     * report is waited for: a report which arrived before the launcher left was
-     * sent by a startup file the launcher started although it had to ignore it.
+     * The command of the case is run by the shell instead of the probe, so the
+     * run ends by itself. A probe which connected anyway is asked for its
+     * report and ended at once: a probe which kept serving would keep the run
+     * of the launcher alive, and the case would wait for the end of a run which
+     * already did its work.
      */
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kShellTimeoutMs);
+    bool       collected = false;
+
+    while (!probe_run.Finished() && std::chrono::steady_clock::now() < deadline)
     {
-        std::lock_guard<std::mutex> lock(key.ctx->result_mutex);
-        for (const auto& result : key.ctx->results)
+        if (!collected && probe_run.SessionCount() > 0)
         {
-            const auto marker = result.find("marker");
-            if (marker != result.end() && marker->is_string())
+            for (const auto& answer : probe_run.CallAll<ProtocolStartupStarted>(ProtocolStartupStarted::Req{}))
             {
-                run.reported.push_back(marker->get<std::string>());
+                run.reported.push_back(answer.marker);
             }
+
+            probe_run.ExitAll(0);
+            collected = true;
         }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(kPollDelayMs));
     }
 
+    run.exit_code = probe_run.Wait();
     std::sort(run.reported.begin(), run.reported.end());
     return run;
 }

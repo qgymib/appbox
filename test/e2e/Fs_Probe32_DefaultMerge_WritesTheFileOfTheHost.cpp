@@ -1,4 +1,5 @@
 #include "probe/WriteFile.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/ProbePath.hpp"
@@ -81,8 +82,7 @@ TEST_F(E2E_Fs, Probe32_DefaultMerge_WritesTheFileOfTheHost)
         req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt");
         req.Data = "written";
 
-        const auto rsp =
-            ProbeWriteFile.Call(req, GetCWD(), launcher_config, ProbeBitness::Bit32).get<ProtocolWriteFile::Rsp>();
+        const auto rsp = Probe(GetCWD(), launcher_config, ProbeBitness::Bit32).Call<ProtocolWriteFile>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.readback, "written");
     }

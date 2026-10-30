@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_LAUNCH_PROCESS_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -34,6 +33,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(LaunchApi, {
 
 struct ProtocolLaunchProcess
 {
+    static constexpr const char* Method = "LaunchProcess";
 
     struct Req
     {
@@ -65,8 +65,11 @@ struct ProtocolLaunchProcess
 
 /**
  * @brief Launch an executable from the sandbox view.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeLaunchProcess;
+ProtocolLaunchProcess::Rsp ProbeLaunchProcess_Entry(const ProtocolLaunchProcess::Req& request);
 
 } // namespace appbox::test
 

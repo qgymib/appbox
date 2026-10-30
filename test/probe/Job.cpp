@@ -2,9 +2,6 @@
 #include <cstdint>
 #include "Job.hpp"
 
-namespace
-{
-
 /**
  * @brief Report the job object this process is a member of.
  *
@@ -12,10 +9,10 @@ namespace
  * is the job the process itself is a member of: the launcher creates every
  * process of a run as a member of a job, so the report describes that job.
  *
- * @param[in] data Request of the case, which the report does not read.
+ * @param[in] request Request of the case, which the report does not read.
  * @return The report of the job.
  */
-nlohmann::json ProbeJob_Entry(const nlohmann::json&)
+appbox::test::ProtocolJob::Rsp appbox::test::ProbeJob_Entry(const appbox::test::ProtocolJob::Req& /*request*/)
 {
     appbox::test::ProtocolJob::Rsp rsp;
 
@@ -42,7 +39,3 @@ nlohmann::json ProbeJob_Entry(const nlohmann::json&)
 
     return rsp;
 }
-
-} // namespace
-
-appbox::test::Probe appbox::test::ProbeJob("Job", ProbeJob_Entry);

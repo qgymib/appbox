@@ -11,9 +11,10 @@
  * hive does not hold is copied up into the hive instead of being handed out as
  * a real key handle.
  */
-static nlohmann::json ProbeRegOpenWriteValue_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegOpenWriteValue::Rsp appbox::test::ProbeRegOpenWriteValue_Entry(
+    const appbox::test::ProtocolRegOpenWriteValue::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolRegOpenWriteValue::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegOpenWriteValue::Rsp rsp;
 
@@ -47,5 +48,3 @@ static nlohmann::json ProbeRegOpenWriteValue_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegOpenWriteValue("RegOpenWriteValue", ProbeRegOpenWriteValue_Entry);

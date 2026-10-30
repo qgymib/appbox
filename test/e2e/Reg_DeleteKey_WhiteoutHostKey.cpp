@@ -1,4 +1,5 @@
 #include "probe/RegDeleteKey.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/RealHkcuKey.hpp"
@@ -44,7 +45,7 @@ TEST_F(E2E_Reg, DeleteKey_WhiteoutHostKey)
     req.Key = appbox::WideToUTF8(subkey);
     req.Mode = ProtocolRegDeleteKey::ModeKind::Reg;
 
-    const auto rsp = ProbeRegDeleteKey.Call(req, GetCWD(), config).get<ProtocolRegDeleteKey::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteKey>(req);
     EXPECT_EQ(rsp.delete_code, static_cast<DWORD>(ERROR_SUCCESS));
 
     /* The view of the sandbox no longer holds the key, not even through the

@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGDELETEVALUE_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -18,6 +17,8 @@ namespace appbox::test
  */
 struct ProtocolRegDeleteValue
 {
+    static constexpr const char* Method = "RegDeleteValue";
+
     struct Req
     {
         std::string Root;  /* Root key name, empty means HKEY_CURRENT_USER. */
@@ -46,8 +47,11 @@ struct ProtocolRegDeleteValue
  * only the host registry holds has to be recorded as deleted (a whiteout):
  * neither the read through of the value nor the merged value enumeration may
  * show it afterwards, while the real registry keeps its value.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegDeleteValue;
+ProtocolRegDeleteValue::Rsp ProbeRegDeleteValue_Entry(const ProtocolRegDeleteValue::Req& request);
 
 } // namespace appbox::test
 

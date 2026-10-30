@@ -1,4 +1,5 @@
 #include "probe/ListDirNt.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/RealFsFolder.hpp"
@@ -86,7 +87,7 @@ TEST_F(E2E_Fs, ListDir_DuplicatedHandle)
                 req.create_file = create_file;
                 req.duplicate = true;
 
-                auto rsp = ProbeListDirNt.Call(req, GetCWD(), config).get<ProtocolListDirNt::Rsp>();
+                auto rsp = Probe(GetCWD(), config).Call<ProtocolListDirNt>(req);
                 ASSERT_EQ(rsp.status, 0L);
                 EXPECT_EQ(rsp.names, kExpectedNames);
             }

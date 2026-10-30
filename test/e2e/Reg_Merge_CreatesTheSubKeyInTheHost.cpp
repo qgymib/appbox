@@ -1,5 +1,6 @@
 #include "probe/RegReadValue.hpp"
 #include "probe/RegWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -74,7 +75,7 @@ TEST_F(E2E_Reg, Merge_CreatesTheSubKeyInTheHost)
         req.Value = "ChildValue";
         req.Data = "child";
 
-        const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.create_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.set_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -103,7 +104,7 @@ TEST_F(E2E_Reg, Merge_CreatesTheSubKeyInTheHost)
         req.Key = appbox::WideToUTF8(child);
         req.Value = "ChildValue";
 
-        const auto rsp = ProbeRegReadValue.Call(req, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);
         ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.data, "child");

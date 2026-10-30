@@ -4,9 +4,10 @@
 
 using namespace appbox::test;
 
-static nlohmann::json ProbeFindStreams_Entry(const nlohmann::json& data)
+appbox::test::ProtocolFindStreams::Rsp appbox::test::ProbeFindStreams_Entry(
+    const appbox::test::ProtocolFindStreams::Req& request)
 {
-    auto req = data.template get<ProtocolFindStreams::Req>();
+    const auto& req = request;
 
     auto wFileName = appbox::UTF8ToWide(req.FileName);
 
@@ -32,5 +33,3 @@ static nlohmann::json ProbeFindStreams_Entry(const nlohmann::json& data)
     FindClose(find);
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeFindStreams("FindStreams", ProbeFindStreams_Entry);

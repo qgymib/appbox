@@ -1,5 +1,6 @@
 #include "probe/RegReadValue.hpp"
 #include "probe/RegRenameKey.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -73,7 +74,7 @@ TEST_F(E2E_Reg, RenameKey_ViewRootKey)
     req.NewName = "HKCU_Renamed";
     req.Mode = ProtocolRegRenameKey::ModeKind::HiveHandle;
 
-    const auto rsp = ProbeRegRenameKey.Call(req, GetCWD(), config).get<ProtocolRegRenameKey::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegRenameKey>(req);
     ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
     EXPECT_EQ(rsp.rename_code, static_cast<DWORD>(STATUS_ACCESS_DENIED));
 
@@ -82,7 +83,7 @@ TEST_F(E2E_Reg, RenameKey_ViewRootKey)
     read_req.Key = appbox::WideToUTF8(subkey);
     read_req.Value = "SandboxValue";
 
-    const auto read_rsp = ProbeRegReadValue.Call(read_req, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
+    const auto read_rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(read_req);
     EXPECT_EQ(read_rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
     EXPECT_EQ(read_rsp.query_code, static_cast<DWORD>(ERROR_SUCCESS));
     EXPECT_EQ(read_rsp.data, "sandbox");

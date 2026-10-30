@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_QUERY_INFORMATION_BY_NAME_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -12,6 +11,8 @@ namespace appbox::test
 
 struct ProtocolQueryInformationByName
 {
+    static constexpr const char* Method = "QueryInformationByName";
+
     struct Req
     {
         std::vector<std::string> paths; /* File names encoding in UTF-8. */
@@ -44,8 +45,12 @@ struct ProtocolQueryInformationByName
  * an entry without opening a handle, so it pins the redirection of a name based
  * query directly. Every path of one request is queried by the same process,
  * which keeps the number of probe calls of a case low.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeQueryInformationByName;
+ProtocolQueryInformationByName::Rsp ProbeQueryInformationByName_Entry(
+    const ProtocolQueryInformationByName::Req& request);
 
 } // namespace appbox::test
 

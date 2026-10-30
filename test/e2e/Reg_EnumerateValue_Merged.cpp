@@ -1,5 +1,6 @@
 #include "probe/RegEnumValue.hpp"
 #include "probe/RegWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "Random.hpp"
@@ -73,7 +74,7 @@ TEST_F(E2E_Reg, EnumerateValue_Merged)
         req.Key = appbox::WideToUTF8(subkey);
         req.Value = "SandboxValue";
         req.Data = sandbox_data;
-        auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.create_code, 0u);
         ASSERT_EQ(rsp.set_code, 0u);
         ASSERT_EQ(rsp.readback, sandbox_data);
@@ -83,7 +84,7 @@ TEST_F(E2E_Reg, EnumerateValue_Merged)
     {
         ProtocolRegEnumValue::Req req;
         req.Key = appbox::WideToUTF8(subkey);
-        auto rsp = ProbeRegEnumValue.Call(req, GetCWD(), config).get<ProtocolRegEnumValue::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolRegEnumValue>(req);
         ASSERT_EQ(rsp.open_code, 0u);
         ASSERT_EQ(rsp.enum_code, 0u);
 

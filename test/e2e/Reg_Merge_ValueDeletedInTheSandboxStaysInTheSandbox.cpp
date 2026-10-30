@@ -1,5 +1,6 @@
 #include "probe/RegDeleteValue.hpp"
 #include "probe/RegWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -76,7 +77,7 @@ TEST_F(E2E_Reg, Merge_ValueDeletedInTheSandboxStaysInTheSandbox)
         req.Key = appbox::WideToUTF8(subkey);
         req.Value = "Shared";
 
-        const auto rsp = ProbeRegDeleteValue.Call(req, GetCWD(), config).get<ProtocolRegDeleteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteValue>(req);
         ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.delete_code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -94,7 +95,7 @@ TEST_F(E2E_Reg, Merge_ValueDeletedInTheSandboxStaysInTheSandbox)
         req.Value = "Shared";
         req.Data = "again";
 
-        const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.create_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.set_code, static_cast<DWORD>(ERROR_SUCCESS));
         ASSERT_EQ(rsp.query_code, static_cast<DWORD>(ERROR_SUCCESS));

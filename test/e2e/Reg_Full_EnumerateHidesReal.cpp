@@ -1,4 +1,5 @@
 #include "probe/RegEnumKey.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -61,7 +62,7 @@ TEST_F(E2E_Reg, Full_EnumerateHidesReal)
     ProtocolRegEnumKey::Req req;
     req.Key = appbox::WideToUTF8(subkey);
 
-    const auto rsp = ProbeRegEnumKey.Call(req, GetCWD(), config).get<ProtocolRegEnumKey::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegEnumKey>(req);
     ASSERT_EQ(rsp.open_code, 0u);
     ASSERT_EQ(rsp.enum_code, 0u);
 

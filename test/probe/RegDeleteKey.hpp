@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGDELETEKEY_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -17,6 +16,8 @@ namespace appbox::test
  */
 struct ProtocolRegDeleteKey
 {
+    static constexpr const char* Method = "RegDeleteKey";
+
     /**
      * @brief Entry point the probe deletes through.
      *
@@ -70,8 +71,11 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolRegDeleteKey::ModeKind,
  * A `ReadHandle` request calls `NtDeleteKey` on a handle of the real registry:
  * the call must not reach the host, and the delete code of the kernel is
  * reported so a test can pin the behaviour.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegDeleteKey;
+ProtocolRegDeleteKey::Rsp ProbeRegDeleteKey_Entry(const ProtocolRegDeleteKey::Req& request);
 
 } // namespace appbox::test
 

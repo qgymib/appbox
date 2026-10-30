@@ -1,5 +1,6 @@
 #include "probe/RegEnumValue.hpp"
 #include "probe/RegWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "Random.hpp"
@@ -84,7 +85,7 @@ static void WriteSandboxValue(const std::wstring& subkey, const std::string& val
     req.Key = appbox::WideToUTF8(subkey);
     req.Value = value;
     req.Data = data;
-    auto rsp = ProbeRegWriteValue.Call(req, cwd, config).get<ProtocolRegWriteValue::Rsp>();
+    auto rsp = Probe(cwd, config).Call<ProtocolRegWriteValue>(req);
     ASSERT_EQ(rsp.create_code, 0u);
     ASSERT_EQ(rsp.set_code, 0u);
     ASSERT_EQ(rsp.readback, data);
@@ -107,7 +108,7 @@ static ProtocolRegEnumValue::Rsp EnumerateSandboxValues(const std::wstring& subk
 {
     ProtocolRegEnumValue::Req req;
     req.Key = appbox::WideToUTF8(subkey);
-    return ProbeRegEnumValue.Call(req, cwd, config).get<ProtocolRegEnumValue::Rsp>();
+    return Probe(cwd, config).Call<ProtocolRegEnumValue>(req);
 }
 
 /**

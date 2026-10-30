@@ -10,7 +10,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
-#include <thread>
 #include <vector>
 
 typedef appbox::test::CommonFixture E2E_MultiInstance;
@@ -109,12 +108,12 @@ TEST_F(E2E_MultiInstance, PackedLauncherIsNotInjected)
     packed.arguments = { "--X-AppBox-LogLevel", "info" };
     launcher_config.startups.push_back(std::move(packed));
 
-    StartupRun  master;
-    std::thread master_thread([&]() {
-        master = ProbeStartupRun(GetCWDString(), launcher_config, "packed", false, LogRun{}, true, std::wstring(),
-                                 kMasterHoldMs);
-    });
-    master_thread.join();
+    /*
+     * The case runs the archive of the outer sandbox and waits for it: the run
+     * ends with the program of its own configuration, so the case needs no
+     * budget of its own.
+     */
+    const auto master = ProbeStartupRun(GetCWDString(), launcher_config, "packed", false, LogRun{}, true);
 
     ASSERT_EQ(master.exit_code, 0u);
     ASSERT_EQ(master.reports.size(), static_cast<std::size_t>(1))

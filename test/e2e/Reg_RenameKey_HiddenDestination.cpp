@@ -1,4 +1,5 @@
 #include "probe/RegRenameKey.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -75,7 +76,7 @@ TEST_F(E2E_Reg, RenameKey_HiddenDestination)
     req.NewName = appbox::WideToUTF8(new_name);
     req.Mode = ProtocolRegRenameKey::ModeKind::HiveHandle;
 
-    const auto rsp = ProbeRegRenameKey.Call(req, GetCWD(), config).get<ProtocolRegRenameKey::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegRenameKey>(req);
     ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
     EXPECT_EQ(rsp.rename_code, static_cast<DWORD>(ERROR_SUCCESS));
 

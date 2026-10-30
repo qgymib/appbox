@@ -1,4 +1,5 @@
 #include "probe/RegTransacted.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "Random.hpp"
@@ -48,7 +49,7 @@ TEST_F(E2E_Reg, Transacted_CreateIsRefused)
     req.Data = expected;
     req.End = ProtocolRegTransacted::EndKind::Commit;
 
-    const auto rsp = ProbeRegTransacted.Call(req, GetCWD(), config).get<ProtocolRegTransacted::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegTransacted>(req);
     ASSERT_EQ(rsp.mount_code, static_cast<DWORD>(ERROR_SUCCESS));
     ASSERT_EQ(rsp.tx_code, static_cast<DWORD>(ERROR_SUCCESS));
     EXPECT_EQ(rsp.call_code, static_cast<DWORD>(STATUS_RM_NOT_ACTIVE));

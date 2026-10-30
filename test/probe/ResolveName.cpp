@@ -407,9 +407,10 @@ Answer AnswerQuestion(const appbox::test::ProtocolResolveName::Question& questio
 
 } // namespace
 
-static nlohmann::json ProbeResolveName_Entry(const nlohmann::json& data)
+appbox::test::ProtocolResolveName::Rsp appbox::test::ProbeResolveName_Entry(
+    const appbox::test::ProtocolResolveName::Req& request)
 {
-    const auto req = data.get<appbox::test::ProtocolResolveName::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolResolveName::Rsp rsp;
     rsp.answers.reserve(req.questions.size());
@@ -420,5 +421,3 @@ static nlohmann::json ProbeResolveName_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeResolveName("ResolveName", ProbeResolveName_Entry);

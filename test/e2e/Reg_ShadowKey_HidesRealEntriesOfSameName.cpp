@@ -2,6 +2,7 @@
 #include "probe/RegEnumValue.hpp"
 #include "probe/RegReadValue.hpp"
 #include "probe/RegWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "Random.hpp"
@@ -123,7 +124,7 @@ TEST_F(E2E_Reg, ShadowKey_HidesRealEntriesOfSameName)
         req.Key = appbox::WideToUTF8(subkey);
         req.Value = "TestValue";
         req.Data = sandbox_data;
-        auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.create_code, 0u);
         ASSERT_EQ(rsp.set_code, 0u);
         ASSERT_EQ(rsp.readback, sandbox_data);
@@ -135,7 +136,7 @@ TEST_F(E2E_Reg, ShadowKey_HidesRealEntriesOfSameName)
         req.Key = appbox::WideToUTF8(conflict);
         req.Value = "Marker";
         req.Data = sandbox_data;
-        auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.create_code, 0u);
         ASSERT_EQ(rsp.set_code, 0u);
         ASSERT_EQ(rsp.readback, sandbox_data);
@@ -145,7 +146,7 @@ TEST_F(E2E_Reg, ShadowKey_HidesRealEntriesOfSameName)
     {
         ProtocolRegEnumValue::Req req;
         req.Key = appbox::WideToUTF8(subkey);
-        auto rsp = ProbeRegEnumValue.Call(req, GetCWD(), config).get<ProtocolRegEnumValue::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolRegEnumValue>(req);
         ASSERT_EQ(rsp.open_code, 0u);
         ASSERT_EQ(rsp.enum_code, 0u);
 
@@ -159,7 +160,7 @@ TEST_F(E2E_Reg, ShadowKey_HidesRealEntriesOfSameName)
     {
         ProtocolRegEnumKey::Req req;
         req.Key = appbox::WideToUTF8(subkey);
-        auto rsp = ProbeRegEnumKey.Call(req, GetCWD(), config).get<ProtocolRegEnumKey::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolRegEnumKey>(req);
         ASSERT_EQ(rsp.open_code, 0u);
         ASSERT_EQ(rsp.count_code, 0u);
         ASSERT_EQ(rsp.enum_code, 0u);
@@ -175,7 +176,7 @@ TEST_F(E2E_Reg, ShadowKey_HidesRealEntriesOfSameName)
         ProtocolRegReadValue::Req req;
         req.Key = appbox::WideToUTF8(conflict);
         req.Value = "Marker";
-        auto rsp = ProbeRegReadValue.Call(req, GetCWD(), config).get<ProtocolRegReadValue::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);
         ASSERT_EQ(rsp.open_code, 0u);
         ASSERT_EQ(rsp.query_code, 0u);
         ASSERT_EQ(rsp.data, sandbox_data);

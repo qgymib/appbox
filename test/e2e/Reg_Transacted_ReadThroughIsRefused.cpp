@@ -1,4 +1,5 @@
 #include "probe/RegTransacted.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/RealHkcuKey.hpp"
@@ -56,7 +57,7 @@ TEST_F(E2E_Reg, Transacted_ReadThroughIsRefused)
     read_req.Value = "HostValue";
     read_req.End = ProtocolRegTransacted::EndKind::Close;
 
-    const auto read_rsp = ProbeRegTransacted.Call(read_req, GetCWD(), config).get<ProtocolRegTransacted::Rsp>();
+    const auto read_rsp = Probe(GetCWD(), config).Call<ProtocolRegTransacted>(read_req);
     ASSERT_EQ(read_rsp.mount_code, static_cast<DWORD>(ERROR_SUCCESS));
     ASSERT_EQ(read_rsp.tx_code, static_cast<DWORD>(ERROR_SUCCESS));
     EXPECT_EQ(read_rsp.call_code, static_cast<DWORD>(STATUS_NOT_SUPPORTED));
@@ -74,7 +75,7 @@ TEST_F(E2E_Reg, Transacted_ReadThroughIsRefused)
     write_req.Data = "sandbox";
     write_req.End = ProtocolRegTransacted::EndKind::Commit;
 
-    const auto write_rsp = ProbeRegTransacted.Call(write_req, GetCWD(), config).get<ProtocolRegTransacted::Rsp>();
+    const auto write_rsp = Probe(GetCWD(), config).Call<ProtocolRegTransacted>(write_req);
     ASSERT_EQ(write_rsp.mount_code, static_cast<DWORD>(ERROR_SUCCESS));
     ASSERT_EQ(write_rsp.tx_code, static_cast<DWORD>(ERROR_SUCCESS));
     EXPECT_EQ(write_rsp.call_code, static_cast<DWORD>(STATUS_RM_NOT_ACTIVE));

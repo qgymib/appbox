@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_LIST_DIR_NT_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -12,6 +11,8 @@ namespace appbox::test
 
 struct ProtocolListDirNt
 {
+    static constexpr const char* Method = "ListDirNt";
+
     struct Req
     {
         std::string path;                        /* Directory path. */
@@ -56,8 +57,11 @@ struct ProtocolListDirNt
  * handle a process inherits or duplicates from another process. Such a request
  * may remove the entry before it queries it, which is the state of a handle
  * whose object the view no longer holds.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeListDirNt;
+ProtocolListDirNt::Rsp ProbeListDirNt_Entry(const ProtocolListDirNt::Req& request);
 
 } // namespace appbox::test
 

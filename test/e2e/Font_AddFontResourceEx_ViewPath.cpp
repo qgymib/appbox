@@ -1,4 +1,5 @@
 #include "probe/Fonts.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/TestFont.hpp"
@@ -62,7 +63,7 @@ TEST_F(E2E_Font, AddFontResourceExOfTheViewIsRedirected)
     req.family = appbox::WideToUTF8(font.family);
     req.view_path = appbox::WideToUTF8(view_path);
 
-    const auto rsp = ProbeFonts.Call(req, GetCWD(), config).get<ProtocolFonts::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolFonts>(req);
 
     /* A call which names the path of the view reaches the file of the layer. */
     EXPECT_GT(rsp.add_result, 0);

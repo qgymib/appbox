@@ -1,4 +1,5 @@
 #include "utils/CommonFixture.hpp"
+#include "utils/JoinedThread.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/ProbeCall.hpp"
 #include "utils/TestSandboxId.hpp"
@@ -231,7 +232,7 @@ TEST_F(E2E_MultiInstance, SandboxPipeNameIsUsed)
      * as long as the run lasts: the watcher starts before the launcher and stops
      * after it, which covers the whole life of the pipe.
      */
-    std::thread watcher([&]() {
+    JoinedThread watcher([&]() {
         while (!stop.load())
         {
             auto names = PipeNamesWithPrefix(kControlPipePrefix);
@@ -247,7 +248,7 @@ TEST_F(E2E_MultiInstance, SandboxPipeNameIsUsed)
     const auto run = ProbeStartupRun(cwd, config, "");
 
     stop = true;
-    watcher.join();
+    watcher.Join();
 
     EXPECT_EQ(run.exit_code, 0u);
     EXPECT_EQ(run.started, std::vector<std::string>({ "app" }));

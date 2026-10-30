@@ -1,4 +1,5 @@
 #include "probe/ReadFileFull.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/LauncherPath.hpp"
 #include "utils/RealFsFolder.hpp"
@@ -223,15 +224,13 @@ TEST_F(E2E_Snapshot, StrictCaptureFillsOnlyTheCapturedEntries)
 
     ProtocolReadFileFull::Req captured;
     captured.FileName = appbox::WideToUTF8(root + L"\\new.exe");
-    const auto captured_rsp =
-        ProbeReadFileFull.Call(captured, GetCWD(), appbox::LauncherConfig{}).get<ProtocolReadFileFull::Rsp>();
+    const auto captured_rsp = Probe(GetCWD(), appbox::LauncherConfig{}).Call<ProtocolReadFileFull>(captured);
     ASSERT_EQ(captured_rsp.code, 0u);
     EXPECT_EQ(captured_rsp.data, "PACKED-BY-THE-CAPTURE");
 
     /* The file which the capture never reported is not part of the archive. */
     ProtocolReadFileFull::Req untouched;
     untouched.FileName = appbox::WideToUTF8(root + L"\\kept.exe");
-    const auto untouched_rsp =
-        ProbeReadFileFull.Call(untouched, GetCWD(), appbox::LauncherConfig{}).get<ProtocolReadFileFull::Rsp>();
+    const auto untouched_rsp = Probe(GetCWD(), appbox::LauncherConfig{}).Call<ProtocolReadFileFull>(untouched);
     EXPECT_NE(untouched_rsp.code, 0u);
 }

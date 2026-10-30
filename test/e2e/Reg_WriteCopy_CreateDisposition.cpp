@@ -1,4 +1,5 @@
 #include "probe/RegWriteValue.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/HiveBuilder.hpp"
@@ -115,7 +116,7 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
         req.Value = "TestValue";
         req.Data = sandbox_text;
 
-        const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.create_code, 0u);
         EXPECT_EQ(rsp.disposition, static_cast<DWORD>(REG_OPENED_EXISTING_KEY));
         ASSERT_EQ(rsp.query_code, 0u);
@@ -130,7 +131,7 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
         req.Value = "TestValue";
         req.Data = sandbox_text;
 
-        const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.create_code, 0u);
         EXPECT_EQ(rsp.disposition, static_cast<DWORD>(REG_OPENED_EXISTING_KEY));
         ASSERT_EQ(rsp.query_code, 0u);
@@ -145,7 +146,7 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
         req.Value = "TestValue";
         req.Data = sandbox_text;
 
-        const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.create_code, 0u);
         EXPECT_EQ(rsp.disposition, static_cast<DWORD>(REG_CREATED_NEW_KEY));
         ASSERT_EQ(rsp.query_code, 0u);
@@ -159,7 +160,7 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
         req.Value = "TestValue";
         req.Data = sandbox_text;
 
-        const auto rsp = ProbeRegWriteValue.Call(req, GetCWD(), config).get<ProtocolRegWriteValue::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
         ASSERT_EQ(rsp.create_code, 0u);
         EXPECT_EQ(rsp.disposition, static_cast<DWORD>(REG_CREATED_NEW_KEY));
         ASSERT_EQ(rsp.query_code, 0u);

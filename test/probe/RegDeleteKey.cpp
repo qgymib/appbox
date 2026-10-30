@@ -21,11 +21,11 @@ typedef NTSTATUS (*T_NtDeleteKey)(HANDLE KeyHandle);
  * recorded as deleted in the sandbox hive instead (a whiteout), and a delete
  * which runs on a read through handle of the host is refused.
  */
-static nlohmann::json ProbeRegDeleteKey_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegDeleteKey::Rsp appbox::test::ProbeRegDeleteKey_Entry(
+    const appbox::test::ProtocolRegDeleteKey::Req& request)
 {
     using ModeKind = appbox::test::ProtocolRegDeleteKey::ModeKind;
-
-    auto req = data.get<appbox::test::ProtocolRegDeleteKey::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegDeleteKey::Rsp rsp;
 
@@ -80,5 +80,3 @@ static nlohmann::json ProbeRegDeleteKey_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegDeleteKey("RegDeleteKey", ProbeRegDeleteKey_Entry);

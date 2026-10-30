@@ -9,9 +9,10 @@
  * All three operations run inside the sandbox, so the closed loop
  * write -> read is verified with the redirection active.
  */
-static nlohmann::json ProbeRegWriteValue_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegWriteValue::Rsp appbox::test::ProbeRegWriteValue_Entry(
+    const appbox::test::ProtocolRegWriteValue::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolRegWriteValue::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegWriteValue::Rsp rsp;
 
@@ -46,5 +47,3 @@ static nlohmann::json ProbeRegWriteValue_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegWriteValue("RegWriteValue", ProbeRegWriteValue_Entry);

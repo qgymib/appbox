@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGSAVEKEY_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
@@ -18,6 +17,8 @@ namespace appbox::test
  */
 struct ProtocolRegSaveKey
 {
+    static constexpr const char* Method = "RegSaveKey";
+
     struct Req
     {
         std::string              Root;                /* Root key name, empty means HKEY_CURRENT_USER. */
@@ -60,8 +61,11 @@ struct ProtocolRegSaveKey
  * The texts are the names and the `REG_SZ` data of the saved key; a standard
  * format hive stores the names as single byte text and the data as UTF-16
  * without compression, so both appear verbatim in the bytes of the file.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegSaveKey;
+ProtocolRegSaveKey::Rsp ProbeRegSaveKey_Entry(const ProtocolRegSaveKey::Req& request);
 
 } // namespace appbox::test
 

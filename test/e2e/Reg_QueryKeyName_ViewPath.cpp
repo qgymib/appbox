@@ -1,4 +1,5 @@
 #include "probe/RegQueryKeyName.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "Random.hpp"
@@ -52,7 +53,7 @@ TEST_F(E2E_Reg, QueryKeyName_ViewPath)
     ProtocolRegQueryKeyName::Req req;
     req.Key = appbox::WideToUTF8(subkey);
 
-    auto rsp = ProbeRegQueryKeyName.Call(req, GetCWD(), config).get<ProtocolRegQueryKeyName::Rsp>();
+    auto rsp = Probe(GetCWD(), config).Call<ProtocolRegQueryKeyName>(req);
     ASSERT_EQ(rsp.create_code, 0u);
     ASSERT_EQ(rsp.query_key_code, 0u);
     ASSERT_EQ(rsp.query_object_code, 0u);

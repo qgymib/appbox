@@ -83,6 +83,29 @@ std::size_t StartupStageCount()
     return kStartupStageCount;
 }
 
+const char* StartupStageName(StartupStage stage)
+{
+    switch (stage)
+    {
+    case StartupStage::ExtractingPayload:
+        return "extracting_payload";
+
+    case StartupStage::Preparing:
+        return "preparing";
+
+    case StartupStage::LoadingPatches:
+        return "loading_patches";
+
+    case StartupStage::MountingSandbox:
+        return "mounting_sandbox";
+
+    case StartupStage::StartingApplication:
+        return "starting_application";
+    }
+
+    return "unknown";
+}
+
 double StartupStageProgress(StartupStage stage, double fraction)
 {
     const auto clamped = ClampFraction(fraction);

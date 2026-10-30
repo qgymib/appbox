@@ -5,9 +5,10 @@
 
 using namespace appbox::test;
 
-static nlohmann::json ProbeWriteFile_Entry(const nlohmann::json& data)
+appbox::test::ProtocolWriteFile::Rsp appbox::test::ProbeWriteFile_Entry(
+    const appbox::test::ProtocolWriteFile::Req& request)
 {
-    auto req = data.template get<ProtocolWriteFile::Req>();
+    const auto& req = request;
 
     const auto wFileName = appbox::UTF8ToWide(req.FileName);
 
@@ -41,5 +42,3 @@ static nlohmann::json ProbeWriteFile_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeWriteFile("WriteFile", ProbeWriteFile_Entry);

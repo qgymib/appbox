@@ -99,7 +99,9 @@ APPBOX_LAUNCHER_RPC_DEFINE(MsgEnvironment, id, param)
 
     /*
      * The answer is sent after the document is on disk: the sandbox relies on
-     * the answer to know that its modifications survive the end of the run.
+     * the answer to know that its modifications survive the end of the run. The
+     * session of the request answers it, which is the only end which knows the
+     * request id of its peer.
      */
-    control->Server()->SendResponse(id, {});
+    session->SendResponse(id, {});
 }

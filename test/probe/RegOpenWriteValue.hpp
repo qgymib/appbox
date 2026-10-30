@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_REGOPENWRITEVALUE_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -11,6 +10,7 @@ namespace appbox::test
 
 struct ProtocolRegOpenWriteValue
 {
+    static constexpr const char* Method = "RegOpenWriteValue";
 
     struct Req
     {
@@ -42,8 +42,11 @@ struct ProtocolRegOpenWriteValue
  * be opened inside the sandbox hive, so the value never reaches the host
  * registry. A key which neither layer holds still reports that it does not
  * exist, because an open never creates a key.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeRegOpenWriteValue;
+ProtocolRegOpenWriteValue::Rsp ProbeRegOpenWriteValue_Entry(const ProtocolRegOpenWriteValue::Req& request);
 
 } // namespace appbox::test
 

@@ -2,7 +2,6 @@
 #define APPBOX_TEST_PROBE_SET_INFORMATION_FILE_HPP
 
 #include "WinAPI.h" /* Must be first include file */
-#include "probe/__init__.hpp"
 #include <string>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -12,6 +11,8 @@ namespace appbox::test
 
 struct ProtocolSetInformationFile
 {
+    static constexpr const char* Method = "SetInformationFile";
+
     struct Req
     {
         struct Item
@@ -131,8 +132,11 @@ NLOHMANN_JSON_SERIALIZE_ENUM(ProtocolSetInformationFile::Req::Item::Access,
  * rename and a link need, and calls the entry point with the class of the
  * item. Every item of one request is asked by the same process, which keeps
  * the number of probe calls of a case low.
+ *
+ * @param[in] request Request of the probe.
+ * @return The answer of the probe.
  */
-extern Probe ProbeSetInformationFile;
+ProtocolSetInformationFile::Rsp ProbeSetInformationFile_Entry(const ProtocolSetInformationFile::Req& request);
 
 } // namespace appbox::test
 

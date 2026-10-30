@@ -2,16 +2,16 @@
  * The RPC headers pull in winsock2.h through asio, they have to come before
  * <windows.h> which would otherwise include the winsock.h version 1 header.
  */
-#include "RemoteServer.hpp"
+#include "RemoteAccepter.hpp"
 #include <winsock2.h>
 #include <windows.h>
 #include <sddl.h>
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
-#include <thread>
 #include <vector>
 #include "SandboxId.hpp"
 #include "Test.hpp"
@@ -29,20 +29,11 @@ using namespace appbox::test;
 namespace
 {
 
-/** Text the log of a master instance carries once its own program runs. */
-constexpr const char* kApplicationStarted = "the initial application of the sandbox was started";
-
-/** Text the log of a second instance carries once it refused its server. */
-constexpr const char* kServerMismatch = "is not the master instance";
-
-/** Budget of a case which waits for a stage of a run, in milliseconds. */
-constexpr int kStageTimeoutMs = 60000;
+/** Budget of a case which waits for the program of a run, in milliseconds. */
+constexpr std::uint32_t kStageTimeoutMs = 60000;
 
 /** Budget of a case which waits for the answer of the control pipe, in milliseconds. */
 constexpr std::uint32_t kAnswerTimeoutMs = 30000;
-
-/** Time the initial program of a master instance stays alive, in milliseconds. */
-constexpr std::uint32_t kRunHoldMs = 6000;
 
 /** Integrity level the case gives its client, which is the low level of Windows. */
 constexpr const wchar_t* kLowIntegritySid = L"S-1-16-4096";
@@ -180,7 +171,7 @@ LowIntegrityRun RunSecondaryAtLowIntegrity(const std::wstring& cwd, const nlohma
  * 2. The pipe keeps serving: the same client reads the environment state of the
  *    sandbox over it, which is the method the sandboxed processes use.
  * 3. The run of the master instance is untouched: it started its own program
- *    only and leaves with zero.
+ *    only, that program still answers the case, and the run leaves with zero.
  */
 TEST_F(E2E_MultiInstance, UnauthorizedClient)
 {
@@ -188,41 +179,39 @@ TEST_F(E2E_MultiInstance, UnauthorizedClient)
     const auto id = SandboxIdForPath(GetCWDString());
     const auto run_config = MultiInstanceConfig(cwd, id, "app");
 
-    StartupRun  master;
-    std::thread master_thread([&]() {
-        master = ProbeStartupRun(GetCWDString(), run_config, "", false, LogRun{}, false, std::wstring(), kRunHoldMs);
-    });
+    StartupRunHandle master(cwd.wstring(), run_config);
+    ASSERT_TRUE(master.WaitForSessions(kProbeBindQuietMs, kStageTimeoutMs))
+        << "the master instance never started its application";
 
-    const auto running = WaitForRunLog(cwd, kApplicationStarted, kStageTimeoutMs);
+    const auto& master_reports = master.Collect();
+    ASSERT_EQ(master_reports.reports.size(), static_cast<std::size_t>(1)) << master_reports.reports.size();
 
     nlohmann::json refused = nlohmann::json::object();
     nlohmann::json environment = nlohmann::json::object();
     bool           served = false;
 
-    if (running)
-    {
-        RawControlPipe pipe(appbox::SandboxPipeName(id));
-        ASSERT_TRUE(pipe.IsOpen()) << pipe.LastError();
+    RawControlPipe pipe(appbox::SandboxPipeName(id));
+    ASSERT_TRUE(pipe.IsOpen()) << pipe.LastError();
 
-        appbox::MsgLauncherStart::Req request;
-        request.version = appbox::kLauncherStartVersion;
-        request.sandbox_id = id;
-        request.sandbox_root = appbox::WideToUTF8(cwd.wstring());
-        request.selection = "auto";
+    appbox::MsgLauncherStart::Req request;
+    request.version = appbox::kLauncherStartVersion;
+    request.sandbox_id = id;
+    request.sandbox_root = appbox::WideToUTF8(cwd.wstring());
+    request.selection = "auto";
 
-        ASSERT_TRUE(pipe.Call(1, appbox::MsgLauncherStart::Method, nlohmann::json(request), refused, kAnswerTimeoutMs))
-            << pipe.LastError();
+    ASSERT_TRUE(pipe.Call(1, appbox::MsgLauncherStart::Method, nlohmann::json(request), refused, kAnswerTimeoutMs))
+        << pipe.LastError();
 
-        nlohmann::json state;
-        state["state"] = "{}";
-        served = pipe.Call(2, "Environment", state, environment, kAnswerTimeoutMs);
-    }
+    nlohmann::json state;
+    state["state"] = "{}";
+    served = pipe.Call(2, "Environment", state, environment, kAnswerTimeoutMs);
 
-    master_thread.join();
+    EXPECT_EQ(master.Ping(), static_cast<std::size_t>(1)) << "the refused request ended the program of the run";
 
-    ASSERT_TRUE(running) << "the master instance never started its application";
-    EXPECT_EQ(master.exit_code, 0u);
-    EXPECT_EQ(master.reports.size(), static_cast<std::size_t>(1)) << master.reports.size();
+    master.Exit(0);
+    const auto master_exit = master.Wait();
+
+    EXPECT_EQ(master_exit, 0u);
 
     ASSERT_TRUE(refused.contains("result")) << refused.dump();
     EXPECT_EQ(refused["result"].value("status", std::string()), "refused");
@@ -252,32 +241,27 @@ TEST_F(E2E_MultiInstance, IntegrityMismatch)
     const auto id = SandboxIdForPath(GetCWDString());
     const auto run_config = MultiInstanceConfig(cwd, id, "app");
 
-    StartupRun  master;
-    std::thread master_thread([&]() {
-        master = ProbeStartupRun(GetCWDString(), run_config, "", false, LogRun{}, false, std::wstring(), kRunHoldMs);
-    });
+    StartupRunHandle master(cwd.wstring(), run_config);
+    ASSERT_TRUE(master.WaitForSessions(kProbeBindQuietMs, kStageTimeoutMs))
+        << "the master instance never started its application";
 
-    const auto running = WaitForRunLog(cwd, kApplicationStarted, kStageTimeoutMs);
+    const auto& master_reports = master.Collect();
+    ASSERT_EQ(master_reports.reports.size(), static_cast<std::size_t>(1)) << master_reports.reports.size();
 
-    LowIntegrityRun client;
-    if (running)
-    {
-        client = RunSecondaryAtLowIntegrity(cwd.wstring(), MultiInstanceRequestDocument(id),
-                                            std::wstring(kSecondaryConfigName));
-    }
-
-    master_thread.join();
-
-    ASSERT_TRUE(running) << "the master instance never started its application";
+    const auto client =
+        RunSecondaryAtLowIntegrity(cwd.wstring(), MultiInstanceRequestDocument(id), std::wstring(kSecondaryConfigName));
 
     if (!client.supported)
     {
         GTEST_SKIP() << "the case cannot run a client at another integrity level: " << client.detail;
     }
 
+    EXPECT_EQ(master.Ping(), static_cast<std::size_t>(1)) << "the refused client ended the program of the run";
+
+    master.Exit(0);
+
     EXPECT_EQ(client.exit_code, static_cast<std::uint32_t>(ERROR_ACCESS_DENIED));
-    EXPECT_EQ(master.exit_code, 0u);
-    EXPECT_EQ(master.reports.size(), static_cast<std::size_t>(1)) << master.reports.size();
+    EXPECT_EQ(master.Wait(), 0u);
 }
 
 /**
@@ -290,41 +274,48 @@ TEST_F(E2E_MultiInstance, IntegrityMismatch)
  * Expected:
  * 1. The launcher refuses the server before it sends its request, because the
  *    server runs no program of the sandbox: it leaves with the exit code of a
- *    refused access and its log names the reason.
+ *    refused access and the process which occupied the name of the pipe
+ *    receives no request at all.
  */
 TEST_F(E2E_MultiInstance, ServerIdentityMismatch)
 {
     const auto cwd = GetCWD();
     const auto id = SandboxIdForPath(GetCWDString());
 
-    appbox::RemoteServer::Options options;
+    /* Requests the server receives, which a refused client sends none of. */
+    std::atomic<std::uint32_t> received{ 0 };
+
+    appbox::RemoteAccepter::Options options;
     options.first_instance = true;
-    const auto created = appbox::RemoteServer::CreateCompetitive(appbox::SandboxPipeName(id), options);
+    const auto created = appbox::RemoteAccepter::CreateCompetitive(appbox::SandboxPipeName(id), options);
     ASSERT_EQ(created.status, appbox::ServerCreateStatus::Created) << created.error_code;
 
-    auto                                server = created.server;
-    std::weak_ptr<appbox::RemoteServer> weak_server = server;
-    server->RegisterMethod(appbox::MsgLauncherStart::Method, [weak_server, id](uint64_t rpc_id, const nlohmann::json&) {
-        appbox::MsgLauncherStart::Rsp response;
-        response.status = appbox::launcher_start_status::kStarted;
-        response.sandbox_id = id;
-        response.pids.push_back(GetCurrentProcessId());
+    auto accepter = created.accepter;
+    accepter->SetSessionCallback([id, &received](const appbox::RemoteSession::Ptr& session) {
+        std::weak_ptr<appbox::RemoteSession> weak_session = session;
+        session->RegisterMethod(appbox::MsgLauncherStart::Method,
+                                [weak_session, id, &received](uint64_t rpc_id, const nlohmann::json&) {
+                                    received.fetch_add(1);
 
-        if (auto pipe = weak_server.lock())
-        {
-            pipe->SendResponse(rpc_id, nlohmann::json(response));
-        }
+                                    appbox::MsgLauncherStart::Rsp response;
+                                    response.status = appbox::launcher_start_status::kStarted;
+                                    response.sandbox_id = id;
+                                    response.pids.push_back(GetCurrentProcessId());
+
+                                    if (auto pipe = weak_session.lock())
+                                    {
+                                        pipe->SendResponse(rpc_id, nlohmann::json(response));
+                                    }
+                                });
     });
 
-    ASSERT_TRUE(server->Start());
+    ASSERT_TRUE(accepter->Start());
 
     const auto exit_code =
         ProbeRunRawConfig(cwd.wstring(), MultiInstanceRequestDocument(id), LogRun{}, kSecondaryConfigName);
 
-    server->Stop();
+    accepter->Stop();
 
     EXPECT_EQ(exit_code, static_cast<std::uint32_t>(ERROR_ACCESS_DENIED));
-
-    const auto log = ReadRunLog(cwd);
-    EXPECT_NE(log.find(kServerMismatch), std::string::npos) << log;
+    EXPECT_EQ(received.load(), 0u) << "the client sent its start request to a process which is no launcher";
 }

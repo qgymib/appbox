@@ -347,6 +347,52 @@ inline PeerVerdict AuthorizePeer(const ProcessIdentity& peer, const ProcessIdent
     return PeerVerdict::Authorized;
 }
 
+/**
+ * @brief Decide whether a client may read the state of a run.
+ *
+ * The state query is read-only: it reports what the run prepared, which
+ * programs it started and what it did with the requests of the other
+ * launchers, and it starts nothing. The image of the client is therefore not
+ * part of the check, because the rule exists to keep a process of the sandbox
+ * from starting programs and not to hide facts a user may read anyway. The
+ * query is answered to a client of the user of the run at the integrity level
+ * of the run; the pipe itself admits its owner, SYSTEM and the administrators
+ * only, so a client of another user never reaches the check.
+ *
+ * A start request is not covered by this call: it creates processes and keeps
+ * the image rule of `AuthorizePeer()`.
+ *
+ * @param[in] client Identity of the client.
+ * @param[in] own Identity of the master instance.
+ * @param[out] error_message Human readable description of a refusal, empty when
+ *                           the client may read the state.
+ * @return The verdict.
+ */
+inline PeerVerdict AuthorizeQuery(const ProcessIdentity& client, const ProcessIdentity& own, std::string& error_message)
+{
+    error_message.clear();
+
+    if (!client.valid || !own.valid)
+    {
+        error_message = "the identity of the client of the control pipe cannot be read";
+        return PeerVerdict::Unauthorized;
+    }
+
+    if (client.user_sid != own.user_sid)
+    {
+        error_message = "the client does not run as the user of the sandbox";
+        return PeerVerdict::Unauthorized;
+    }
+
+    if (client.integrity_rid != own.integrity_rid)
+    {
+        error_message = "the client runs at another integrity level than the sandbox";
+        return PeerVerdict::IntegrityMismatch;
+    }
+
+    return PeerVerdict::Authorized;
+}
+
 } // namespace appbox::control
 
 #endif // APPBOX_LAUNCHER_CONTROL_PEERIDENTITY_HPP

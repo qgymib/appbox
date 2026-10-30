@@ -3,10 +3,11 @@
 
 using namespace appbox::test;
 
-static nlohmann::json ProbeRemoveDirectory_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRemoveDirectory::Rsp appbox::test::ProbeRemoveDirectory_Entry(
+    const appbox::test::ProtocolRemoveDirectory::Req& request)
 {
-    auto req = data.template get<ProtocolRemoveDirectory::Req>();
-    auto wPathName = appbox::UTF8ToWide(req.PathName);
+    const auto& req = request;
+    auto        wPathName = appbox::UTF8ToWide(req.PathName);
 
     ProtocolRemoveDirectory::Rsp rsp;
     if (!RemoveDirectoryW(wPathName.c_str()))
@@ -16,5 +17,3 @@ static nlohmann::json ProbeRemoveDirectory_Entry(const nlohmann::json& data)
 
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRemoveDirectory("RemoveDirectory", ProbeRemoveDirectory_Entry);

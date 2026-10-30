@@ -32,10 +32,64 @@ AppBoxLauncher& LauncherApp()
 
 void ReportStartupStage(appbox::StartupStage stage, double fraction)
 {
+    /*
+     * The stage is a fact of the run and not a detail of the screen: the state
+     * query reports it, so a client reads how far the run got without a screen
+     * and without a log.
+     */
+    LauncherApp().run_facts.stage.store(static_cast<int>(stage));
+
     if (LauncherApp().splash != nullptr)
     {
         LauncherApp().splash->SetStage(stage, fraction);
     }
+}
+
+void AppBoxLauncher::RecordStartupScreen(const appbox::SplashScreen& screen)
+{
+    auto& facts = LauncherApp().run_facts;
+
+    facts.screen_shown.store(screen.IsOpen());
+    facts.image_width.store(screen.Layout().image_width);
+    facts.image_height.store(screen.Layout().image_height);
+
+    {
+        std::lock_guard<std::mutex> lock(facts.mutex);
+        facts.image_error = screen.ImageError();
+    }
+}
+
+void AppBoxLauncher::RecordStartupScreenClosed()
+{
+    auto& facts = LauncherApp().run_facts;
+
+    /* A run which created no screen has nothing to close. */
+    facts.screen_closed.store(facts.screen_shown.load());
+}
+
+void AppBoxLauncher::RecordExtractionRoot(const std::string& root)
+{
+    auto& facts = LauncherApp().run_facts;
+
+    std::lock_guard<std::mutex> lock(facts.mutex);
+    facts.extraction_root = root;
+}
+
+void AppBoxLauncher::FillRunState(appbox::MsgRunState::Rsp& state) const
+{
+    const auto& facts = run_facts;
+
+    state.sandbox_id = launcher_config.sandbox_id;
+    state.stage = appbox::StartupStageName(static_cast<appbox::StartupStage>(facts.stage.load()));
+    state.prepared = facts.prepared.load();
+    state.screen_shown = facts.screen_shown.load();
+    state.screen_closed = facts.screen_closed.load();
+    state.image_width = static_cast<std::uint32_t>(facts.image_width.load());
+    state.image_height = static_cast<std::uint32_t>(facts.image_height.load());
+
+    std::lock_guard<std::mutex> lock(facts.mutex);
+    state.image_error = facts.image_error;
+    state.extraction_root = facts.extraction_root;
 }
 
 /**

@@ -1,5 +1,6 @@
 #include "probe/CreateFileW.hpp"
 #include "probe/ReadFileFull.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -53,7 +54,7 @@ DWORD CreateNew(const std::wstring& path, const std::filesystem::path& cwd, appb
     req.dwDesiredAccess = GENERIC_WRITE;
     req.dwCreationDisposition = CREATE_NEW;
 
-    return ProbeCreateFileW.Call(req, cwd, config).get<ProtocolCreateFileW::Rsp>().code;
+    return Probe(cwd, config).Call<ProtocolCreateFileW>(req).code;
 }
 
 } // namespace
@@ -105,7 +106,7 @@ TEST_F(E2E_Fs, Marker_ForgeWhiteoutIsRefused)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kVictimName);
 
-        const auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.data, "packed");
     }

@@ -1,4 +1,5 @@
 #include "probe/RegKeyApi.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/RealHkcuKey.hpp"
@@ -48,7 +49,7 @@ TEST_F(E2E_Reg, SetInformationKey_HiveHandle)
     req.Api = ProtocolRegKeyApi::ApiKind::SetInformationKey;
     req.Mode = ProtocolRegKeyApi::ModeKind::HiveHandle;
 
-    const auto rsp = ProbeRegKeyApi.Call(req, GetCWD(), config).get<ProtocolRegKeyApi::Rsp>();
+    const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegKeyApi>(req);
     ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));
 
     EXPECT_EQ(rsp.api_code, static_cast<DWORD>(STATUS_SUCCESS));

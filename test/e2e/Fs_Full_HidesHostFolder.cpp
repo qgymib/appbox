@@ -2,6 +2,7 @@
 #include "probe/ListDir.hpp"
 #include "probe/QueryAttributes.hpp"
 #include "probe/ReadFileFull.hpp"
+#include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/FsIsolationBuilder.hpp"
@@ -64,7 +65,7 @@ TEST_F(E2E_Fs, Full_HidesTheHostFolder)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(folder + L"\\packed.txt");
 
-        auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
         EXPECT_EQ(rsp.data, "packed");
     }
@@ -74,7 +75,7 @@ TEST_F(E2E_Fs, Full_HidesTheHostFolder)
         ProtocolReadFileFull::Req req;
         req.FileName = appbox::WideToUTF8(folder + L"\\host.txt");
 
-        auto rsp = ProbeReadFileFull.Call(req, GetCWD(), config).get<ProtocolReadFileFull::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
 
@@ -83,7 +84,7 @@ TEST_F(E2E_Fs, Full_HidesTheHostFolder)
         ProtocolQueryAttributes::Req req;
         req.FileName = appbox::WideToUTF8(folder + L"\\data");
 
-        auto rsp = ProbeQueryAttributes.Call(req, GetCWD(), config).get<ProtocolQueryAttributes::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         EXPECT_EQ(rsp.attributes, static_cast<DWORD>(INVALID_FILE_ATTRIBUTES));
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
@@ -94,7 +95,7 @@ TEST_F(E2E_Fs, Full_HidesTheHostFolder)
         req.path = appbox::WideToUTF8(folder);
         req.method = ProtocolListDir::Req::Method::WinAPI;
 
-        auto rsp = ProbeListDir.Call(req, GetCWD(), config).get<ProtocolListDir::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);
 
         const auto named = [&rsp](const std::string& name) {
             return std::any_of(rsp.entries.begin(), rsp.entries.end(),
@@ -113,7 +114,7 @@ TEST_F(E2E_Fs, Full_HidesTheHostFolder)
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 
-        auto rsp = ProbeCreateFileW.Call(req, GetCWD(), config).get<ProtocolCreateFileW::Rsp>();
+        auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateFileW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     }
 

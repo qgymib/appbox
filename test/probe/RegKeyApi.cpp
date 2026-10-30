@@ -82,9 +82,10 @@ const char* ApiNameOf(ApiKind api)
  * layer must not let the call act on the real registry, while the hive is the
  * write layer of the sandbox and its handle is forwarded.
  */
-static nlohmann::json ProbeRegKeyApi_Entry(const nlohmann::json& data)
+appbox::test::ProtocolRegKeyApi::Rsp appbox::test::ProbeRegKeyApi_Entry(
+    const appbox::test::ProtocolRegKeyApi::Req& request)
 {
-    auto req = data.get<appbox::test::ProtocolRegKeyApi::Req>();
+    const auto& req = request;
 
     appbox::test::ProtocolRegKeyApi::Rsp rsp;
 
@@ -130,5 +131,3 @@ static nlohmann::json ProbeRegKeyApi_Entry(const nlohmann::json& data)
     RegCloseKey(key);
     return rsp;
 }
-
-appbox::test::Probe appbox::test::ProbeRegKeyApi("RegKeyApi", ProbeRegKeyApi_Entry);

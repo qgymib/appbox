@@ -1,3 +1,4 @@
+#include "probe/Job.hpp"
 #include "utils/CommonFixture.hpp"
 #include "utils/FsBuilder.hpp"
 #include "utils/ProbeCall.hpp"
@@ -56,19 +57,16 @@ TEST_F(E2E_Launcher_Job, StartupFileRunsInTheJobOfTheRun)
 {
     const auto config = BuildConfig(GetCWD());
 
-    const auto result = ProbeCall("Job", nlohmann::json::object(), GetCWDString(), config);
+    Probe      probe(GetCWD(), config);
+    const auto rsp = probe.Call<ProtocolJob>(ProtocolJob::Req{});
 
-    ASSERT_TRUE(result.is_object()) << "the probe reported no job: " << result.dump();
+    const std::uint32_t flags = rsp.limit_flags;
 
-    const bool          in_job = result.value("in_job", false);
-    const std::uint32_t flags = result.value("limit_flags", 0u);
-    const std::uint32_t active = result.value("active_processes", 0u);
-
-    EXPECT_TRUE(in_job) << "the startup file is not a member of a job object";
+    EXPECT_TRUE(rsp.in_job) << "the startup file is not a member of a job object";
     EXPECT_NE(flags & JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, 0u)
         << "the job does not kill its processes when its last handle closes: flags " << flags;
     EXPECT_EQ(flags & JOB_OBJECT_LIMIT_BREAKAWAY_OK, 0u) << "the job allows a process to break away: flags " << flags;
     EXPECT_EQ(flags & JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK, 0u)
         << "the job allows a process to break away silently: flags " << flags;
-    EXPECT_GE(active, 1u) << "the job of the run holds no process";
+    EXPECT_GE(rsp.active_processes, 1u) << "the job of the run holds no process";
 }
