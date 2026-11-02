@@ -1,11 +1,6 @@
 #ifndef APPBOX_LAUNCHER_CONTROL_CONTROLPLANE_HPP
 #define APPBOX_LAUNCHER_CONTROL_CONTROLPLANE_HPP
 
-/*
- * The RPC headers pull in <asio.hpp>, which brings <winsock2.h> with it: the
- * winsock 2 header has to precede the <windows.h> the headers below reach
- * through `WinAPI.h`, so it is included first.
- */
 #include "RemoteAccepter.hpp"
 #include "Config.hpp"
 #include "control/PeerIdentity.hpp"

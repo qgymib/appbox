@@ -186,6 +186,18 @@ find_package(spdlog REQUIRED)
 target_link_libraries(${sandbox_name} PRIVATE spdlog::spdlog)
 target_compile_definitions(${sandbox_name} PRIVATE SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
 
+# C++17 `expected` of `common/RpcCodec.hpp`, which the RPC headers include.
+find_package(expected REQUIRED)
+target_link_libraries(${sandbox_name} PRIVATE tl::expected)
+
+# JSON document of `common/RpcCodec.hpp`, which the RPC headers include.
+find_package(nlohmann_json REQUIRED)
+target_link_libraries(${sandbox_name} PRIVATE nlohmann_json::nlohmann_json)
+
+# Socket API of the network isolation, which `hook/*.cpp` and `network/*.cpp`
+# call through the winsock 2 headers of `utils/Winsock.hpp`.
+target_link_libraries(${sandbox_name} PRIVATE ws2_32)
+
 ###############################################################################
 # Install
 ###############################################################################

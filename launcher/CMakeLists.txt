@@ -143,9 +143,6 @@ if (NOT TARGET AppBoxCommon)
 endif ()
 target_link_libraries(${PROJECT_NAME} PRIVATE AppBoxCommon)
 
-find_package(base64 REQUIRED)
-target_link_libraries(${PROJECT_NAME} PRIVATE base64)
-
 find_package(CLI11 REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE CLI11::CLI11)
 
@@ -155,6 +152,22 @@ target_link_libraries(${PROJECT_NAME} PRIVATE Detours)
 find_package(spdlog REQUIRED)
 target_link_libraries(${PROJECT_NAME} PRIVATE spdlog::spdlog)
 target_compile_options(${PROJECT_NAME} PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
+
+# C++17 `expected` of `common/RpcCodec.hpp`, which the RPC headers include.
+find_package(expected REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE tl::expected)
+
+# JSON document of `common/RpcCodec.hpp`, which the RPC headers include.
+find_package(nlohmann_json REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
+
+# Extraction of the payload archives (`utils/SelfExtraction.cpp` and
+# `utils/PatchLayer.cpp` include `common/ZipReader.hpp`). zlib must be configured
+# before libzip, because the libzip build performs its own
+# find_package(ZLIB 1.1.2 REQUIRED) and reuses the already configured target.
+find_package(ZLIB REQUIRED)
+find_package(libzip REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE libzip::zip)
 
 # Known folder resolution of `common/KnownFolder.hpp`, which the launcher copies
 # into the injected configuration (SHGetKnownFolderPath and CoTaskMemFree). The

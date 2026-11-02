@@ -4,9 +4,7 @@
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
 #endif
-#include <winsock2.h>
 #include <windows.h>
-#include <asio.hpp>
 #include <spdlog/spdlog.h>
 #include <cstddef>
 #include <cstdint>
@@ -45,8 +43,14 @@ constexpr int kResponseDecodeErrorCode = -1;
  * The session is the symmetric end of one connection: it sends requests and
  * waits for their answers, and it answers the requests its peer sends, so the
  * two ends of a pipe are interchangeable. The frame codec of `RpcCodec` is the
- * only thing the session knows about the transport; the owner of the handle
- * (an accepter or a connector) provides the IO thread the session runs on.
+ * only thing the session knows about the transport.
+ *
+ * The session owns the connected pipe handle and the thread which serves it:
+ * the thread completes the overlapped reads and writes of the connection and
+ * dispatches the requests of the peer, so the sessions of one accepter are
+ * independent of each other and of the accepter. The methods above only queue a
+ * message and signal the thread, which is why a caller is never blocked by the
+ * connection.
  *
  * The session keeps one table of the requests it sent and one table of the
  * requests it received, so a request of its peer is answered while a request of
@@ -62,7 +66,7 @@ public:
     /**
      * @brief Handler of one method a peer may call.
      *
-     * The handler runs on the IO thread of the session. It answers the request
+     * The handler runs on the thread of the session. It answers the request
      * through SendResponse() with the id it receives, and it must not block the
      * thread, because every other message of the connection waits for it.
      */
@@ -73,7 +77,7 @@ public:
      *
      * The owner of a session which keeps it alive has to learn that the
      * connection is gone, because a session of a closed pipe answers nothing.
-     * The handler runs on the IO thread of the owner, at most once, and must
+     * The handler runs on the thread of the session, at most once, and must
      * neither block nor throw.
      */
     typedef std::function<void()> ClosedHandler;
@@ -81,22 +85,21 @@ public:
     /**
      * @brief Create a session on top of a connected pipe handle.
      *
-     * The handle has to be connected already: the session neither connects nor
-     * waits for a peer, it starts reading when Start() is called.
+     * The handle has to be connected already and has to be opened for overlapped
+     * I/O: the session neither connects nor waits for a peer, it starts the
+     * overlapped reads and writes of the connection when Start() is called.
      *
-     * The session keeps the IO context of the handle alive, because the handle
-     * refers to the service of that context: a caller which keeps a session
-     * after its accepter or connector ended must not touch a context which is
-     * gone.
+     * The session takes ownership of the handle: it closes the handle when the
+     * connection ends or when the session is stopped, so a caller must not close
+     * it and must not use it afterwards. The session owns its thread as well,
+     * which is what lets it outlive the accepter or the connector it came from.
      *
-     * @param[in] pipe Connected pipe stream handle.
+     * @param[in] pipe Connected pipe handle, opened for overlapped I/O.
      * @param[in] peer_pid Process at the other end of the pipe, zero when it is
      *                     unknown.
-     * @param[in] context IO context the handle runs on.
      * @return The new session instance.
      */
-    static Ptr Create(std::shared_ptr<asio::windows::stream_handle> pipe, DWORD peer_pid,
-                      std::shared_ptr<asio::io_context> context);
+    static Ptr Create(HANDLE pipe, DWORD peer_pid);
 
     ~RemoteSession();
 
@@ -222,7 +225,12 @@ public:
     DWORD PeerProcessIdOfRequest(std::uint64_t request_id) const;
 
     /**
-     * @brief Start the asynchronous read loop of the session.
+     * @brief Start the thread which reads, writes and dispatches for the session.
+     *
+     * The call is idempotent: a session which is started already keeps the
+     * thread it has. A session whose events cannot be created or whose thread
+     * cannot be started reports the reason and serves nothing, which ends it the
+     * way a closed connection does.
      */
     void Start();
 

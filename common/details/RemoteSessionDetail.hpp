@@ -3,12 +3,13 @@
 
 /*
  * Implementation of `common/RemoteSession.hpp`: the internal state of the
- * session, the frame handling on the IO thread of its owner, the two request
- * tables and the members of the class. The header is included by the public
- * header and is not meant to be included on its own.
+ * session, the thread which completes the overlapped reads and writes of its
+ * pipe, the two request tables and the members of the class. The header is
+ * included by the public header and is not meant to be included on its own.
  */
 
 #include "RemoteSession.hpp"
+#include "RemoteThread.hpp"
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -16,7 +17,9 @@
 #include <cstring>
 #include <list>
 #include <map>
+#include <memory>
 #include <mutex>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -62,36 +65,172 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
     typedef std::map<std::uint64_t, IncomingRequest::Ptr> IncomingRequestMap;
     typedef std::map<std::string, MethodHandler>          MethodHandlerMap;
 
-    Data() = default;
+    /**
+     * @brief Create the events the thread of the session waits on.
+     *
+     * The events are automatic reset events: a wait consumes the signal, so the
+     * thread which signals one never has to know whether the thread of the
+     * session already noticed the previous one.
+     */
+    Data()
+    {
+        read_event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        write_event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        write_queued_event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        stop_event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    }
 
     ~Data()
     {
         Stop();
+
+        /* The thread ended above, so no completion of the pipe uses them any more. */
+        detail::CloseHandleIfValid(read_event);
+        detail::CloseHandleIfValid(write_event);
+        detail::CloseHandleIfValid(write_queued_event);
+        detail::CloseHandleIfValid(stop_event);
     }
 
     /**
-     * @brief Start the next asynchronous read into the receive buffer.
+     * @brief The loop of the thread which serves the connection.
+     *
+     * One thread completes both directions: it waits on the event of the read,
+     * on the event which reports that a message was queued, on the event of the
+     * write and on the stop event, so the reads and the writes of the
+     * connection are serialized without a lock and a caller which queues a
+     * message never waits for the pipe.
+     *
+     * A read which ends the connection leaves the loop through
+     * OnConnectionEnded(); a stop ends it through the stop event, which the
+     * owner sets with Close() or Stop().
      */
-    void WantRead()
+    void Run()
     {
-        auto self = shared_from_this();
-        auto fn = [self](const asio::error_code& ec, std::size_t n) {
-            if (ec)
-            {
-                self->OnConnectionEnded(ec.value(), "the connection to the peer ended: " + ec.message());
-                return;
+        if (!PostRead())
+        {
+            CloseHandleNow();
+            return;
+        }
+
+        for (;;)
+        {
+            const HANDLE handles[kWaitCount] = { read_event, write_queued_event, write_event, stop_event };
+            const DWORD  index = ::WaitForMultipleObjects(kWaitCount, handles, FALSE, INFINITE);
+
+            if (index == detail::kWaitObjectFirst + 3)
+            { /* The owner stopped the session. */
+                break;
             }
 
-            const size_t old_sz = self->recv_data.size();
-            const size_t new_sz = old_sz + n;
-            self->recv_data.resize(new_sz);
-            std::memcpy(self->recv_data.data() + old_sz, self->recv_buff.data(), n);
+            if (index == detail::kWaitObjectFirst)
+            {
+                if (!OnReadCompleted())
+                {
+                    break;
+                }
+                continue;
+            }
 
-            self->OnRead();
-            self->WantRead();
-        };
+            if (index == detail::kWaitObjectFirst + 1)
+            { /* A caller queued a message. */
+                StartNextWrite();
+                continue;
+            }
 
-        asio::async_read(*pipe, asio::buffer(recv_buff), asio::transfer_at_least(1), fn);
+            if (index == detail::kWaitObjectFirst + 2)
+            {
+                if (!OnWriteCompleted())
+                {
+                    break;
+                }
+                continue;
+            }
+
+            /* The wait itself failed, which only a broken handle causes. */
+            OnConnectionEnded(static_cast<int>(ERROR_INVALID_HANDLE), "the wait for the pipe of the session failed");
+            break;
+        }
+
+        CloseHandleNow();
+    }
+
+    /**
+     * @brief Issue the next overlapped read into the receive buffer.
+     * @return true when a read is in flight or completed, otherwise false after
+     *         the connection was reported as ended.
+     */
+    bool PostRead()
+    {
+        const HANDLE pipe = Handle();
+        if (pipe == INVALID_HANDLE_VALUE)
+        {
+            return false;
+        }
+
+        std::memset(&read_ov, 0, sizeof(read_ov));
+        read_ov.hEvent = read_event;
+
+        DWORD transferred = 0;
+        if (::ReadFile(pipe, recv_buff.data(), static_cast<DWORD>(recv_buff.size()), &transferred, &read_ov))
+        {
+            /* The read completed at once, its event reports the completion. */
+            return true;
+        }
+
+        const DWORD error = ::GetLastError();
+        if (error == ERROR_IO_PENDING)
+        {
+            return true;
+        }
+
+        OnConnectionEnded(static_cast<int>(error), "the read of the pipe failed: " + detail::DescribeWin32Error(error));
+        return false;
+    }
+
+    /**
+     * @brief Consume one completed read and start the next one.
+     * @return true when the session keeps serving, false when the connection
+     *         ended.
+     */
+    bool OnReadCompleted()
+    {
+        const HANDLE pipe = Handle();
+        if (pipe == INVALID_HANDLE_VALUE)
+        {
+            return false;
+        }
+
+        DWORD transferred = 0;
+        if (!::GetOverlappedResult(pipe, &read_ov, &transferred, FALSE))
+        {
+            const DWORD error = ::GetLastError();
+            OnConnectionEnded(static_cast<int>(error),
+                              "the connection to the peer ended: " + detail::DescribeWin32Error(error));
+            return false;
+        }
+
+        if (transferred == 0)
+        {
+            /* A pipe which delivers no byte at all was closed by the peer. */
+            OnConnectionEnded(static_cast<int>(ERROR_BROKEN_PIPE), "the peer closed the connection");
+            return false;
+        }
+
+        const size_t old_sz = recv_data.size();
+        const size_t new_sz = old_sz + transferred;
+        recv_data.resize(new_sz);
+        std::memcpy(recv_data.data() + old_sz, recv_buff.data(), transferred);
+
+        OnRead();
+
+        /*
+         * The answers which the handlers queued leave before the next read is
+         * issued, so a peer which floods the connection cannot starve them: the
+         * write is overlapped and runs while the next read is pending.
+         */
+        StartNextWrite();
+
+        return PostRead();
     }
 
     /**
@@ -118,8 +257,8 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
             if (status == FrameStatus::ProtocolError)
             {
                 SPDLOG_ERROR("[HANDLE: {}] {}", NativeHandle(), error);
-                /* Report the failure instead of throwing out of the asio callback. */
-                OnConnectionEnded(asio::error::invalid_argument, "the peer sent an invalid frame: " + error);
+                /* Report the failure instead of leaving the loop with an exception. */
+                OnConnectionEnded(static_cast<int>(ERROR_INVALID_DATA), "the peer sent an invalid frame: " + error);
                 return;
             }
 
@@ -132,7 +271,7 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
      *
      * The connection of a session is its only link to the peer, so an answer
      * cannot arrive any more: the pending requests are failed and the pipe is
-     * closed, which ends the read loop.
+     * closed, which ends the loop of the thread.
      *
      * @param[in] code Code of the failure.
      * @param[in] message Description of the failure.
@@ -189,7 +328,7 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
      * A payload which carries a method is a request of the peer and is
      * dispatched, a payload which carries a result or an error is the answer of
      * a request of this session, and everything else is answered as a malformed
-     * request. Nothing is thrown out of the read loop.
+     * request. Nothing is thrown out of the loop of the thread.
      *
      * @param[in] payload Payload of one decoded frame.
      */
@@ -375,7 +514,9 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
      * @brief Queue one payload for the peer, the frame header is prepended.
      *
      * The payload is written as it is, so a caller which sends a request of its
-     * own keeps its table entry: the session only frames and queues.
+     * own keeps its table entry: the session only frames and queues. The call
+     * does not write anything itself, it signals the thread of the session,
+     * which is why it may be made from any thread without blocking it.
      *
      * @param[in] data Payload to write.
      */
@@ -396,7 +537,107 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
             send_queue.push_back(std::move(data));
         }
 
-        WantWrite();
+        if (write_queued_event != nullptr)
+        {
+            ::SetEvent(write_queued_event);
+        }
+    }
+
+    /**
+     * @brief Issue the write of the message at the front of the queue.
+     *
+     * A message is only issued when no other write is in flight, so the
+     * `OVERLAPPED` of the write is never reused before its completion. The call
+     * runs on the thread of the session.
+     */
+    void StartNextWrite()
+    {
+        MsgPtr message;
+        {
+            std::lock_guard<std::mutex> lock(write_mutex);
+            if (in_write || send_queue.empty())
+            {
+                return;
+            }
+
+            message = send_queue.front();
+            in_write = true;
+        }
+
+        const HANDLE pipe = Handle();
+        if (pipe == INVALID_HANDLE_VALUE)
+        {
+            /* Nothing can be written any more: the queue is released instead of hanging. */
+            CompleteWrite();
+            return;
+        }
+
+        std::memset(&write_ov, 0, sizeof(write_ov));
+        write_ov.hEvent = write_event;
+
+        DWORD transferred = 0;
+        if (::WriteFile(pipe, message->data(), static_cast<DWORD>(message->size()), &transferred, &write_ov))
+        {
+            /* The write completed at once, its event reports the completion. */
+            return;
+        }
+
+        const DWORD error = ::GetLastError();
+        if (error == ERROR_IO_PENDING)
+        {
+            return;
+        }
+
+        SPDLOG_DEBUG("[HANDLE: {}] write pipe failed: {}", NativeHandle(), error);
+        CompleteWrite();
+    }
+
+    /**
+     * @brief Consume one completed write and issue the next queued message.
+     * @return true when the session keeps serving, false when the connection
+     *         ended.
+     */
+    bool OnWriteCompleted()
+    {
+        const HANDLE pipe = Handle();
+        if (pipe == INVALID_HANDLE_VALUE)
+        {
+            CompleteWrite();
+            return false;
+        }
+
+        DWORD transferred = 0;
+        if (!::GetOverlappedResult(pipe, &write_ov, &transferred, FALSE))
+        {
+            SPDLOG_DEBUG("[HANDLE: {}] write pipe failed: {}", NativeHandle(), ::GetLastError());
+            CompleteWrite();
+            return true;
+        }
+
+        CompleteWrite();
+        StartNextWrite();
+        return true;
+    }
+
+    /**
+     * @brief Release the message at the front of the queue after a write.
+     *
+     * The wait for the pending writes is woken up, so an owner which drains the
+     * session before it closes the connection learns that the message left the
+     * queue, whatever the outcome of the write was.
+     */
+    void CompleteWrite()
+    {
+        {
+            std::lock_guard<std::mutex> lock(write_mutex);
+            in_write = false;
+            if (!send_queue.empty())
+            {
+                send_queue.pop_front();
+            }
+        }
+
+        write_cv.notify_all();
     }
 
     /**
@@ -413,7 +654,7 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
     {
         out_id = 0;
 
-        if (ended.load() || pipe == nullptr)
+        if (ended.load() || Handle() == INVALID_HANDLE_VALUE)
         {
             /* Fail fast instead of keeping a caller which can never be answered. */
             std::promise<RemoteResult> promise;
@@ -545,58 +786,36 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
     }
 
     /**
-     * @brief Start an asynchronous write when a message is queued and no
-     *        write is in flight.
-     */
-    void WantWrite()
-    {
-        std::lock_guard<std::mutex> lock(write_mutex);
-        if (in_write)
-        {
-            return;
-        }
-        if (send_queue.empty())
-        {
-            return;
-        }
-
-        auto self = shared_from_this();
-        auto msg = send_queue.front();
-
-        self->in_write = true;
-        asio::async_write(*pipe, asio::buffer(*msg), [self](const asio::error_code& ec, std::size_t) {
-            {
-                std::lock_guard<std::mutex> guard(self->write_mutex);
-                self->in_write = false;
-                self->send_queue.pop_front();
-            }
-            self->write_cv.notify_all();
-
-            if (ec)
-            { /* Write failed */
-                SPDLOG_DEBUG("[HANDLE: {}] write pipe failed: {}", self->NativeHandle(), ec.message());
-                return;
-            }
-
-            self->WantWrite();
-        });
-    }
-
-    /**
      * @brief Close the pipe of the session.
+     *
+     * The pending read and write are cancelled, so their completions report the
+     * end of the connection, and the thread of the session is told to leave its
+     * loop. The handle itself is closed by that thread, because it is the only
+     * one which may still hold a completion of it.
      */
     void Close()
     {
-        if (!pipe)
+        const HANDLE pipe = Handle();
+        if (pipe == INVALID_HANDLE_VALUE)
         {
             return;
         }
 
-        asio::error_code ec;
-        pipe->close(ec);
-        if (ec)
+        ::CancelIoEx(pipe, nullptr);
+
+        if (stop_event != nullptr)
         {
-            SPDLOG_DEBUG("[HANDLE: {}] close pipe: {}", NativeHandle(), ec.message());
+            ::SetEvent(stop_event);
+        }
+
+        /*
+         * A session which never started has no thread which could close the
+         * handle, so it is released here: the peer learns that the connection is
+         * gone exactly like it does for a session which ran.
+         */
+        if (!started.load())
+        {
+            CloseHandleNow();
         }
     }
 
@@ -634,11 +853,70 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
 
     /**
      * @brief Native handle of the pipe, for the log.
-     * @return The handle, zero when the session has none.
+     * @return The handle, `INVALID_HANDLE_VALUE` when the session has none.
      */
     void* NativeHandle() const
     {
-        return pipe != nullptr ? static_cast<void*>(pipe->native_handle()) : nullptr;
+        const HANDLE pipe = Handle();
+        return pipe == INVALID_HANDLE_VALUE ? nullptr : static_cast<void*>(pipe);
+    }
+
+    /**
+     * @brief The pipe handle the session serves.
+     * @return The handle, `INVALID_HANDLE_VALUE` when it was closed.
+     */
+    HANDLE Handle() const
+    {
+        return pipe_handle.load();
+    }
+
+    /**
+     * @brief Close the pipe handle of the session.
+     *
+     * The handle is exchanged before it is closed, so two paths which end the
+     * session never close it twice.
+     */
+    void CloseHandleNow()
+    {
+        HANDLE handle = pipe_handle.exchange(INVALID_HANDLE_VALUE);
+        detail::CloseHandleIfValid(handle);
+    }
+
+    /**
+     * @brief Start the thread which serves the connection.
+     */
+    void Start()
+    {
+        if (started.exchange(true))
+        {
+            SPDLOG_WARN("the session is started already");
+            return;
+        }
+
+        if (read_event == nullptr || write_event == nullptr || write_queued_event == nullptr || stop_event == nullptr)
+        {
+            SPDLOG_ERROR("the events of the session cannot be created, the connection serves nothing");
+            started = false;
+            CloseHandleNow();
+            return;
+        }
+
+        try
+        {
+            /*
+             * The thread holds the state of the session, so a session which the
+             * last caller releases while its thread still runs is not destroyed
+             * under that thread.
+             */
+            auto self = shared_from_this();
+            thread = std::thread([self]() { self->Run(); });
+        }
+        catch (const std::exception& e)
+        {
+            SPDLOG_ERROR("the thread of the session cannot be created: {}", e.what());
+            started = false;
+            CloseHandleNow();
+        }
     }
 
     /**
@@ -652,25 +930,59 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
         }
 
         Close();
+
+        if (thread.joinable() && std::this_thread::get_id() != thread.get_id())
+        {
+            thread.join();
+            /* The thread closed the handle when it left its loop, this is a guard. */
+            CloseHandleNow();
+        }
+        else
+        {
+            /*
+             * The thread is detached when the caller runs on it: it closes the
+             * handle when it leaves its loop. A session which never started has
+             * no thread which could do that, so it releases the handle here.
+             */
+            detail::JoinOrDetach(thread);
+            if (!started.load())
+            {
+                CloseHandleNow();
+            }
+        }
+
         NotifyClosed();
     }
 
-    /*
-     * The context is declared before the handle, so the handle is released
-     * first: the service of the context is what the handle refers to.
-     */
-    std::shared_ptr<asio::io_context>             context;      /* Context the handle runs on, kept alive */
-    std::shared_ptr<asio::windows::stream_handle> pipe;         /* Named pipe */
-    DWORD                                         peer_pid = 0; /* Process at the other end */
+    /* Number of the events the thread of the session waits on. */
+    static constexpr DWORD kWaitCount = 4;
+
+    /* Size of the buffer one overlapped read fills, in bytes. */
+    static constexpr std::size_t kReadBufferSize = 4096;
+
+    std::atomic<HANDLE> pipe_handle{ INVALID_HANDLE_VALUE }; /* Named pipe, owned by the session */
+    DWORD               peer_pid = 0;                        /* Process at the other end */
+
+    HANDLE read_event = nullptr;         /* Signalled when the pending read completed */
+    HANDLE write_event = nullptr;        /* Signalled when the in-flight write completed */
+    HANDLE write_queued_event = nullptr; /* Set by a caller which queued a message */
+    HANDLE stop_event = nullptr;         /* Set by Close() and Stop() */
+
+    OVERLAPPED read_ov = {};  /* Overlapped state of the read in flight */
+    OVERLAPPED write_ov = {}; /* Overlapped state of the write in flight */
+
+    std::thread      thread;           /* Thread which serves the connection */
+    std::atomic_bool started{ false }; /* The thread was started */
+    std::atomic_bool ended{ false };   /* The connection ended */
 
     std::size_t max_request_size = kMaxRpcPayloadSize; /* Largest request which is answered */
 
-    std::list<MsgPtr>         send_queue;       /* Send queue */
-    std::vector<uint8_t>      recv_data;        /* Recv data */
-    std::array<uint8_t, 4096> recv_buff;        /* Recv cache */
-    bool                      in_write = false; /* During write */
-    std::mutex                write_mutex;      /* Send queue and write state lock */
-    std::condition_variable   write_cv;         /* Signals a finished write */
+    std::list<MsgPtr>                    send_queue;       /* Send queue */
+    std::vector<uint8_t>                 recv_data;        /* Recv data */
+    std::array<uint8_t, kReadBufferSize> recv_buff = {};   /* Recv cache */
+    bool                                 in_write = false; /* During write */
+    std::mutex                           write_mutex;      /* Send queue and write state lock */
+    std::condition_variable              write_cv;         /* Signals a finished write */
 
     MethodHandlerMap method_handlers; /* Registered methods */
     std::mutex       method_mutex;    /* Method table lock */
@@ -687,8 +999,6 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
     std::condition_variable inflight_cv;       /* Signals an answered request */
     std::size_t             inflight = 0;      /* Requests which are not answered */
     std::atomic_uint64_t    uid_gen{ 0 };      /* Id generator of the incoming requests */
-
-    std::atomic_bool ended{ false }; /* The connection ended */
 };
 
 /* Definition of the contract on the declaration. */
@@ -707,12 +1017,10 @@ inline RemoteSession::~RemoteSession()
 }
 
 /* Definition of the contract on the declaration. */
-inline RemoteSession::Ptr RemoteSession::Create(std::shared_ptr<asio::windows::stream_handle> pipe, DWORD peer_pid,
-                                                std::shared_ptr<asio::io_context> context)
+inline RemoteSession::Ptr RemoteSession::Create(HANDLE pipe, DWORD peer_pid)
 {
     Ptr session(new RemoteSession);
-    session->data_->pipe = std::move(pipe);
-    session->data_->context = std::move(context);
+    session->data_->pipe_handle.store(pipe);
     session->data_->peer_pid = peer_pid;
 
     return session;
@@ -796,7 +1104,7 @@ inline DWORD RemoteSession::PeerProcessIdOfRequest(std::uint64_t request_id) con
 /* Definition of the contract on the declaration. */
 inline void RemoteSession::Start()
 {
-    data_->WantRead();
+    data_->Start();
 }
 
 /* Definition of the contract on the declaration. */

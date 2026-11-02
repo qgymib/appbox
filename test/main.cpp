@@ -1,7 +1,6 @@
 #include "WinAPI.h" /* Must be included before any other headers. */
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
-#include <base64.hpp>
 #include "utils/Coredump.hpp"
 #include "utils/NameResolutionProbe.hpp"
 #include "utils/TestLog.hpp"

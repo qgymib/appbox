@@ -239,6 +239,14 @@ find_package(spdlog REQUIRED)
 target_link_libraries(AppBox PRIVATE spdlog::spdlog)
 target_compile_options(AppBox PRIVATE -DSPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
 
+# C++17 `expected` of `common/RpcCodec.hpp`, which the RPC headers include.
+find_package(expected REQUIRED)
+target_link_libraries(AppBox PRIVATE tl::expected)
+
+# JSON document of `common/RpcCodec.hpp`, which the RPC headers include.
+find_package(nlohmann_json REQUIRED)
+target_link_libraries(AppBox PRIVATE nlohmann_json::nlohmann_json)
+
 # Binary API of Detours, which writes the marker of a launcher into the payload
 # image (DetourBinaryOpen and friends). The launcher and the injection modules
 # link the same library.

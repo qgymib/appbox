@@ -16,8 +16,8 @@ namespace
  * The order is the alphabetical one of the dialog, so a change of the list or
  * of its order is a deliberate change of the dialog and not an accident.
  */
-const std::vector<std::string> kExpectedDependencies = { "asio",          "Detours", "expected",  "libzip",
-                                                         "nlohmann_json", "spdlog",  "wxWidgets", "zlib" };
+const std::vector<std::string> kExpectedDependencies = { "Detours", "expected",  "libzip", "nlohmann_json",
+                                                         "spdlog",  "wxWidgets", "zlib" };
 
 /**
  * @brief Check whether a text is matched by a regular expression as a whole.

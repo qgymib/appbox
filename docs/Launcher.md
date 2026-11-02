@@ -256,13 +256,16 @@ accepted a connection.
 
 The master instance keeps at least one instance of the pipe open for its whole
 life and creates the next instance once a connection was established
-(`RemoteAccepter::AcceptNext()`), so the name of the sandbox never disappears while
+(`RemoteAccepter::Run()`), so the name of the sandbox never disappears while
 the sandbox runs. A transient failure of that creation, which is a machine out of
 resources while an instance still serves, is retried after 50, 100 and 200 ms; a
 failure which leaves no instance at all ends the run, because no secondary
 instance could reach the sandbox any more. The failure is reported to the control
 thread instead of being thrown on the thread of the pipe, so the run ends in
-order.
+order. The accept loop runs on a thread of its own, and every accepted connection
+is served by a session which owns the pipe handle and a thread of its own
+(`RemoteSession`), so a client which blocks its session blocks no other client
+and the accepter is never the thread which answers a request.
 
 A secondary instance writes no state of the sandbox: it creates no `data`
 directory, extracts no payload, releases no sandbox module, rebuilds no registry

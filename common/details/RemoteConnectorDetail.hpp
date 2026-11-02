@@ -51,45 +51,16 @@ inline bool IsRetryableConnectorConnectError(DWORD error)
  */
 struct RemoteConnector::Data
 {
-    Data() : io_context(std::make_shared<asio::io_context>())
-    {
-    }
+    Data() = default;
 
     ~Data()
     {
-        Stop();
-    }
-
-    /**
-     * @brief End the IO thread and release the session which runs on it.
-     *
-     * The call is idempotent, so the destructor may repeat it.
-     */
-    void Stop()
-    {
-        if (io_context)
-        {
-            io_context->stop();
-        }
-
-        if (thread.joinable())
-        {
-            if (std::this_thread::get_id() == thread.get_id())
-            {
-                thread.detach();
-            }
-            else
-            {
-                thread.join();
-            }
-        }
-
         /*
-         * The session goes before the context: its handle refers to the context
-         * the IO thread of the connector ran on.
+         * The session owns the handle and the thread which serves it, so
+         * releasing it here closes the connection. A session which the caller
+         * keeps alive is not affected.
          */
         session.reset();
-        io_context.reset();
     }
 
     /**
@@ -138,12 +109,6 @@ struct RemoteConnector::Data
         {
             SPDLOG_WARN("the connector is connected already");
             return session;
-        }
-
-        if (!io_context)
-        {
-            SPDLOG_ERROR("the connector is stopped");
-            return nullptr;
         }
 
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
@@ -214,28 +179,12 @@ struct RemoteConnector::Data
             SPDLOG_WARN("cannot query the process of the server: {}", GetLastError());
         }
 
-        std::shared_ptr<asio::windows::stream_handle> handle;
-        try
-        {
-            handle = std::make_shared<asio::windows::stream_handle>(*io_context, pipe);
-        }
-        catch (const std::exception& e)
-        {
-            SPDLOG_ERROR("failed to create the pipe stream: {}", e.what());
-            CloseHandle(pipe);
-            return nullptr;
-        }
-
-        session = RemoteSession::Create(handle, server_pid, io_context);
-        session->Start();
-
         /*
-         * The thread does not log when it ends: the connector may be destroyed
-         * by a static destructor of the process, which runs after the logger of
-         * the process is gone.
+         * The session takes ownership of the handle and starts the thread which
+         * serves it, so a caller may send a request as soon as the call returns.
          */
-        auto context = io_context;
-        thread = std::thread([context]() { context->run(); });
+        session = RemoteSession::Create(pipe, server_pid);
+        session->Start();
 
         return session;
     }
@@ -246,11 +195,9 @@ struct RemoteConnector::Data
     /* Upper bound of the delay between two connection attempts, in milliseconds. */
     static constexpr std::uint32_t kMaxRetryDelayMs = 200;
 
-    std::string                       pipe_path;      /* Named pipe path */
-    std::shared_ptr<asio::io_context> io_context;     /* IO context of the IO thread */
-    std::thread                       thread;         /* IO thread */
-    RemoteSession::Ptr                session;        /* Session of the connection */
-    DWORD                             server_pid = 0; /* Process of the server */
+    std::string        pipe_path;      /* Named pipe path */
+    RemoteSession::Ptr session;        /* Session of the connection */
+    DWORD              server_pid = 0; /* Process of the server */
 };
 
 /* Definition of the contract on the declaration. */
@@ -261,10 +208,6 @@ inline RemoteConnector::RemoteConnector() : data_(std::make_shared<Data>())
 /* Definition of the contract on the declaration. */
 inline RemoteConnector::~RemoteConnector()
 {
-    if (data_)
-    {
-        data_->Stop();
-    }
     data_.reset();
 }
 

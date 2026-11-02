@@ -548,11 +548,16 @@ add_dependencies(AppBoxTests
 ###############################################################################
 target_link_libraries(AppBoxTests PRIVATE AppBoxCommon)
 
-find_package(base64 REQUIRED)
-target_link_libraries(AppBoxTests PRIVATE base64)
-
 # The probe of the name resolution calls the DNS client of the system.
 target_link_libraries(AppBoxTests PRIVATE dnsapi)
+
+# C++17 `expected` of `common/RpcCodec.hpp`, which the RPC headers include.
+find_package(expected REQUIRED)
+target_link_libraries(AppBoxTests PRIVATE tl::expected)
+
+# Socket API of the helper servers and the probe of the cases, which the server
+# starts for the process before it serves its port.
+target_link_libraries(AppBoxTests PRIVATE ws2_32)
 
 # The font probe and the helper which builds a test font use the font API of the
 # system (EnumFontFamiliesExW, CreateFontIndirectW, AddFontResourceExW).

@@ -1277,9 +1277,8 @@ typedef NTSTATUS(NTAPI* T_NtSetValueKey)(
 
 /*
  * The name resolution hints are declared here only while the winsock 2 headers
- * are not part of the translation unit: a loader translation unit includes them
- * through asio, which defines _WINSOCK2API_ and brings the real declarations
- * with it.
+ * are not part of the translation unit: a translation unit which includes
+ * <winsock2.h> defines _WINSOCK2API_ and carries the real declarations.
  */
 #ifndef _WINSOCK2API_
 

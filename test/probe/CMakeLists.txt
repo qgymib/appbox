@@ -127,6 +127,18 @@ target_link_libraries(${probe_name} PRIVATE CLI11::CLI11)
 find_package(spdlog REQUIRED)
 target_link_libraries(${probe_name} PRIVATE spdlog::spdlog)
 
+# C++17 `expected` of `common/RpcCodec.hpp`, which the RPC headers include.
+find_package(expected REQUIRED)
+target_link_libraries(${probe_name} PRIVATE tl::expected)
+
+# JSON document of `common/RpcCodec.hpp`, which the RPC headers include.
+find_package(nlohmann_json REQUIRED)
+target_link_libraries(${probe_name} PRIVATE nlohmann_json::nlohmann_json)
+
+# Socket API of the network probes (`ResolveName.cpp` and `SocketTraffic.cpp`),
+# which is also where the winsock library is started for the process.
+target_link_libraries(${probe_name} PRIVATE ws2_32)
+
 # The name resolution probe calls the DNS client of the system (DnsQuery_*), the
 # font probe the font API (AddFontResourceExW, EnumFontFamiliesExW), the console
 # probe the window API (IsWindowVisible) and the registry probes the registry
