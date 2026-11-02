@@ -372,6 +372,164 @@ TEST(Unit_CaptureWizardModel, WaitsForTheBaselineOfTheSnapshotCapture)
 }
 
 /**
+ * @brief The first step of a wizard has nothing to go back to, so the button
+ *        which retreats stays greyed on it, on every machine.
+ */
+TEST(Unit_CaptureWizardModel, RefusesToRetreatFromTheFirstStep)
+{
+    appbox::CaptureWizardModel model(ReadyRequirements());
+
+    EXPECT_EQ(model.Stage(), appbox::CaptureWizardStage::Mode);
+    EXPECT_FALSE(model.CanRetreat());
+    EXPECT_FALSE(model.Retreat());
+    EXPECT_EQ(model.Stage(), appbox::CaptureWizardStage::Mode);
+
+    /* The first step is the one both modes share, so a mode which is picked anew keeps the refusal. */
+    ASSERT_TRUE(model.SelectMode(appbox::CaptureMode::Snapshot));
+    EXPECT_FALSE(model.CanRetreat());
+    EXPECT_FALSE(model.Retreat());
+    EXPECT_EQ(model.Stage(), appbox::CaptureWizardStage::Mode);
+}
+
+/**
+ * @brief No step of a realtime capture goes back: the recording runs a work of
+ *        its own, and the steps which follow it write the workspaces.
+ */
+TEST(Unit_CaptureWizardModel, WalksBackTheStepsOfARealtimeCapture)
+{
+    appbox::CaptureWizardModel model(ReadyRequirements());
+
+    ASSERT_TRUE(model.Advance());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::Recording);
+
+    /* The step of the recording runs its work on its own, so it never goes back. */
+    EXPECT_FALSE(model.CanRetreat());
+    EXPECT_FALSE(model.Retreat());
+    EXPECT_EQ(model.Stage(), appbox::CaptureWizardStage::Recording);
+
+    model.SetInstallationDone(true);
+    ASSERT_TRUE(model.Advance());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::Review);
+
+    /* The workspaces are written on the last step, which cannot be taken back. */
+    EXPECT_FALSE(model.CanRetreat());
+    EXPECT_FALSE(model.Retreat());
+    EXPECT_EQ(model.Stage(), appbox::CaptureWizardStage::Review);
+
+    model.MarkFillComplete();
+    ASSERT_TRUE(model.Advance());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::Done);
+
+    /* A capture which is over has nothing to go back to either. */
+    EXPECT_TRUE(model.IsFinished());
+    EXPECT_FALSE(model.CanRetreat());
+    EXPECT_FALSE(model.Retreat());
+    EXPECT_EQ(model.Stage(), appbox::CaptureWizardStage::Done);
+}
+
+/**
+ * @brief The steps of a snapshot capture which pick the source of the baseline
+ *        and the file it is kept in go back, and the steps which run the
+ *        capture, which write the workspaces and which end it do not.
+ */
+TEST(Unit_CaptureWizardModel, WalksBackTheStepsOfASnapshotCapture)
+{
+    appbox::CaptureWizardModel model(ReadyRequirements());
+
+    ASSERT_TRUE(model.SelectMode(appbox::CaptureMode::Snapshot));
+    ASSERT_TRUE(model.Advance());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::Snapshot);
+    EXPECT_FALSE(model.CanRetreat()) << "the source of the baseline follows the first step";
+
+    ASSERT_TRUE(model.Advance());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::SnapshotFile);
+    model.SetSnapshotPath(L"C:\\capture\\baseline.snapshot");
+
+    /* The file of the baseline points at the source which was picked before it. */
+    EXPECT_TRUE(model.CanRetreat());
+    ASSERT_TRUE(model.Retreat());
+    EXPECT_EQ(model.Stage(), appbox::CaptureWizardStage::Snapshot);
+    EXPECT_EQ(model.StateOf(appbox::CaptureWizardStage::Snapshot), appbox::CaptureStageState::Current);
+    EXPECT_EQ(model.StateOf(appbox::CaptureWizardStage::SnapshotFile), appbox::CaptureStageState::Pending);
+    EXPECT_TRUE(model.CanAdvance());
+    EXPECT_EQ(model.AdvanceLabel(), L"Next");
+
+    /* The step which was left behind keeps what the user set, so it is asked for again, not repeated. */
+    ASSERT_TRUE(model.Advance());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::SnapshotFile);
+    EXPECT_EQ(model.SnapshotPath(), L"C:\\capture\\baseline.snapshot");
+    EXPECT_TRUE(model.CanAdvance());
+
+    /* The step of the baseline runs the source, so it never goes back. */
+    ASSERT_TRUE(model.Advance());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::Baseline);
+    EXPECT_FALSE(model.CanRetreat());
+    EXPECT_FALSE(model.Retreat());
+    EXPECT_EQ(model.Stage(), appbox::CaptureWizardStage::Baseline);
+
+    /*
+     * The baseline was read, so the wizard walks on, and the step of the
+     * installation keeps the wizard where it is as well: the step it follows is
+     * the baseline which ran the source, and the state which was read is not
+     * what a second visit would produce.
+     */
+    model.SetBaselineReady(true);
+    ASSERT_TRUE(model.Advance());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::Installation);
+    EXPECT_FALSE(model.CanRetreat());
+    EXPECT_FALSE(model.Retreat());
+    EXPECT_EQ(model.Stage(), appbox::CaptureWizardStage::Installation);
+    EXPECT_TRUE(model.IsBaselineReady());
+
+    model.SetInstallationDone(true);
+    ASSERT_TRUE(model.Advance());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::Comparison);
+    EXPECT_FALSE(model.CanRetreat()) << "the comparison runs its work on its own";
+
+    model.MarkAnalysisReady();
+    ASSERT_TRUE(model.Advance());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::Review);
+    EXPECT_FALSE(model.CanRetreat());
+
+    model.MarkFillComplete();
+    ASSERT_TRUE(model.Advance());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::Done);
+    EXPECT_FALSE(model.CanRetreat());
+    EXPECT_FALSE(model.Retreat());
+    EXPECT_EQ(model.Stage(), appbox::CaptureWizardStage::Done);
+}
+
+/**
+ * @brief The step which names the file of the baseline goes back to the source
+ *        of the baseline, which starts the capture over from there.
+ */
+TEST(Unit_CaptureWizardModel, DropsTheSourceWhenTheBaselineStepIsLeftBehind)
+{
+    appbox::CaptureWizardModel model(ReadyRequirements());
+
+    ASSERT_TRUE(model.SelectMode(appbox::CaptureMode::Snapshot));
+    ASSERT_TRUE(model.Advance());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::Snapshot);
+    ASSERT_TRUE(model.SelectBaselineSource(appbox::SnapshotBaselineSource::Existing));
+    ASSERT_TRUE(model.Advance());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::SnapshotFile);
+    model.SetSnapshotPath(L"C:\\capture\\baseline.snapshot");
+
+    ASSERT_TRUE(model.Retreat());
+    ASSERT_EQ(model.Stage(), appbox::CaptureWizardStage::Snapshot);
+
+    /*
+     * The source is still the one the user picked, and picking it anew is what
+     * drops the file which names it: the step reports a source, not a capture.
+     */
+    EXPECT_EQ(model.BaselineSource(), appbox::SnapshotBaselineSource::Existing);
+    EXPECT_EQ(model.SnapshotPath(), L"C:\\capture\\baseline.snapshot");
+    ASSERT_TRUE(model.SelectBaselineSource(appbox::SnapshotBaselineSource::New));
+    EXPECT_TRUE(model.SnapshotPath().empty());
+    EXPECT_FALSE(model.IsBaselineReady());
+}
+
+/**
  * @brief The prerequisites are described the way the wizard shows them: the
  *        name of each one and whether the machine meets it.
  */

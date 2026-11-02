@@ -69,6 +69,20 @@ step is over; the `Cancel` button drops the capture while its work is being
 prepared and is greyed while the workspaces are written, because a capture which
 reached that point cannot be taken back.
 
+The `Back` button returns to the step which is immediately before the one the
+dialog shows, and only when that step is one the user can return to. It is
+greyed on the first step, which has nothing behind it, and on the steps which run
+a work of the capture: the recording, the baseline, the comparison and the
+analysis and the fill keep the dialog where they are, because a step which is
+entered again asks its work again and the capture would run twice, and the write
+of the workspaces cannot be taken back at all. Both rules leave the step which
+names the file of the baseline as the one the dialog returns from, because it is
+the only step which follows a step the user set something on; the step of the
+source of the baseline follows the first step and the step of the installation
+follows the baseline. A step which is returned to keeps what the user set there,
+and only the baseline the capture read is dropped, so the baseline is read again
+once the dialog walks on.
+
 ### The steps of the realtime capture
 
 1. **The mode.** The capture modes are listed, each with the explanation of how
@@ -112,7 +126,9 @@ reached that point cannot be taken back.
    asks for a file to write, the one of `Use an existing snapshot` for a file an
    earlier run wrote. `Next` stays disabled until a path is there. The step names
    the file and nothing else, so it is left once and the work of the source is
-   asked for by the step which follows.
+   asked for by the step which follows. `Back` returns to the source of the
+   baseline and keeps the path which was set, so the file is fixed on the step
+   which is shown and the work is asked for again.
 3. **The baseline.** The step is entered by the step of the file and asks for the
    work of the source which was picked: the state of the machine is read into the
    file, or the state the file holds is accepted. The page counts the entries of

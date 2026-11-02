@@ -250,6 +250,64 @@ std::wstring CaptureWizardModel::AdvanceLabel() const
     return L"Next";
 }
 
+bool CaptureWizardModel::CanRetreat() const
+{
+    const auto stages = Stages();
+    const auto index = StageIndex(stage_);
+    if (index == 0 || index >= stages.size())
+    {
+        /* The first step has nothing behind it, and a step the mode does not walk is not shown. */
+        return false;
+    }
+
+    if (stage_ != CaptureWizardStage::SnapshotFile)
+    {
+        /*
+         * The step which names the file of the baseline is the only step which
+         * is returned from, because it is the only step whose own step is shown
+         * again: the step of the source of the baseline follows the first step,
+         * which cannot itself be returned to, and the step of the installation
+         * follows the step of the baseline, which runs a work of its own. The
+         * steps which run a capture, which write the workspaces and which end
+         * the capture keep the wizard where they are as well: the writing
+         * cannot be taken back, and a return which was followed by the step
+         * again would run two captures at the same time.
+         */
+        return false;
+    }
+
+    /*
+     * Nothing which the capture does is behind the step of the file, and the
+     * write of the workspaces is over with the step which asks for it, so the
+     * flag is not expected to be set here. It is still checked, because a
+     * capture which writes its workspaces is a capture which is over.
+     */
+    return !fill_running_;
+}
+
+bool CaptureWizardModel::Retreat()
+{
+    if (!CanRetreat())
+    {
+        return false;
+    }
+
+    const auto stages = Stages();
+    const auto index = StageIndex(stage_);
+    stage_ = stages[index - 1];
+
+    /*
+     * The run of the baseline is asked for by the step which names the file it
+     * is read into or from, so a baseline which was read belongs to a step
+     * which is no longer shown: it is read again once the wizard walks on. The
+     * path of the file and the source which was picked stay, because they are
+     * what the user set and what the step which is shown offers.
+     */
+    baseline_ready_ = false;
+
+    return true;
+}
+
 void CaptureWizardModel::SetInstallationDone(bool done)
 {
     installation_done_ = done;

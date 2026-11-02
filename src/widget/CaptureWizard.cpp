@@ -420,14 +420,21 @@ void CaptureWizard::CreateLayout()
     auto* buttons = new wxBoxSizer(wxHORIZONTAL);
     buttons->AddStretchSpacer();
 
+    /*
+     * The button which returns to the step before is not the default button:
+     * the return key of the dialog keeps leaving the step which is shown.
+     */
+    retreat_button_ = new wxButton(this, wxID_ANY, "Back");
     advance_button_ = new wxButton(this, wxID_ANY, "Next");
     advance_button_->SetDefault();
     cancel_button_ = new wxButton(this, wxID_CANCEL, "Cancel");
 
+    buttons->Add(retreat_button_, 0, wxALIGN_CENTRE_VERTICAL | wxRIGHT, kColumnGap);
     buttons->Add(advance_button_, 0, wxALIGN_CENTRE_VERTICAL | wxRIGHT, kColumnGap);
     buttons->Add(cancel_button_, 0, wxALIGN_CENTRE_VERTICAL);
     sizer->Add(buttons, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, kBorder);
 
+    Bind(wxEVT_BUTTON, &CaptureWizard::OnRetreat, this, retreat_button_->GetId());
     Bind(wxEVT_BUTTON, &CaptureWizard::OnAdvance, this, advance_button_->GetId());
     Bind(wxEVT_BUTTON, &CaptureWizard::OnCancel, this, wxID_CANCEL);
 
@@ -980,6 +987,12 @@ void CaptureWizard::RefreshStage()
     advance_button_->Enable(model_.CanAdvance());
 
     /*
+     * The button which returns is greyed on every step but the one which names
+     * the file of the baseline, see CaptureWizardModel::CanRetreat().
+     */
+    retreat_button_->Enable(model_.CanRetreat());
+
+    /*
      * The capture cannot be dropped while the workspaces are written and after
      * they were written, so the button which drops it follows the model.
      */
@@ -1126,6 +1139,21 @@ void CaptureWizard::OnAdvance(wxCommandEvent&)
     }
 }
 
+void CaptureWizard::OnRetreat(wxCommandEvent&)
+{
+    /*
+     * A step which cannot be returned from refuses the request before the step
+     * is changed. The owner is not told either: the work of a step starts when
+     * the step is entered, and the step which is returned to starts none.
+     */
+    if (!model_.Retreat())
+    {
+        return;
+    }
+
+    RefreshStage();
+}
+
 void CaptureWizard::OnCancel(wxCommandEvent&)
 {
     if (!model_.CanCancel())
@@ -1243,7 +1271,9 @@ void CaptureWizard::OnSnapshotPathChanged(wxCommandEvent&)
     /*
      * The path is the state of the model alone: only the button which leaves
      * the step and the state below the control follow it, so neither the tree
-     * nor the description is rebuilt while the user types.
+     * nor the description is rebuilt while the user types. The button which
+     * returns is not part of it, because whether the step can be returned from
+     * depends on the step alone and not on the path which was typed.
      */
     model_.SetSnapshotPath(snapshot_path_text_->GetValue().ToStdWstring());
 

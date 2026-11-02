@@ -344,6 +344,40 @@ public:
     std::wstring AdvanceLabel() const;
 
     /**
+     * @brief Whether the wizard can return to the step before the one it shows.
+     *
+     * The wizard returns to the step which is immediately before the one it
+     * shows, and only when that step is one the user can return to: the first
+     * step has nothing behind it, and the steps which record, read the baseline,
+     * compare the machine and write the workspaces run a work of their own, so
+     * they keep the wizard where it is, because a return which was followed by
+     * the step again would run two captures at once, and the write of the
+     * workspaces cannot be taken back at all.
+     *
+     * Both rules leave one step which is returned from, which is the step that
+     * names the file of the baseline: its step is the step of the source of the
+     * baseline, which follows the first step and starts no work. The step of the
+     * source itself follows the first step and the step of the installation
+     * follows the step of the baseline, so neither of them can be returned from.
+     *
+     * @return true when the wizard can go back.
+     */
+    bool CanRetreat() const;
+
+    /**
+     * @brief Return to the step before the one the wizard shows.
+     *
+     * The wizard keeps the answers of the user: the path of the baseline and the
+     * source which was picked stay, because they are what the step which is
+     * shown offers. Only what the capture collected is dropped, so the baseline
+     * is read again once the wizard walks on. The call is ignored unless
+     * CanRetreat() allows it.
+     *
+     * @return true when the wizard moved to the step before.
+     */
+    bool Retreat();
+
+    /**
      * @brief Tell the model whether the user confirmed that the installation
      *        the capture follows is over.
      *

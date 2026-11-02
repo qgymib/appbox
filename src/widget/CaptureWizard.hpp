@@ -481,6 +481,12 @@ private:
     void OnAdvance(wxCommandEvent& event);
 
     /**
+     * @brief Return to the step before the one the dialog shows.
+     * @param[in] event Button event of the `Back` button.
+     */
+    void OnRetreat(wxCommandEvent& event);
+
+    /**
      * @brief Dismiss the dialog and report the capture as cancelled.
      * @param[in] event Button event of the `Cancel` button.
      */
@@ -749,6 +755,14 @@ private:
      * @brief Button which leaves the step the dialog shows.
      */
     wxButton* advance_button_ = nullptr;
+
+    /**
+     * @brief Button which returns to the step before the one the dialog shows.
+     *
+     * The button is greyed on every step but the one which names the file of
+     * the baseline, see `appbox::CaptureWizardModel::CanRetreat()`.
+     */
+    wxButton* retreat_button_ = nullptr;
 
     /**
      * @brief Button which drops the capture.
