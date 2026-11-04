@@ -116,18 +116,17 @@ std::string FormatIpv6(const std::uint8_t* bytes)
  */
 bool AppendEndpoint(std::vector<std::uint8_t>& message, const appbox::network::socks5::Endpoint& target)
 {
-    appbox::network_isolation::Address address;
-    if (appbox::network_isolation::ParseAddress(target.host, address))
+    if (const auto address = appbox::network_isolation::ParseAddress(target.host))
     {
-        if (address.family == appbox::network_isolation::AddressFamily::IPv6)
+        if (address->family == appbox::network_isolation::AddressFamily::IPv6)
         {
             message.push_back(static_cast<std::uint8_t>(appbox::network::socks5::AddressType::IPv6));
-            message.insert(message.end(), address.bytes.begin(), address.bytes.begin() + 16);
+            message.insert(message.end(), address->bytes.begin(), address->bytes.begin() + 16);
         }
         else
         {
             message.push_back(static_cast<std::uint8_t>(appbox::network::socks5::AddressType::IPv4));
-            message.insert(message.end(), address.bytes.begin(), address.bytes.begin() + 4);
+            message.insert(message.end(), address->bytes.begin(), address->bytes.begin() + 4);
         }
     }
     else

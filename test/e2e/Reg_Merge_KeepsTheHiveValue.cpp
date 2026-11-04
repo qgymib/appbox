@@ -53,7 +53,8 @@ TEST_F(E2E_Reg, Merge_KeepsTheHiveValue)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\Merge_KeepsTheHiveValue_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\Merge_KeepsTheHiveValue_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto hive_key = L"HKEY_CURRENT_USER\\" + subkey;
 
     RealHkcuKey host(subkey);
@@ -69,7 +70,7 @@ TEST_F(E2E_Reg, Merge_KeepsTheHiveValue)
 
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "Shared";
         req.Data = "sandbox";
 

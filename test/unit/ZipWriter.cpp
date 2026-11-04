@@ -177,8 +177,11 @@ std::string IncompressibleContent(std::size_t size)
  */
 zip_t* OpenArchive(const std::filesystem::path& zip_path)
 {
+    /* The buffer of the path has to outlive the call, so it is a named value. */
+    const std::string utf8_path = appbox::WideToUTF8(zip_path.wstring()).value_or(std::string());
+
     int    error_code = 0;
-    zip_t* archive = zip_open(appbox::WideToUTF8(zip_path.wstring()).c_str(), ZIP_RDONLY, &error_code);
+    zip_t* archive = zip_open(utf8_path.c_str(), ZIP_RDONLY, &error_code);
     return archive;
 }
 
@@ -208,8 +211,9 @@ TEST(Unit_ZipWriter, WritesEntriesReadableByLibzip)
         ASSERT_TRUE(writer.Close(error)) << error;
     }
 
-    int    error_code = 0;
-    zip_t* archive = zip_open(appbox::WideToUTF8(zip_path.wstring()).c_str(), ZIP_RDONLY, &error_code);
+    int               error_code = 0;
+    const std::string utf8_path = appbox::WideToUTF8(zip_path.wstring()).value_or(std::string());
+    zip_t*            archive = zip_open(utf8_path.c_str(), ZIP_RDONLY, &error_code);
     ASSERT_NE(archive, nullptr);
 
     const auto names = EntryNames(archive);
@@ -240,8 +244,9 @@ TEST(Unit_ZipWriter, BuffersOutliveTheCallerScope)
         ASSERT_TRUE(writer.Close(error)) << error;
     }
 
-    int    error_code = 0;
-    zip_t* archive = zip_open(appbox::WideToUTF8(zip_path.wstring()).c_str(), ZIP_RDONLY, &error_code);
+    int               error_code = 0;
+    const std::string utf8_path = appbox::WideToUTF8(zip_path.wstring()).value_or(std::string());
+    zip_t*            archive = zip_open(utf8_path.c_str(), ZIP_RDONLY, &error_code);
     ASSERT_NE(archive, nullptr);
     EXPECT_EQ(ReadEntry(archive, "buffered.txt"), "temporary buffer payload");
     zip_close(archive);
@@ -266,8 +271,9 @@ TEST(Unit_ZipWriter, TruncatesAnExistingArchive)
         ASSERT_TRUE(writer.Close(error)) << error;
     }
 
-    int    error_code = 0;
-    zip_t* archive = zip_open(appbox::WideToUTF8(zip_path.wstring()).c_str(), ZIP_RDONLY, &error_code);
+    int               error_code = 0;
+    const std::string utf8_path = appbox::WideToUTF8(zip_path.wstring()).value_or(std::string());
+    zip_t*            archive = zip_open(utf8_path.c_str(), ZIP_RDONLY, &error_code);
     ASSERT_NE(archive, nullptr);
 
     const auto names = EntryNames(archive);
@@ -289,8 +295,9 @@ TEST(Unit_ZipWriter, KeepsEmptyDirectories)
         ASSERT_TRUE(writer.Close(error)) << error;
     }
 
-    int    error_code = 0;
-    zip_t* archive = zip_open(appbox::WideToUTF8(zip_path.wstring()).c_str(), ZIP_RDONLY, &error_code);
+    int               error_code = 0;
+    const std::string utf8_path = appbox::WideToUTF8(zip_path.wstring()).value_or(std::string());
+    zip_t*            archive = zip_open(utf8_path.c_str(), ZIP_RDONLY, &error_code);
     ASSERT_NE(archive, nullptr);
 
     const auto names = EntryNames(archive);

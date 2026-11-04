@@ -66,7 +66,7 @@ TEST_F(E2E_Fs, Full_SubFolderWriteCopyShowsTheHost)
     /* The folder above is `Full`: its host content is hidden. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\host.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\host.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -75,7 +75,7 @@ TEST_F(E2E_Fs, Full_SubFolderWriteCopyShowsTheHost)
     /* The folder below is `Write Copy`: the host content is visible again. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\data\\host.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\data\\host.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -85,7 +85,7 @@ TEST_F(E2E_Fs, Full_SubFolderWriteCopyShowsTheHost)
     /* The virtual content of the folder below wins over the host content. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\data\\packed.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\data\\packed.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -95,7 +95,7 @@ TEST_F(E2E_Fs, Full_SubFolderWriteCopyShowsTheHost)
     /* A file which the sandbox creates lands in the overlay. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\data\\new.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\data\\new.txt").value_or(std::string());
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 

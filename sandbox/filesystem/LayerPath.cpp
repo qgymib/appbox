@@ -10,5 +10,12 @@ bool appbox::filesystem::RebaseLayerPathToView(const std::wstring& layerPath, st
         return false;
     }
 
-    return RebaseLayerPathToViewCore(appbox::sandbox->fs, layerPath, viewPath);
+    const auto view_path = RebaseLayerPathToViewCore(appbox::sandbox->fs, layerPath);
+    if (!view_path)
+    {
+        return false;
+    }
+
+    viewPath = *view_path;
+    return true;
 }

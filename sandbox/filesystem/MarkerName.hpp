@@ -103,14 +103,15 @@ inline bool IsReservedMarkerComponent(const std::wstring& component)
         return true;
     }
 
-    const std::size_t separator = StreamNameSeparator(component);
-    if (separator == std::wstring::npos)
+    const auto separator = StreamNameSeparator(component);
+    if (!separator)
     {
+        /* A component which names no stream carries its own name alone. */
         return false;
     }
 
-    return IsReservedMarkerName(component.substr(0, separator)) ||
-           IsReservedMarkerName(component.substr(separator + 1));
+    return IsReservedMarkerName(component.substr(0, *separator)) ||
+           IsReservedMarkerName(component.substr(*separator + 1));
 }
 
 /**

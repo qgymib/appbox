@@ -141,7 +141,7 @@ TEST_F(E2E_SelfExtracting, ThePayloadRunsFromATemporaryFolder)
     EXPECT_EQ(run.started, std::vector<std::string>({ kMarker }));
 
     ASSERT_EQ(run.reports.size(), static_cast<std::size_t>(1));
-    const auto module = Lower(appbox::UTF8ToWide(run.reports[0].module_path));
+    const auto module = Lower(appbox::UTF8ToWide(run.reports[0].module_path).value_or(std::wstring()));
     const auto temp = Lower(StripTrailingSeparators(std::filesystem::temp_directory_path().wstring()));
     EXPECT_EQ(module.rfind(temp, 0), static_cast<std::size_t>(0)) << run.reports[0].module_path;
     EXPECT_NE(module.find(L"app\\filesystem\\#programfiles#\\myapp\\app.exe"), std::wstring::npos)
@@ -164,7 +164,7 @@ TEST_F(E2E_SelfExtracting, ThePayloadRunsFromATemporaryFolder)
         std::this_thread::sleep_for(std::chrono::milliseconds(kSettleDelayMs));
     }
 
-    ASSERT_TRUE(left.empty()) << appbox::WideToUTF8(left.front().wstring());
+    ASSERT_TRUE(left.empty()) << appbox::WideToUTF8(left.front().wstring()).value_or(std::string());
 }
 
 /**
@@ -202,7 +202,7 @@ TEST_F(E2E_SelfExtracting, ThePatchesBesideTheProgramAreMerged)
 
     const auto cache = GetCWD() / appbox::layout::kStateDirNameW / appbox::layout::kCacheDirNameW / L"00-foo" /
                        appbox::layout::kFilesystemDirNameW / L"#USERPROFILE#" / fileName;
-    EXPECT_TRUE(std::filesystem::is_regular_file(cache)) << appbox::WideToUTF8(cache.wstring());
+    EXPECT_TRUE(std::filesystem::is_regular_file(cache)) << appbox::WideToUTF8(cache.wstring()).value_or(std::string());
 
     EXPECT_FALSE(std::filesystem::exists(GetCWD() / appbox::layout::kAppDirNameW));
 }
@@ -245,7 +245,8 @@ TEST_F(E2E_SelfExtracting, TheStartupScreenCoversTheExtraction)
     EXPECT_TRUE(state.screen_closed);
     ASSERT_FALSE(state.extraction_root.empty()) << "the run reported no extraction folder";
 
-    const auto root = Lower(StripTrailingSeparators(appbox::UTF8ToWide(state.extraction_root)));
+    const auto root =
+        Lower(StripTrailingSeparators(appbox::UTF8ToWide(state.extraction_root).value_or(std::wstring())));
     const auto temporary = Lower(StripTrailingSeparators(std::filesystem::temp_directory_path().wstring()));
     EXPECT_EQ(root.rfind(temporary, 0), static_cast<std::size_t>(0)) << state.extraction_root;
 

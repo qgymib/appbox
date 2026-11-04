@@ -77,7 +77,7 @@ TEST_F(E2E_Fs, ReparsePoint_TargetIsolationDecides)
     const auto add = [&req](Action action, const std::wstring& path) {
         ProtocolReparsePoint::Req::Item item;
         item.action = action;
-        item.path = appbox::WideToUTF8(path);
+        item.path = appbox::WideToUTF8(path).value_or(std::string());
         req.items.push_back(item);
     };
 

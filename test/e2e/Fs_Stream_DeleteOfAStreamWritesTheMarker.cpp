@@ -82,7 +82,7 @@ TEST_F(E2E_Fs, Stream_DeleteOfAStreamWritesTheMarker)
     /* The delete of the stream is recorded in the sandbox. */
     {
         ProtocolDeleteFileW::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolDeleteFileW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -91,7 +91,7 @@ TEST_F(E2E_Fs, Stream_DeleteOfAStreamWritesTheMarker)
     /* The stream is gone from the view. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -100,7 +100,7 @@ TEST_F(E2E_Fs, Stream_DeleteOfAStreamWritesTheMarker)
     /* The file keeps the content of the host filesystem. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));

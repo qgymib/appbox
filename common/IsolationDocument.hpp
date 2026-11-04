@@ -9,13 +9,19 @@ namespace appbox
 {
 
 /**
- * @brief Error of an isolation document which does not fit its schema.
+ * @brief Internal error of an isolation document which does not fit its schema.
  *
- * The error is thrown by the `from_json()` of an isolation document and is
- * caught by the reader of the file, which reports the text of the error to its
- * caller. The document types of the four isolation domains live in `common/`,
- * because the packer writes the files and the sandbox reads them, so the two
- * sides share one description of what a document has to look like.
+ * The error is the way the JSON members of a schema (`from_json()`) report a
+ * refused member to the reader of the document: it carries the description of
+ * the member which was refused, which is a diagnostic of the schema and not a
+ * text an interface of `common/` returns. Every domain reads its document with
+ * its own `ParseDocument()`, which catches this error and reports the failure as
+ * the code `kIsolationDocumentInvalid`; a caller of `common/` therefore never
+ * sees an exception and never receives a text.
+ *
+ * The document types of the four isolation domains live in `common/`, because
+ * the packer writes the files and the sandbox reads them, so the two sides share
+ * one description of what a document has to look like.
  */
 class IsolationDocumentError : public std::runtime_error
 {
@@ -33,14 +39,19 @@ public:
  * @brief Helpers shared by the `from_json()` of the isolation documents.
  *
  * Every document reads its members with the helpers below, so the four domains
- * refuse a broken member with the same wording and no domain hand parses a JSON
- * object of its own. The helpers never touch the Windows API and never include
- * `common/WString.hpp`: the isolation headers are included by the socket code
- * of the sandbox, which has to see `<winsock2.h>` before `<windows.h>`, so the
- * shared headers stay free of `<windows.h>`. The texts of a document are
- * therefore handled as UTF-8 like the JSON document which carries them, and the
- * conversion to wide text happens in the code which builds or applies a
- * document.
+ * refuse a broken member the same way and no domain hand parses a JSON object of
+ * its own. The helpers never touch the Windows API and never include
+ * `common/WString.hpp`: the isolation headers are included by the socket code of
+ * the sandbox, which has to see `<winsock2.h>` before `<windows.h>`, so the
+ * shared header of the helpers stays free of `<windows.h>`. The texts of a
+ * document are therefore handled as UTF-8 like the JSON document which carries
+ * them, and the conversion to wide text happens in the code which builds or
+ * applies a document.
+ *
+ * The helpers which reject a member throw `IsolationDocumentError`, because they
+ * are the members of `from_json()`, whose signature `nlohmann::json` fixes and
+ * which may therefore throw. They are reached from the `noexcept` reader of a
+ * document alone, which turns what they throw into a code.
  */
 namespace isolation_document
 {
@@ -184,17 +195,17 @@ inline const nlohmann::json* OptionalArray(const nlohmann::json& json, const cha
 /**
  * @brief Read a member which holds a text, empty when it carries none.
  *
- * A member which is missing or which holds a value of another type is read as
- * an empty text instead of an error. The network proxy of a session uses the
- * lenient reading, because a proxy which cannot be used describes a session
- * without a proxy and never fails the whole document: the entries of the
- * document still redirect the names of the application.
+ * A member which is missing or which holds a value of another type is read as an
+ * empty text instead of an error. The network proxy of a session uses the lenient
+ * reading, because a proxy which cannot be used describes a session without a
+ * proxy and never fails the whole document: the entries of the document still
+ * redirect the names of the application.
  *
  * @param[in] json The object to read.
  * @param[in] key Name of the member.
  * @return The text of the member, empty when it is absent or not a text.
  */
-inline std::string LenientText(const nlohmann::json& json, const char* key)
+inline std::string LenientText(const nlohmann::json& json, const char* key) noexcept
 {
     const auto* member = FindMember(json, key);
     if (member == nullptr || !member->is_string())
@@ -215,7 +226,7 @@ inline std::string LenientText(const nlohmann::json& json, const char* key)
  * @param[in] key Name of the member.
  * @return The value of the member, false when it is absent or not a flag.
  */
-inline bool LenientFlag(const nlohmann::json& json, const char* key)
+inline bool LenientFlag(const nlohmann::json& json, const char* key) noexcept
 {
     const auto* member = FindMember(json, key);
     if (member == nullptr || !member->is_boolean())

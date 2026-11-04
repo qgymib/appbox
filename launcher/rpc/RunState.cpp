@@ -34,7 +34,7 @@ APPBOX_LAUNCHER_RPC_DEFINE(MsgRunState, id, param)
     {
         response.error_code = appbox::run_state_error::kVersionUnsupported;
         response.error_message = "the version " + std::to_string(param.version) + " of the query is not supported";
-        session->SendResponse(id, nlohmann::json(response));
+        (void)session->SendResponse(id, nlohmann::json(response));
         return;
     }
 
@@ -48,7 +48,7 @@ APPBOX_LAUNCHER_RPC_DEFINE(MsgRunState, id, param)
     {
         response.error_code = error_code;
         response.error_message = error_message;
-        session->SendResponse(id, nlohmann::json(response));
+        (void)session->SendResponse(id, nlohmann::json(response));
         return;
     }
 
@@ -56,5 +56,5 @@ APPBOX_LAUNCHER_RPC_DEFINE(MsgRunState, id, param)
     LauncherApp().FillRunState(response);
     control->FillRunState(response);
 
-    session->SendResponse(id, nlohmann::json(response));
+    (void)session->SendResponse(id, nlohmann::json(response));
 }

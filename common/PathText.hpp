@@ -1,9 +1,19 @@
 #ifndef APPBOX_COMMON_PATH_TEXT_HPP
 #define APPBOX_COMMON_PATH_TEXT_HPP
 
+#include "ErrorCode.hpp"
 #include <cstddef>
 #include <string>
+#include <tl/expected.hpp>
 #include <vector>
+
+/*
+ * `common/ErrorCode.hpp` brings `<windows.h>` with it, which is what the
+ * translation units of the sandbox have to know: those which spell a name of
+ * `ntstatus.h` include it before `<windows.h>` and define `WIN32_NO_STATUS`, so
+ * a file which includes this header as its first one takes the two in that
+ * order as well. See `common/WinAPI.h` for the header which does that.
+ */
 
 namespace appbox
 {
@@ -24,9 +34,10 @@ namespace filesystem
  * from the path it passed.
  *
  * @param[in] path The path to get the directory name from.
- * @return The directory name of the path.
+ * @return The directory name of the path, `kPathEmpty` for a path which carries
+ *         no text at all.
  */
-inline std::wstring DirName(const std::wstring& path);
+inline tl::expected<std::wstring, ErrorCode> DirName(const std::wstring& path) noexcept;
 
 /**
  * @brief Split a string path into a sequence of directory paths.
@@ -48,14 +59,14 @@ inline std::wstring DirName(const std::wstring& path);
  * @return A vector of directory paths.
  */
 inline std::vector<std::wstring> Sequence(const std::wstring& path, std::size_t offset, const std::wstring& delimiter,
-                                          bool bIncludeLast);
+                                          bool bIncludeLast) noexcept;
 
 /**
  * @brief Whether a character can name the drive of a path.
  * @param[in] character Character to inspect.
  * @return true when the character is a letter.
  */
-inline bool IsDriveLetter(wchar_t character);
+inline bool IsDriveLetter(wchar_t character) noexcept;
 
 /**
  * @brief Position of the separator between the last component and its stream.
@@ -76,10 +87,10 @@ inline bool IsDriveLetter(wchar_t character);
  * inspected.
  *
  * @param[in] path Path to inspect.
- * @return Index of the separator, `std::wstring::npos` when the path names no
+ * @return Index of the separator, `kPathNoStreamName` when the path names no
  *         stream.
  */
-inline std::size_t StreamNameSeparator(const std::wstring& path);
+inline tl::expected<std::size_t, ErrorCode> StreamNameSeparator(const std::wstring& path) noexcept;
 
 /**
  * @brief Whether a path names an alternate data stream.
@@ -87,7 +98,7 @@ inline std::size_t StreamNameSeparator(const std::wstring& path);
  * @param[in] path Path to inspect.
  * @return true when the last component of the path carries a stream name.
  */
-inline bool CarriesStreamName(const std::wstring& path);
+inline bool CarriesStreamName(const std::wstring& path) noexcept;
 
 /**
  * @brief Name of the alternate data stream of a path.
@@ -95,7 +106,7 @@ inline bool CarriesStreamName(const std::wstring& path);
  * @param[in] path Path to inspect.
  * @return The name of the stream, empty when the path names no stream.
  */
-inline std::wstring StreamNameOf(const std::wstring& path);
+inline std::wstring StreamNameOf(const std::wstring& path) noexcept;
 
 /**
  * @brief Path of the entry which carries the stream of a path.
@@ -108,7 +119,7 @@ inline std::wstring StreamNameOf(const std::wstring& path);
  * @param[in] path Path to reduce.
  * @return The path of the entry, the path itself when it names no stream.
  */
-inline std::wstring EntryPathOfStream(const std::wstring& path);
+inline std::wstring EntryPathOfStream(const std::wstring& path) noexcept;
 
 } // namespace filesystem
 } // namespace appbox

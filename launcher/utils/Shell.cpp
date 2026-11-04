@@ -144,7 +144,8 @@ bool appbox::BuildStartupInvocation(const std::wstring& path, const std::vector<
         exe_path = ResolveShellPath();
         if (exe_path.empty())
         {
-            error = "the command interpreter of the host was not found for '" + appbox::WideToUTF8(path) + "'";
+            error = "the command interpreter of the host was not found for '" +
+                    appbox::WideToUTF8(path).value_or(std::string()) + "'";
             return false;
         }
 
@@ -163,7 +164,7 @@ bool appbox::BuildStartupInvocation(const std::wstring& path, const std::vector<
         exe_path = ResolvePowerShellPath();
         if (exe_path.empty())
         {
-            error = "Windows PowerShell was not found for '" + appbox::WideToUTF8(path) + "'";
+            error = "Windows PowerShell was not found for '" + appbox::WideToUTF8(path).value_or(std::string()) + "'";
             return false;
         }
 
@@ -184,8 +185,8 @@ bool appbox::BuildStartupInvocation(const std::wstring& path, const std::vector<
 
     case StartupFileKind::None:
     default:
-        error =
-            "'" + appbox::WideToUTF8(path) + "' is not a startable file (" + appbox::StartupFileExtensionList() + ")";
+        error = "'" + appbox::WideToUTF8(path).value_or(std::string()) + "' is not a startable file (" +
+                appbox::StartupFileExtensionList() + ")";
         return false;
     }
 }
@@ -204,7 +205,7 @@ std::vector<std::wstring> appbox::BuildShellArguments(const std::vector<std::str
     args.push_back(L"/c");
     for (const auto& param : params)
     {
-        args.push_back(appbox::UTF8ToWide(param));
+        args.push_back(appbox::UTF8ToWide(param).value_or(std::wstring()));
     }
 
     return args;

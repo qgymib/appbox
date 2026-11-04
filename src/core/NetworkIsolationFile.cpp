@@ -23,8 +23,8 @@ bool appbox::BuildNetworkIsolationFile(const NetworkModel& model, std::string& t
         for (const auto& entry : model.DnsEntries())
         {
             network_isolation::Entry item;
-            item.hostname = WideToUTF8(entry.hostname);
-            item.redirect = WideToUTF8(entry.redirect);
+            item.hostname = WideToUTF8(entry.hostname).value_or(std::string());
+            item.redirect = WideToUTF8(entry.redirect).value_or(std::string());
             document.entries.push_back(std::move(item));
         }
 
@@ -36,10 +36,10 @@ bool appbox::BuildNetworkIsolationFile(const NetworkModel& model, std::string& t
             item.type = ProxyTypeToken(proxy.type);
             item.tcp = proxy.tcp;
             item.udp = proxy.udp;
-            item.server = WideToUTF8(proxy.server);
-            item.port = WideToUTF8(proxy.port);
-            item.username = WideToUTF8(proxy.username);
-            item.password = WideToUTF8(proxy.password);
+            item.server = WideToUTF8(proxy.server).value_or(std::string());
+            item.port = WideToUTF8(proxy.port).value_or(std::string());
+            item.username = WideToUTF8(proxy.username).value_or(std::string());
+            item.password = WideToUTF8(proxy.password).value_or(std::string());
             document.proxy = std::move(item);
         }
 

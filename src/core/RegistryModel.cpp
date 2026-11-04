@@ -58,7 +58,7 @@ bool LessIgnoreCase(const std::wstring& left, const std::wstring& right)
  */
 std::string Quote(const std::wstring& text)
 {
-    return "'" + appbox::WideToUTF8(text) + "'";
+    return "'" + appbox::WideToUTF8(text).value_or(std::string()) + "'";
 }
 
 /**

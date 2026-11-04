@@ -58,7 +58,8 @@ std::string FormatReport(LaunchApi api, const ProtocolLaunchProcess::Rsp& rsp, c
 {
     return fmt::format("api={} launch={} exit={:#x} expected image='{}' expected directory='{}'",
                        api == LaunchApi::RtlCreateUserProcess ? "RtlCreateUserProcess" : "CreateProcess", rsp.code,
-                       rsp.exit_code, appbox::WideToUTF8(expected_image), appbox::WideToUTF8(expected_directory));
+                       rsp.exit_code, appbox::WideToUTF8(expected_image).value_or(std::string()),
+                       appbox::WideToUTF8(expected_directory).value_or(std::string()));
 }
 
 /**
@@ -76,11 +77,11 @@ void ExpectChildParameters(const std::filesystem::path& cwd, const appbox::Launc
                            const std::wstring& expected_directory)
 {
     request.Api = api;
-    request.Arguments = { "paramcheck", "--image", appbox::WideToUTF8(expected_image) };
+    request.Arguments = { "paramcheck", "--image", appbox::WideToUTF8(expected_image).value_or(std::string()) };
     if (!expected_directory.empty())
     {
         request.Arguments.push_back("--cwd");
-        request.Arguments.push_back(appbox::WideToUTF8(expected_directory));
+        request.Arguments.push_back(appbox::WideToUTF8(expected_directory).value_or(std::string()));
     }
 
     const auto rsp = Probe(cwd.wstring(), launcher_config).Call<ProtocolLaunchProcess>(request);
@@ -127,7 +128,7 @@ TEST_F(E2E_Fs, ChildProcessParameters_OfTheView)
     for (const auto api : { LaunchApi::CreateProcess, LaunchApi::RtlCreateUserProcess })
     {
         ProtocolLaunchProcess::Req req;
-        req.FileName = appbox::WideToUTF8(image);
+        req.FileName = appbox::WideToUTF8(image).value_or(std::string());
 
         ExpectChildParameters(GetCWD(), launcher_config, api, req, image, std::wstring());
     }
@@ -160,8 +161,8 @@ TEST_F(E2E_Fs, ChildProcessParameters_InheritedFromALayer)
     for (const auto api : { LaunchApi::CreateProcess, LaunchApi::RtlCreateUserProcess })
     {
         ProtocolLaunchProcess::Req req;
-        req.FileName = appbox::WideToUTF8(image);
-        req.ParentCurrentDirectory = appbox::WideToUTF8(layer);
+        req.FileName = appbox::WideToUTF8(image).value_or(std::string());
+        req.ParentCurrentDirectory = appbox::WideToUTF8(layer).value_or(std::string());
 
         ExpectChildParameters(GetCWD(), launcher_config, api, req, image, profile);
     }
@@ -197,8 +198,8 @@ TEST_F(E2E_Fs, ChildProcessParameters_LayerRootAsWorkingDirectory)
     for (const auto api : { LaunchApi::CreateProcess, LaunchApi::RtlCreateUserProcess })
     {
         ProtocolLaunchProcess::Req req;
-        req.FileName = appbox::WideToUTF8(image);
-        req.CurrentDirectory = appbox::WideToUTF8(profile);
+        req.FileName = appbox::WideToUTF8(image).value_or(std::string());
+        req.CurrentDirectory = appbox::WideToUTF8(profile).value_or(std::string());
 
         ExpectChildParameters(GetCWD(), launcher_config, api, req, image, profile);
     }

@@ -2,6 +2,7 @@
 #define APPBOX_PACKER_WIDGET_MAIN_FRAME_HPP
 
 #include <wx/wx.h>
+#include <wx/process.h>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -13,6 +14,7 @@
 #include "core/BuildReport.hpp"
 #include "core/CaptureWizardModel.hpp"
 #include "core/EnvironmentModel.hpp"
+#include "core/ExtractionCleanup.hpp"
 #include "core/FilesystemIsolationModel.hpp"
 #include "core/NetworkModel.hpp"
 #include "core/PackModel.hpp"
@@ -82,6 +84,16 @@ struct PackOutcome
      * an archive.
      */
     bool self_extracting = false;
+
+    /**
+     * @brief Whether the user abandoned the run.
+     *
+     * The extracting stage of a `Build and Run` run reports an abandoned
+     * extraction by a code of its own and not by a message, so the run carries
+     * the decision beside its error text: `error` stays empty for a run the
+     * user stopped, because there is no failure to show.
+     */
+    bool cancelled = false;
 };
 
 /**
@@ -430,6 +442,35 @@ private:
     void OnPackFinished(wxThreadEvent& event);
 
     /**
+     * @brief Release the folder a `Build and Run` run extracted.
+     *
+     * The folder is the one the program of the run was started from, so it can
+     * only go away once that program ended. A run whose program cannot be
+     * started releases the folder at once instead, because nothing holds it.
+     *
+     * @param[in] folder Folder the archive of the run was extracted into.
+     * @param[in] process_id Identifier of the started program, zero when the
+     *                       program could not be started.
+     */
+    void ReleaseExtraction(const std::wstring& folder, long process_id);
+
+    /**
+     * @brief Release the extraction folder of a program which ended.
+     *
+     * @param[in] event Process event carrying the identifier of the program.
+     */
+    void OnProcessTerminated(wxProcessEvent& event);
+
+    /**
+     * @brief Release the extraction folders no running program holds any more.
+     *
+     * The call is the fallback of the window: it is what keeps a folder from
+     * staying behind when the window goes away before the programs it started,
+     * or when an exit notification of a program never arrives.
+     */
+    void ReleaseExitedExtractions();
+
+    /**
      * @brief The phase of a snapshot capture which runs on the capture thread.
      */
     enum class CapturePhase
@@ -766,6 +807,17 @@ private:
     ActionDialog*     progress_dialog_ = nullptr;
     std::atomic<bool> pack_cancelled_{ false };
     bool              run_after_pack_ = false;
+
+    /**
+     * @brief The extraction folders of the programs the window started.
+     *
+     * A `Build and Run` run extracts its archive into a folder below the
+     * temporary directory and starts the program from there, so the folder
+     * belongs to the lifetime of that program and is released when it ends.
+     * The window never starts a program without registering its folder, so no
+     * folder of a run stays behind.
+     */
+    appbox::ExtractionCleanup extraction_cleanup_;
 
     /**
      * @brief Number of files the packing stage reports.

@@ -1,11 +1,13 @@
 #ifndef APPBOX_COMMON_ENVIRONMENT_ISOLATION_HPP
 #define APPBOX_COMMON_ENVIRONMENT_ISOLATION_HPP
 
+#include "ErrorCode.hpp"
 #include "IsolationDocument.hpp"
 #include <nlohmann/json.hpp>
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <tl/expected.hpp>
 #include <vector>
 
 namespace appbox
@@ -225,14 +227,14 @@ inline constexpr EnvironmentMergeMode kDefaultMergeMode = EnvironmentMergeMode::
  * @param[in] name Name of an environment variable.
  * @return true when the name is the search path variable.
  */
-inline bool IsPathVariableName(std::wstring_view name);
+inline bool IsPathVariableName(std::wstring_view name) noexcept;
 
 /**
  * @brief Get the token of an isolation mode.
  * @param[in] isolation The isolation mode.
  * @return The canonical lower case token, for example `"write_copy"`.
  */
-inline const char* IsolationToken(EnvironmentIsolation isolation);
+inline const char* IsolationToken(EnvironmentIsolation isolation) noexcept;
 
 /**
  * @brief Resolve an isolation mode from its token.
@@ -242,17 +244,17 @@ inline const char* IsolationToken(EnvironmentIsolation isolation);
  * resolve as well.
  *
  * @param[in] token The token to resolve.
- * @param[out] out The resolved mode when the token is known.
- * @return true when the token names an isolation mode.
+ * @return The resolved mode, or `kIsolationTokenUnknown` when the token names no
+ *         isolation mode of this domain.
  */
-inline bool ParseIsolationToken(std::string_view token, EnvironmentIsolation& out);
+inline tl::expected<EnvironmentIsolation, ErrorCode> ParseIsolationToken(std::string_view token) noexcept;
 
 /**
  * @brief Get the token of a merge mode.
  * @param[in] merge The merge mode.
  * @return The canonical lower case token, for example `"prepend"`.
  */
-inline const char* MergeModeToken(EnvironmentMergeMode merge);
+inline const char* MergeModeToken(EnvironmentMergeMode merge) noexcept;
 
 /**
  * @brief Resolve a merge mode from its token.
@@ -262,10 +264,10 @@ inline const char* MergeModeToken(EnvironmentMergeMode merge);
  * does.
  *
  * @param[in] token The token to resolve.
- * @param[out] out The resolved mode when the token is known.
- * @return true when the token names a merge mode.
+ * @return The resolved mode, or `kIsolationTokenUnknown` when the token names no
+ *         merge mode.
  */
-inline bool ParseMergeModeToken(std::string_view token, EnvironmentMergeMode& out);
+inline tl::expected<EnvironmentMergeMode, ErrorCode> ParseMergeModeToken(std::string_view token) noexcept;
 
 /**
  * @brief Value the sandbox reports for one configured variable.
@@ -302,7 +304,7 @@ struct ComposedValue
  * @param[in] isolation The isolation mode.
  * @return true when the value below the layer is visible.
  */
-inline bool HostValueIsVisible(EnvironmentIsolation isolation);
+inline bool HostValueIsVisible(EnvironmentIsolation isolation) noexcept;
 
 /**
  * @brief Compose the value the sandbox reports for one variable.
@@ -341,68 +343,7 @@ inline bool HostValueIsVisible(EnvironmentIsolation isolation);
  */
 inline ComposedValue ComposeEnvironmentValue(bool host_present, std::wstring_view host_value, std::wstring_view value,
                                              EnvironmentIsolation isolation, EnvironmentMergeMode merge,
-                                             std::wstring_view merge_string);
-
-/**
- * @brief Build the prefix of an error description which names an entry.
- *
- * The readers of the environment documents report the entry which was refused
- * with its position in the list, like the project file does for its lists.
- *
- * @param[in] index Position of the entry.
- * @return The prefix, for example `"entries[0]: "`.
- */
-inline std::string EntryPrefix(std::size_t index);
-
-/**
- * @brief Read a required member of an entry which holds a text.
- * @param[in] entry Object of the entry.
- * @param[in] key Name of the member.
- * @param[in] prefix Prefix of the error description, names the entry.
- * @return The text of the member.
- * @throw appbox::IsolationDocumentError The member is missing or not a text.
- */
-inline std::string EntryText(const nlohmann::json& entry, const char* key, const std::string& prefix);
-
-/**
- * @brief Read a required member of an entry which holds a flag.
- * @param[in] entry Object of the entry.
- * @param[in] key Name of the member.
- * @param[in] prefix Prefix of the error description, names the entry.
- * @return The value of the member.
- * @throw appbox::IsolationDocumentError The member is missing or not a flag.
- */
-inline bool EntryFlag(const nlohmann::json& entry, const char* key, const std::string& prefix);
-
-/**
- * @brief Read a required member of an entry which holds the token of a mode.
- * @param[in] entry Object of the entry.
- * @param[in] key Name of the member.
- * @param[in] prefix Prefix of the error description, names the entry.
- * @param[in] parse Resolver of the token.
- * @return The mode of the member.
- * @throw appbox::IsolationDocumentError The member is missing or names no mode.
- */
-template <typename Mode, typename ParseFn>
-inline Mode EntryMode(const nlohmann::json& entry, const char* key, const std::string& prefix, ParseFn parse);
-
-/**
- * @brief Get the entry list of an environment document.
- * @param[in] json Object of the document.
- * @param[in] key Name of the entry list member.
- * @param[in] description Description of the document, used by the error text.
- * @return The entry list.
- * @throw appbox::IsolationDocumentError The document carries no entry list.
- */
-inline const nlohmann::json& EntryList(const nlohmann::json& json, const char* key, const std::string& description);
-
-/**
- * @brief Reject an entry which is not a JSON object.
- * @param[in] entry The entry to check.
- * @param[in] prefix Prefix of the error description, names the entry.
- * @throw appbox::IsolationDocumentError The entry is not an object.
- */
-inline void RequireEntryObject(const nlohmann::json& entry, const std::string& prefix);
+                                             std::wstring_view merge_string) noexcept;
 
 /**
  * @brief One variable of the environment isolation file.
@@ -546,6 +487,20 @@ inline void to_json(nlohmann::json& json, const Document& document);
 inline void from_json(const nlohmann::json& json, Document& document);
 
 /**
+ * @brief Read the text of an environment isolation file.
+ *
+ * The call is the reader the packer and the sandbox use: it turns the text of
+ * the file into the document of the schema, and it reports why a text was
+ * refused by a code instead of an exception or a message.
+ *
+ * @param[in] text UTF-8 text of the isolation file.
+ * @return The document of the text, `kIsolationDocumentInvalid` when the text is
+ *         no document of this schema, `kIsolationDocumentUnsupportedVersion`
+ *         when the document names another schema version.
+ */
+inline tl::expected<Document, ErrorCode> ParseDocument(std::string_view text) noexcept;
+
+/**
  * @brief Store one modification of the environment state file.
  * @param[out] json Object which receives the entry.
  * @param[in] entry The entry to store.
@@ -575,6 +530,21 @@ inline void to_json(nlohmann::json& json, const StateDocument& document);
  * @throw appbox::IsolationDocumentError The document does not fit the schema.
  */
 inline void from_json(const nlohmann::json& json, StateDocument& document);
+
+/**
+ * @brief Read the text of an environment state file.
+ *
+ * The state document is read with the rules of the isolation document, because
+ * the two carry the same shape: an entry list of objects whose members are
+ * required.
+ *
+ * @param[in] text UTF-8 text of the state file.
+ * @return The state document of the text, `kIsolationDocumentInvalid` when the
+ *         text is no document of this schema,
+ *         `kIsolationDocumentUnsupportedVersion` when the document names another
+ *         schema version.
+ */
+inline tl::expected<StateDocument, ErrorCode> ParseStateDocument(std::string_view text) noexcept;
 
 } // namespace environment_isolation
 

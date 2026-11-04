@@ -92,7 +92,7 @@ TEST_F(E2E_Fs, Marker_CannotBeAddressedByTheProcess)
     /* The marker cannot be opened. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(marker);
+        req.FileName = appbox::WideToUTF8(marker).value_or(std::string());
         req.dwDesiredAccess = GENERIC_READ;
         req.dwCreationDisposition = OPEN_EXISTING;
 
@@ -103,7 +103,7 @@ TEST_F(E2E_Fs, Marker_CannotBeAddressedByTheProcess)
     /* The marker cannot be queried. */
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(marker);
+        req.FileName = appbox::WideToUTF8(marker).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -113,7 +113,7 @@ TEST_F(E2E_Fs, Marker_CannotBeAddressedByTheProcess)
     /* The marker cannot be removed, which would unhide the entry. */
     {
         ProtocolDeleteFileW::Req req;
-        req.FileName = appbox::WideToUTF8(marker);
+        req.FileName = appbox::WideToUTF8(marker).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolDeleteFileW>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -122,7 +122,7 @@ TEST_F(E2E_Fs, Marker_CannotBeAddressedByTheProcess)
     /* The entry the marker hides is still gone from the view. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kVictimName);
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kVictimName).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));

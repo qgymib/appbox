@@ -5,7 +5,6 @@
 #define _WIN32_WINNT 0x0600
 #endif
 #include <windows.h>
-#include <spdlog/spdlog.h>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -21,19 +20,17 @@ namespace appbox
 {
 
 /**
- * @brief Outcome of the competitive creation of a pipe.
+ * @brief Win32 code of a failed creation of a pipe server.
  *
- * Two launchers which carry the same sandbox identifier race for the same pipe
- * name, so the creation has to tell the winner from the loser and from a run
- * which is not allowed to use the pipe at all.
+ * The creation answers the code `CreateNamedPipe()` reported, because that code
+ * is what a caller of the launcher forwards to its own peer and what it names
+ * in the report of a failed start. Two of the codes have a meaning the creation
+ * alone can not decide: `ERROR_ACCESS_DENIED` is the answer of the first
+ * instance both for a name which another server of this user holds and for a
+ * name this process may not use. The caller tells them apart with
+ * `detail::AccepterPeerIsReachable()`, which the header of the detail lives in.
  */
-enum class ServerCreateStatus
-{
-    Created,        /* This process created the first instance of the pipe. */
-    AlreadyRunning, /* Another server listens on the pipe. */
-    AccessDenied,   /* The name is taken but the pipe cannot be connected. */
-    Failed,         /* The instance cannot be created, see the error code. */
-};
+typedef DWORD Win32ErrorCode;
 
 /**
  * @brief Kind of a failure of the accept loop of a pipe server.
@@ -91,16 +88,6 @@ public:
     };
 
     /**
-     * @brief Result of CreateCompetitive().
-     */
-    struct CreateResult
-    {
-        ServerCreateStatus status = ServerCreateStatus::Failed; /* Outcome. */
-        DWORD              error_code = 0;                      /* Win32 code of a failure. */
-        Ptr                accepter;                            /* Set when the status is Created. */
-    };
-
-    /**
      * @brief Create an accepter for the given named pipe path.
      *
      * The first instance of the pipe is created before the function returns, so
@@ -108,19 +95,31 @@ public:
      * is the server or a client.
      *
      * @param[in] pipe Name of the pipe, for example \\.\pipe\appbox.
-     * @return The new accepter instance.
-     * @throw std::system_error The instance of the pipe cannot be created.
+     * @return The new accepter instance, or the Win32 code of the failed
+     *         creation.
      */
-    static Ptr Create(const std::string& pipe);
+    static tl::expected<Ptr, Win32ErrorCode> Create(const std::string& pipe) noexcept;
 
     /**
      * @brief Race for the given named pipe path.
+     *
+     * The first instance of the pipe is created with
+     * `FILE_FLAG_FIRST_PIPE_INSTANCE`, so the answer of the call tells whether
+     * this process won the race:
+     * - a value is the accepter of this process, which now owns the name;
+     * - `ERROR_ACCESS_DENIED` is a name whose first instance another process
+     *   created. The caller asks `detail::AccepterPeerIsReachable()` whether a
+     *   live server of this user holds the name - it may hand its request over
+     *   then - or whether the name belongs to another user;
+     * - any other code is a pipe which cannot be created at all.
+     *
      * @param[in] pipe Name of the pipe, for example \\.\pipe\appbox.
      * @param[in] options Options of the accepter.
-     * @return The outcome of the creation and, when this process won the race,
-     *         the new accepter instance.
+     * @return The new accepter instance, or the Win32 code of the failed
+     *         creation.
      */
-    static CreateResult CreateCompetitive(const std::string& pipe, const Options& options = Options());
+    static tl::expected<Ptr, Win32ErrorCode> CreateCompetitive(const std::string& pipe,
+                                                               const Options&     options = Options()) noexcept;
 
     virtual ~RemoteAccepter();
 
@@ -138,13 +137,16 @@ public:
      *
      * @param[in] callback Callback to set, an empty function removes it.
      */
-    void SetSessionCallback(SessionCallback callback);
+    void SetSessionCallback(SessionCallback callback) noexcept;
 
     /**
      * @brief Start the pipe server and begin listening for incoming connections.
-     * @return true when the accepter is listening, otherwise false.
+     * @return Success when the accepter is listening; `kRemoteEventCreateFailed`
+     *         when an event the accept thread waits on does not exist;
+     *         `kRemoteThreadStartFailed` when the accept thread cannot be
+     *         started; `kInvalidState` when the accepter already stopped.
      */
-    bool Start();
+    tl::expected<void, ErrorCode> Start() noexcept;
 
     /**
      * @brief Stop accepting connections and end the thread of the accepter.
@@ -153,7 +155,7 @@ public:
      * answered, and the sessions are released. The call is idempotent and may be
      * repeated after the accepter stopped.
      */
-    void Stop();
+    void Stop() noexcept;
 
     /**
      * @brief Set the callback which receives a fatal failure of the accept loop.
@@ -163,7 +165,7 @@ public:
      *
      * @param[in] callback Callback to set, an empty function removes it.
      */
-    void SetAcceptFailureCallback(AcceptFailureCallback callback);
+    void SetAcceptFailureCallback(AcceptFailureCallback callback) noexcept;
 
 private:
     RemoteAccepter();

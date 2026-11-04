@@ -195,29 +195,32 @@ TEST_F(E2E_Probe, LeavesWhenTheCaseIsGone)
     auto bound = std::make_shared<std::atomic_bool>(false);
 
     const auto pipe = BuildCasePipeName();
-    auto       accepter = appbox::RemoteAccepter::Create(pipe);
+    const auto accepter_created = appbox::RemoteAccepter::Create(pipe);
+    ASSERT_TRUE(accepter_created.has_value()) << static_cast<int>(accepter_created.error());
+    const auto& accepter = *accepter_created;
     accepter->SetSessionCallback([bound](const appbox::RemoteSession::Ptr& session) {
         std::weak_ptr<appbox::RemoteSession> weak_session = session;
 
-        session->RegisterMethod(appbox::test::ProtocolBind::Method,
-                                [bound, weak_session](uint64_t id, const nlohmann::json&) {
-                                    auto bound_session = weak_session.lock();
-                                    if (!bound_session)
-                                    {
-                                        return;
-                                    }
+        session->RegisterMethod(
+            appbox::test::ProtocolBind::Method, [bound, weak_session](uint64_t id, const nlohmann::json&) {
+                auto bound_session = weak_session.lock();
+                if (!bound_session)
+                {
+                    return;
+                }
 
-                                    *bound = true;
-                                    bound_session->SendResponse(id, nlohmann::json(appbox::test::ProtocolBind::Rsp{}));
-                                });
+                *bound = true;
+                (void)bound_session->SendResponse(id, nlohmann::json(appbox::test::ProtocolBind::Rsp{}));
+            });
     });
 
-    ASSERT_TRUE(accepter->Start()) << "the pipe of the case cannot be served";
+    ASSERT_TRUE(accepter->Start().has_value()) << "the pipe of the case cannot be served";
 
     const auto& probe_path = ProbePath(ProbeBitness::Bit64);
     ASSERT_FALSE(probe_path.empty()) << "the 64 bit probe is unavailable";
 
-    const std::vector<std::wstring> args = { L"probe", L"--probe_pipe", appbox::UTF8ToWide(pipe), L"--probe_key",
+    const std::vector<std::wstring> args = { L"probe", L"--probe_pipe",
+                                             appbox::UTF8ToWide(pipe).value_or(std::wstring()), L"--probe_key",
                                              L"case" };
     auto                            command_line = appbox::BuildCommandLine(probe_path, args);
 

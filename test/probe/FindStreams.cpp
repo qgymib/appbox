@@ -9,7 +9,7 @@ appbox::test::ProtocolFindStreams::Rsp appbox::test::ProbeFindStreams_Entry(
 {
     const auto& req = request;
 
-    auto wFileName = appbox::UTF8ToWide(req.FileName);
+    auto wFileName = appbox::UTF8ToWide(req.FileName).value_or(std::wstring());
 
     ProtocolFindStreams::Rsp rsp;
     WIN32_FIND_STREAM_DATA   stream = {};
@@ -23,7 +23,7 @@ appbox::test::ProtocolFindStreams::Rsp appbox::test::ProbeFindStreams_Entry(
     /* The enumeration ends with the failure which follows the last stream. */
     for (;;)
     {
-        rsp.names.push_back(appbox::WideToUTF8(stream.cStreamName));
+        rsp.names.push_back(appbox::WideToUTF8(stream.cStreamName).value_or(std::string()));
         if (!FindNextStreamW(find, &stream))
         {
             break;

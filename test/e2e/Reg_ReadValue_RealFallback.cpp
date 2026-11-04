@@ -41,7 +41,8 @@ TEST_F(E2E_Reg, ReadValue_RealFallback)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\ReadValue_RealFallback_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto        subkey = L"Software\\AppBoxTest\\ReadValue_RealFallback_" +
+                               appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const std::string expected = "RealFallbackValue";
 
     /* Create the key and the value in the real registry. */
@@ -52,7 +53,7 @@ TEST_F(E2E_Reg, ReadValue_RealFallback)
                                   &disposition),
                   ERROR_SUCCESS);
 
-        auto wdata = appbox::UTF8ToWide(expected);
+        auto wdata = appbox::UTF8ToWide(expected).value_or(std::wstring());
         ASSERT_EQ(RegSetValueExW(key, L"TestValue", 0, REG_SZ, reinterpret_cast<const BYTE*>(wdata.c_str()),
                                  static_cast<DWORD>((wdata.size() + 1) * sizeof(wchar_t))),
                   ERROR_SUCCESS);
@@ -62,7 +63,7 @@ TEST_F(E2E_Reg, ReadValue_RealFallback)
     RealKeyGuard guard{ subkey };
 
     ProtocolRegReadValue::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Value = "TestValue";
 
     auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);

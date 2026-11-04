@@ -61,27 +61,27 @@ TEST_F(E2E_Fs, ReparsePoint_DeleteOfALinkKeepsTheTarget)
 
     ProtocolReparsePoint::Req::Item link;
     link.action = ProtocolReparsePoint::Req::Item::Action::Attributes;
-    link.path = appbox::WideToUTF8(folder + L"\\link");
+    link.path = appbox::WideToUTF8(folder + L"\\link").value_or(std::string());
     req.items.push_back(link);
 
     ProtocolReparsePoint::Req::Item through_link;
     through_link.action = ProtocolReparsePoint::Req::Item::Action::ReadText;
-    through_link.path = appbox::WideToUTF8(folder + L"\\link\\data.txt");
+    through_link.path = appbox::WideToUTF8(folder + L"\\link\\data.txt").value_or(std::string());
     req.items.push_back(through_link);
 
     ProtocolReparsePoint::Req::Item remove;
     remove.action = ProtocolReparsePoint::Req::Item::Action::RemoveDir;
-    remove.path = appbox::WideToUTF8(folder + L"\\link");
+    remove.path = appbox::WideToUTF8(folder + L"\\link").value_or(std::string());
     req.items.push_back(remove);
 
     ProtocolReparsePoint::Req::Item link_after;
     link_after.action = ProtocolReparsePoint::Req::Item::Action::Attributes;
-    link_after.path = appbox::WideToUTF8(folder + L"\\link");
+    link_after.path = appbox::WideToUTF8(folder + L"\\link").value_or(std::string());
     req.items.push_back(link_after);
 
     ProtocolReparsePoint::Req::Item target_after;
     target_after.action = ProtocolReparsePoint::Req::Item::Action::ReadText;
-    target_after.path = appbox::WideToUTF8(folder + L"\\target\\data.txt");
+    target_after.path = appbox::WideToUTF8(folder + L"\\target\\data.txt").value_or(std::string());
     req.items.push_back(target_after);
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolReparsePoint>(req);

@@ -1,6 +1,4 @@
 #include "DnsTable.hpp"
-#include <nlohmann/json.hpp>
-#include <exception>
 #include <utility>
 
 namespace
@@ -30,66 +28,56 @@ bool appbox::network::DnsTable::Parse(const std::string& text, std::string& erro
 {
     std::vector<DnsEntry> entries;
 
-    try
+    /*
+     * The document is read as the structure of its schema
+     * (`common/NetworkIsolation.hpp`) and never member by member, so a member
+     * which is missing, which is of another type or which carries an empty
+     * hostname is refused while the file is read. The reader reports the
+     * refusal by code; the wording of the report is written here, because the
+     * text of a failure belongs to the module which shows it.
+     */
+    const auto document = network_isolation::ParseDocument(text);
+    if (!document)
     {
-        /*
-         * The document is read as the structure of its schema
-         * (`common/NetworkIsolation.hpp`) and never member by member, so a
-         * member which is missing, which is of another type or which carries an
-         * empty hostname is refused while the file is read.
-         */
-        const auto document = nlohmann::json::parse(text).get<network_isolation::Document>();
+        error = document.error() == ErrorCode::kIsolationDocumentUnsupportedVersion
+                    ? "unsupported network isolation file version"
+                    : "the network isolation file does not fit its schema";
+        return false;
+    }
 
-        if (document.version != network_isolation::kVersion)
+    for (const auto& item : document->entries)
+    {
+        DnsEntry entry;
+        entry.hostname = network_isolation::NormalizeHostname(item.hostname);
+        entry.redirect = item.redirect;
+
+        const auto address = network_isolation::ParseAddress(entry.redirect);
+        if (!address)
         {
-            error = "unsupported network isolation file version";
+            error = "the redirect '" + entry.redirect +
+                    "' of a network isolation file entry is not an IPv4 or an IPv6 address";
             return false;
         }
+        entry.family = address->family;
 
-        for (const auto& item : document.entries)
+        /*
+         * A hostname which is listed twice keeps the last entry, so a hand
+         * written file can correct an entry by repeating it.
+         */
+        bool replaced = false;
+        for (auto& existing : entries)
         {
-            DnsEntry entry;
-            entry.hostname = network_isolation::NormalizeHostname(item.hostname);
-            entry.redirect = item.redirect;
-
-            network_isolation::Address address;
-            if (!network_isolation::ParseAddress(entry.redirect, address))
+            if (existing.hostname == entry.hostname)
             {
-                error = "the redirect '" + entry.redirect +
-                        "' of a network isolation file entry is not an IPv4 or an IPv6 address";
-                return false;
-            }
-            entry.family = address.family;
-
-            /*
-             * A hostname which is listed twice keeps the last entry, so a
-             * hand written file can correct an entry by repeating it.
-             */
-            bool replaced = false;
-            for (auto& existing : entries)
-            {
-                if (existing.hostname == entry.hostname)
-                {
-                    existing = entry;
-                    replaced = true;
-                    break;
-                }
-            }
-            if (!replaced)
-            {
-                entries.push_back(std::move(entry));
+                existing = entry;
+                replaced = true;
+                break;
             }
         }
-    }
-    catch (const IsolationDocumentError& e)
-    {
-        error = e.what();
-        return false;
-    }
-    catch (const std::exception& e)
-    {
-        error = std::string("the network isolation file is not valid: ") + e.what();
-        return false;
+        if (!replaced)
+        {
+            entries.push_back(std::move(entry));
+        }
     }
 
     /*

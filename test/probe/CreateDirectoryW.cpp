@@ -7,7 +7,7 @@ appbox::test::ProtocolCreateDirectoryW::Rsp appbox::test::ProbeCreateDirectoryW_
     const appbox::test::ProtocolCreateDirectoryW::Req& request)
 {
     const auto& req = request;
-    auto        wPathName = appbox::UTF8ToWide(req.PathName);
+    auto        wPathName = appbox::UTF8ToWide(req.PathName).value_or(std::wstring());
 
     ProtocolCreateDirectoryW::Rsp rsp;
     if (!CreateDirectoryW(wPathName.c_str(), nullptr))

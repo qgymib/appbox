@@ -1,6 +1,7 @@
 #include "core/PeResourcePatch.hpp"
 #include "LauncherConfigReader.hpp"
 #include "EmbeddedResource.hpp"
+#include "ErrorCodeText.hpp"
 #include "launcher/EmbeddedResourceIds.h"
 #include <exception>
 #include <string>
@@ -19,13 +20,15 @@ bool appbox::test::ReadLauncherResource(const std::wstring& image_path, int reso
     }
     const appbox::pe_resource::LoadedImage image(module);
 
-    std::string_view payload;
-    if (!appbox::ReadEmbeddedResource(module, resource_id, payload, error))
+    const auto payload = appbox::ReadEmbeddedResource(module, resource_id);
+    if (!payload)
     {
+        error =
+            "failed to read the resource " + std::to_string(resource_id) + ": " + DescribeErrorCode(payload.error());
         return false;
     }
 
-    bytes.assign(payload.data(), payload.size());
+    bytes.assign(payload->data(), payload->size());
     return true;
 }
 

@@ -336,7 +336,7 @@ appbox::test::NtDirectoryQueryResult appbox::test::QueryNtDirectory(const NtDire
         const std::wstring name = EntryName(buffer, *cls);
         if (name != L"." && name != L"..")
         {
-            result.names.push_back(appbox::WideToUTF8(name));
+            result.names.push_back(appbox::WideToUTF8(name).value_or(std::string()));
         }
     }
 

@@ -391,7 +391,8 @@ TEST_F(E2E_Launcher_Log, ARelativeLogDirectoryIsResolvedAgainstTheCurrentDirecto
     const auto files = LogFilesIn(expected);
     const auto text = ReadLogs(files);
 
-    EXPECT_FALSE(files.empty()) << "the run wrote no log file into '" << appbox::WideToUTF8(expected.wstring()) << "'";
+    EXPECT_FALSE(files.empty()) << "the run wrote no log file into '"
+                                << appbox::WideToUTF8(expected.wstring()).value_or(std::string()) << "'";
     EXPECT_NE(text.find(kLauncherMessage), std::string::npos) << "the launcher wrote no log of its own";
     EXPECT_FALSE(std::filesystem::exists(GetCWD() / kCaseLogDirName));
 

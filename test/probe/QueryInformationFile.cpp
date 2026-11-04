@@ -94,7 +94,7 @@ appbox::test::ProtocolQueryInformationFile::Rsp appbox::test::ProbeQueryInformat
             continue;
         }
 
-        const std::wstring path = appbox::UTF8ToWide(item.path);
+        const std::wstring path = appbox::UTF8ToWide(item.path).value_or(std::wstring());
         const DWORD        access = item.mode == Mode::Write ? (GENERIC_READ | GENERIC_WRITE) : GENERIC_READ;
 
         HANDLE handle = CreateFileW(path.c_str(), access, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -107,10 +107,13 @@ appbox::test::ProtocolQueryInformationFile::Rsp appbox::test::ProbeQueryInformat
         }
 
         result.name =
-            appbox::WideToUTF8(QueryName(fn_query, handle, FileNameInformation, item.length, result.nameStatus));
-        result.normalized = appbox::WideToUTF8(
-            QueryName(fn_query, handle, FileNormalizedNameInformation, item.length, result.normalizedStatus));
-        result.all = appbox::WideToUTF8(QueryName(fn_query, handle, FileAllInformation, item.length, result.allStatus));
+            appbox::WideToUTF8(QueryName(fn_query, handle, FileNameInformation, item.length, result.nameStatus))
+                .value_or(std::string());
+        result.normalized = appbox::WideToUTF8(QueryName(fn_query, handle, FileNormalizedNameInformation, item.length,
+                                                         result.normalizedStatus))
+                                .value_or(std::string());
+        result.all = appbox::WideToUTF8(QueryName(fn_query, handle, FileAllInformation, item.length, result.allStatus))
+                         .value_or(std::string());
 
         CloseHandle(handle);
         rsp.items.push_back(result);

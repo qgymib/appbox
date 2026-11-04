@@ -74,13 +74,13 @@ bool appbox::fonts::ResolveFontFilePath(const std::wstring& path, std::wstring& 
      * The caller may spell the path with the namespace of the object manager,
      * which is the form the font entry points of the system receive.
      */
-    std::wstring view_path;
-    if (!appbox::MappingAsDosNtPath(path, view_path))
+    const auto view_path = appbox::MappingAsDosNtPath(path);
+    if (!view_path)
     {
         return false;
     }
 
-    auto resolve_result = appbox::filesystem::Resolve(view_path);
+    auto resolve_result = appbox::filesystem::Resolve(*view_path);
     if (resolve_result->status != appbox::filesystem::ResolveResult::Status::Exists || resolve_result->hPath.empty())
     {
         return false;

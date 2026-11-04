@@ -136,7 +136,7 @@ void OnProbeBind(const appbox::RemoteSession::Ptr& session, uint64_t id, const n
     catch (const nlohmann::json::exception& e)
     {
         SPDLOG_ERROR("the parameters of {} cannot be read: {}", appbox::test::ProtocolBind::Method, e.what());
-        session->SendResponse(
+        (void)session->SendResponse(
             id, tl::unexpected<appbox::RemoteError>(appbox::RemoteError{ -32602, "Invalid params", nlohmann::json() }));
         return;
     }
@@ -158,7 +158,7 @@ void OnProbeBind(const appbox::RemoteSession::Ptr& session, uint64_t id, const n
         session->Call(appbox::test::ProtocolExit::Method, nlohmann::json(exit_request));
     }
 
-    session->SendResponse(id, nlohmann::json(appbox::test::ProtocolBind::Rsp{}));
+    (void)session->SendResponse(id, nlohmann::json(appbox::test::ProtocolBind::Rsp{}));
 }
 
 /**
@@ -175,7 +175,14 @@ void InitProbeServer()
     }
 
     s_probe_srv->key_id = 0;
-    s_probe_srv->accepter = appbox::RemoteAccepter::Create(s_probe_srv->pipe_path);
+
+    const auto created = appbox::RemoteAccepter::Create(s_probe_srv->pipe_path);
+    if (!created.has_value())
+    {
+        SPDLOG_ERROR("the pipe '{}' of the case cannot be served: {}", s_probe_srv->pipe_path, created.error());
+        return;
+    }
+    s_probe_srv->accepter = *created;
 
     /*
      * Every probe process connects with a session of its own, so the bind is
@@ -186,7 +193,12 @@ void InitProbeServer()
         session->RegisterMethod(appbox::test::ProtocolBind::Method, BindSession(session, OnProbeBind));
     });
 
-    s_probe_srv->accepter->Start();
+    const auto started = s_probe_srv->accepter->Start();
+    if (!started.has_value())
+    {
+        SPDLOG_ERROR("the pipe '{}' of the case cannot be served: {}", s_probe_srv->pipe_path,
+                     static_cast<int>(started.error()));
+    }
 }
 
 /**
@@ -244,7 +256,7 @@ void ReportSandboxLogs(const std::wstring& cwd)
     std::sort(logs.begin(), logs.end());
     for (const auto& log : logs)
     {
-        SPDLOG_ERROR("log of the run: {}", appbox::WideToUTF8(log.filename().wstring()));
+        SPDLOG_ERROR("log of the run: {}", appbox::WideToUTF8(log.filename().wstring()).value_or("<unconvertible>"));
     }
 }
 
@@ -294,7 +306,7 @@ appbox::LauncherConfig OverrideConfig(const appbox::LauncherConfig& config, cons
     {
         for (auto& startup : copy_config.startups)
         {
-            startup.executable = appbox::WideToUTF8(probe_path);
+            startup.executable = appbox::WideToUTF8(probe_path).value_or(std::string());
         }
     }
 

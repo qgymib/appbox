@@ -6,6 +6,7 @@
 #include "WString.hpp"
 #include "StartupStarted.hpp"
 #include "probe/__init__.hpp"
+#include "utils/TestText.hpp"
 
 namespace
 {
@@ -72,7 +73,7 @@ std::string ModulePath()
 
         if (length < buffer.size())
         {
-            return appbox::WideToUTF8(std::wstring(buffer.data(), length));
+            return appbox::test::ToUTF8OrEmpty(std::wstring(buffer.data(), length));
         }
 
         buffer.resize(buffer.size() * 2);
@@ -91,7 +92,7 @@ std::string CommandLine()
         return {};
     }
 
-    return appbox::WideToUTF8(command_line);
+    return appbox::WideToUTF8(command_line).value_or(std::string());
 }
 
 /**
@@ -117,7 +118,7 @@ std::string CurrentDirectory()
 
         if (length < buffer.size())
         {
-            return appbox::WideToUTF8(std::wstring(buffer.data(), length));
+            return appbox::test::ToUTF8OrEmpty(std::wstring(buffer.data(), length));
         }
 
         buffer.resize(length + 1);
@@ -139,9 +140,10 @@ DWORD ReadFileByName(const std::string& name, std::string& data)
 {
     data.clear();
 
-    HANDLE handle = CreateFileW(appbox::UTF8ToWide(name).c_str(), GENERIC_READ,
-                                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
-                                FILE_ATTRIBUTE_NORMAL, nullptr);
+    const std::wstring path = appbox::UTF8ToWide(name).value_or(std::wstring());
+
+    HANDLE handle = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (handle == INVALID_HANDLE_VALUE)
     {
         return GetLastError();
@@ -186,8 +188,10 @@ DWORD WriteFileByName(const std::string& name, const std::string& data, std::str
 {
     readback.clear();
 
-    HANDLE handle = CreateFileW(appbox::UTF8ToWide(name).c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
-                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    const std::wstring path = appbox::UTF8ToWide(name).value_or(std::wstring());
+
+    HANDLE handle = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                FILE_ATTRIBUTE_NORMAL, nullptr);
     if (handle == INVALID_HANDLE_VALUE)
     {
         return GetLastError();
@@ -238,7 +242,8 @@ DWORD WriteFileByName(const std::string& name, const std::string& data, std::str
  */
 DWORD DeleteFileByName(const std::string& name)
 {
-    return DeleteFileW(appbox::UTF8ToWide(name).c_str()) ? 0 : GetLastError();
+    const std::wstring path = appbox::UTF8ToWide(name).value_or(std::wstring());
+    return DeleteFileW(path.c_str()) ? 0 : GetLastError();
 }
 
 /**
@@ -268,7 +273,7 @@ std::vector<std::string> EnvironmentEntries()
             continue;
         }
 
-        entries.push_back(appbox::WideToUTF8(std::wstring(cursor)));
+        entries.push_back(appbox::test::ToUTF8OrEmpty(std::wstring(cursor)));
     }
 
     FreeEnvironmentStringsW(block);

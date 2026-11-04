@@ -48,17 +48,18 @@ TEST_F(E2E_Reg, QueryKeyName_ViewPath)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\QueryKeyName_ViewPath_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\QueryKeyName_ViewPath_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     ProtocolRegQueryKeyName::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
 
     auto rsp = Probe(GetCWD(), config).Call<ProtocolRegQueryKeyName>(req);
     ASSERT_EQ(rsp.create_code, 0u);
     ASSERT_EQ(rsp.query_key_code, 0u);
     ASSERT_EQ(rsp.query_object_code, 0u);
 
-    const auto suffix = appbox::WideToUTF8(subkey);
+    const auto suffix = appbox::WideToUTF8(subkey).value_or(std::string());
 
     ASSERT_TRUE(StartsWith(rsp.key_name, "\\REGISTRY\\USER\\")) << rsp.key_name;
     ASSERT_TRUE(EndsWith(rsp.key_name, suffix)) << rsp.key_name;

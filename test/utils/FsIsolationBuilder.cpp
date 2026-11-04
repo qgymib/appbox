@@ -60,7 +60,7 @@ std::string appbox::test::BuildFsIsolationText(const std::vector<FsIsolationEntr
     for (const auto& entry : entries)
     {
         appbox::filesystem_isolation::Entry item;
-        item.path = appbox::WideToUTF8(entry.path);
+        item.path = appbox::WideToUTF8(entry.path).value_or(std::string());
         item.kind = entry.kind;
         item.isolation = entry.isolation;
         document.entries.push_back(std::move(item));

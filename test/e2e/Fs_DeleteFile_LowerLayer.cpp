@@ -52,7 +52,8 @@ TEST_F(E2E_Fs, DeleteFile_LowerLayer)
     /* Delete file. */
     {
         ProtocolDeleteFileW::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt");
+        req.FileName =
+            appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolDeleteFileW>(req);
         ASSERT_EQ(rsp.code, 0);

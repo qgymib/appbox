@@ -283,7 +283,14 @@ static bool DestinationViewPath(const SetNameRequest& request, const std::wstrin
     {
         /* A name which starts at the root of the object namespace is a path of
          * the view, in the DOS style form the file system expects. */
-        return appbox::MappingAsDosNtPath(request.name, viewPath);
+        const auto mapped = appbox::MappingAsDosNtPath(request.name);
+        if (!mapped)
+        {
+            return false;
+        }
+
+        viewPath = *mapped;
+        return true;
     }
 
     /*
@@ -291,7 +298,13 @@ static bool DestinationViewPath(const SetNameRequest& request, const std::wstrin
      * caller named is relative to the directory of the object, which is the
      * base the file system resolves it against.
      */
-    viewPath = JoinPath(appbox::filesystem::DirName(sourceViewPath), request.name);
+    const auto object_dir = appbox::filesystem::DirName(sourceViewPath);
+    if (!object_dir)
+    {
+        return false;
+    }
+
+    viewPath = JoinPath(*object_dir, request.name);
     return true;
 }
 
@@ -443,7 +456,12 @@ static bool RedirectSetName(HANDLE FileHandle, PIO_STATUS_BLOCK IoStatusBlock,
     }
 
     /* The folders above the new entry have to exist in the layer it lands in. */
-    appbox::filesystem::CreateDirectories(appbox::filesystem::DirName(target_path), target_base);
+    const auto target_dir = appbox::filesystem::DirName(target_path);
+    if (!target_dir)
+    {
+        return false;
+    }
+    appbox::filesystem::CreateDirectories(*target_dir, target_base);
 
     std::vector<BYTE> buffer = BuildSetNameRequest(request, target_path);
     status = sys_NtSetInformationFile(FileHandle, IoStatusBlock, buffer.data(), static_cast<ULONG>(buffer.size()),

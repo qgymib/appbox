@@ -43,7 +43,7 @@ std::string FormatValueData(const BYTE* data, DWORD size)
     }
     if (printable)
     {
-        return appbox::WideToUTF8(text);
+        return appbox::WideToUTF8(text).value_or(std::string());
     }
 
     static const char* digits = "0123456789abcdef";
@@ -79,8 +79,9 @@ appbox::test::ProtocolRegQueryMultipleValues::Rsp appbox::test::ProbeRegQueryMul
         return rsp;
     }
 
-    HKEY key = nullptr;
-    rsp.open_code = RegOpenKeyExW(root, appbox::UTF8ToWide(req.Key).c_str(), 0, KEY_QUERY_VALUE, &key);
+    HKEY               key = nullptr;
+    const std::wstring wide_key = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
+    rsp.open_code = RegOpenKeyExW(root, wide_key.c_str(), 0, KEY_QUERY_VALUE, &key);
     if (rsp.open_code != ERROR_SUCCESS)
     {
         return rsp;
@@ -90,7 +91,7 @@ appbox::test::ProtocolRegQueryMultipleValues::Rsp appbox::test::ProbeRegQueryMul
     names.reserve(req.Names.size());
     for (const auto& name : req.Names)
     {
-        names.push_back(appbox::UTF8ToWide(name));
+        names.push_back(appbox::UTF8ToWide(name).value_or(std::wstring()));
     }
 
     std::vector<VALENTW> entries(names.size());

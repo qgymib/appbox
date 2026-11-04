@@ -57,7 +57,8 @@ static bool PrepareShell(const std::vector<std::string>& params)
     }
 
     LauncherApp().shell_args = appbox::BuildShellArguments(params);
-    SPDLOG_INFO("Run the shell '{}' of the host in the sandbox", appbox::WideToUTF8(LauncherApp().shell_path));
+    SPDLOG_INFO("Run the shell '{}' of the host in the sandbox",
+                appbox::WideToUTF8(LauncherApp().shell_path).value_or("<unconvertible>"));
     return true;
 }
 
@@ -413,14 +414,14 @@ static void LoadConfig()
      * configuration resource, and the run is refused instead of starting
      * nothing.
      */
-    std::string_view payload;
-    std::string      error;
-    if (!appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_LAUNCHER_CONFIG, payload, error))
+    const auto payload = appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_LAUNCHER_CONFIG);
+    if (!payload)
     {
-        throw std::runtime_error("the launcher configuration is unavailable: " + error);
+        throw std::runtime_error("the launcher configuration is unavailable (error " +
+                                 std::to_string(static_cast<std::int32_t>(payload.error())) + ")");
     }
 
-    nlohmann::json j_cfg = nlohmann::json::parse(payload.begin(), payload.end());
+    nlohmann::json j_cfg = nlohmann::json::parse(payload->begin(), payload->end());
     LauncherApp().launcher_config = j_cfg;
     ResolveSandboxPaths({});
 }
@@ -596,10 +597,14 @@ static DWORD RunMasterInstance(appbox::CommandLineOptions& opt, appbox::RemoteAc
         std::string_view startup_image;
         if (LauncherApp().launcher_config.startup.screen)
         {
-            std::string image_error;
-            if (!appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_STARTUP_IMAGE, startup_image, image_error))
+            const auto image = appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_STARTUP_IMAGE);
+            if (image)
             {
-                SPDLOG_DEBUG("the startup screen has no image: {}", image_error);
+                startup_image = *image;
+            }
+            else
+            {
+                SPDLOG_DEBUG("the startup screen has no image (error {})", static_cast<std::int32_t>(image.error()));
             }
         }
 
@@ -641,7 +646,7 @@ static DWORD RunMasterInstance(appbox::CommandLineOptions& opt, appbox::RemoteAc
                 (std::filesystem::path(extraction.Root()) / appbox::layout::kAppDirNameW).wstring());
 
             /* The folder is a fact of the run, which its state query reports. */
-            LauncherApp().RecordExtractionRoot(appbox::WideToUTF8(extraction.Root()));
+            LauncherApp().RecordExtractionRoot(appbox::WideToUTF8(extraction.Root()).value_or(std::string()));
         }
 
         ReportStartupStage(appbox::StartupStage::Preparing, 1.0);
@@ -768,12 +773,14 @@ static DWORD RunLauncher()
         return id_error;
     }
 
-    const auto pipe = appbox::SandboxPipeName(LauncherApp().launcher_config.sandbox_id);
-    if (pipe.empty())
+    const auto pipe_name = appbox::SandboxPipeName(LauncherApp().launcher_config.sandbox_id);
+    if (!pipe_name.has_value())
     {
         SPDLOG_ERROR("the sandbox identifier cannot name a control pipe, the run is refused");
         return ERROR_INVALID_DATA;
     }
+
+    const std::string& pipe = pipe_name.value();
 
     appbox::RemoteAccepter::Options options;
     options.first_instance = true;
@@ -809,12 +816,20 @@ static DWORD RunLauncher()
             logging_ready = true;
         }
 
-        switch (created.status)
+        if (created.has_value())
         {
-        case appbox::ServerCreateStatus::Created:
-            return RunMasterInstance(opt, created.accepter, pipe);
+            return RunMasterInstance(opt, *created, pipe);
+        }
 
-        case appbox::ServerCreateStatus::AlreadyRunning: {
+        /*
+         * The creation reports the Win32 code of the failed instance. An access
+         * denial is the answer of two different situations: another server of
+         * this user holds the name, which this run hands its request over to,
+         * or the name belongs to a pipe this user may not use. The probe of the
+         * name tells them apart.
+         */
+        if (created.error() == ERROR_ACCESS_DENIED && appbox::detail::AccepterPeerIsReachable(pipe))
+        {
             const auto handover = HandOverToMaster(opt, pipe);
             if (!handover.retry)
             {
@@ -836,15 +851,14 @@ static DWORD RunLauncher()
             continue;
         }
 
-        case appbox::ServerCreateStatus::AccessDenied:
+        if (created.error() == ERROR_ACCESS_DENIED)
+        {
             SPDLOG_ERROR("the control pipe '{}' of the sandbox cannot be used by this user", pipe);
             return ERROR_ACCESS_DENIED;
-
-        case appbox::ServerCreateStatus::Failed:
-        default:
-            SPDLOG_ERROR("the control pipe '{}' of the sandbox cannot be created: {}", pipe, created.error_code);
-            return created.error_code != 0 ? created.error_code : ERROR_GEN_FAILURE;
         }
+
+        SPDLOG_ERROR("the control pipe '{}' of the sandbox cannot be created: {}", pipe, created.error());
+        return created.error() != 0 ? created.error() : ERROR_GEN_FAILURE;
     }
 }
 

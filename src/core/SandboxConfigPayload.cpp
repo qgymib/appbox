@@ -174,8 +174,8 @@ bool WritePatchedImage(const std::filesystem::path& source, const std::filesyste
     if (!input)
     {
         code = GetLastError();
-        error = "failed to open '" + appbox::WideToUTF8(source.wstring()) + "' for the configuration (error " +
-                std::to_string(code) + ")";
+        error = "failed to open '" + appbox::WideToUTF8(source.wstring()).value_or(std::string()) +
+                "' for the configuration (error " + std::to_string(code) + ")";
         return false;
     }
 
@@ -183,8 +183,8 @@ bool WritePatchedImage(const std::filesystem::path& source, const std::filesyste
     if (!binary)
     {
         code = GetLastError();
-        error = "failed to read '" + appbox::WideToUTF8(source.wstring()) + "' as a PE image (error " +
-                std::to_string(code) + ")";
+        error = "failed to read '" + appbox::WideToUTF8(source.wstring()).value_or(std::string()) +
+                "' as a PE image (error " + std::to_string(code) + ")";
         return false;
     }
 
@@ -193,8 +193,8 @@ bool WritePatchedImage(const std::filesystem::path& source, const std::filesyste
                                static_cast<DWORD>(payload.size())) == nullptr)
     {
         code = GetLastError();
-        error = "failed to add the sandbox configuration to '" + appbox::WideToUTF8(source.wstring()) + "' (error " +
-                std::to_string(code) + ")";
+        error = "failed to add the sandbox configuration to '" +
+                appbox::WideToUTF8(source.wstring()).value_or(std::string()) + "' (error " + std::to_string(code) + ")";
         return false;
     }
 
@@ -203,16 +203,16 @@ bool WritePatchedImage(const std::filesystem::path& source, const std::filesyste
     if (!output)
     {
         code = GetLastError();
-        error = "failed to create '" + appbox::WideToUTF8(target.wstring()) + "' for the patched image (error " +
-                std::to_string(code) + ")";
+        error = "failed to create '" + appbox::WideToUTF8(target.wstring()).value_or(std::string()) +
+                "' for the patched image (error " + std::to_string(code) + ")";
         return false;
     }
 
     if (DetourBinaryWrite(binary.Get(), output.Get()) == FALSE)
     {
         code = GetLastError();
-        error = "failed to write the patched image to '" + appbox::WideToUTF8(target.wstring()) + "' (error " +
-                std::to_string(code) + ")";
+        error = "failed to write the patched image to '" +
+                appbox::WideToUTF8(target.wstring()).value_or(std::string()) + "' (error " + std::to_string(code) + ")";
         return false;
     }
 

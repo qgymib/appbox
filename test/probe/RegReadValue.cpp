@@ -24,17 +24,20 @@ appbox::test::ProtocolRegReadValue::Rsp appbox::test::ProbeRegReadValue_Entry(
         return rsp;
     }
 
-    HKEY key = nullptr;
-    rsp.open_code = RegOpenKeyExW(root, appbox::UTF8ToWide(req.Key).c_str(), 0, KEY_QUERY_VALUE, &key);
+    HKEY               key = nullptr;
+    const std::wstring wide_key = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
+    const std::wstring wide_value = appbox::UTF8ToWide(req.Value).value_or(std::wstring());
+
+    rsp.open_code = RegOpenKeyExW(root, wide_key.c_str(), 0, KEY_QUERY_VALUE, &key);
     if (rsp.open_code == ERROR_SUCCESS)
     {
         wchar_t buf[128] = {};
         DWORD   buf_size = sizeof(buf);
-        rsp.query_code = RegQueryValueExW(key, appbox::UTF8ToWide(req.Value).c_str(), nullptr, &rsp.type,
-                                          reinterpret_cast<LPBYTE>(buf), &buf_size);
+        rsp.query_code =
+            RegQueryValueExW(key, wide_value.c_str(), nullptr, &rsp.type, reinterpret_cast<LPBYTE>(buf), &buf_size);
         if (rsp.query_code == ERROR_SUCCESS)
         {
-            rsp.data = appbox::WideToUTF8(buf);
+            rsp.data = appbox::WideToUTF8(buf).value_or(std::string());
         }
 
         RegCloseKey(key);

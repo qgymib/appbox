@@ -20,51 +20,101 @@ namespace
  * @brief Read the text of a document and fail the test when it is refused.
  *
  * The helper is the reader of the five documents of the isolation files: the
- * text is parsed and converted with the `from_json()` of the schema, which is
- * the mechanism the packer and the sandbox share.
+ * text is read with the `ParseDocument()` of the schema, which is the mechanism
+ * the packer and the sandbox share.
  *
  * @tparam Document Type of the document to read.
+ * @tparam ParseFn Type of the reader.
+ * @param[in] parse Reader of the document.
  * @param[in] text Text of the document.
  * @return The document of the text, a default one when the text was refused.
  */
-template <typename Document>
-Document ParseOrFail(const std::string& text)
+template <typename Document, typename ParseFn>
+Document ParseOrFail(ParseFn parse, const std::string& text)
 {
-    try
+    const auto document = parse(text);
+    if (!document)
     {
-        return nlohmann::json::parse(text).get<Document>();
-    }
-    catch (const std::exception& e)
-    {
-        ADD_FAILURE() << "the document was refused: " << e.what() << "\ntext: " << text;
+        ADD_FAILURE() << "the document was refused with the code " << static_cast<int>(document.error())
+                      << "\ntext: " << text;
         return Document{};
     }
+
+    return *document;
 }
 
 /**
- * @brief Read the text of a document and report why it was refused.
+ * @brief Read the text of a document and report the code of its refusal.
  *
  * @tparam Document Type of the document to read.
+ * @tparam ParseFn Type of the reader.
+ * @param[in] parse Reader of the document.
  * @param[in] text Text of the document.
- * @return The description of the refusal, empty when the text was accepted.
+ * @return The code of the refusal, `appbox::ErrorCode::kInvalidArgument` when the
+ *         text was accepted.
  */
-template <typename Document>
-std::string RefusalOf(const std::string& text)
+template <typename Document, typename ParseFn>
+appbox::ErrorCode RefusalOf(ParseFn parse, const std::string& text)
 {
-    try
+    const auto document = parse(text);
+    if (document)
     {
-        (void)nlohmann::json::parse(text).get<Document>();
-    }
-    catch (const appbox::IsolationDocumentError& e)
-    {
-        return e.what();
-    }
-    catch (const std::exception& e)
-    {
-        return std::string("the text was not read as a document: ") + e.what();
+        (void)sizeof(Document);
+        return appbox::ErrorCode::kInvalidArgument;
     }
 
-    return {};
+    return document.error();
+}
+
+/**
+ * @brief Read a filesystem isolation document.
+ * @param[in] text Text of the document.
+ * @return The document of the text.
+ */
+appbox::filesystem_isolation::Document ReadFilesystem(const std::string& text)
+{
+    return ParseOrFail<appbox::filesystem_isolation::Document>(appbox::filesystem_isolation::ParseDocument, text);
+}
+
+/**
+ * @brief Read a registry isolation document.
+ * @param[in] text Text of the document.
+ * @return The document of the text.
+ */
+appbox::registry_isolation::Document ReadRegistry(const std::string& text)
+{
+    return ParseOrFail<appbox::registry_isolation::Document>(appbox::registry_isolation::ParseDocument, text);
+}
+
+/**
+ * @brief Read a network isolation document.
+ * @param[in] text Text of the document.
+ * @return The document of the text.
+ */
+appbox::network_isolation::Document ReadNetwork(const std::string& text)
+{
+    return ParseOrFail<appbox::network_isolation::Document>(appbox::network_isolation::ParseDocument, text);
+}
+
+/**
+ * @brief Read an environment isolation document.
+ * @param[in] text Text of the document.
+ * @return The document of the text.
+ */
+appbox::environment_isolation::Document ReadEnvironment(const std::string& text)
+{
+    return ParseOrFail<appbox::environment_isolation::Document>(appbox::environment_isolation::ParseDocument, text);
+}
+
+/**
+ * @brief Read an environment state document.
+ * @param[in] text Text of the document.
+ * @return The document of the text.
+ */
+appbox::environment_isolation::StateDocument ReadState(const std::string& text)
+{
+    return ParseOrFail<appbox::environment_isolation::StateDocument>(appbox::environment_isolation::ParseStateDocument,
+                                                                     text);
 }
 
 /**
@@ -102,7 +152,7 @@ appbox::filesystem_isolation::Document FilesystemDocument()
 TEST(Unit_IsolationDocument, FilesystemDocumentRoundTrips)
 {
     const auto text = nlohmann::json(FilesystemDocument()).dump(2);
-    const auto back = ParseOrFail<appbox::filesystem_isolation::Document>(text);
+    const auto back = ReadFilesystem(text);
 
     EXPECT_EQ(back.version, appbox::filesystem_isolation::kVersion);
     ASSERT_EQ(back.entries.size(), 3u);
@@ -126,47 +176,95 @@ TEST(Unit_IsolationDocument, FilesystemDocumentRoundTrips)
     EXPECT_NE(text.find("\"merge\""), std::string::npos);
 }
 
+/**
+ * @brief A document of another shape is refused with one code.
+ *
+ * The reader reports the refusal by code alone: the description of the member
+ * which was refused is a diagnostic of the schema and never reaches the caller,
+ * so every refusal of this schema answers the same code.
+ */
 TEST(Unit_IsolationDocument, FilesystemDocumentRefusesWhatTheSchemaDoesNotAllow)
 {
-    using Document = appbox::filesystem_isolation::Document;
+    constexpr auto kInvalid = appbox::ErrorCode::kIsolationDocumentInvalid;
 
-    EXPECT_EQ(RefusalOf<Document>("[]"), "the filesystem isolation file is not a JSON object");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "entries": [] })"), "the filesystem isolation file has no 'version' member");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": "1", "entries": [] })"),
-              "the 'version' member of the filesystem isolation file is not a whole number");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": {} })"),
-              "the 'entries' member of the filesystem isolation file is not a list");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ 7 ] })"),
-              "a filesystem isolation file entry is not a JSON object");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "kind": "directory", "isolation": "full" } ] })"),
-              "a filesystem isolation file entry has no 'path' member");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "path": 7 } ] })"),
-              "the 'path' member of a filesystem isolation file entry is not a string");
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(appbox::filesystem_isolation::ParseDocument, "[]"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(appbox::filesystem_isolation::ParseDocument,
+                                                                R"({ "entries": [] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(appbox::filesystem_isolation::ParseDocument,
+                                                                R"({ "version": "1", "entries": [] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(appbox::filesystem_isolation::ParseDocument,
+                                                                R"({ "version": 1, "entries": {} })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(appbox::filesystem_isolation::ParseDocument,
+                                                                R"({ "version": 1, "entries": [ 7 ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(
+                  appbox::filesystem_isolation::ParseDocument,
+                  R"({ "version": 1, "entries": [ { "kind": "directory", "isolation": "full" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(appbox::filesystem_isolation::ParseDocument,
+                                                                R"({ "version": 1, "entries": [ { "path": 7 } ] })"),
+              kInvalid);
 
     /* An entry without a path is the root of the view, which has to be a folder. */
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "path": "" } ] })"),
-              "a filesystem isolation file entry has no 'kind' member");
-    EXPECT_EQ(
-        RefusalOf<Document>(R"({ "version": 1, "entries": [ { "path": "", "kind": "file", "isolation": "full" } ] })"),
-        "a filesystem isolation file entry without a path has to be a directory");
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(appbox::filesystem_isolation::ParseDocument,
+                                                                R"({ "version": 1, "entries": [ { "path": "" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(
+                  appbox::filesystem_isolation::ParseDocument,
+                  R"({ "version": 1, "entries": [ { "path": "", "kind": "file", "isolation": "full" } ] })"),
+              kInvalid);
 
-    EXPECT_EQ(
-        RefusalOf<Document>(R"({ "version": 1, "entries": [ { "path": "a", "kind": "link", "isolation": "full" } ] })"),
-        "unknown entry kind 'link' in the filesystem isolation file");
-    EXPECT_EQ(
-        RefusalOf<Document>(R"({ "version": 1, "entries": [ { "path": "a", "kind": "file", "isolation": "hide" } ] })"),
-        "unknown isolation mode 'hide' in the filesystem isolation file");
-    EXPECT_EQ(RefusalOf<Document>(
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(
+                  appbox::filesystem_isolation::ParseDocument,
+                  R"({ "version": 1, "entries": [ { "path": "a", "kind": "link", "isolation": "full" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(
+                  appbox::filesystem_isolation::ParseDocument,
+                  R"({ "version": 1, "entries": [ { "path": "a", "kind": "file", "isolation": "hide" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(
+                  appbox::filesystem_isolation::ParseDocument,
                   R"({ "version": 1, "entries": [ { "path": "a", "kind": "file", "isolation": "write_copy" } ] })"),
-              "the isolation mode 'write_copy' cannot be used for a file in the filesystem isolation file");
-    EXPECT_EQ(RefusalOf<Document>(
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(
+                  appbox::filesystem_isolation::ParseDocument,
                   R"({ "version": 1, "entries": [ { "path": "a", "kind": "file", "isolation": "merge" } ] })"),
-              "the isolation mode 'merge' cannot be used for a file in the filesystem isolation file");
+              kInvalid);
+
+    /* A text which is no JSON document at all is the same code. */
+    EXPECT_EQ(RefusalOf<appbox::filesystem_isolation::Document>(appbox::filesystem_isolation::ParseDocument,
+                                                                "{ not a document"),
+              kInvalid);
 
     /* A document without a mode at all describes a file which sets none. */
-    const auto empty = ParseOrFail<Document>(R"({ "version": 1 })");
+    const auto empty = ReadFilesystem(R"({ "version": 1 })");
     EXPECT_EQ(empty.version, appbox::filesystem_isolation::kVersion);
     EXPECT_TRUE(empty.entries.empty());
+}
+
+/**
+ * @brief A document of another schema version is told apart from a broken one.
+ *
+ * The version is read before the members of the document, so a file of a newer
+ * schema is never interpreted with the rules of this one and the caller does not
+ * report it as a malformed file.
+ */
+TEST(Unit_IsolationDocument, DocumentOfAnotherVersionIsReportedAsUnsupported)
+{
+    using Document = appbox::filesystem_isolation::Document;
+    using appbox::ErrorCode;
+
+    EXPECT_EQ(RefusalOf<Document>(appbox::filesystem_isolation::ParseDocument, R"({ "version": 2, "entries": [] })"),
+              ErrorCode::kIsolationDocumentUnsupportedVersion);
+
+    /* The state document has a version of its own and reports the same code. */
+    EXPECT_EQ(RefusalOf<appbox::environment_isolation::StateDocument>(appbox::environment_isolation::ParseStateDocument,
+                                                                      R"({ "version": 0, "entries": [] })"),
+              ErrorCode::kIsolationDocumentUnsupportedVersion);
 }
 
 TEST(Unit_IsolationDocument, RegistryDocumentRoundTrips)
@@ -185,7 +283,7 @@ TEST(Unit_IsolationDocument, RegistryDocumentRoundTrips)
     document.values.push_back(value);
 
     const auto text = nlohmann::json(document).dump(2);
-    const auto back = ParseOrFail<appbox::registry_isolation::Document>(text);
+    const auto back = ReadRegistry(text);
 
     EXPECT_EQ(back.version, appbox::registry_isolation::kVersion);
     ASSERT_EQ(back.keys.size(), 1u);
@@ -199,41 +297,60 @@ TEST(Unit_IsolationDocument, RegistryDocumentRoundTrips)
 
 TEST(Unit_IsolationDocument, RegistryDocumentRefusesWhatTheSchemaDoesNotAllow)
 {
-    using Document = appbox::registry_isolation::Document;
+    constexpr auto kInvalid = appbox::ErrorCode::kIsolationDocumentInvalid;
 
-    EXPECT_EQ(RefusalOf<Document>("[]"), "the isolation file is not a JSON object");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "keys": [] })"), "the isolation file has no 'version' member");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "keys": {} })"),
-              "the 'keys' member of the isolation file is not a list");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "values": [ 7 ] })"),
-              "an isolation file entry is not a JSON object");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "values": [ { "isolation": "full" } ] })"),
-              "an isolation file entry has no 'path' member");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "values": [ { "path": "HKEY_CURRENT_USER" } ] })"),
-              "an isolation file entry has no 'name' member");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "keys": [ { "path": 7, "isolation": "full" } ] })"),
-              "the 'path' member of an isolation file entry is not a string");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "keys": [ { "path": "", "isolation": "full" } ] })"),
-              "an isolation file entry has an empty key path");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "keys": [ { "path": "a", "name": 7, "isolation": "full" } ] })"),
-              "the 'name' member of an isolation file entry is not a string");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "keys": [ { "path": "a", "isolation": "sandbox" } ] })"),
-              "unknown key isolation mode 'sandbox' in the isolation file");
+    EXPECT_EQ(RefusalOf<appbox::registry_isolation::Document>(appbox::registry_isolation::ParseDocument, "[]"),
+              kInvalid);
+    EXPECT_EQ(
+        RefusalOf<appbox::registry_isolation::Document>(appbox::registry_isolation::ParseDocument, R"({ "keys": [] })"),
+        kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::registry_isolation::Document>(appbox::registry_isolation::ParseDocument,
+                                                              R"({ "version": 1, "keys": {} })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::registry_isolation::Document>(appbox::registry_isolation::ParseDocument,
+                                                              R"({ "version": 1, "values": [ 7 ] })"),
+              kInvalid);
+    EXPECT_EQ(
+        RefusalOf<appbox::registry_isolation::Document>(appbox::registry_isolation::ParseDocument,
+                                                        R"({ "version": 1, "values": [ { "isolation": "full" } ] })"),
+        kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::registry_isolation::Document>(
+                  appbox::registry_isolation::ParseDocument,
+                  R"({ "version": 1, "values": [ { "path": "HKEY_CURRENT_USER" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::registry_isolation::Document>(appbox::registry_isolation::ParseDocument,
+                                                              R"({ "version": 1, "keys": [ { "path": 7,
+                                                                                            "isolation": "full" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::registry_isolation::Document>(
+                  appbox::registry_isolation::ParseDocument,
+                  R"({ "version": 1, "keys": [ { "path": "", "isolation": "full" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::registry_isolation::Document>(
+                  appbox::registry_isolation::ParseDocument,
+                  R"({ "version": 1, "keys": [ { "path": "a", "name": 7, "isolation": "full" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::registry_isolation::Document>(
+                  appbox::registry_isolation::ParseDocument,
+                  R"({ "version": 1, "keys": [ { "path": "a", "isolation": "sandbox" } ] })"),
+              kInvalid);
 
     /*
      * A value carries the two value modes alone: a value is never copied up and
      * a value write never reaches the host registry, so the modes of a key are
      * refused for a value entry.
      */
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "values": [ { "path": "a", "name": "b",
-                                                                   "isolation": "merge" } ] })"),
-              "unknown value isolation mode 'merge' in the isolation file");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "values": [ { "path": "a", "name": "b",
-                                                                   "isolation": "write_copy" } ] })"),
-              "unknown value isolation mode 'write_copy' in the isolation file");
+    EXPECT_EQ(RefusalOf<appbox::registry_isolation::Document>(
+                  appbox::registry_isolation::ParseDocument,
+                  R"({ "version": 1, "values": [ { "path": "a", "name": "b", "isolation": "merge" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::registry_isolation::Document>(
+                  appbox::registry_isolation::ParseDocument,
+                  R"({ "version": 1, "values": [ { "path": "a", "name": "b", "isolation": "write_copy" } ] })"),
+              kInvalid);
 
     /* A document which lists neither a key nor a value sets no mode. */
-    const auto empty = ParseOrFail<Document>(R"({ "version": 1 })");
+    const auto empty = ReadRegistry(R"({ "version": 1 })");
     EXPECT_TRUE(empty.keys.empty());
     EXPECT_TRUE(empty.values.empty());
 }
@@ -257,7 +374,7 @@ TEST(Unit_IsolationDocument, NetworkDocumentRoundTrips)
     document.proxy = proxy;
 
     const auto text = nlohmann::json(document).dump(2);
-    const auto back = ParseOrFail<appbox::network_isolation::Document>(text);
+    const auto back = ReadNetwork(text);
 
     EXPECT_EQ(back.version, appbox::network_isolation::kVersion);
     ASSERT_EQ(back.entries.size(), 1u);
@@ -275,20 +392,29 @@ TEST(Unit_IsolationDocument, NetworkDocumentRoundTrips)
 
 TEST(Unit_IsolationDocument, NetworkDocumentRefusesWhatTheSchemaDoesNotAllow)
 {
-    using Document = appbox::network_isolation::Document;
+    constexpr auto kInvalid = appbox::ErrorCode::kIsolationDocumentInvalid;
 
-    EXPECT_EQ(RefusalOf<Document>("[]"), "the network isolation file is not a JSON object");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "entries": [] })"), "the network isolation file has no 'version' member");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": {} })"),
-              "the 'entries' member of the network isolation file is not a list");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ 7 ] })"),
-              "a network isolation file entry is not a JSON object");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "redirect": "127.0.0.1" } ] })"),
-              "a network isolation file entry has no 'hostname' member");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "hostname": "a" } ] })"),
-              "a network isolation file entry has no 'redirect' member");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "hostname": "", "redirect": "127.0.0.1" } ] })"),
-              "a network isolation file entry has an empty hostname");
+    EXPECT_EQ(RefusalOf<appbox::network_isolation::Document>(appbox::network_isolation::ParseDocument, "[]"), kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::network_isolation::Document>(appbox::network_isolation::ParseDocument,
+                                                             R"({ "entries": [] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::network_isolation::Document>(appbox::network_isolation::ParseDocument,
+                                                             R"({ "version": 1, "entries": {} })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::network_isolation::Document>(appbox::network_isolation::ParseDocument,
+                                                             R"({ "version": 1, "entries": [ 7 ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::network_isolation::Document>(
+                  appbox::network_isolation::ParseDocument,
+                  R"({ "version": 1, "entries": [ { "redirect": "127.0.0.1" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::network_isolation::Document>(appbox::network_isolation::ParseDocument,
+                                                             R"({ "version": 1, "entries": [ { "hostname": "a" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::network_isolation::Document>(
+                  appbox::network_isolation::ParseDocument,
+                  R"({ "version": 1, "entries": [ { "hostname": "", "redirect": "127.0.0.1" } ] })"),
+              kInvalid);
 }
 
 /**
@@ -302,15 +428,13 @@ TEST(Unit_IsolationDocument, NetworkDocumentRefusesWhatTheSchemaDoesNotAllow)
  */
 TEST(Unit_IsolationDocument, NetworkDocumentReadsTheProxyLeniently)
 {
-    using Document = appbox::network_isolation::Document;
-
     /* A proxy member which is not an object describes a session without one. */
-    EXPECT_FALSE(ParseOrFail<Document>(R"({ "version": 1, "proxy": "socks5" })").proxy.has_value());
-    EXPECT_FALSE(ParseOrFail<Document>(R"({ "version": 1, "proxy": null })").proxy.has_value());
+    EXPECT_FALSE(ReadNetwork(R"({ "version": 1, "proxy": "socks5" })").proxy.has_value());
+    EXPECT_FALSE(ReadNetwork(R"({ "version": 1, "proxy": null })").proxy.has_value());
 
     /* A member of another type leaves the default of the proxy. */
-    const auto document = ParseOrFail<Document>(R"({ "version": 1, "proxy": { "type": 7, "tcp": "yes", "udp": null,
-                                                                              "server": null, "port": [], "username": 1 } })");
+    const auto document = ReadNetwork(R"({ "version": 1, "proxy": { "type": 7, "tcp": "yes", "udp": null,
+                                                                  "server": null, "port": [], "username": 1 } })");
     ASSERT_TRUE(document.proxy.has_value());
     EXPECT_TRUE(document.proxy->type.empty());
     EXPECT_FALSE(document.proxy->tcp);
@@ -334,7 +458,7 @@ TEST(Unit_IsolationDocument, EnvironmentDocumentRoundTrips)
     document.entries.push_back(entry);
 
     const auto text = nlohmann::json(document).dump(2);
-    const auto back = ParseOrFail<appbox::environment_isolation::Document>(text);
+    const auto back = ReadEnvironment(text);
 
     EXPECT_EQ(back.version, appbox::environment_isolation::kVersion);
     ASSERT_EQ(back.entries.size(), 1u);
@@ -347,23 +471,38 @@ TEST(Unit_IsolationDocument, EnvironmentDocumentRoundTrips)
 
 TEST(Unit_IsolationDocument, EnvironmentDocumentRefusesWhatTheSchemaDoesNotAllow)
 {
-    using Document = appbox::environment_isolation::Document;
+    constexpr auto kInvalid = appbox::ErrorCode::kIsolationDocumentInvalid;
 
-    EXPECT_EQ(RefusalOf<Document>("[]"), "the environment isolation file is not a JSON object");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1 })"), "the environment isolation file carries no entry list");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "entries": [] })"), "the environment isolation file has no 'version' member");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ 7 ] })"), "entries[0]: the entry is not an object");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "name": "A", "value": "1" } ] })"),
-              "entries[0]: the member 'merge_string' is missing or is not a string");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "name": "A", "value": "1", "isolation": "whiteout",
-                                                                   "merge": "replace", "merge_string": "" } ] })"),
-              "entries[0]: the member 'isolation' is not a known mode: 'whiteout'");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "name": "", "value": "1", "isolation": "full",
-                                                                   "merge": "replace", "merge_string": "" } ] })"),
-              "entries[0]: the variable carries no name");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "name": "A=B", "value": "1", "isolation": "full",
-                                                                   "merge": "replace", "merge_string": "" } ] })"),
-              "entries[0]: the name of the variable carries an equals sign");
+    EXPECT_EQ(RefusalOf<appbox::environment_isolation::Document>(appbox::environment_isolation::ParseDocument, "[]"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::environment_isolation::Document>(appbox::environment_isolation::ParseDocument,
+                                                                 R"({ "version": 1 })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::environment_isolation::Document>(appbox::environment_isolation::ParseDocument,
+                                                                 R"({ "entries": [] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::environment_isolation::Document>(appbox::environment_isolation::ParseDocument,
+                                                                 R"({ "version": 1, "entries": [ 7 ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::environment_isolation::Document>(
+                  appbox::environment_isolation::ParseDocument,
+                  R"({ "version": 1, "entries": [ { "name": "A", "value": "1" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::environment_isolation::Document>(
+                  appbox::environment_isolation::ParseDocument,
+                  R"({ "version": 1, "entries": [ { "name": "A", "value": "1", "isolation": "whiteout",
+                                                    "merge": "replace", "merge_string": "" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::environment_isolation::Document>(
+                  appbox::environment_isolation::ParseDocument,
+                  R"({ "version": 1, "entries": [ { "name": "", "value": "1", "isolation": "full",
+                                                    "merge": "replace", "merge_string": "" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::environment_isolation::Document>(
+                  appbox::environment_isolation::ParseDocument,
+                  R"({ "version": 1, "entries": [ { "name": "A=B", "value": "1", "isolation": "full",
+                                                    "merge": "replace", "merge_string": "" } ] })"),
+              kInvalid);
 }
 
 TEST(Unit_IsolationDocument, StateDocumentRoundTrips)
@@ -381,7 +520,7 @@ TEST(Unit_IsolationDocument, StateDocumentRoundTrips)
     document.entries.push_back(removed);
 
     const auto text = nlohmann::json(document).dump(2);
-    const auto back = ParseOrFail<appbox::environment_isolation::StateDocument>(text);
+    const auto back = ReadState(text);
 
     EXPECT_EQ(back.version, appbox::environment_isolation::kStateVersion);
     ASSERT_EQ(back.entries.size(), 2u);
@@ -394,14 +533,22 @@ TEST(Unit_IsolationDocument, StateDocumentRoundTrips)
 
 TEST(Unit_IsolationDocument, StateDocumentRefusesWhatTheSchemaDoesNotAllow)
 {
-    using Document = appbox::environment_isolation::StateDocument;
+    constexpr auto kInvalid = appbox::ErrorCode::kIsolationDocumentInvalid;
 
-    EXPECT_EQ(RefusalOf<Document>("[]"), "the environment state file is not a JSON object");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1 })"), "the environment state file carries no entry list");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "name": "A", "value": "1" } ] })"),
-              "entries[0]: the member 'deleted' is missing or is not a boolean");
-    EXPECT_EQ(RefusalOf<Document>(R"({ "version": 1, "entries": [ { "name": "", "value": "1", "deleted": false } ] })"),
-              "entries[0]: the variable carries no name");
+    EXPECT_EQ(RefusalOf<appbox::environment_isolation::StateDocument>(appbox::environment_isolation::ParseStateDocument,
+                                                                      "[]"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::environment_isolation::StateDocument>(appbox::environment_isolation::ParseStateDocument,
+                                                                      R"({ "version": 1 })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::environment_isolation::StateDocument>(
+                  appbox::environment_isolation::ParseStateDocument,
+                  R"({ "version": 1, "entries": [ { "name": "A", "value": "1" } ] })"),
+              kInvalid);
+    EXPECT_EQ(RefusalOf<appbox::environment_isolation::StateDocument>(
+                  appbox::environment_isolation::ParseStateDocument,
+                  R"({ "version": 1, "entries": [ { "name": "", "value": "1", "deleted": false } ] })"),
+              kInvalid);
 }
 
 /**

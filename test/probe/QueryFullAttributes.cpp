@@ -62,7 +62,7 @@ appbox::test::ProtocolQueryFullAttributes::Rsp appbox::test::ProbeQueryFullAttri
             continue;
         }
 
-        const std::wstring nt_path = AsNtPath(appbox::UTF8ToWide(path));
+        const std::wstring nt_path = AsNtPath(appbox::UTF8ToWide(path).value_or(std::wstring()));
 
         UNICODE_STRING us_path;
         InitString(us_path, nt_path);

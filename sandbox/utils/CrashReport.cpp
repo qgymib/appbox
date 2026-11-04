@@ -458,8 +458,8 @@ void appbox::InstallCrashHandler()
      */
     for (std::size_t index = 0; index < s_module_count; ++index)
     {
-        LOG_I("module {} base=0x{:x} end=0x{:x}", appbox::WideToUTF8(s_modules[index].name), s_modules[index].base,
-              s_modules[index].end);
+        LOG_I("module {} base=0x{:x} end=0x{:x}", appbox::WideToUTF8(s_modules[index].name).value_or("<unconvertible>"),
+              s_modules[index].base, s_modules[index].end);
     }
 
     ::AddVectoredExceptionHandler(1, OnVectoredException);

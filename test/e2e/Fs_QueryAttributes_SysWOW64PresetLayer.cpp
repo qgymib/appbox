@@ -28,7 +28,7 @@ ProtocolQueryAttributes::Rsp QueryAttributes(const std::wstring& path, const std
                                              appbox::LauncherConfig& config)
 {
     ProtocolQueryAttributes::Req req;
-    req.FileName = appbox::WideToUTF8(path);
+    req.FileName = appbox::WideToUTF8(path).value_or(std::string());
 
     return Probe(cwd, config).Call<ProtocolQueryAttributes>(req);
 }

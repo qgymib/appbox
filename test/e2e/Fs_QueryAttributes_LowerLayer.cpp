@@ -36,7 +36,8 @@ TEST_F(E2E_Fs, QueryAttributes_LowerLayer)
     /* Query the file which only exists in the lower layer. */
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt");
+        req.FileName =
+            appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(0));
@@ -74,7 +75,8 @@ TEST_F(E2E_Fs, QueryAttributes_NonExists)
     /* Query a file which does not exist anywhere. */
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt");
+        req.FileName =
+            appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         ASSERT_EQ(rsp.attributes, static_cast<DWORD>(INVALID_FILE_ATTRIBUTES));

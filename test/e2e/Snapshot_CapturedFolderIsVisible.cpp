@@ -1,6 +1,7 @@
 #include "probe/ReadFileFull.hpp"
 #include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
+#include "utils/ErrorCodeText.hpp"
 #include "utils/LauncherPath.hpp"
 #include "utils/RealFsFolder.hpp"
 #include "utils/SnapshotFile.hpp"
@@ -165,7 +166,8 @@ TEST_F(E2E_Snapshot, CapturedFolderTravelsIntoTheArchive)
                            appbox::ApplicationMetadata(), appbox::StartupScreen{}, payloads,
                            appbox::CompressionLevel::Normal, zip_path.wstring(), nullptr),
               "");
-    ASSERT_EQ(appbox::ExtractArchive(zip_path.wstring(), GetCWDString()), appbox::ZIPREADER_SUCCESS);
+    const auto extracted = appbox::ExtractArchive(zip_path.wstring(), GetCWDString());
+    ASSERT_TRUE(extracted) << appbox::test::DescribeErrorCode(extracted.error());
 
     /*
      * The layer of the archive carries the file the installation wrote at the
@@ -187,7 +189,7 @@ TEST_F(E2E_Snapshot, CapturedFolderTravelsIntoTheArchive)
     const auto path = GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + name + L"\\bin\\app.exe";
 
     ProtocolReadFileFull::Req req;
-    req.FileName = appbox::WideToUTF8(path);
+    req.FileName = appbox::WideToUTF8(path).value_or(std::string());
 
     const auto rsp = Probe(GetCWD(), appbox::LauncherConfig{}).Call<ProtocolReadFileFull>(req);
 

@@ -1,9 +1,11 @@
 #ifndef APPBOX_COMMON_DETAILS_ZIP_READER_DETAIL_HPP
 #define APPBOX_COMMON_DETAILS_ZIP_READER_DETAIL_HPP
 
+#include "../ZipReader.hpp"
+#include "ErrorCode.hpp"
 #include "SandboxLayout.hpp"
 #include "WString.hpp"
-#include "ZipReaderError.hpp"
+#include <tl/expected.hpp>
 #include <zip.h>
 #include <cstdio>
 #include <cstring>
@@ -28,7 +30,7 @@ struct ZipArchiveCloser
      * @brief Close the archive.
      * @param[in] archive Archive handle, may be nullptr.
      */
-    void operator()(zip_t* archive) const
+    void operator()(zip_t* archive) const noexcept
     {
         if (archive != nullptr)
         {
@@ -41,23 +43,36 @@ struct ZipArchiveCloser
  * @brief Sanitize one zip entry name into a relative host path.
  *
  * Forward slashes are converted to backslashes and empty segments are
- * dropped. Absolute paths, drive relative paths and parent references make
- * the entry unusable because they would escape the destination folder.
+ * dropped. Absolute paths, drive relative paths and parent references are
+ * refused because they would escape the destination folder.
+ *
+ * The name is decoded by `UTF8ToWide()`, which reports a refused text by its
+ * code: a name the code page cannot carry makes the whole extraction fail,
+ * because the entry has no path to be written to.
  *
  * @param[in] name Entry name of the archive.
- * @return The relative path, empty when the entry name is not safe.
+ * @return The relative path inside the destination folder, or the code of the
+ *         failure: `kZipEntryNameUnreadable` when the name cannot be decoded and
+ *         `kZipEntryNameUnsafe` when it names a path outside the folder.
  */
-inline std::wstring SanitizeZipEntryName(const char* name)
+inline tl::expected<std::wstring, ErrorCode> SanitizeZipEntryName(const char* name) noexcept
 {
+    const auto wide = appbox::UTF8ToWide(name);
+    if (!wide)
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kZipEntryNameUnreadable);
+    }
+
     std::wstring converted;
-    for (const auto ch : appbox::UTF8ToWide(name))
+    converted.reserve(wide->size());
+    for (const auto ch : *wide)
     {
         converted.push_back(ch == L'/' ? L'\\' : ch);
     }
 
     if (converted.empty() || converted.front() == L'\\' || (converted.size() >= 2 && converted[1] == L':'))
     {
-        return {};
+        return tl::unexpected<ErrorCode>(ErrorCode::kZipEntryNameUnsafe);
     }
 
     std::wstring result;
@@ -69,7 +84,7 @@ inline std::wstring SanitizeZipEntryName(const char* name)
         }
         if (part == L"." || part == L"..")
         {
-            return {};
+            return tl::unexpected<ErrorCode>(ErrorCode::kZipEntryNameUnsafe);
         }
 
         if (!result.empty())
@@ -77,6 +92,11 @@ inline std::wstring SanitizeZipEntryName(const char* name)
             result.push_back(L'\\');
         }
         result += part;
+    }
+
+    if (result.empty())
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kZipEntryNameUnsafe);
     }
 
     return result;
@@ -87,7 +107,7 @@ inline std::wstring SanitizeZipEntryName(const char* name)
  * @param[in] name Entry name of the archive.
  * @return true when the name carries the trailing slash of a directory.
  */
-inline bool IsZipDirectoryEntry(const char* name)
+inline bool IsZipDirectoryEntry(const char* name) noexcept
 {
     const auto length = std::strlen(name);
     return length > 0 && name[length - 1] == '/';
@@ -131,31 +151,34 @@ inline std::wstring DisplayZipEntryName(const std::wstring& relative)
  * @param[in] archive Open archive.
  * @param[in] index Index of the entry.
  * @param[in] target Host path of the entry.
- * @return ZIPREADER_SUCCESS on success, the error code of the failed step otherwise.
+ * @return The success value, or the code of the failed step:
+ *         `kZipOpenEntryFailed`, `kZipCreateEntryFailed`, `kZipReadEntryFailed`
+ *         or `kZipWriteEntryFailed`.
  */
-inline ZipReaderErrno WriteZipEntry(zip_t* archive, zip_uint64_t index, const std::filesystem::path& target)
+inline tl::expected<void, ErrorCode> WriteZipEntry(zip_t* archive, zip_uint64_t index,
+                                                   const std::filesystem::path& target) noexcept
 {
     zip_file_t* file = zip_fopen_index(archive, index, 0);
     if (file == nullptr)
     {
-        return ZIPREADER_OPEN_ENTRY_FAILED;
+        return tl::unexpected<ErrorCode>(ErrorCode::kZipOpenEntryFailed);
     }
 
     FILE* handle = nullptr;
     if (_wfopen_s(&handle, target.wstring().c_str(), L"wb") != 0 || handle == nullptr)
     {
         zip_fclose(file);
-        return ZIPREADER_CREATE_ENTRY_FAILED;
+        return tl::unexpected<ErrorCode>(ErrorCode::kZipCreateEntryFailed);
     }
 
-    std::vector<char> buffer(kZipReadBufferSize);
-    ZipReaderErrno    error = ZIPREADER_SUCCESS;
+    tl::expected<void, ErrorCode> result{};
+    std::vector<char>             buffer(kZipReadBufferSize);
     for (;;)
     {
         const auto read = zip_fread(file, buffer.data(), buffer.size());
         if (read < 0)
         {
-            error = ZIPREADER_READ_ENTRY_FAILED;
+            result = tl::unexpected<ErrorCode>(ErrorCode::kZipReadEntryFailed);
             break;
         }
         if (read == 0)
@@ -166,14 +189,14 @@ inline ZipReaderErrno WriteZipEntry(zip_t* archive, zip_uint64_t index, const st
         const auto written = std::fwrite(buffer.data(), 1, static_cast<std::size_t>(read), handle);
         if (written != static_cast<std::size_t>(read))
         {
-            error = ZIPREADER_WRITE_ENTRY_FAILED;
+            result = tl::unexpected<ErrorCode>(ErrorCode::kZipWriteEntryFailed);
             break;
         }
     }
 
     std::fclose(handle);
     zip_fclose(file);
-    return error;
+    return result;
 }
 
 } // namespace detail

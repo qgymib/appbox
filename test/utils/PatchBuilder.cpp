@@ -33,7 +33,7 @@ std::string EntryNameIn(const char* domain, const std::wstring& virtual_path)
     std::string entry(domain);
     entry.push_back('/');
 
-    for (const auto character : appbox::WideToUTF8(virtual_path))
+    for (const auto character : appbox::WideToUTF8(virtual_path).value_or(std::string()))
     {
         entry.push_back(character == '\\' ? '/' : character);
     }
@@ -263,7 +263,8 @@ bool appbox::test::WritePatchPackage(const std::filesystem::path& zip_path, cons
     {
         std::error_code ec;
         std::filesystem::remove(staging, ec);
-        SPDLOG_ERROR("failed to build the patch package '{}': {}", appbox::WideToUTF8(zip_path.wstring()), error);
+        SPDLOG_ERROR("failed to build the patch package '{}': {}",
+                     appbox::WideToUTF8(zip_path.wstring()).value_or("<unconvertible>"), error);
         return false;
     }
 
@@ -275,15 +276,16 @@ bool appbox::test::WritePatchPackage(const std::filesystem::path& zip_path, cons
 
     if (read != ERROR_SUCCESS)
     {
-        SPDLOG_ERROR("failed to read the built patch package '{}'", appbox::WideToUTF8(staging.wstring()));
+        SPDLOG_ERROR("failed to read the built patch package '{}'",
+                     appbox::WideToUTF8(staging.wstring()).value_or("<unconvertible>"));
         return false;
     }
 
     const auto written = WriteFileFull(zip_path.wstring(), bytes);
     if (written != ERROR_SUCCESS)
     {
-        SPDLOG_ERROR("failed to write the patch package '{}': error {}", appbox::WideToUTF8(zip_path.wstring()),
-                     written);
+        SPDLOG_ERROR("failed to write the patch package '{}': error {}",
+                     appbox::WideToUTF8(zip_path.wstring()).value_or("<unconvertible>"), written);
         return false;
     }
 

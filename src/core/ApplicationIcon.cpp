@@ -335,8 +335,8 @@ bool AddIconResources(const std::filesystem::path& path, const std::vector<char>
     if (update == nullptr)
     {
         code = GetLastError();
-        error = "failed to open '" + appbox::WideToUTF8(path.wstring()) + "' for the icon update (error " +
-                std::to_string(code) + ")";
+        error = "failed to open '" + appbox::WideToUTF8(path.wstring()).value_or(std::string()) +
+                "' for the icon update (error " + std::to_string(code) + ")";
         return false;
     }
 
@@ -365,8 +365,8 @@ bool AddIconResources(const std::filesystem::path& path, const std::vector<char>
     if (!session.Commit())
     {
         code = GetLastError();
-        error = "failed to write the icon of '" + appbox::WideToUTF8(path.wstring()) + "' (error " +
-                std::to_string(code) + ")";
+        error = "failed to write the icon of '" + appbox::WideToUTF8(path.wstring()).value_or(std::string()) +
+                "' (error " + std::to_string(code) + ")";
         return false;
     }
 
@@ -436,7 +436,7 @@ bool WriteIconGroup(const std::filesystem::path& path, const std::vector<char>& 
             if (!IsFirstIconGroup(path, kApplicationIconGroup))
             {
                 error = "the icon group of the application does not precede the icon groups of '" +
-                        appbox::WideToUTF8(path.wstring()) + "'";
+                        appbox::WideToUTF8(path.wstring()).value_or(std::string()) + "'";
                 return false;
             }
 
@@ -482,7 +482,7 @@ std::vector<char> ApplyApplicationIcon(const void* launcher_bytes, std::size_t l
         return {};
     }
 
-    const auto  application = WideToUTF8(application_path);
+    const auto  application = WideToUTF8(application_path).value_or(std::string());
     std::string error;
     try
     {

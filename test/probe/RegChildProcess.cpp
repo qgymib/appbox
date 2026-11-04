@@ -41,8 +41,8 @@ bool ParseWriteRequest(const std::string& text, WriteRequest& request)
         return false;
     }
 
-    request.name = appbox::UTF8ToWide(text.substr(0, separator));
-    request.data = appbox::UTF8ToWide(text.substr(separator + 1));
+    request.name = appbox::UTF8ToWide(text.substr(0, separator)).value_or(std::wstring());
+    request.data = appbox::UTF8ToWide(text.substr(separator + 1)).value_or(std::wstring());
     return true;
 }
 
@@ -157,9 +157,9 @@ void RunRegChildProcess(const std::string& root_name, const std::string& key_pat
         throw CLI::RuntimeError(bits);
     }
 
-    HKEY key = nullptr;
-    if (RegOpenKeyExW(root, appbox::UTF8ToWide(key_path).c_str(), 0, KEY_QUERY_VALUE | KEY_SET_VALUE, &key) !=
-        ERROR_SUCCESS)
+    HKEY               key = nullptr;
+    const std::wstring wide_key_path = appbox::UTF8ToWide(key_path).value_or(std::wstring());
+    if (RegOpenKeyExW(root, wide_key_path.c_str(), 0, KEY_QUERY_VALUE | KEY_SET_VALUE, &key) != ERROR_SUCCESS)
     {
         throw CLI::RuntimeError(bits);
     }
@@ -169,11 +169,12 @@ void RunRegChildProcess(const std::string& root_name, const std::string& key_pat
     bool         read_ok = false;
     if (!read_name.empty())
     {
-        read_ok = ReadStringValue(key, appbox::UTF8ToWide(read_name), read_data) == ERROR_SUCCESS;
+        read_ok =
+            ReadStringValue(key, appbox::UTF8ToWide(read_name).value_or(std::wstring()), read_data) == ERROR_SUCCESS;
         if (read_ok)
         {
             bits |= appbox::test::RegChildReadValue;
-            if (!expect_text.empty() && read_data == appbox::UTF8ToWide(expect_text))
+            if (!expect_text.empty() && read_data == appbox::UTF8ToWide(expect_text).value_or(std::wstring()))
             {
                 bits |= appbox::test::RegChildValueMatched;
             }

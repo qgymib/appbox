@@ -14,7 +14,7 @@ namespace detail
  * @brief Compute the CRC-32 lookup table at compile time.
  * @return The 256 entry lookup table of the reflected polynomial 0xEDB88320.
  */
-constexpr std::array<uint32_t, 256> MakeCrc32Table()
+constexpr std::array<uint32_t, 256> MakeCrc32Table() noexcept
 {
     std::array<uint32_t, 256> table{};
     for (uint32_t i = 0; i < 256; ++i)
@@ -48,7 +48,7 @@ struct CRC32
      * @param[in] size Size of the data block in bytes.
      * @return The updated checksum.
      */
-    static uint32_t Update(uint32_t initial, const void* data, size_t size)
+    static uint32_t Update(uint32_t initial, const void* data, size_t size) noexcept
     {
         uint32_t    c = initial ^ 0xFFFFFFFFu;
         const auto* u = static_cast<const uint8_t*>(data);

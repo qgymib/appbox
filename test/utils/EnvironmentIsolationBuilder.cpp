@@ -74,11 +74,11 @@ std::string appbox::test::BuildEnvironmentIsolationText(const std::vector<Enviro
     for (const auto& entry : entries)
     {
         appbox::environment_isolation::Entry item;
-        item.name = appbox::WideToUTF8(entry.name);
-        item.value = appbox::WideToUTF8(entry.value);
+        item.name = appbox::WideToUTF8(entry.name).value_or(std::string());
+        item.value = appbox::WideToUTF8(entry.value).value_or(std::string());
         item.isolation = entry.isolation;
         item.merge = entry.merge;
-        item.merge_string = appbox::WideToUTF8(entry.merge_string);
+        item.merge_string = appbox::WideToUTF8(entry.merge_string).value_or(std::string());
         document.entries.push_back(std::move(item));
     }
 
@@ -102,8 +102,8 @@ bool appbox::test::WriteEnvironmentStateFile(const std::filesystem::path&       
     for (const auto& entry : entries)
     {
         appbox::environment_isolation::StateEntry item;
-        item.name = appbox::WideToUTF8(entry.name);
-        item.value = appbox::WideToUTF8(entry.value);
+        item.name = appbox::WideToUTF8(entry.name).value_or(std::string());
+        item.value = appbox::WideToUTF8(entry.value).value_or(std::string());
         item.deleted = entry.deleted;
         document.entries.push_back(std::move(item));
     }

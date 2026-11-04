@@ -7,7 +7,7 @@ appbox::test::ProtocolRemoveDirectory::Rsp appbox::test::ProbeRemoveDirectory_En
     const appbox::test::ProtocolRemoveDirectory::Req& request)
 {
     const auto& req = request;
-    auto        wPathName = appbox::UTF8ToWide(req.PathName);
+    auto        wPathName = appbox::UTF8ToWide(req.PathName).value_or(std::wstring());
 
     ProtocolRemoveDirectory::Rsp rsp;
     if (!RemoveDirectoryW(wPathName.c_str()))

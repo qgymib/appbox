@@ -62,7 +62,8 @@ TEST_F(E2E_Patch, BrokenRegistryResourcesAreSkipped)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\PatchRegistryBroken_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\PatchRegistryBroken_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto hive_key = L"HKEY_CURRENT_USER\\" + subkey;
 
     RealHkcuKey host(subkey);
@@ -86,7 +87,7 @@ TEST_F(E2E_Patch, BrokenRegistryResourcesAreSkipped)
     ASSERT_TRUE(WritePatchPackage(patch_dir / L"01-bar.zip", {}, {}, broken));
 
     ProtocolRegReadValues::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Values = { "Value", "HostHidden" };
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValues>(req);

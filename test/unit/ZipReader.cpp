@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "ZipReader.hpp"
 #include "src/core/ZipWriter.hpp"
+#include "utils/ErrorCodeText.hpp"
 #include "WString.hpp"
 #include <zip.h>
 #include <chrono>
@@ -90,7 +91,7 @@ std::string ReadFile(const std::filesystem::path& path)
  */
 bool MakeArchiveWithEntry(const std::filesystem::path& path, const char* entry, const char* content)
 {
-    const auto utf8_path = appbox::WideToUTF8(path.wstring());
+    const auto utf8_path = appbox::WideToUTF8(path.wstring()).value_or(std::string());
 
     int    error_code = 0;
     zip_t* archive = zip_open(utf8_path.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &error_code);
@@ -140,7 +141,7 @@ TEST(Unit_ZipReader, ExtractsArchiveWrittenByZipWriter)
     }
 
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring());
-    EXPECT_EQ(result, appbox::ZIPREADER_SUCCESS);
+    ASSERT_TRUE(result) << appbox::test::DescribeErrorCode(result.error());
 
     const auto root = dest / L"app" / L"filesystem" / L"#ProgramFiles#" / L"MyApp";
     EXPECT_EQ(ReadFile(root / L"app.exe"), "EXE");
@@ -162,19 +163,27 @@ TEST(Unit_ZipReader, CreatesTheDestinationFolder)
     }
 
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring());
-    EXPECT_EQ(result, appbox::ZIPREADER_SUCCESS);
+    ASSERT_TRUE(result) << appbox::test::DescribeErrorCode(result.error());
     EXPECT_EQ(ReadFile(dest / L"note.txt"), "NOTE");
 }
 
+/**
+ * @brief An archive which does not exist is refused by the code of the open.
+ */
 TEST(Unit_ZipReader, ReportsMissingArchive)
 {
     TempDir    temp;
     const auto missing = temp.Get() / L"missing.zip";
 
     const auto result = appbox::ExtractArchive(missing.wstring(), (temp.Get() / L"out").wstring());
-    EXPECT_NE(result, appbox::ZIPREADER_SUCCESS);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), appbox::ErrorCode::kZipOpenFailed);
 }
 
+/**
+ * @brief A parent reference in an entry name is reported by its own code, so a
+ *        caller can tell it apart from a damaged archive.
+ */
 TEST(Unit_ZipReader, RejectsParentReferenceEntry)
 {
     TempDir    temp;
@@ -184,11 +193,16 @@ TEST(Unit_ZipReader, RejectsParentReferenceEntry)
     const auto dest = temp.Get() / L"dest";
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring());
 
-    EXPECT_NE(result, appbox::ZIPREADER_SUCCESS);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), appbox::ErrorCode::kZipEntryNameUnsafe);
     EXPECT_FALSE(std::filesystem::exists(temp.Get() / L"escaped.txt"));
     EXPECT_FALSE(std::filesystem::exists(dest.parent_path() / L"escaped.txt"));
 }
 
+/**
+ * @brief An absolute entry name is refused by the same code as a parent
+ *        reference: both would write outside the destination folder.
+ */
 TEST(Unit_ZipReader, RejectsAbsoluteEntry)
 {
     TempDir    temp;
@@ -198,7 +212,8 @@ TEST(Unit_ZipReader, RejectsAbsoluteEntry)
     const auto dest = temp.Get() / L"dest";
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring());
 
-    EXPECT_NE(result, appbox::ZIPREADER_SUCCESS);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), appbox::ErrorCode::kZipEntryNameUnsafe);
     EXPECT_FALSE(std::filesystem::exists(dest / L"escaped.txt"));
 }
 
@@ -222,7 +237,7 @@ TEST(Unit_ZipReader, OverwritesExistingFiles)
     }
 
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring());
-    EXPECT_EQ(result, appbox::ZIPREADER_SUCCESS);
+    ASSERT_TRUE(result) << appbox::test::DescribeErrorCode(result.error());
     EXPECT_EQ(ReadFile(dest / L"app" / L"config.ini"), "NEW");
 }
 
@@ -258,7 +273,7 @@ TEST(Unit_ZipReader, ReportsEveryExtractedFile)
     };
 
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring(), progress);
-    EXPECT_EQ(result, appbox::ZIPREADER_SUCCESS);
+    ASSERT_TRUE(result) << appbox::test::DescribeErrorCode(result.error());
 
     ASSERT_FALSE(reports.empty());
 
@@ -310,8 +325,34 @@ TEST(Unit_ZipReader, ExtractCanBeCancelled)
 
     const auto result = appbox::ExtractArchive(archive_path.wstring(), dest.wstring(),
                                                [](const appbox::ExtractProgress&) { return false; });
-    EXPECT_EQ(result, appbox::ZIPREADER_CANCELLED);
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), appbox::ErrorCode::kZipCancelled);
     EXPECT_FALSE(std::filesystem::exists(dest / L"note.txt"));
+}
+
+/**
+ * @brief A callback which throws breaks its contract, so the extraction answers
+ *        a code instead of letting the exception leave a `noexcept` interface.
+ */
+TEST(Unit_ZipReader, AThrowingCallbackIsRefusedByItsCode)
+{
+    TempDir    temp;
+    const auto archive_path = temp.Get() / L"throwing.zip";
+    const auto dest = temp.Get() / L"throwing-dest";
+
+    {
+        appbox::ZipWriter writer(archive_path.wstring());
+        std::string       error;
+        ASSERT_TRUE(writer.AddFileBuffer("note.txt", "NOTE", 4, error)) << error;
+        ASSERT_TRUE(writer.Close(error)) << error;
+    }
+
+    const auto result =
+        appbox::ExtractArchive(archive_path.wstring(), dest.wstring(), [](const appbox::ExtractProgress&) -> bool {
+            throw std::runtime_error("the callback breaks its contract");
+        });
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), appbox::ErrorCode::kInvalidState);
 }
 
 /**
@@ -346,7 +387,7 @@ TEST(Unit_ZipReader, ExtractsAnArchiveAppendedToAnotherFile)
     }
 
     const auto result = appbox::ExtractArchiveAt(host_path.wstring(), prefix.size(), payload.size(), dest.wstring());
-    EXPECT_EQ(result, appbox::ZIPREADER_SUCCESS);
+    ASSERT_TRUE(result) << appbox::test::DescribeErrorCode(result.error());
     EXPECT_EQ(ReadFile(dest / L"app" / L"note.txt"), "NOTE");
 }
 
@@ -368,6 +409,7 @@ TEST(Unit_ZipReader, ReportsARegionWithoutAnArchive)
         ASSERT_TRUE(host.good());
     }
 
-    EXPECT_EQ(appbox::ExtractArchiveAt(host_path.wstring(), 0, 64, dest.wstring()),
-              appbox::ZIPREADER_OPEN_ARCHIVE_FAILED);
+    const auto result = appbox::ExtractArchiveAt(host_path.wstring(), 0, 64, dest.wstring());
+    ASSERT_FALSE(result);
+    EXPECT_EQ(result.error(), appbox::ErrorCode::kZipOpenFailed);
 }

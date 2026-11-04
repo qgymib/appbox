@@ -73,7 +73,7 @@ void AddStartup(appbox::LauncherConfig& launcher_config)
     appbox::LauncherStartup startup;
     startup.trigger = "app";
     startup.auto_start = true;
-    startup.executable = appbox::WideToUTF8(ViewImagePath());
+    startup.executable = appbox::WideToUTF8(ViewImagePath()).value_or(std::string());
     startup.arguments = { "--startup_marker", "app" };
     launcher_config.startups.push_back(std::move(startup));
 }
@@ -131,7 +131,8 @@ TEST_F(E2E_Launcher_StartupImage, AProgramOfTheViewIsStarted)
     EXPECT_EQ(run.exit_code, 0u);
     EXPECT_EQ(run.started, std::vector<std::string>({ "app" }));
     ASSERT_EQ(run.reports.size(), 1u);
-    EXPECT_NE(run.reports[0].module_path.find(appbox::WideToUTF8(kProgramName)), std::string::npos)
+    EXPECT_NE(run.reports[0].module_path.find(appbox::WideToUTF8(kProgramName).value_or(std::string())),
+              std::string::npos)
         << run.reports[0].module_path;
 
     ASSERT_TRUE(tree.Verify());

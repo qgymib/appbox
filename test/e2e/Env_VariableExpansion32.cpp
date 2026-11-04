@@ -77,18 +77,18 @@ TEST_F(E2E_Env, VariableExpansion32)
     }
 
     /* The folders a 32 bit process sees. */
-    EXPECT_EQ(rsp.values[0], appbox::WideToUTF8(programs_x86 + L"\\Foo"));
-    EXPECT_EQ(rsp.values[2], appbox::WideToUTF8(common_x86 + L"\\Foo"));
+    EXPECT_EQ(rsp.values[0], appbox::WideToUTF8(programs_x86 + L"\\Foo").value_or(std::string()));
+    EXPECT_EQ(rsp.values[2], appbox::WideToUTF8(common_x86 + L"\\Foo").value_or(std::string()));
 
     /* A folder which does not exist for a 32 bit process keeps the reference. */
     EXPECT_EQ(rsp.values[1], "%APPBOX:ProgramFilesX64%\\Foo");
 
     /* The 64 bit `Common Files` folder is reachable from a 32 bit process. */
-    EXPECT_EQ(rsp.values[3], appbox::WideToUTF8(common_x64 + L"\\Foo"));
+    EXPECT_EQ(rsp.values[3], appbox::WideToUTF8(common_x64 + L"\\Foo").value_or(std::string()));
 
     /* The system folders are the same in both views. */
-    EXPECT_EQ(rsp.values[4], appbox::WideToUTF8(system32 + L"\\Foo"));
-    EXPECT_EQ(rsp.values[5], appbox::WideToUTF8(system_x86 + L"\\Foo"));
+    EXPECT_EQ(rsp.values[4], appbox::WideToUTF8(system32 + L"\\Foo").value_or(std::string()));
+    EXPECT_EQ(rsp.values[5], appbox::WideToUTF8(system_x86 + L"\\Foo").value_or(std::string()));
 
     /* The ANSI entry point and the block which enumerates report the same view. */
     EXPECT_EQ(rsp.ansi_values[0], rsp.values[0]);

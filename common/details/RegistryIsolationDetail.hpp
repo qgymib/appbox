@@ -3,16 +3,18 @@
 
 /*
  * Implementation of `common/RegistryIsolation.hpp`: the comparison of the root
- * key names, the token parsing of the modes and the JSON members of the schema.
- * The header is included by the public header and is not meant to be included on
- * its own.
+ * key names, the token parsing of the modes, the JSON members of the schema and
+ * the noexcept reader of a document. The header is included by the public header
+ * and is not meant to be included on its own.
  */
 
 #include "RegistryIsolation.hpp"
 #include <nlohmann/json.hpp>
 #include <cstddef>
+#include <exception>
 #include <string>
 #include <string_view>
+#include <tl/expected.hpp>
 #include <utility>
 #include <vector>
 
@@ -22,7 +24,7 @@ namespace registry_isolation
 {
 
 /* Definition of the contract on the declaration. */
-inline bool EqualsRootKeyName(const std::wstring& name, const wchar_t* root)
+inline bool EqualsRootKeyName(const std::wstring& name, const wchar_t* root) noexcept
 {
     if (name.empty() || root == nullptr)
     {
@@ -55,7 +57,7 @@ inline bool EqualsRootKeyName(const std::wstring& name, const wchar_t* root)
 }
 
 /* Definition of the contract on the declaration. */
-inline bool IsRootKeyName(const std::wstring& name)
+inline bool IsRootKeyName(const std::wstring& name) noexcept
 {
     for (const wchar_t* root : kRootKeyNames)
     {
@@ -68,7 +70,7 @@ inline bool IsRootKeyName(const std::wstring& name)
 }
 
 /* Definition of the contract on the declaration. */
-inline const char* KeyIsolationToken(RegistryKeyIsolation isolation)
+inline const char* KeyIsolationToken(RegistryKeyIsolation isolation) noexcept
 {
     switch (isolation)
     {
@@ -85,7 +87,7 @@ inline const char* KeyIsolationToken(RegistryKeyIsolation isolation)
 }
 
 /* Definition of the contract on the declaration. */
-inline const char* ValueIsolationToken(RegistryValueIsolation isolation)
+inline const char* ValueIsolationToken(RegistryValueIsolation isolation) noexcept
 {
     switch (isolation)
     {
@@ -98,9 +100,9 @@ inline const char* ValueIsolationToken(RegistryValueIsolation isolation)
 }
 
 /* Definition of the contract on the declaration. */
-inline void NormalizeIsolationToken(std::string_view token, std::string& normalized)
+inline std::string NormalizeIsolationToken(std::string_view token) noexcept
 {
-    normalized.clear();
+    std::string normalized;
     normalized.reserve(token.size());
     for (const char character : token)
     {
@@ -115,54 +117,50 @@ inline void NormalizeIsolationToken(std::string_view token, std::string& normali
         }
         normalized.push_back(lower);
     }
+
+    return normalized;
 }
 
 /* Definition of the contract on the declaration. */
-inline bool ParseKeyIsolationToken(std::string_view token, RegistryKeyIsolation& out)
+inline tl::expected<RegistryKeyIsolation, ErrorCode> ParseKeyIsolationToken(std::string_view token) noexcept
 {
-    std::string normalized;
-    NormalizeIsolationToken(token, normalized);
+    const std::string normalized = NormalizeIsolationToken(token);
 
     if (normalized == "full")
     {
-        out = RegistryKeyIsolation::Full;
-        return true;
+        return RegistryKeyIsolation::Full;
     }
     if (normalized == "merge")
     {
-        out = RegistryKeyIsolation::Merge;
-        return true;
+        return RegistryKeyIsolation::Merge;
     }
     if (normalized == "write_copy" || normalized == "writecopy")
     {
-        out = RegistryKeyIsolation::WriteCopy;
-        return true;
+        return RegistryKeyIsolation::WriteCopy;
     }
     if (normalized == "hide")
     {
-        out = RegistryKeyIsolation::Hide;
-        return true;
+        return RegistryKeyIsolation::Hide;
     }
-    return false;
+
+    return tl::unexpected<ErrorCode>(ErrorCode::kIsolationTokenUnknown);
 }
 
 /* Definition of the contract on the declaration. */
-inline bool ParseValueIsolationToken(std::string_view token, RegistryValueIsolation& out)
+inline tl::expected<RegistryValueIsolation, ErrorCode> ParseValueIsolationToken(std::string_view token) noexcept
 {
-    std::string normalized;
-    NormalizeIsolationToken(token, normalized);
+    const std::string normalized = NormalizeIsolationToken(token);
 
     if (normalized == "full")
     {
-        out = RegistryValueIsolation::Full;
-        return true;
+        return RegistryValueIsolation::Full;
     }
     if (normalized == "hide")
     {
-        out = RegistryValueIsolation::Hide;
-        return true;
+        return RegistryValueIsolation::Hide;
     }
-    return false;
+
+    return tl::unexpected<ErrorCode>(ErrorCode::kIsolationTokenUnknown);
 }
 
 /* Definition of the contract on the declaration. */
@@ -195,9 +193,9 @@ inline void from_json(const nlohmann::json& json, KeyEntry& entry)
     }
 
     /*
-     * A key entry names no value, but a document which carries a name of
-     * another type is refused like a value entry, so both lists of the file
-     * follow the same rules.
+     * A key entry names no value, but a document which carries a name of another
+     * type is refused like a value entry, so both lists of the file follow the
+     * same rules.
      */
     const auto* name = isolation_document::FindMember(json, kNameKey);
     if (name != nullptr && !name->is_string())
@@ -205,14 +203,14 @@ inline void from_json(const nlohmann::json& json, KeyEntry& entry)
         isolation_document::Throw("the '" + std::string(kNameKey) + "' member of " + holder + " is not a string");
     }
 
-    const std::string    isolation_token = isolation_document::RequiredText(json, kIsolationKey, holder);
-    RegistryKeyIsolation isolation = RegistryKeyIsolation::Merge;
-    if (!ParseKeyIsolationToken(isolation_token, isolation))
+    const std::string isolation_token = isolation_document::RequiredText(json, kIsolationKey, holder);
+    if (const auto parsed = ParseKeyIsolationToken(isolation_token))
     {
-        isolation_document::Throw("unknown key isolation mode '" + isolation_token + "' in the isolation file");
+        entry.isolation = *parsed;
+        return;
     }
 
-    entry.isolation = isolation;
+    isolation_document::Throw("unknown key isolation mode '" + isolation_token + "' in the isolation file");
 }
 
 /* Definition of the contract on the declaration. */
@@ -229,14 +227,14 @@ inline void from_json(const nlohmann::json& json, ValueEntry& entry)
 
     entry.name = isolation_document::RequiredText(json, kNameKey, holder);
 
-    const std::string      isolation_token = isolation_document::RequiredText(json, kIsolationKey, holder);
-    RegistryValueIsolation isolation = RegistryValueIsolation::Full;
-    if (!ParseValueIsolationToken(isolation_token, isolation))
+    const std::string isolation_token = isolation_document::RequiredText(json, kIsolationKey, holder);
+    if (const auto parsed = ParseValueIsolationToken(isolation_token))
     {
-        isolation_document::Throw("unknown value isolation mode '" + isolation_token + "' in the isolation file");
+        entry.isolation = *parsed;
+        return;
     }
 
-    entry.isolation = isolation;
+    isolation_document::Throw("unknown value isolation mode '" + isolation_token + "' in the isolation file");
 }
 
 /* Definition of the contract on the declaration. */
@@ -283,6 +281,43 @@ inline void from_json(const nlohmann::json& json, Document& document)
         {
             document.values.push_back(item.get<ValueEntry>());
         }
+    }
+}
+
+/* Definition of the contract on the declaration. */
+inline tl::expected<Document, ErrorCode> ParseDocument(std::string_view text) noexcept
+{
+    /*
+     * The JSON layer runs with the exception reporting switched off, so a text
+     * which is no JSON document is answered by a discarded value, and the member
+     * layer is the `from_json()` of the schema, which reports a refused member
+     * through `IsolationDocumentError`. Both are turned into the code of the
+     * table here, so the reader of a file never sees an exception and never
+     * receives a text.
+     */
+    const auto parsed = nlohmann::json::parse(text.begin(), text.end(), nullptr, false);
+    if (parsed.is_discarded() || !parsed.is_object())
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kIsolationDocumentInvalid);
+    }
+
+    const auto* version = isolation_document::FindMember(parsed, kVersionKey);
+    if (version == nullptr || !version->is_number_integer())
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kIsolationDocumentInvalid);
+    }
+    if (version->get<int>() != kVersion)
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kIsolationDocumentUnsupportedVersion);
+    }
+
+    try
+    {
+        return parsed.get<Document>();
+    }
+    catch (const std::exception&)
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kIsolationDocumentInvalid);
     }
 }
 

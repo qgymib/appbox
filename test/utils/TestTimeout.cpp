@@ -152,8 +152,16 @@ void RunCoredumpWriter(const appbox::test::CoredumpRequest& request)
     PROCESS_INFORMATION process_info;
     ZeroMemory(&process_info, sizeof(process_info));
 
-    if (!::CreateProcessW(exe_path.c_str(), command_line.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr,
-                          &startup_info, &process_info))
+    /*
+     * The writer is created without a console window: the test run may be
+     * started by a program which owns no console (a debugger, a build server,
+     * an editor), and a console program created from it would open a window on
+     * the desktop of the machine the case timed out on. The flag keeps the
+     * inherited handles usable, so the writer still reports on the streams of
+     * the run.
+     */
+    if (!::CreateProcessW(exe_path.c_str(), command_line.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr,
+                          nullptr, &startup_info, &process_info))
     {
         ReportToStderr(fmt::format("failed to start the coredump writer: {}", ::GetLastError()));
         return;
@@ -193,7 +201,7 @@ void RunCoredumpWriter(const appbox::test::CoredumpRequest& request)
     appbox::test::CoredumpRequest request;
     request.pid = ::GetCurrentProcessId();
     request.dump_dir = appbox::test::ResolveTestDumpDir(config);
-    request.tag = appbox::UTF8ToWide(test_name);
+    request.tag = appbox::UTF8ToWide(test_name).value_or(std::wstring());
 
     RunCoredumpWriter(request);
 
@@ -201,8 +209,8 @@ void RunCoredumpWriter(const appbox::test::CoredumpRequest& request)
      * end-to-end case) must not outlive it. */
     appbox::test::TerminateProcessTree(::GetCurrentProcessId(), 0);
 
-    ReportToStderr(
-        fmt::format("the coredumps of {} are in {}", test_name, appbox::WideToUTF8(request.dump_dir.wstring())));
+    ReportToStderr(fmt::format("the coredumps of {} are in {}", test_name,
+                               appbox::WideToUTF8(request.dump_dir.wstring()).value_or(std::string())));
     std::fflush(nullptr);
 
     /*
@@ -292,8 +300,9 @@ void appbox::test::LoadTestTimeoutFromEnvironment(TestTimeoutConfig& config)
         }
         else
         {
-            ReportToStderr(fmt::format("{} is not a timeout in seconds: {}", appbox::WideToUTF8(kTestTimeoutEnv),
-                                       appbox::WideToUTF8(value)));
+            ReportToStderr(fmt::format("{} is not a timeout in seconds: {}",
+                                       appbox::WideToUTF8(kTestTimeoutEnv).value_or(std::string()),
+                                       appbox::WideToUTF8(value).value_or(std::string())));
         }
     }
 

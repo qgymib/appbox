@@ -86,10 +86,11 @@ const std::vector<PresetDirectory>& PresetDirectories()
                 continue;
             }
 
-            std::wstring real_path;
-            if (!SearchFolderID(definition.layer_key, real_path))
+            const auto real_path = SearchFolderID(definition.layer_key);
+            if (!real_path)
             {
-                SPDLOG_WARN(L"failed to resolve the preset directory: {}", definition.layer_key);
+                SPDLOG_WARN(L"failed to resolve the preset directory: {} ({})", definition.layer_key,
+                            static_cast<int32_t>(real_path.error()));
                 continue;
             }
 
@@ -98,7 +99,7 @@ const std::vector<PresetDirectory>& PresetDirectories()
             preset.parent_id = definition.parent_id != nullptr ? definition.parent_id : "";
             preset.display_name = definition.display_name;
             preset.layer_key = definition.layer_key;
-            preset.real_path = real_path;
+            preset.real_path = *real_path;
             result.push_back(std::move(preset));
         }
         return result;

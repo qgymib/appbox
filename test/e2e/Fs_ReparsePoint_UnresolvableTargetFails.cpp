@@ -67,17 +67,17 @@ TEST_F(E2E_Fs, ReparsePoint_UnresolvableTargetFails)
 
     ProtocolReparsePoint::Req::Item open_through;
     open_through.action = ProtocolReparsePoint::Req::Item::Action::ReadText;
-    open_through.path = appbox::WideToUTF8(folder + L"\\link\\data.txt");
+    open_through.path = appbox::WideToUTF8(folder + L"\\link\\data.txt").value_or(std::string());
     req.items.push_back(open_through);
 
     ProtocolReparsePoint::Req::Item attributes_through;
     attributes_through.action = ProtocolReparsePoint::Req::Item::Action::Attributes;
-    attributes_through.path = appbox::WideToUTF8(folder + L"\\link\\data.txt");
+    attributes_through.path = appbox::WideToUTF8(folder + L"\\link\\data.txt").value_or(std::string());
     req.items.push_back(attributes_through);
 
     ProtocolReparsePoint::Req::Item link;
     link.action = ProtocolReparsePoint::Req::Item::Action::Attributes;
-    link.path = appbox::WideToUTF8(folder + L"\\link");
+    link.path = appbox::WideToUTF8(folder + L"\\link").value_or(std::string());
     req.items.push_back(link);
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolReparsePoint>(req);

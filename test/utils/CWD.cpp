@@ -27,11 +27,12 @@ appbox::test::CWD::Ptr appbox::test::CWD::Create()
 
     auto info = ::testing::UnitTest::GetInstance()->current_test_info();
     auto name = info->test_suite_name() + std::string(".") + info->name();
-    auto name_w = appbox::UTF8ToWide(name);
+    auto name_w = appbox::UTF8ToWide(name).value_or(std::wstring());
 
     obj->no_cleanup_ = false;
     obj->cwd_ = std::filesystem::current_path();
-    obj->cwd_ = obj->cwd_ / fmt::format("Test-{}-{}", appbox::WideToUTF8(name_w), GetTimestampMs());
+    obj->cwd_ =
+        obj->cwd_ / fmt::format("Test-{}-{}", appbox::WideToUTF8(name_w).value_or(std::string()), GetTimestampMs());
 
     std::filesystem::create_directories(obj->cwd_);
     return obj;

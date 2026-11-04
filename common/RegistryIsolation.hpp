@@ -1,11 +1,20 @@
 #ifndef APPBOX_COMMON_REGISTRY_ISOLATION_HPP
 #define APPBOX_COMMON_REGISTRY_ISOLATION_HPP
 
+/*
+ * `WinAPI.h` brings `<ntstatus.h>` before `<windows.h>` and defines
+ * `WIN32_NO_STATUS`, and this header reaches `<windows.h>` through
+ * `common/ErrorCode.hpp`. A translation unit which spells a `STATUS_*` name has
+ * to include `common/WinAPI.h` before this header, so the names it spells are
+ * the ones of `ntstatus.h` and not the aliases `winnt.h` defines.
+ */
+#include "ErrorCode.hpp"
 #include "IsolationDocument.hpp"
 #include <nlohmann/json.hpp>
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <tl/expected.hpp>
 #include <vector>
 
 namespace appbox
@@ -157,62 +166,62 @@ inline constexpr const wchar_t* kRootKeyNames[kRootKeyCount] = { L"HKEY_CLASSES_
  * @param[in] root The root key name to compare with.
  * @return true when both names are equal ignoring the case.
  */
-inline bool EqualsRootKeyName(const std::wstring& name, const wchar_t* root);
+inline bool EqualsRootKeyName(const std::wstring& name, const wchar_t* root) noexcept;
 
 /**
  * @brief Whether a name is the name of one of the five root keys of the view.
  * @param[in] name The name to test.
  * @return true when the name names a root key.
  */
-inline bool IsRootKeyName(const std::wstring& name);
+inline bool IsRootKeyName(const std::wstring& name) noexcept;
 
 /**
  * @brief Get the token of a key isolation mode.
  * @param[in] isolation The isolation mode.
  * @return The canonical lower case token, for example `"write_copy"`.
  */
-inline const char* KeyIsolationToken(RegistryKeyIsolation isolation);
+inline const char* KeyIsolationToken(RegistryKeyIsolation isolation) noexcept;
 
 /**
  * @brief Get the token of a value isolation mode.
  * @param[in] isolation The isolation mode.
  * @return The canonical lower case token, for example `"full"`.
  */
-inline const char* ValueIsolationToken(RegistryValueIsolation isolation);
+inline const char* ValueIsolationToken(RegistryValueIsolation isolation) noexcept;
 
 /**
  * @brief Normalize a mode token for the comparison.
  *
  * The comparison of a token ignores the case and accepts spaces and dashes in
- * place of the underscore of the canonical token, so `L"Write Copy"` and
- * `L"write-copy"` resolve as well. The mode tokens are ASCII, so the tokens
- * are handled as narrow text like the JSON document which carries them.
+ * place of the underscore of the canonical token, so `"Write Copy"` and
+ * `"write-copy"` resolve as well. The mode tokens are ASCII, so the tokens are
+ * handled as narrow text like the JSON document which carries them.
  *
  * @param[in] token The token to normalize.
- * @param[out] normalized The lower case token with underscores.
+ * @return The lower case token with underscores.
  */
-inline void NormalizeIsolationToken(std::string_view token, std::string& normalized);
+inline std::string NormalizeIsolationToken(std::string_view token) noexcept;
 
 /**
  * @brief Resolve a key isolation mode from its token.
  * @param[in] token The token to resolve.
- * @param[out] out The resolved mode when the token is known.
- * @return true when the token names a key isolation mode.
+ * @return The resolved mode, or `kIsolationTokenUnknown` when the token names no
+ *         key isolation mode.
  */
-inline bool ParseKeyIsolationToken(std::string_view token, RegistryKeyIsolation& out);
+inline tl::expected<RegistryKeyIsolation, ErrorCode> ParseKeyIsolationToken(std::string_view token) noexcept;
 
 /**
  * @brief Resolve a value isolation mode from its token.
  *
  * The two value modes are `full` and `hide`; a token of a key only mode
- * (`merge` or `write_copy`) is refused, because a value write never reaches
- * the real registry and a value is never copied up.
+ * (`merge` or `write_copy`) is refused, because a value write never reaches the
+ * real registry and a value is never copied up.
  *
  * @param[in] token The token to resolve.
- * @param[out] out The resolved mode when the token is known.
- * @return true when the token names a value isolation mode.
+ * @return The resolved mode, or `kIsolationTokenUnknown` when the token names no
+ *         value isolation mode.
  */
-inline bool ParseValueIsolationToken(std::string_view token, RegistryValueIsolation& out);
+inline tl::expected<RegistryValueIsolation, ErrorCode> ParseValueIsolationToken(std::string_view token) noexcept;
 
 /**
  * @brief One key entry of the registry isolation file.
@@ -339,6 +348,20 @@ inline void to_json(nlohmann::json& json, const Document& document);
  * @throw appbox::IsolationDocumentError The document does not fit the schema.
  */
 inline void from_json(const nlohmann::json& json, Document& document);
+
+/**
+ * @brief Read the text of a registry isolation file.
+ *
+ * The call is the reader the packer and the sandbox use: it turns the text of
+ * the file into the document of the schema, and it reports why a text was
+ * refused by a code instead of an exception or a message.
+ *
+ * @param[in] text UTF-8 text of the isolation file.
+ * @return The document of the text, `kIsolationDocumentInvalid` when the text is
+ *         no document of this schema, `kIsolationDocumentUnsupportedVersion`
+ *         when the document names another schema version.
+ */
+inline tl::expected<Document, ErrorCode> ParseDocument(std::string_view text) noexcept;
 
 } // namespace registry_isolation
 

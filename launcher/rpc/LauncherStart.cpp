@@ -71,7 +71,7 @@ APPBOX_LAUNCHER_RPC_DEFINE(MsgLauncherStart, id, param)
      * one. The comparison is the one of the host: the path is expanded, the
      * trailing separators are dropped and the case is not significant.
      */
-    if (!appbox::SameHostPath(appbox::UTF8ToWide(param.sandbox_root), control->SandboxRoot()))
+    if (!appbox::SameHostPath(appbox::UTF8ToWide(param.sandbox_root).value_or(std::wstring()), control->SandboxRoot()))
     {
         control->Refuse(session, id, appbox::launcher_start_error::kSandboxMismatch,
                         "the sandbox of the request lives in another directory");

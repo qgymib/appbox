@@ -5,6 +5,8 @@
 #include <random>
 #include <string>
 #include <string_view>
+#include <tl/expected.hpp>
+#include "ErrorCode.hpp"
 
 namespace appbox
 {
@@ -21,12 +23,17 @@ namespace appbox
  * The launcher derives the name of its control pipe from the identifier, so the
  * identifier is the only thing which decides which sandboxes belong together:
  * the rules below are therefore the single source of truth of the packer, the
- * launcher and the test suite, and this header stays free of any Windows
- * dependency so every one of them can include it.
+ * launcher and the test suite, and the header carries no Windows call so every
+ * one of them can include it. The table of the codes it reports is
+ * `common/ErrorCode.hpp`, which is the header that brings the Windows types in.
  *
  * A missing or malformed identifier is never replaced by a random one: the
  * launcher refuses to run instead, because a run with an identifier of its own
  * would silently open a second sandbox next to the one the archive describes.
+ *
+ * The two calls which read a text report a failure by code and not by an empty
+ * answer: an empty text is a legal input and no identifier, so a caller has to
+ * be able to tell "the text is no identifier" from a value it may use.
  */
 namespace sandbox_id
 {
@@ -62,7 +69,7 @@ inline constexpr char kHexDigits[] = "0123456789abcdef";
  * @param[in] character Character to test.
  * @return true when the character is one of `0`-`9`, `a`-`f`.
  */
-inline bool IsLowerHexDigit(char character)
+inline bool IsLowerHexDigit(char character) noexcept
 {
     return (character >= '0' && character <= '9') || (character >= 'a' && character <= 'f');
 }
@@ -72,7 +79,7 @@ inline bool IsLowerHexDigit(char character)
  * @param[in] character Character to test.
  * @return true when the character is one of `0`-`9`, `a`-`f`, `A`-`F`.
  */
-inline bool IsHexDigit(char character)
+inline bool IsHexDigit(char character) noexcept
 {
     return IsLowerHexDigit(character) || (character >= 'A' && character <= 'F');
 }
@@ -82,7 +89,7 @@ inline bool IsHexDigit(char character)
  * @param[in] character Character to fold.
  * @return The folded character, unchanged when it is not an upper case letter.
  */
-inline char FoldAscii(char character)
+inline char FoldAscii(char character) noexcept
 {
     if (character >= 'A' && character <= 'Z')
     {
@@ -96,7 +103,7 @@ inline char FoldAscii(char character)
  * @param[in] position Position inside the 36 characters of the text form.
  * @return true when the position is one of `kHyphenPositions`.
  */
-inline bool IsHyphenPosition(std::size_t position)
+inline bool IsHyphenPosition(std::size_t position) noexcept
 {
     for (std::size_t index = 0; index < kHyphenCount; ++index)
     {
@@ -117,7 +124,7 @@ inline bool IsHyphenPosition(std::size_t position)
  * @param[in] digits The 32 lower case hexadecimal digits.
  * @return The 36 characters of the text form.
  */
-inline std::string FormatDigits(const std::string& digits)
+inline std::string FormatDigits(const std::string& digits) noexcept
 {
     std::string text;
     text.reserve(kLength);
@@ -153,7 +160,7 @@ inline std::string FormatDigits(const std::string& digits)
  * @param[in] text Text to check.
  * @return true when the text is a canonical identifier.
  */
-inline bool IsValidSandboxId(std::string_view text)
+inline bool IsValidSandboxId(std::string_view text) noexcept
 {
     if (text.size() != sandbox_id::kLength)
     {
@@ -188,51 +195,43 @@ inline bool IsValidSandboxId(std::string_view text)
  * characters of the `8-4-4-4-12` layout. Upper case digits are folded to lower
  * case, so the result is always the canonical form. Anything else - a text of
  * another length, a hyphen at a position the layout does not name, a character
- * which is no hexadecimal digit - is refused with an empty result instead of
- * being repaired.
+ * which is no hexadecimal digit - is refused instead of being repaired: the
+ * call reports `kInvalidArgument` and no value, because a repaired identifier
+ * would name a sandbox the document does not name.
  *
  * @param[in] text Text to normalize.
- * @return The canonical identifier, empty when the text is not an identifier.
+ * @return The canonical identifier, or `kInvalidArgument` when the text is not
+ *         an identifier.
  */
-inline std::string NormalizeSandboxId(std::string_view text)
+inline tl::expected<std::string, ErrorCode> NormalizeSandboxId(std::string_view text) noexcept
 {
+    /* Both spellings are checked by one loop: the digits are collected from
+       either of them, and the hyphens are compared with the layout only for the
+       text which carries them. */
+    const bool spelled_with_hyphens = text.size() == sandbox_id::kLength;
+    if (!spelled_with_hyphens && text.size() != sandbox_id::kDigitCount)
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kInvalidArgument);
+    }
+
     std::string digits;
     digits.reserve(sandbox_id::kDigitCount);
-
-    if (text.size() == sandbox_id::kDigitCount)
-    {
-        for (const char character : text)
-        {
-            if (!sandbox_id::IsHexDigit(character))
-            {
-                return {};
-            }
-            digits.push_back(sandbox_id::FoldAscii(character));
-        }
-
-        return sandbox_id::FormatDigits(digits);
-    }
-
-    if (text.size() != sandbox_id::kLength)
-    {
-        return {};
-    }
 
     for (std::size_t position = 0; position < text.size(); ++position)
     {
         const char character = text[position];
-        if (sandbox_id::IsHyphenPosition(position))
+        if (spelled_with_hyphens && sandbox_id::IsHyphenPosition(position))
         {
             if (character != '-')
             {
-                return {};
+                return tl::unexpected<ErrorCode>(ErrorCode::kInvalidArgument);
             }
             continue;
         }
 
         if (!sandbox_id::IsHexDigit(character))
         {
-            return {};
+            return tl::unexpected<ErrorCode>(ErrorCode::kInvalidArgument);
         }
         digits.push_back(sandbox_id::FoldAscii(character));
     }
@@ -283,13 +282,14 @@ inline std::string GenerateSandboxId()
  * name never leaks where the sandbox lives on the host.
  *
  * @param[in] id Identifier of the sandbox.
- * @return The pipe name, empty when the identifier is not canonical.
+ * @return The pipe name, or `kInvalidArgument` when the identifier is not
+ *         canonical.
  */
-inline std::string SandboxPipeName(std::string_view id)
+inline tl::expected<std::string, ErrorCode> SandboxPipeName(std::string_view id) noexcept
 {
     if (!IsValidSandboxId(id))
     {
-        return {};
+        return tl::unexpected<ErrorCode>(ErrorCode::kInvalidArgument);
     }
 
     std::string name = "\\\\.\\pipe\\appbox_";

@@ -241,7 +241,8 @@ bool CheckProbePath(appbox::test::ProbeBitness bitness, std::string& error)
     if (!std::filesystem::is_regular_file(path, ec))
     {
         error = fmt::format("the {} bit probe `{}` does not exist: pass {}=<path of the {} bit probe executable>",
-                            ProbeBitnessName(bitness), appbox::WideToUTF8(path), option, ProbeBitnessName(bitness));
+                            ProbeBitnessName(bitness), appbox::WideToUTF8(path).value_or(std::string()), option,
+                            ProbeBitnessName(bitness));
         return false;
     }
 
@@ -263,7 +264,7 @@ void SetModeFromString(const std::wstring& text)
 {
     if (!appbox::test::ParseTestMode(text, appbox::test::config.mode))
     {
-        throw CLI::ValidationError("--mode", "unknown test mode: " + appbox::WideToUTF8(text));
+        throw CLI::ValidationError("--mode", "unknown test mode: " + appbox::WideToUTF8(text).value_or(std::string()));
     }
 }
 
@@ -299,8 +300,10 @@ void SetConfigFromEnv()
     {
         if (!appbox::test::ParseTestMode(val, appbox::test::config.mode))
         {
-            std::fprintf(stderr, "AppBox tests: APPBOX_TEST_MODE is not a test mode: %s\n",
-                         appbox::WideToUTF8(val).c_str());
+            /* The text outlives the call, so the buffer of the answer has to be
+             * a named value and not the one of a temporary. */
+            const std::string value_utf8 = appbox::WideToUTF8(val).value_or(std::string());
+            std::fprintf(stderr, "AppBox tests: APPBOX_TEST_MODE is not a test mode: %s\n", value_utf8.c_str());
         }
     }
 

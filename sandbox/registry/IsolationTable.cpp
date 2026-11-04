@@ -1,9 +1,8 @@
+#include "WinAPI.h" /* Must be first include file */
 #include "IsolationTable.hpp"
 #include "utils/Log.hpp"
 #include "WString.hpp"
-#include <nlohmann/json.hpp>
 #include <cwctype>
-#include <exception>
 #include <utility>
 
 namespace
@@ -75,49 +74,39 @@ bool appbox::registry::IsolationTable::Parse(const std::string& text, std::strin
     std::map<std::wstring, RegistryKeyIsolation, IsolationKeyLess>             keys;
     std::map<IsolationValueKey, RegistryValueIsolation, IsolationValueKeyLess> values;
 
-    try
+    /*
+     * The document is read as the structure of its schema
+     * (`common/RegistryIsolation.hpp`) and never member by member, so a member
+     * which is missing, which is of another type or which names an unknown mode
+     * is refused while the file is read. The reader reports the refusal by code;
+     * the wording of the report is written here, because the text of a failure
+     * belongs to the module which shows it.
+     */
+    const auto document = registry_isolation::ParseDocument(text);
+    if (!document)
     {
-        /*
-         * The document is read as the structure of its schema
-         * (`common/RegistryIsolation.hpp`) and never member by member, so a
-         * member which is missing, which is of another type or which names an
-         * unknown mode is refused while the file is read.
-         */
-        const auto document = nlohmann::json::parse(text).get<registry_isolation::Document>();
-
-        if (document.version != registry_isolation::kVersion)
-        {
-            error = "unsupported isolation file version";
-            return false;
-        }
-
-        /*
-         * The two lists stay apart: a key entry covers the key and everything
-         * below it, while a value entry only covers the value of that name,
-         * which is the empty name for the default value of a key.
-         */
-        for (const auto& entry : document.keys)
-        {
-            keys[UTF8ToWide(entry.path)] = entry.isolation;
-        }
-
-        for (const auto& entry : document.values)
-        {
-            IsolationValueKey key;
-            key.key_path = UTF8ToWide(entry.path);
-            key.value_name = UTF8ToWide(entry.name);
-            values[key] = entry.isolation;
-        }
-    }
-    catch (const IsolationDocumentError& e)
-    {
-        error = e.what();
+        error = document.error() == ErrorCode::kIsolationDocumentUnsupportedVersion
+                    ? "unsupported isolation file version"
+                    : "the isolation file does not fit its schema";
         return false;
     }
-    catch (const std::exception& e)
+
+    /*
+     * The two lists stay apart: a key entry covers the key and everything below
+     * it, while a value entry only covers the value of that name, which is the
+     * empty name for the default value of a key.
+     */
+    for (const auto& entry : document->keys)
     {
-        error = std::string("the isolation file is not valid: ") + e.what();
-        return false;
+        keys[UTF8ToWide(entry.path).value_or(std::wstring())] = entry.isolation;
+    }
+
+    for (const auto& entry : document->values)
+    {
+        IsolationValueKey key;
+        key.key_path = UTF8ToWide(entry.path).value_or(std::wstring());
+        key.value_name = UTF8ToWide(entry.name).value_or(std::wstring());
+        values[key] = entry.isolation;
     }
 
     /*
@@ -217,7 +206,8 @@ appbox::RegistryKeyIsolation appbox::registry::IsolationTable::KeyMode(const std
      * out of the view, which is the answer a sandbox may never widen by
      * accident.
      */
-    LOG_W("the isolation table names no mode for {}: the entry is treated as hidden", appbox::WideToUTF8(key_path));
+    LOG_W("the isolation table names no mode for {}: the entry is treated as hidden",
+          appbox::WideToUTF8(key_path).value_or("<unconvertible>"));
     return RegistryKeyIsolation::Hide;
 }
 

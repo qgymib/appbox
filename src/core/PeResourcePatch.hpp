@@ -269,7 +269,8 @@ inline HMODULE LoadAsDataFile(const std::wstring& path, std::string& error)
         }
     }
 
-    error = "failed to open '" + WideToUTF8(path) + "' as a data file (error " + std::to_string(GetLastError()) + ")";
+    error = "failed to open '" + WideToUTF8(path).value_or(std::string()) + "' as a data file (error " +
+            std::to_string(GetLastError()) + ")";
     return nullptr;
 }
 
@@ -287,7 +288,7 @@ inline bool WriteFileBytes(const std::filesystem::path& path, const void* data, 
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     if (!file)
     {
-        error = "failed to create '" + WideToUTF8(path.wstring()) + "'";
+        error = "failed to create '" + WideToUTF8(path.wstring()).value_or(std::string()) + "'";
         return false;
     }
 
@@ -295,7 +296,7 @@ inline bool WriteFileBytes(const std::filesystem::path& path, const void* data, 
     file.close();
     if (!file)
     {
-        error = "failed to write '" + WideToUTF8(path.wstring()) + "'";
+        error = "failed to write '" + WideToUTF8(path.wstring()).value_or(std::string()) + "'";
         return false;
     }
 
@@ -315,14 +316,14 @@ inline bool ReadFileBytes(const std::filesystem::path& path, std::vector<char>& 
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file)
     {
-        error = "failed to open '" + WideToUTF8(path.wstring()) + "'";
+        error = "failed to open '" + WideToUTF8(path.wstring()).value_or(std::string()) + "'";
         return false;
     }
 
     const auto size = file.tellg();
     if (size < 0)
     {
-        error = "failed to measure '" + WideToUTF8(path.wstring()) + "'";
+        error = "failed to measure '" + WideToUTF8(path.wstring()).value_or(std::string()) + "'";
         return false;
     }
 
@@ -335,7 +336,7 @@ inline bool ReadFileBytes(const std::filesystem::path& path, std::vector<char>& 
 
     if (!file)
     {
-        error = "failed to read '" + WideToUTF8(path.wstring()) + "'";
+        error = "failed to read '" + WideToUTF8(path.wstring()).value_or(std::string()) + "'";
         return false;
     }
 

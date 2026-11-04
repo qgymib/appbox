@@ -1,3 +1,4 @@
+#include "WinAPI.h" /* Must be first include file */
 #include "PathText.hpp"
 #include "hook/NtClose.hpp"
 #include "hook/NtCreateFile.hpp"

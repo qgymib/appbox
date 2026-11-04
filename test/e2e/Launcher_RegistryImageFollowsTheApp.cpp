@@ -57,7 +57,8 @@ TEST_F(E2E_Launcher, RegistryImageFollowsTheApp)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\RegistryImage_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey =
+        L"Software\\AppBoxTest\\RegistryImage_" + appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto hive_key = L"HKEY_CURRENT_USER\\" + subkey;
 
     {
@@ -71,7 +72,7 @@ TEST_F(E2E_Launcher, RegistryImageFollowsTheApp)
     /* The first run writes a value which no layer of the archive holds. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "Runtime";
         req.Data = "kept";
 
@@ -92,7 +93,7 @@ TEST_F(E2E_Launcher, RegistryImageFollowsTheApp)
 
     {
         ProtocolRegReadValues::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Values = { "Value", "Runtime" };
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValues>(req);

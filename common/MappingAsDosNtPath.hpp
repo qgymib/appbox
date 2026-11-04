@@ -1,7 +1,9 @@
 #ifndef APPBOX_COMMON_MAPPING_AS_DOS_NT_PATH_HPP
 #define APPBOX_COMMON_MAPPING_AS_DOS_NT_PATH_HPP
 
+#include "ErrorCode.hpp"
 #include <string>
+#include <tl/expected.hpp>
 
 namespace appbox
 {
@@ -36,11 +38,17 @@ namespace appbox
  * opens, so both sides agree on what a path of the view is.
  *
  * @param[in] path Native path to map.
- * @param[out] mapped DOS style NT path of the entry, written only when the call
- *                   succeeds.
- * @return true when the path names an entry of a local file system.
+ * @return The DOS style NT path of the entry, or the class of the refusal:
+ *         - `kPathEmpty` for a path which carries no text;
+ *         - `kPathNotInViewNamespace` for a name of another namespace, and for
+ *           a relative path or a path which does not start with a separator;
+ *         - `kPathNotLocalDrive` for a drive which is no local file system;
+ *         - `kPathVolumeUnmounted` for a volume which no drive of the machine
+ *           carries;
+ *         - `kPathDeviceUnknown` for a device path whose device belongs to no
+ *           local drive of the machine.
  */
-inline bool MappingAsDosNtPath(const std::wstring& path, std::wstring& mapped);
+inline tl::expected<std::wstring, ErrorCode> MappingAsDosNtPath(const std::wstring& path) noexcept;
 
 } // namespace appbox
 

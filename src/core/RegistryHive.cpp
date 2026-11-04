@@ -1,3 +1,13 @@
+/*
+ * The header chain of this file reaches `<windows.h>` through
+ * `common/ErrorCode.hpp`, and `winnt.h` defines aliases of the `STATUS_*`
+ * names which `ntstatus.h` defines. A translation unit which spells such a
+ * name therefore takes the table of `ntstatus.h`, which `common/WinAPI.h`
+ * is the first header of when it is used; the two lines below give the same
+ * precedence without the rest of that header.
+ */
+#include <ntstatus.h>
+#define WIN32_NO_STATUS
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0600
 #endif
@@ -77,8 +87,8 @@ bool WriteValue(HKEY key, const appbox::RegistryValueEntry& value, std::string& 
                                         static_cast<DWORD>(value.data.size()));
     if (status != ERROR_SUCCESS)
     {
-        error =
-            "failed to write the registry value '" + appbox::WideToUTF8(value.name) + "' (" + ErrorText(status) + ")";
+        error = "failed to write the registry value '" + appbox::WideToUTF8(value.name).value_or(std::string()) +
+                "' (" + ErrorText(status) + ")";
         return false;
     }
 
@@ -117,8 +127,8 @@ bool WriteKey(HKEY view_parent, HKEY mirror_parent, const appbox::RegistryKeyNod
                                             KEY_ALL_ACCESS, nullptr, &view, &disposition);
         if (status != ERROR_SUCCESS)
         {
-            error =
-                "failed to create the registry key '" + appbox::WideToUTF8(node.name) + "' (" + ErrorText(status) + ")";
+            error = "failed to create the registry key '" + appbox::WideToUTF8(node.name).value_or(std::string()) +
+                    "' (" + ErrorText(status) + ")";
             return false;
         }
     }
@@ -131,8 +141,8 @@ bool WriteKey(HKEY view_parent, HKEY mirror_parent, const appbox::RegistryKeyNod
                                             KEY_ALL_ACCESS, nullptr, &mirror, &disposition);
         if (status != ERROR_SUCCESS)
         {
-            error = "failed to create the hidden registry key '" + appbox::WideToUTF8(node.name) + "' (" +
-                    ErrorText(status) + ")";
+            error = "failed to create the hidden registry key '" +
+                    appbox::WideToUTF8(node.name).value_or(std::string()) + "' (" + ErrorText(status) + ")";
             if (view != nullptr)
             {
                 RegCloseKey(view);
@@ -217,14 +227,14 @@ bool ReadFileBytes(const std::filesystem::path& path, std::vector<std::uint8_t>&
     std::ifstream stream(path, std::ios::binary | std::ios::ate);
     if (!stream.is_open())
     {
-        error = "failed to read the registry hive '" + appbox::WideToUTF8(path.wstring()) + "'";
+        error = "failed to read the registry hive '" + appbox::WideToUTF8(path.wstring()).value_or(std::string()) + "'";
         return false;
     }
 
     const auto size = stream.tellg();
     if (size < 0)
     {
-        error = "failed to read the registry hive '" + appbox::WideToUTF8(path.wstring()) + "'";
+        error = "failed to read the registry hive '" + appbox::WideToUTF8(path.wstring()).value_or(std::string()) + "'";
         return false;
     }
 
@@ -232,7 +242,7 @@ bool ReadFileBytes(const std::filesystem::path& path, std::vector<std::uint8_t>&
     stream.seekg(0, std::ios::beg);
     if (!bytes.empty() && !stream.read(reinterpret_cast<char*>(bytes.data()), size))
     {
-        error = "failed to read the registry hive '" + appbox::WideToUTF8(path.wstring()) + "'";
+        error = "failed to read the registry hive '" + appbox::WideToUTF8(path.wstring()).value_or(std::string()) + "'";
         bytes.clear();
         return false;
     }
@@ -258,7 +268,8 @@ bool appbox::WriteRegistryHive(const RegistryModel& model, const std::wstring& p
     LONG status = RegLoadAppKeyW(path.c_str(), &root, KEY_ALL_ACCESS, 0, 0);
     if (status != ERROR_SUCCESS)
     {
-        error = "failed to create the registry hive '" + WideToUTF8(path) + "' (" + ErrorText(status) + ")";
+        error = "failed to create the registry hive '" + WideToUTF8(path).value_or(std::string()) + "' (" +
+                ErrorText(status) + ")";
         return false;
     }
 
@@ -310,7 +321,8 @@ bool appbox::WriteRegistryHive(const RegistryModel& model, const std::wstring& p
         status = RegFlushKey(root);
         if (status != ERROR_SUCCESS)
         {
-            error = "failed to flush the registry hive '" + WideToUTF8(path) + "' (" + ErrorText(status) + ")";
+            error = "failed to flush the registry hive '" + WideToUTF8(path).value_or(std::string()) + "' (" +
+                    ErrorText(status) + ")";
             written = false;
         }
     }
@@ -333,8 +345,8 @@ bool appbox::BuildRegistryHiveBytes(const RegistryModel& model, std::vector<std:
 
     try
     {
-        const auto path =
-            std::filesystem::temp_directory_path() / (L"appbox-registry-" + UTF8ToWide(RandomString(16)) + L".hiv");
+        const auto path = std::filesystem::temp_directory_path() /
+                          (L"appbox-registry-" + UTF8ToWide(RandomString(16)).value_or(std::wstring()) + L".hiv");
 
         if (!WriteRegistryHive(model, path.wstring(), error))
         {

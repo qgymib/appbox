@@ -1,4 +1,5 @@
 #include "utils/CommonFixture.hpp"
+#include "utils/ErrorCodeText.hpp"
 #include "utils/LauncherConfigReader.hpp"
 #include "utils/LauncherPath.hpp"
 #include "utils/ProbeCall.hpp"
@@ -121,9 +122,10 @@ bool PackProbeApplication(const std::filesystem::path& root, const std::wstring&
         return false;
     }
 
-    if (appbox::ExtractArchive(zip_path.wstring(), root.wstring()) != appbox::ZIPREADER_SUCCESS)
+    const auto extracted = appbox::ExtractArchive(zip_path.wstring(), root.wstring());
+    if (!extracted)
     {
-        error = "failed to extract the archive";
+        error = "failed to extract the archive: " + appbox::test::DescribeErrorCode(extracted.error());
         return false;
     }
 

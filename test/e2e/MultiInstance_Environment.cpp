@@ -74,8 +74,8 @@ bool WriteJoinedVariable(const std::filesystem::path& root)
 {
     return WriteEnvironmentIsolationFile(
         root, {
-                  { appbox::UTF8ToWide(kJoinedVariable), kSandboxValue, appbox::EnvironmentIsolation::WriteCopy,
-                   appbox::EnvironmentMergeMode::Append, kMergeString }
+                  { appbox::UTF8ToWide(kJoinedVariable).value_or(std::wstring()), kSandboxValue,
+                   appbox::EnvironmentIsolation::WriteCopy, appbox::EnvironmentMergeMode::Append, kMergeString }
     });
 }
 
@@ -101,7 +101,7 @@ TEST_F(E2E_MultiInstance, EnvironmentComposedByTheSandbox)
     const auto cwd = GetCWD() / L"host";
     const auto id = SandboxIdForPath(cwd.wstring());
 
-    const HostEnvironmentVariable host(appbox::UTF8ToWide(kJoinedVariable), kHostValue);
+    const HostEnvironmentVariable host(appbox::UTF8ToWide(kJoinedVariable).value_or(std::wstring()), kHostValue);
 
     const auto launcher_config = MultiInstanceConfig(cwd, id, "app");
     ASSERT_TRUE(WriteJoinedVariable(cwd));

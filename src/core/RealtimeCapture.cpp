@@ -1,3 +1,13 @@
+/*
+ * The header chain of this file reaches `<windows.h>` through
+ * `common/ErrorCode.hpp`, and `winnt.h` defines aliases of the `STATUS_*`
+ * names which `ntstatus.h` defines. A translation unit which spells such a
+ * name therefore takes the table of `ntstatus.h`, which `common/WinAPI.h`
+ * is the first header of when it is used; the two lines below give the same
+ * precedence without the rest of that header.
+ */
+#include <ntstatus.h>
+#define WIN32_NO_STATUS
 #include "RealtimeCapture.hpp"
 
 /*
@@ -1846,10 +1856,11 @@ struct RealtimeCaptureRecorder::State
     static std::string DescribeChange(const RealtimeCaptureEvent& event)
     {
         std::string text =
-            fmt::format("{} {} by {}", ChangeKindName(event.kind), WideToUTF8(event.path), WideToUTF8(event.process));
+            fmt::format("{} {} by {}", ChangeKindName(event.kind), WideToUTF8(event.path).value_or(std::string()),
+                        WideToUTF8(event.process).value_or(std::string()));
         if (!event.detail.empty())
         {
-            text += fmt::format(" -> {}", WideToUTF8(event.detail));
+            text += fmt::format(" -> {}", WideToUTF8(event.detail).value_or(std::string()));
         }
         return text;
     }
@@ -1893,9 +1904,10 @@ struct RealtimeCaptureRecorder::State
     {
         const auto process_id = record.EventHeader.ProcessId;
 
-        std::string text = fmt::format("pid={} process={} object=0x{:x} file_key=0x{:x} name={}", process_id,
-                                       WideToUTF8(ProcessName(process_id)), fields.object, fields.file_key,
-                                       fields.has_name ? WideToUTF8(fields.name) : std::string("<none>"));
+        std::string text =
+            fmt::format("pid={} process={} object=0x{:x} file_key=0x{:x} name={}", process_id,
+                        WideToUTF8(ProcessName(process_id)).value_or(std::string()), fields.object, fields.file_key,
+                        fields.has_name ? WideToUTF8(fields.name).value_or(std::string()) : std::string("<none>"));
         if (!fields.complete)
         {
             text += fmt::format(" walk_stopped_at={}", fields.stopped_at);
@@ -1922,7 +1934,8 @@ struct RealtimeCaptureRecorder::State
         {
             NoteUnresolved(key, UnresolvedReason::UnknownObject,
                            fmt::format("pid={} process={} kcb=0x{:x} value={}", process_id,
-                                       WideToUTF8(ProcessName(process_id)), kcb, WideToUTF8(value_name)));
+                                       WideToUTF8(ProcessName(process_id)).value_or(std::string()), kcb,
+                                       WideToUTF8(value_name).value_or(std::string())));
             return;
         }
 
@@ -1931,8 +1944,9 @@ struct RealtimeCaptureRecorder::State
         {
             NoteUnresolved(key, UnresolvedReason::NotInView,
                            fmt::format("pid={} process={} nt={} value={}", process_id,
-                                       WideToUTF8(ProcessName(process_id)), WideToUTF8(path->second),
-                                       WideToUTF8(value_name)));
+                                       WideToUTF8(ProcessName(process_id)).value_or(std::string()),
+                                       WideToUTF8(path->second).value_or(std::string()),
+                                       WideToUTF8(value_name).value_or(std::string())));
             return;
         }
 
@@ -2436,13 +2450,15 @@ public:
 
         for (const auto& device : device_map)
         {
-            spdlog::debug("realtime capture report: the volume {} is the drive {}", WideToUTF8(device.first),
-                          WideToUTF8(device.second));
+            spdlog::debug("realtime capture report: the volume {} is the drive {}",
+                          WideToUTF8(device.first).value_or(std::string()),
+                          WideToUTF8(device.second).value_or(std::string()));
         }
 
         for (const auto& prefix : untranslated_prefixes)
         {
-            spdlog::debug("realtime capture report: no volume of the host matches the device {}", WideToUTF8(prefix));
+            spdlog::debug("realtime capture report: no volume of the host matches the device {}",
+                          WideToUTF8(prefix).value_or(std::string()));
         }
     }
 
@@ -2551,7 +2567,8 @@ public:
             const auto& entry = item.second;
 
             const std::string named =
-                entry.name.empty() ? std::string() : " (the machine names it " + WideToUTF8(entry.name) + ")";
+                entry.name.empty() ? std::string()
+                                   : " (the machine names it " + WideToUTF8(entry.name).value_or(std::string()) + ")";
             spdlog::debug("realtime capture report: the provider {} event {} version {} was received {} times and left "
                           "out{}",
                           GuidText(key.provider), key.id, key.version, entry.received, named);
@@ -2605,8 +2622,8 @@ public:
                 spdlog::debug(
                     "realtime capture report: provider {} event {} version {} declares the property {} of the "
                     "type {} with the flags 0x{:x}, the count {} and the length {}",
-                    key.provider, key.id, key.version, WideToUTF8(property.name), property.in_type, property.flags,
-                    property.count, property.length);
+                    key.provider, key.id, key.version, WideToUTF8(property.name).value_or(std::string()),
+                    property.in_type, property.flags, property.count, property.length);
             }
         }
     }
@@ -3302,8 +3319,9 @@ bool HarvestRealtimeEvents(const std::vector<RealtimeCaptureEvent>&     events,
         value.name = entry->name;
         if (!ReadRegistryValue(entry->path, entry->name, value.type, value.data))
         {
-            spdlog::warn("the realtime capture could not read the registry value '{}' of '{}'", WideToUTF8(entry->name),
-                         WideToUTF8(entry->path));
+            spdlog::warn("the realtime capture could not read the registry value '{}' of '{}'",
+                         WideToUTF8(entry->name).value_or(std::string()),
+                         WideToUTF8(entry->path).value_or(std::string()));
             continue;
         }
         diff.added_registry_values.push_back(std::move(value));

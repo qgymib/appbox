@@ -176,7 +176,7 @@ std::wstring HexWord(std::uint16_t value)
 std::wstring FieldPath(const appbox::MetadataTranslation& translation, const std::string& key)
 {
     return std::wstring(L"\\") + kStringFileInfoKey + L"\\" + HexWord(translation.language) +
-           HexWord(translation.code_page) + L"\\" + appbox::UTF8ToWide(key);
+           HexWord(translation.code_page) + L"\\" + appbox::UTF8ToWide(key).value_or(std::wstring());
 }
 
 /**
@@ -296,7 +296,7 @@ std::vector<char> BuildStringNode(const std::string& key, const std::wstring& va
     AppendU16(node, 0);                                            /* wLength, patched below. */
     AppendU16(node, static_cast<std::uint16_t>(value.size() + 1)); /* wValueLength, in characters. */
     AppendU16(node, 1);                                            /* wType: text. */
-    AppendText(node, appbox::UTF8ToWide(key), true);
+    AppendText(node, appbox::UTF8ToWide(key).value_or(std::wstring()), true);
     AlignTo4(node);
     AppendText(node, value, true);
     AlignTo4(node);
@@ -567,8 +567,8 @@ bool AddVersionResource(const std::filesystem::path& path, const std::vector<cha
     if (update == nullptr)
     {
         code = GetLastError();
-        error = "failed to open '" + appbox::WideToUTF8(path.wstring()) + "' for the version update (error " +
-                std::to_string(code) + ")";
+        error = "failed to open '" + appbox::WideToUTF8(path.wstring()).value_or(std::string()) +
+                "' for the version update (error " + std::to_string(code) + ")";
         return false;
     }
 
@@ -579,8 +579,9 @@ bool AddVersionResource(const std::filesystem::path& path, const std::vector<cha
         if (!UpdateResourceW(session.Get(), RT_VERSION, name, entry.language, nullptr, 0))
         {
             code = GetLastError();
-            error = "failed to drop the version resource of '" + appbox::WideToUTF8(path.wstring()) + "' (error " +
-                    std::to_string(code) + ")";
+            error = "failed to drop the version resource of '" +
+                    appbox::WideToUTF8(path.wstring()).value_or(std::string()) + "' (error " + std::to_string(code) +
+                    ")";
             return false;
         }
     }
@@ -596,8 +597,8 @@ bool AddVersionResource(const std::filesystem::path& path, const std::vector<cha
     if (!session.Commit())
     {
         code = GetLastError();
-        error = "failed to write the version resource of '" + appbox::WideToUTF8(path.wstring()) + "' (error " +
-                std::to_string(code) + ")";
+        error = "failed to write the version resource of '" +
+                appbox::WideToUTF8(path.wstring()).value_or(std::string()) + "' (error " + std::to_string(code) + ")";
         return false;
     }
 
@@ -828,7 +829,7 @@ bool ReadApplicationMetadata(const std::wstring& path, ApplicationVersionInfo& i
         return false;
     }
 
-    const auto shown = WideToUTF8(path);
+    const auto shown = WideToUTF8(path).value_or(std::string());
 
     DWORD       handle = 0;
     const DWORD size = GetFileVersionInfoSizeW(path.c_str(), &handle);

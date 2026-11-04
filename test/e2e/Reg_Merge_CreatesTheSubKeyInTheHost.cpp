@@ -56,7 +56,8 @@ TEST_F(E2E_Reg, Merge_CreatesTheSubKeyInTheHost)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\Merge_CreatesTheSubKey_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\Merge_CreatesTheSubKey_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto hive_key = L"HKEY_CURRENT_USER\\" + subkey;
     const auto child = subkey + L"\\Child";
 
@@ -71,7 +72,7 @@ TEST_F(E2E_Reg, Merge_CreatesTheSubKeyInTheHost)
 
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(child);
+        req.Key = appbox::WideToUTF8(child).value_or(std::string());
         req.Value = "ChildValue";
         req.Data = "child";
 
@@ -95,13 +96,13 @@ TEST_F(E2E_Reg, Merge_CreatesTheSubKeyInTheHost)
         RegCloseKey(key);
 
         ASSERT_EQ(query, static_cast<LONG>(ERROR_SUCCESS));
-        EXPECT_EQ(appbox::WideToUTF8(buffer), "child");
+        EXPECT_EQ(appbox::WideToUTF8(buffer).value_or(std::string()), "child");
     }
 
     /* The merged view reports the sub key of the host. */
     {
         ProtocolRegReadValue::Req req;
-        req.Key = appbox::WideToUTF8(child);
+        req.Key = appbox::WideToUTF8(child).value_or(std::string());
         req.Value = "ChildValue";
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);

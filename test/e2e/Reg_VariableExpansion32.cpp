@@ -78,7 +78,7 @@ TEST_F(E2E_Reg, VariableExpansion32)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegReadValues::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Values = { "ProgramFiles", "ProgramFilesX64", "ProgramFilesCommon", "ProgramFilesCommonX64", "SystemX86" };
 
     const auto rsp = Probe(GetCWD(), config, ProbeBitness::Bit32).Call<ProtocolRegReadValues>(req);
@@ -91,17 +91,17 @@ TEST_F(E2E_Reg, VariableExpansion32)
     }
 
     /* The folders a 32 bit process sees. */
-    EXPECT_EQ(rsp.values[0].text, appbox::WideToUTF8(programs_x86 + L"\\Foo"));
-    EXPECT_EQ(rsp.values[2].text, appbox::WideToUTF8(common_x86 + L"\\Foo"));
+    EXPECT_EQ(rsp.values[0].text, appbox::WideToUTF8(programs_x86 + L"\\Foo").value_or(std::string()));
+    EXPECT_EQ(rsp.values[2].text, appbox::WideToUTF8(common_x86 + L"\\Foo").value_or(std::string()));
 
     /* A folder which does not exist for a 32 bit process keeps the reference. */
     EXPECT_EQ(rsp.values[1].text, "%APPBOX:ProgramFilesX64%\\Foo");
 
     /* The 64 bit `Common Files` folder is reachable from a 32 bit process. */
-    EXPECT_EQ(rsp.values[3].text, appbox::WideToUTF8(common_x64 + L"\\Foo"));
+    EXPECT_EQ(rsp.values[3].text, appbox::WideToUTF8(common_x64 + L"\\Foo").value_or(std::string()));
 
     /* The 32 bit system folder is the same in both views. */
-    EXPECT_EQ(rsp.values[4].text, appbox::WideToUTF8(system_x86 + L"\\Foo"));
+    EXPECT_EQ(rsp.values[4].text, appbox::WideToUTF8(system_x86 + L"\\Foo").value_or(std::string()));
 
     ASSERT_TRUE(tree.Verify());
 }

@@ -73,8 +73,8 @@ std::string appbox::test::BuildNetworkIsolationText(const std::vector<NetworkIso
     for (const auto& entry : entries)
     {
         appbox::network_isolation::Entry item;
-        item.hostname = appbox::WideToUTF8(entry.hostname);
-        item.redirect = appbox::WideToUTF8(entry.redirect);
+        item.hostname = appbox::WideToUTF8(entry.hostname).value_or(std::string());
+        item.redirect = appbox::WideToUTF8(entry.redirect).value_or(std::string());
         document.entries.push_back(std::move(item));
     }
 
@@ -84,10 +84,10 @@ std::string appbox::test::BuildNetworkIsolationText(const std::vector<NetworkIso
         item.type = appbox::network_isolation::kSocks5Token;
         item.tcp = proxy.tcp;
         item.udp = proxy.udp;
-        item.server = appbox::WideToUTF8(proxy.server);
-        item.port = appbox::WideToUTF8(proxy.port);
-        item.username = appbox::WideToUTF8(proxy.username);
-        item.password = appbox::WideToUTF8(proxy.password);
+        item.server = appbox::WideToUTF8(proxy.server).value_or(std::string());
+        item.port = appbox::WideToUTF8(proxy.port).value_or(std::string());
+        item.username = appbox::WideToUTF8(proxy.username).value_or(std::string());
+        item.password = appbox::WideToUTF8(proxy.password).value_or(std::string());
         document.proxy = std::move(item);
     }
 

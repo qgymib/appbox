@@ -141,7 +141,10 @@ A case which times out ends the run:
 
 1. The watchdog starts the coredump writer, which is the test executable
    itself (`test/utils/Coredump.*`). `MiniDumpWriteDump` suspends every thread
-   of the process it dumps, so it must not run inside that process.
+   of the process it dumps, so it must not run inside that process. The writer
+   is created with `CREATE_NO_WINDOW`, because the run may be started by a
+   program which owns no console, and it inherits the streams of the run so its
+   report still reaches the console of `ctest`.
 2. The writer takes one snapshot of the process list, walks the tree below the
    test process - the test process, the launcher, the sandbox host and the probe
    of an end-to-end case - and writes one full memory dump per process.
@@ -2024,6 +2027,19 @@ harness therefore enables `hide_console` in the configuration it writes, and
 attached, so the standard streams of the probe keep working, while its window
 is not visible.
 
+The same rule covers the processes a sandboxed probe starts itself: a child of
+a process whose own console has no window would otherwise be given a console
+window of its own, so both the `CreateProcessW` path and the
+`RtlCreateUserProcess` path of `test/probe/LaunchProcess.*` create the child
+with a hidden console (see [Test helpers](#test-helpers)).
+A case which starts a probe from a probe, and a case which starts `cmd.exe` of
+the view, therefore shows no window either.
+
+A run of the shell (`--X-AppBox-Shell`) is not part of this rule: the launcher
+shows the window of the shell on purpose, because the shell is meant to be used
+interactively, so the cases of the shell suite are the only ones which show a
+console window on the desktop.
+
 ### Launcher registry state cases
 
 The registry state cases (`test/e2e/Launcher_RegistryState*.cpp` and
@@ -2394,6 +2410,13 @@ They are documented in their own header comments.
   directory of the child (`CurrentDirectory`) and the working directory the
   probe itself takes first (`ParentCurrentDirectory`), which is how a case
   controls the directory a child inherits.
+  Both entry points create the child with a hidden console window, because the
+  probe itself owns a console whose window is hidden: the `CreateProcess` path
+  passes `CREATE_NO_WINDOW`, and the `RtlCreateUserProcess` path sets the window
+  flags and `SW_HIDE` of the process parameters it builds, which is the same
+  countermovement on a path that carries no `STARTUPINFO`. The child keeps its
+  console and its standard streams, and a case which starts a probe, or
+  `cmd.exe` of the view, from a probe shows no window on the desktop.
 * `test/probe/ParamCheck.*` — the worker of the process parameter cases: it
   compares the image path and the working directory of its own process
   parameters with the values of its command line, checks that the module of the

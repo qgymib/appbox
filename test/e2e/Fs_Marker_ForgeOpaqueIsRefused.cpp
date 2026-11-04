@@ -79,7 +79,7 @@ TEST_F(E2E_Fs, Marker_ForgeOpaqueIsRefused)
     /* The marker which would make the folder opaque. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\.$APPBOX_OPAQUE$");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\.$APPBOX_OPAQUE$").value_or(std::string());
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 
@@ -100,7 +100,7 @@ TEST_F(E2E_Fs, Marker_ForgeOpaqueIsRefused)
     }
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\inside.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\inside.txt").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));

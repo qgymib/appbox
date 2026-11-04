@@ -40,14 +40,14 @@ static void ParseInjectData(const std::string& data)
 
     appbox::sandbox->sandbox32_dos_path = inject_data.sandbox32_dos_path;
     appbox::sandbox->sandbox64_dos_path = inject_data.sandbox64_dos_path;
-    appbox::sandbox->wPipePath = appbox::UTF8ToWide(inject_data.pipe_path);
+    appbox::sandbox->wPipePath = appbox::UTF8ToWide(inject_data.pipe_path).value_or(std::wstring());
 
-    appbox::sandbox->fs.fs_upper = appbox::UTF8ToWide(inject_data.fs_upper);
+    appbox::sandbox->fs.fs_upper = appbox::UTF8ToWide(inject_data.fs_upper).value_or(std::wstring());
     for (const auto& p : inject_data.fs_lower)
     {
         appbox::filesystem::ResolveFsMapping mapping;
-        mapping.host_nt_path = appbox::UTF8ToWide(p.host_nt_path);
-        mapping.mapped_nt_path = appbox::UTF8ToWide(p.mapped_nt_path);
+        mapping.host_nt_path = appbox::UTF8ToWide(p.host_nt_path).value_or(std::wstring());
+        mapping.mapped_nt_path = appbox::UTF8ToWide(p.mapped_nt_path).value_or(std::wstring());
         appbox::sandbox->fs.fs_lower.push_back(mapping);
     }
 
@@ -59,25 +59,28 @@ static void ParseInjectData(const std::string& data)
      */
     appbox::sandbox->variables = appbox::SelectVariables(inject_data.variables, sizeof(void*) == 8);
 
-    appbox::sandbox->wRegistryHiveDOSPath = appbox::UTF8ToWide(inject_data.registry_hive_dos_path);
-    appbox::sandbox->wRegistryImageHiveDOSPath = appbox::UTF8ToWide(inject_data.registry_image_hive_dos_path);
+    appbox::sandbox->wRegistryHiveDOSPath =
+        appbox::UTF8ToWide(inject_data.registry_hive_dos_path).value_or(std::wstring());
+    appbox::sandbox->wRegistryImageHiveDOSPath =
+        appbox::UTF8ToWide(inject_data.registry_image_hive_dos_path).value_or(std::wstring());
     for (const auto& path : inject_data.registry_isolation_dos_paths)
     {
-        appbox::sandbox->wRegistryIsolationDOSPaths.push_back(appbox::UTF8ToWide(path));
+        appbox::sandbox->wRegistryIsolationDOSPaths.push_back(appbox::UTF8ToWide(path).value_or(std::wstring()));
     }
     for (const auto& path : inject_data.filesystem_isolation_dos_paths)
     {
-        appbox::sandbox->wFilesystemIsolationDOSPaths.push_back(appbox::UTF8ToWide(path));
+        appbox::sandbox->wFilesystemIsolationDOSPaths.push_back(appbox::UTF8ToWide(path).value_or(std::wstring()));
     }
     for (const auto& path : inject_data.network_isolation_dos_paths)
     {
-        appbox::sandbox->wNetworkIsolationDOSPaths.push_back(appbox::UTF8ToWide(path));
+        appbox::sandbox->wNetworkIsolationDOSPaths.push_back(appbox::UTF8ToWide(path).value_or(std::wstring()));
     }
     for (const auto& path : inject_data.environment_isolation_dos_paths)
     {
-        appbox::sandbox->wEnvironmentIsolationDOSPaths.push_back(appbox::UTF8ToWide(path));
+        appbox::sandbox->wEnvironmentIsolationDOSPaths.push_back(appbox::UTF8ToWide(path).value_or(std::wstring()));
     }
-    appbox::sandbox->wEnvironmentStateDOSPath = appbox::UTF8ToWide(inject_data.environment_state_dos_path);
+    appbox::sandbox->wEnvironmentStateDOSPath =
+        appbox::UTF8ToWide(inject_data.environment_state_dos_path).value_or(std::wstring());
     appbox::sandbox->bEnvironmentComposed = inject_data.environment_is_composed;
 
     /*
@@ -97,7 +100,8 @@ static void ParseInjectData(const std::string& data)
     }
 
     if (!inject_data.log_dir.empty() &&
-        !appbox::OpenLogFile(appbox::UTF8ToWide(inject_data.log_dir), appbox::GetImagePathFromPeb()))
+        !appbox::OpenLogFile(appbox::UTF8ToWide(inject_data.log_dir).value_or(std::wstring()),
+                             appbox::GetImagePathFromPeb()))
     {
         SPDLOG_WARN("the log file of the process cannot be created in '{}'", inject_data.log_dir);
     }
@@ -146,7 +150,8 @@ static void LoadInjectData()
 
 static void SayHello()
 {
-    LOG_I("AppBox Sandbox initialized for {} with config: {}", appbox::WideToUTF8(appbox::GetImagePathFromPeb()),
+    LOG_I("AppBox Sandbox initialized for {} with config: {}",
+          appbox::WideToUTF8(appbox::GetImagePathFromPeb()).value_or("<unconvertible>"),
           appbox::DumpJson(nlohmann::json(*appbox::sandbox)));
 }
 
@@ -408,13 +413,13 @@ static void OnDllDetach(bool process_terminating)
 void appbox::to_json(nlohmann::json& j, const Sandbox& r)
 {
     j["bIsolationMode"] = r.bIsolationMode;
-    j["wPipePath"] = appbox::WideToUTF8(r.wPipePath);
+    j["wPipePath"] = appbox::WideToUTF8(r.wPipePath).value_or(std::string());
     j["fs"] = r.fs;
     j["variables"] = r.variables.size();
     j["sandbox32_dos_path"] = r.sandbox32_dos_path;
     j["sandbox64_dos_path"] = r.sandbox64_dos_path;
-    j["registry_hive_dos_path"] = appbox::WideToUTF8(r.wRegistryHiveDOSPath);
-    j["registry_image_hive_dos_path"] = appbox::WideToUTF8(r.wRegistryImageHiveDOSPath);
+    j["registry_hive_dos_path"] = appbox::WideToUTF8(r.wRegistryHiveDOSPath).value_or(std::string());
+    j["registry_image_hive_dos_path"] = appbox::WideToUTF8(r.wRegistryImageHiveDOSPath).value_or(std::string());
     j["registry_isolation_dos_paths"] = r.wRegistryIsolationDOSPaths.size();
     j["filesystem_isolation_dos_paths"] = r.wFilesystemIsolationDOSPaths.size();
     j["fs_isolation_entries"] = r.fs_isolation.Count();
@@ -422,7 +427,7 @@ void appbox::to_json(nlohmann::json& j, const Sandbox& r)
     j["network_isolation_dos_paths"] = r.wNetworkIsolationDOSPaths.size();
     j["dns_entries"] = r.dns_table.Count();
     j["environment_isolation_dos_paths"] = r.wEnvironmentIsolationDOSPaths.size();
-    j["environment_state_dos_path"] = appbox::WideToUTF8(r.wEnvironmentStateDOSPath);
+    j["environment_state_dos_path"] = appbox::WideToUTF8(r.wEnvironmentStateDOSPath).value_or(std::string());
     j["environment_variables"] = r.env_table.Count();
     j["environment_modifications"] = r.env_state.Count();
 }

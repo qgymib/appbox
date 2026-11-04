@@ -90,7 +90,9 @@ std::string appbox::test::SandboxIdForPath(const std::wstring& path)
     const auto trimmed = TrimSeparators(path);
 
     /* Two digests fill the 32 digits of an identifier, which is the layout
-       `common/SandboxId.hpp` turns into the canonical text form. */
+       `common/SandboxId.hpp` turns into the canonical text form. A text of
+       upper case hexadecimal digits is always an identifier, so the call
+       cannot refuse it. */
     const auto digits = HexDigits(HashText(trimmed, kFirstBasis)) + HexDigits(HashText(trimmed, kSecondBasis));
-    return appbox::NormalizeSandboxId(digits);
+    return appbox::NormalizeSandboxId(digits).value();
 }

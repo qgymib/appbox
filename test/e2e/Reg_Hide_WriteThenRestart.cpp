@@ -40,8 +40,8 @@ ProtocolRegReadValue::Rsp ReadSandboxValue(const std::wstring& subkey, const std
                                            const std::filesystem::path& cwd, const appbox::LauncherConfig& config)
 {
     ProtocolRegReadValue::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
-    req.Value = appbox::WideToUTF8(name);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
+    req.Value = appbox::WideToUTF8(name).value_or(std::string());
     return Probe(cwd, config).Call<ProtocolRegReadValue>(req);
 }
 
@@ -73,7 +73,8 @@ TEST_F(E2E_Reg, Hide_WriteThenRestart)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\Hide_WriteThenRestart_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\Hide_WriteThenRestart_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto hive_key = L"HKEY_CURRENT_USER\\" + subkey;
 
     HiveBuilder builder(GetCWD());
@@ -93,7 +94,7 @@ TEST_F(E2E_Reg, Hide_WriteThenRestart)
     /* The write of the sandbox makes the entry visible. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "Written";
         req.Data = "run1";
 

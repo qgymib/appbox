@@ -93,19 +93,37 @@ TEST(Unit_FilesystemIsolation, TokensRoundTrip)
     {
         const std::string token = appbox::filesystem_isolation::IsolationToken(isolation);
 
-        appbox::FilesystemIsolation parsed = appbox::FilesystemIsolation::Full;
-        EXPECT_TRUE(appbox::filesystem_isolation::ParseIsolationToken(token, parsed));
-        EXPECT_EQ(parsed, isolation);
+        const auto parsed = appbox::filesystem_isolation::ParseIsolationToken(token);
+        ASSERT_TRUE(parsed) << "token: '" << token << "'";
+        EXPECT_EQ(*parsed, isolation);
     }
 
     EXPECT_STREQ(appbox::filesystem_isolation::IsolationToken(appbox::FilesystemIsolation::Merge), "merge");
 
-    appbox::FilesystemIsolation parsed = appbox::FilesystemIsolation::Full;
-    EXPECT_TRUE(appbox::filesystem_isolation::ParseIsolationToken("Write-Copy", parsed));
-    EXPECT_EQ(parsed, appbox::FilesystemIsolation::WriteCopy);
-    EXPECT_TRUE(appbox::filesystem_isolation::ParseIsolationToken("writecopy", parsed));
-    EXPECT_EQ(parsed, appbox::FilesystemIsolation::WriteCopy);
-    EXPECT_FALSE(appbox::filesystem_isolation::ParseIsolationToken("hide", parsed));
+    const auto display = appbox::filesystem_isolation::ParseIsolationToken("Write-Copy");
+    ASSERT_TRUE(display);
+    EXPECT_EQ(*display, appbox::FilesystemIsolation::WriteCopy);
+
+    const auto joined = appbox::filesystem_isolation::ParseIsolationToken("writecopy");
+    ASSERT_TRUE(joined);
+    EXPECT_EQ(*joined, appbox::FilesystemIsolation::WriteCopy);
+}
+
+/**
+ * @brief A token of another domain is refused with the code of the vocabulary.
+ *
+ * The caller has to be able to tell "this text is no mode" from a mode it may
+ * use, so the refusal is a code and not an empty answer.
+ */
+TEST(Unit_FilesystemIsolation, UnknownTokenIsReportedByItsCode)
+{
+    const auto isolation = appbox::filesystem_isolation::ParseIsolationToken("hide");
+    ASSERT_FALSE(isolation);
+    EXPECT_EQ(isolation.error(), appbox::ErrorCode::kIsolationTokenUnknown);
+
+    const auto empty = appbox::filesystem_isolation::ParseIsolationToken("");
+    ASSERT_FALSE(empty);
+    EXPECT_EQ(empty.error(), appbox::ErrorCode::kIsolationTokenUnknown);
 }
 
 TEST(Unit_FilesystemIsolation, EntryKindTokensRoundTrip)
@@ -113,14 +131,21 @@ TEST(Unit_FilesystemIsolation, EntryKindTokensRoundTrip)
     EXPECT_STREQ(appbox::filesystem_isolation::EntryKindToken(appbox::FilesystemEntryKind::File), "file");
     EXPECT_STREQ(appbox::filesystem_isolation::EntryKindToken(appbox::FilesystemEntryKind::Directory), "directory");
 
-    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
-    EXPECT_TRUE(appbox::filesystem_isolation::ParseEntryKindToken("Directory", kind));
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::Directory);
-    EXPECT_TRUE(appbox::filesystem_isolation::ParseEntryKindToken("folder", kind));
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::Directory);
-    EXPECT_TRUE(appbox::filesystem_isolation::ParseEntryKindToken("FILE", kind));
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::File);
-    EXPECT_FALSE(appbox::filesystem_isolation::ParseEntryKindToken("link", kind));
+    const auto directory = appbox::filesystem_isolation::ParseEntryKindToken("Directory");
+    ASSERT_TRUE(directory);
+    EXPECT_EQ(*directory, appbox::FilesystemEntryKind::Directory);
+
+    const auto folder = appbox::filesystem_isolation::ParseEntryKindToken("folder");
+    ASSERT_TRUE(folder);
+    EXPECT_EQ(*folder, appbox::FilesystemEntryKind::Directory);
+
+    const auto file = appbox::filesystem_isolation::ParseEntryKindToken("FILE");
+    ASSERT_TRUE(file);
+    EXPECT_EQ(*file, appbox::FilesystemEntryKind::File);
+
+    const auto link = appbox::filesystem_isolation::ParseEntryKindToken("link");
+    ASSERT_FALSE(link);
+    EXPECT_EQ(link.error(), appbox::ErrorCode::kEntryKindTokenUnknown);
 }
 
 TEST(Unit_FilesystemIsolation, OnlyAFolderAcceptsTheFolderOnlyModes)
@@ -551,22 +576,21 @@ TEST(Unit_FilesystemIsolation, ThePinnedLayersTravelThroughTheIsolationFile)
     };
 
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>          unmapped;
-    ASSERT_TRUE(table.Parse(text, layers, unmapped, error)) << error;
-    EXPECT_TRUE(unmapped.empty());
+    const auto                         outcome = table.Parse(text, layers);
+    ASSERT_TRUE(outcome) << static_cast<int>(outcome.error());
+    EXPECT_TRUE(outcome->unmapped.empty());
     EXPECT_EQ(table.Count(), 2u);
 
-    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::Full;
-    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
-
     /* The layer keeps the mode it showed, so the container does not reach it. */
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\data", mode, kind));
-    EXPECT_EQ(mode, appbox::filesystem_isolation::kDefaultIsolation);
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::Directory);
+    const auto inner = table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\data");
+    ASSERT_TRUE(inner);
+    EXPECT_EQ(inner->mode, appbox::filesystem_isolation::kDefaultIsolation);
+    EXPECT_EQ(inner->source_kind, appbox::FilesystemEntryKind::Directory);
 
     /* A location outside the layers follows the mode of the container. */
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Windows\\System32", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Whiteout);
+    const auto outside = table.Lookup(L"\\??\\C:\\Windows\\System32");
+    ASSERT_TRUE(outside);
+    EXPECT_EQ(outside->mode, appbox::FilesystemIsolation::Whiteout);
 }
 
 TEST(Unit_FilesystemIsolation, AChildOverridesTheFolderAbove)
@@ -854,26 +878,26 @@ TEST(Unit_FilesystemIsolation, TheIsolationFileOfThePackerIsReadByTheSandbox)
     };
 
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>          unmapped;
-    ASSERT_TRUE(table.Parse(text, layers, unmapped, error)) << error;
-    EXPECT_TRUE(unmapped.empty());
+    const auto                         outcome = table.Parse(text, layers);
+    ASSERT_TRUE(outcome) << static_cast<int>(outcome.error());
+    EXPECT_TRUE(outcome->unmapped.empty());
     EXPECT_EQ(table.Count(), 2u);
 
-    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::WriteCopy;
-    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::Directory;
+    const auto folder = table.Lookup(L"\\??\\C:\\Program Files\\MyApp");
+    ASSERT_TRUE(folder);
+    EXPECT_EQ(folder->mode, appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(folder->source_kind, appbox::FilesystemEntryKind::Directory);
 
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Full);
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::Directory);
-
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Whiteout);
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::File);
+    const auto file = table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe");
+    ASSERT_TRUE(file);
+    EXPECT_EQ(file->mode, appbox::FilesystemIsolation::Whiteout);
+    EXPECT_EQ(file->source_kind, appbox::FilesystemEntryKind::File);
 
     /* The entries below the folder follow it. */
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\data\\settings.ini", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Full);
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::Directory);
+    const auto inner = table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\data\\settings.ini");
+    ASSERT_TRUE(inner);
+    EXPECT_EQ(inner->mode, appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(inner->source_kind, appbox::FilesystemEntryKind::Directory);
 }
 
 /**
@@ -907,26 +931,26 @@ TEST(Unit_FilesystemIsolation, TheRootEntryTravelsThroughTheIsolationFile)
     };
 
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>          unmapped;
-    ASSERT_TRUE(table.Parse(text, layers, unmapped, error)) << error;
-    EXPECT_TRUE(unmapped.empty());
+    const auto                         outcome = table.Parse(text, layers);
+    ASSERT_TRUE(outcome) << static_cast<int>(outcome.error());
+    EXPECT_TRUE(outcome->unmapped.empty());
     EXPECT_EQ(table.Count(), 2u);
 
-    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::Full;
-    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
-
     /* The root covers a path of a layer, a path outside every layer and the entries. */
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\data", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Merge);
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::Directory);
+    const auto inner = table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\data");
+    ASSERT_TRUE(inner);
+    EXPECT_EQ(inner->mode, appbox::FilesystemIsolation::Merge);
+    EXPECT_EQ(inner->source_kind, appbox::FilesystemEntryKind::Directory);
 
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Windows\\System32\\kernel32.dll", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Merge);
+    const auto outside = table.Lookup(L"\\??\\C:\\Windows\\System32\\kernel32.dll");
+    ASSERT_TRUE(outside);
+    EXPECT_EQ(outside->mode, appbox::FilesystemIsolation::Merge);
 
     /* An entry of the document still wins over the root. */
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Whiteout);
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::File);
+    const auto file = table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe");
+    ASSERT_TRUE(file);
+    EXPECT_EQ(file->mode, appbox::FilesystemIsolation::Whiteout);
+    EXPECT_EQ(file->source_kind, appbox::FilesystemEntryKind::File);
 }
 
 /**
@@ -1018,45 +1042,38 @@ TEST(Unit_FilesystemIsolation, TheFileOfALaterLayerOverridesThePathItNames)
     };
 
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>          unmapped;
-    std::string                        error;
 
     /* The resources of the archive. */
-    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Full), layers,
-                            unmapped, error))
-        << error;
-    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp\\keep", appbox::FilesystemIsolation::Whiteout),
-                            layers, unmapped, error))
-        << error;
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Full), layers));
+    ASSERT_TRUE(
+        table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp\\keep", appbox::FilesystemIsolation::Whiteout), layers));
 
     /* The isolation file of a patch package. */
-    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::WriteCopy), layers,
-                            unmapped, error))
-        << error;
-    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp\\add", appbox::FilesystemIsolation::Whiteout),
-                            layers, unmapped, error))
-        << error;
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::WriteCopy), layers));
+    ASSERT_TRUE(
+        table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp\\add", appbox::FilesystemIsolation::Whiteout), layers));
     EXPECT_EQ(table.Count(), 3u);
 
-    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::Full;
-    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
-
     /* The mode of the path the patch names is the mode of the patch. */
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::WriteCopy);
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::Directory);
+    const auto patched = table.Lookup(L"\\??\\C:\\Program Files\\MyApp");
+    ASSERT_TRUE(patched);
+    EXPECT_EQ(patched->mode, appbox::FilesystemIsolation::WriteCopy);
+    EXPECT_EQ(patched->source_kind, appbox::FilesystemEntryKind::Directory);
 
     /* The mode of a path the patch does not name stays the mode below it. */
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\keep", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Whiteout);
+    const auto kept = table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\keep");
+    ASSERT_TRUE(kept);
+    EXPECT_EQ(kept->mode, appbox::FilesystemIsolation::Whiteout);
 
     /* The mode of a path only the patch names is the mode of the patch. */
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\add", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Whiteout);
+    const auto added = table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\add");
+    ASSERT_TRUE(added);
+    EXPECT_EQ(added->mode, appbox::FilesystemIsolation::Whiteout);
 
     /* A path which no file lists follows the closest entry above it. */
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\other\\file.txt", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::WriteCopy);
+    const auto inner = table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\other\\file.txt");
+    ASSERT_TRUE(inner);
+    EXPECT_EQ(inner->mode, appbox::FilesystemIsolation::WriteCopy);
 }
 
 /**
@@ -1073,20 +1090,117 @@ TEST(Unit_FilesystemIsolation, ABrokenFileKeepsTheLayersBelowIt)
     };
 
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>          unmapped;
-    std::string                        error;
-    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Full), layers,
-                            unmapped, error))
-        << error;
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Full), layers));
 
-    EXPECT_FALSE(table.Parse("{ not a document", layers, unmapped, error));
-    EXPECT_FALSE(error.empty());
+    const auto refused = table.Parse("{ not a document", layers);
+    ASSERT_FALSE(refused);
+    EXPECT_EQ(refused.error(), appbox::ErrorCode::kIsolationDocumentInvalid);
     EXPECT_EQ(table.Count(), 1u);
 
-    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::WriteCopy;
-    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Full);
+    const auto listed = table.Lookup(L"\\??\\C:\\Program Files\\MyApp");
+    ASSERT_TRUE(listed);
+    EXPECT_EQ(listed->mode, appbox::FilesystemIsolation::Full);
+}
+
+/**
+ * @brief A document which carries a byte sequence that is not UTF-8 is refused
+ *        by its code and leaves the layers below it alone.
+ *
+ * The JSON layer of the reader decodes the text, so a document written by a
+ * tool which emitted a byte sequence that is not UTF-8 never reaches the paths
+ * of its entries: the file is refused as a document which does not fit the
+ * schema, which is the answer the caller composes its report from.
+ */
+TEST(Unit_FilesystemIsolation, ADocumentWhichIsNotUtf8IsRefused)
+{
+    const std::vector<appbox::filesystem::IsolationLayer> layers = {
+        { L"#ProgramFiles#", L"\\??\\C:\\Program Files" },
+    };
+
+    appbox::filesystem::IsolationTable table;
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Full), layers));
+
+    /*
+     * The text is composed by hand because the serializer of `nlohmann::json`
+     * refuses to write such a sequence. The three bytes are the encoding of the
+     * unpaired high surrogate `U+D800`, which is no UTF-8 text.
+     */
+    const std::string text = "{\"version\":" + std::to_string(appbox::filesystem_isolation::kVersion) +
+                             ",\"entries\":[{\"path\":\"#ProgramFiles#\\\\\xED\xA0\x80\",\"kind\":\"directory\"," +
+                             "\"isolation\":\"full\"}]}";
+
+    const auto refused = table.Parse(text, layers);
+
+    ASSERT_FALSE(refused) << "a document which is not UTF-8 fits no schema";
+    EXPECT_EQ(refused.error(), appbox::ErrorCode::kIsolationDocumentInvalid);
+    EXPECT_EQ(table.Count(), 1u);
+
+    /* The layer below the refused document stays as it is. */
+    const auto listed = table.Lookup(L"\\??\\C:\\Program Files\\MyApp");
+    ASSERT_TRUE(listed);
+    EXPECT_EQ(listed->mode, appbox::FilesystemIsolation::Full);
+}
+
+/**
+ * @brief An entry of a layer the run does not map is reported and skipped.
+ *
+ * The layers of a run may differ from the layers of the pack, so an entry whose
+ * layer key names no layer of the run is collected into the report of the
+ * document instead of failing it: the remaining entries stay usable, and the
+ * caller reports the skipped paths with its own wording.
+ */
+TEST(Unit_FilesystemIsolation, AnEntryOfAnUnmappedLayerIsReportedAndSkipped)
+{
+    const std::vector<appbox::filesystem::IsolationLayer> layers = {
+        { L"#ProgramFiles#", L"\\??\\C:\\Program Files" },
+    };
+
+    appbox::filesystem::IsolationTable table;
+
+    const std::string text = []() {
+        appbox::filesystem_isolation::Document document;
+
+        appbox::filesystem_isolation::Entry mapped;
+        mapped.path = "#ProgramFiles#\\MyApp";
+        mapped.isolation = appbox::FilesystemIsolation::Full;
+        document.entries.push_back(mapped);
+
+        appbox::filesystem_isolation::Entry unmapped;
+        unmapped.path = "#Windows#\\System32\\drivers";
+        unmapped.isolation = appbox::FilesystemIsolation::Whiteout;
+        document.entries.push_back(unmapped);
+
+        return nlohmann::json(document).dump(2);
+    }();
+
+    const auto outcome = table.Parse(text, layers);
+    ASSERT_TRUE(outcome) << static_cast<int>(outcome.error());
+    ASSERT_EQ(outcome->unmapped.size(), 1u);
+    EXPECT_EQ(outcome->unmapped[0], L"#Windows#\\System32\\drivers");
+
+    /* The mapped entry is applied, the skipped one is not. */
+    EXPECT_EQ(table.Count(), 1u);
+    EXPECT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp"));
+}
+
+/**
+ * @brief A path no entry covers is reported by a code, not by an empty answer.
+ *
+ * The caller applies the default of the view to such a path, so "the table says
+ * nothing about it" has to be told apart from a mode the table answered.
+ */
+TEST(Unit_FilesystemIsolation, ALookupOfAnUnlistedPathReportsItsCode)
+{
+    const std::vector<appbox::filesystem::IsolationLayer> layers = {
+        { L"#ProgramFiles#", L"\\??\\C:\\Program Files" },
+    };
+
+    appbox::filesystem::IsolationTable table;
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Full), layers));
+
+    const auto outside = table.Lookup(L"\\??\\C:\\Windows\\System32");
+    ASSERT_FALSE(outside);
+    EXPECT_EQ(outside.error(), appbox::ErrorCode::kIsolationEntryNotListed);
 }
 
 /**
@@ -1102,20 +1216,20 @@ TEST(Unit_FilesystemIsolation, ATableWithoutARootEntryAnswersNoUnlistedPath)
     };
 
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>          unmapped;
-    std::string                        error;
-    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Merge), layers,
-                            unmapped, error))
-        << error;
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Merge), layers));
 
-    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::Full;
-    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::File;
-    EXPECT_FALSE(table.Lookup(L"\\??\\C:\\Windows\\System32", mode, kind));
-    EXPECT_FALSE(table.Lookup(L"\\??\\C:\\Program Files\\Other", mode, kind));
+    const auto outside = table.Lookup(L"\\??\\C:\\Windows\\System32");
+    ASSERT_FALSE(outside);
+    EXPECT_EQ(outside.error(), appbox::ErrorCode::kIsolationEntryNotListed);
+
+    const auto sibling = table.Lookup(L"\\??\\C:\\Program Files\\Other");
+    ASSERT_FALSE(sibling);
+    EXPECT_EQ(sibling.error(), appbox::ErrorCode::kIsolationEntryNotListed);
 
     /* A path below the listed folder still follows it. */
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\data", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Merge);
+    const auto inner = table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\data");
+    ASSERT_TRUE(inner);
+    EXPECT_EQ(inner->mode, appbox::FilesystemIsolation::Merge);
 }
 
 /**
@@ -1170,43 +1284,38 @@ TEST(Unit_FilesystemIsolation, AStreamFollowsTheFileWhichCarriesIt)
     };
 
     appbox::filesystem::IsolationTable table;
-    std::vector<std::wstring>          unmapped;
-    std::string                        error;
 
-    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Full), layers,
-                            unmapped, error))
-        << error;
+    ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp", appbox::FilesystemIsolation::Full), layers));
     ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp\\app.exe", appbox::FilesystemIsolation::Whiteout,
                                             appbox::FilesystemEntryKind::File),
-                            layers, unmapped, error))
-        << error;
-
-    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::Full;
-    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::Directory;
+                            layers));
 
     /* The mode and the kind of the file reach the streams it carries. */
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe:stream", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Whiteout);
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::File);
+    const auto stream = table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe:stream");
+    ASSERT_TRUE(stream);
+    EXPECT_EQ(stream->mode, appbox::FilesystemIsolation::Whiteout);
+    EXPECT_EQ(stream->source_kind, appbox::FilesystemEntryKind::File);
 
     /* A stream of another file keeps following the folder above it. */
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\other.exe:stream", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Full);
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::Directory);
+    const auto other = table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\other.exe:stream");
+    ASSERT_TRUE(other);
+    EXPECT_EQ(other->mode, appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(other->source_kind, appbox::FilesystemEntryKind::Directory);
 
     /* The file itself is decided by its own entry, as it was before. */
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Whiteout);
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::File);
+    const auto file = table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe");
+    ASSERT_TRUE(file);
+    EXPECT_EQ(file->mode, appbox::FilesystemIsolation::Whiteout);
+    EXPECT_EQ(file->source_kind, appbox::FilesystemEntryKind::File);
 
     /* A document which names the stream itself is more specific than the file. */
     ASSERT_TRUE(table.Parse(IsolationFileOf("#ProgramFiles#\\MyApp\\app.exe:stream", appbox::FilesystemIsolation::Full,
                                             appbox::FilesystemEntryKind::File),
-                            layers, unmapped, error))
-        << error;
-    ASSERT_TRUE(table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe:stream", mode, kind));
-    EXPECT_EQ(mode, appbox::FilesystemIsolation::Full);
-    EXPECT_EQ(kind, appbox::FilesystemEntryKind::File);
+                            layers));
+    const auto named = table.Lookup(L"\\??\\C:\\Program Files\\MyApp\\app.exe:stream");
+    ASSERT_TRUE(named);
+    EXPECT_EQ(named->mode, appbox::FilesystemIsolation::Full);
+    EXPECT_EQ(named->source_kind, appbox::FilesystemEntryKind::File);
 }
 
 /**

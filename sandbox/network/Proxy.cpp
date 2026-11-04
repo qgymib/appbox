@@ -93,15 +93,14 @@ bool ServerAddress(const appbox::network::RawSocketApi& api, const std::string& 
 {
     using appbox::network::socks5::AddressType;
 
-    appbox::network_isolation::Address address;
-    if (appbox::network_isolation::ParseAddress(host, address))
+    if (const auto address = appbox::network_isolation::ParseAddress(host))
     {
-        const bool ipv6 = address.family == appbox::network_isolation::AddressFamily::IPv6;
+        const bool ipv6 = address->family == appbox::network_isolation::AddressFamily::IPv6;
         endpoint.type = ipv6 ? AddressType::IPv6 : AddressType::IPv4;
-        endpoint.host = appbox::network::socks5::FormatAddress(endpoint.type, address.bytes.data(), ipv6 ? 16u : 4u);
+        endpoint.host = appbox::network::socks5::FormatAddress(endpoint.type, address->bytes.data(), ipv6 ? 16u : 4u);
         endpoint.port = port;
         /* AF_UNSPEC is a macro, so it cannot be qualified by its namespace. */
-        return appbox::network::SockaddrOfAddress(address, port, AF_UNSPEC, storage, length);
+        return appbox::network::SockaddrOfAddress(*address, port, AF_UNSPEC, storage, length);
     }
 
     /*

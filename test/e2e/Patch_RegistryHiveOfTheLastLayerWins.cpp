@@ -74,7 +74,8 @@ TEST_F(E2E_Patch, RegistryHiveOfTheLastLayerWins)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\PatchRegistry_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey =
+        L"Software\\AppBoxTest\\PatchRegistry_" + appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto hive_key = L"HKEY_CURRENT_USER\\" + subkey;
 
     /* The base image of the virtual registry: the resources of the archive. */
@@ -105,7 +106,7 @@ TEST_F(E2E_Patch, RegistryHiveOfTheLastLayerWins)
     ASSERT_TRUE(WritePackage(GetCWD(), L"01-bar.zip", bar));
 
     ProtocolRegReadValues::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Values = { "Value", "Added", "AddedByBar", "Kept" };
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValues>(req);

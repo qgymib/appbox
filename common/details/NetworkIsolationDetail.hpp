@@ -3,9 +3,10 @@
 
 /*
  * Implementation of `common/NetworkIsolation.hpp`: the reading of the proxy port
- * and the SOCKS5 token, the IPv4 and IPv6 parsing, the hostname normalization
- * and the JSON members of the schema. The header is included by the public
- * header and is not meant to be included on its own.
+ * and the SOCKS5 token, the IPv4 and IPv6 parsing, the hostname normalization,
+ * the JSON members of the schema and the noexcept reader of a document. The
+ * header is included by the public header and is not meant to be included on its
+ * own.
  */
 
 #include "NetworkIsolation.hpp"
@@ -13,8 +14,10 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <string>
 #include <string_view>
+#include <tl/expected.hpp>
 #include <utility>
 #include <vector>
 
@@ -24,7 +27,7 @@ namespace network_isolation
 {
 
 /* Definition of the contract on the declaration. */
-inline bool IsSocks5Token(std::string_view token)
+inline bool IsSocks5Token(std::string_view token) noexcept
 {
     std::string normalized;
     normalized.reserve(token.size());
@@ -47,29 +50,29 @@ inline bool IsSocks5Token(std::string_view token)
 }
 
 /* Definition of the contract on the declaration. */
-inline PortText ReadPortText(std::string_view text, std::uint16_t& port)
+inline tl::expected<std::uint16_t, ErrorCode> ReadPortText(std::string_view text) noexcept
 {
     if (text.empty())
     {
-        return PortText::Empty;
+        return tl::unexpected<ErrorCode>(ErrorCode::kPortEmpty);
     }
 
     for (const char character : text)
     {
         if (character < '0' || character > '9')
         {
-            return PortText::NotDecimal;
+            return tl::unexpected<ErrorCode>(ErrorCode::kPortNotDecimal);
         }
     }
 
     if (text.size() > 1 && text.front() == '0')
     {
-        return PortText::LeadingZero;
+        return tl::unexpected<ErrorCode>(ErrorCode::kPortLeadingZero);
     }
     if (text.size() > 5)
     {
         /* The largest port has five digits, so a longer text is out of range. */
-        return PortText::OutOfRange;
+        return tl::unexpected<ErrorCode>(ErrorCode::kPortOutOfRange);
     }
 
     unsigned int value = 0;
@@ -79,22 +82,21 @@ inline PortText ReadPortText(std::string_view text, std::uint16_t& port)
     }
     if (value < 1 || value > 65535)
     {
-        return PortText::OutOfRange;
+        return tl::unexpected<ErrorCode>(ErrorCode::kPortOutOfRange);
     }
 
-    port = static_cast<std::uint16_t>(value);
-    return PortText::Ok;
+    return static_cast<std::uint16_t>(value);
 }
 
 /* Definition of the contract on the declaration. */
-inline bool IsHexDigit(char character)
+inline bool IsHexDigit(char character) noexcept
 {
     return (character >= '0' && character <= '9') || (character >= 'a' && character <= 'f') ||
            (character >= 'A' && character <= 'F');
 }
 
 /* Definition of the contract on the declaration. */
-inline std::uint8_t HexDigitValue(char character)
+inline std::uint8_t HexDigitValue(char character) noexcept
 {
     if (character >= '0' && character <= '9')
     {
@@ -112,7 +114,7 @@ inline std::uint8_t HexDigitValue(char character)
 }
 
 /* Definition of the contract on the declaration. */
-inline bool ParseIpv4(std::string_view text, Address& address)
+inline tl::expected<Address, ErrorCode> ParseIpv4(std::string_view text) noexcept
 {
     std::array<std::uint8_t, 16> bytes{};
     std::size_t                  octet = 0;
@@ -125,7 +127,7 @@ inline bool ParseIpv4(std::string_view text, Address& address)
         {
             if (text[index] < '0' || text[index] > '9')
             {
-                return false;
+                return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
             }
             ++index;
         }
@@ -133,12 +135,12 @@ inline bool ParseIpv4(std::string_view text, Address& address)
         const std::size_t digits = index - begin;
         if (digits == 0 || digits > 3)
         {
-            return false;
+            return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
         }
         if (digits > 1 && text[begin] == '0')
         {
             /* A leading zero would be read as an octal number by some parsers. */
-            return false;
+            return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
         }
 
         unsigned int value = 0;
@@ -148,7 +150,7 @@ inline bool ParseIpv4(std::string_view text, Address& address)
         }
         if (value > 255 || octet >= 4)
         {
-            return false;
+            return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
         }
         bytes[octet] = static_cast<std::uint8_t>(value);
         ++octet;
@@ -159,27 +161,28 @@ inline bool ParseIpv4(std::string_view text, Address& address)
             ++index;
             if (index == text.size())
             {
-                return false;
+                return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
             }
         }
     }
 
     if (octet != 4)
     {
-        return false;
+        return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
     }
 
+    Address address;
     address.family = AddressFamily::IPv4;
     address.bytes = bytes;
-    return true;
+    return address;
 }
 
 /* Definition of the contract on the declaration. */
-inline bool ParseIpv6Group(std::string_view text, std::uint16_t& value)
+inline tl::expected<std::uint16_t, ErrorCode> ParseIpv6Group(std::string_view text) noexcept
 {
     if (text.empty() || text.size() > 4)
     {
-        return false;
+        return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
     }
 
     std::uint16_t parsed = 0;
@@ -187,21 +190,20 @@ inline bool ParseIpv6Group(std::string_view text, std::uint16_t& value)
     {
         if (!IsHexDigit(character))
         {
-            return false;
+            return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
         }
         parsed = static_cast<std::uint16_t>((parsed << 4) | HexDigitValue(character));
     }
 
-    value = parsed;
-    return true;
+    return parsed;
 }
 
 /* Definition of the contract on the declaration. */
-inline bool ParseIpv6(std::string_view text, Address& address)
+inline tl::expected<Address, ErrorCode> ParseIpv6(std::string_view text) noexcept
 {
     if (text.empty() || text.find('%') != std::string_view::npos)
     {
-        return false;
+        return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
     }
 
     std::array<std::uint16_t, 8> groups{};
@@ -213,7 +215,7 @@ inline bool ParseIpv6(std::string_view text, Address& address)
     {
         if (text.size() < 2 || text[1] != ':')
         {
-            return false;
+            return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
         }
         compressed = 0;
         index = 2;
@@ -231,21 +233,28 @@ inline bool ParseIpv6(std::string_view text, Address& address)
         if (group.find('.') != std::string_view::npos)
         {
             /* The last group can carry an embedded IPv4 address. */
-            Address embedded;
-            if (!ParseIpv4(group, embedded) || index != text.size() || count + 2 > 8)
+            const auto embedded = ParseIpv4(group);
+            if (!embedded || index != text.size() || count + 2 > 8)
             {
-                return false;
+                return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
             }
-            groups[count] = static_cast<std::uint16_t>((embedded.bytes[0] << 8) | embedded.bytes[1]);
-            groups[count + 1] = static_cast<std::uint16_t>((embedded.bytes[2] << 8) | embedded.bytes[3]);
+            groups[count] = static_cast<std::uint16_t>((embedded->bytes[0] << 8) | embedded->bytes[1]);
+            groups[count + 1] = static_cast<std::uint16_t>((embedded->bytes[2] << 8) | embedded->bytes[3]);
             count += 2;
         }
         else
         {
-            if (count >= 8 || !ParseIpv6Group(group, groups[count]))
+            if (count >= 8)
             {
-                return false;
+                return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
             }
+
+            const auto parsed = ParseIpv6Group(group);
+            if (!parsed)
+            {
+                return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
+            }
+            groups[count] = *parsed;
             ++count;
         }
 
@@ -260,7 +269,7 @@ inline bool ParseIpv6(std::string_view text, Address& address)
         {
             if (compressed != static_cast<std::size_t>(-1))
             {
-                return false;
+                return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
             }
             compressed = count;
             ++index;
@@ -272,7 +281,7 @@ inline bool ParseIpv6(std::string_view text, Address& address)
         else if (index == text.size())
         {
             /* A single trailing colon is not an address. */
-            return false;
+            return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
         }
     }
 
@@ -280,7 +289,7 @@ inline bool ParseIpv6(std::string_view text, Address& address)
     {
         if (count != 8)
         {
-            return false;
+            return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
         }
     }
     else
@@ -288,7 +297,7 @@ inline bool ParseIpv6(std::string_view text, Address& address)
         if (count >= 8)
         {
             /* The compression has to elide at least one group. */
-            return false;
+            return tl::unexpected<ErrorCode>(ErrorCode::kAddressMalformed);
         }
 
         const std::size_t elided = 8 - count;
@@ -310,22 +319,21 @@ inline bool ParseIpv6(std::string_view text, Address& address)
         parsed.bytes[position * 2 + 1] = static_cast<std::uint8_t>(groups[position] & 0xff);
     }
 
-    address = parsed;
-    return true;
+    return parsed;
 }
 
 /* Definition of the contract on the declaration. */
-inline bool ParseAddress(std::string_view text, Address& address)
+inline tl::expected<Address, ErrorCode> ParseAddress(std::string_view text) noexcept
 {
     if (text.find(':') != std::string_view::npos)
     {
-        return ParseIpv6(text, address);
+        return ParseIpv6(text);
     }
-    return ParseIpv4(text, address);
+    return ParseIpv4(text);
 }
 
 /* Definition of the contract on the declaration. */
-inline std::string NormalizeHostname(std::string_view hostname)
+inline std::string NormalizeHostname(std::string_view hostname) noexcept
 {
     std::string normalized;
     normalized.reserve(hostname.size());
@@ -348,7 +356,7 @@ inline std::string NormalizeHostname(std::string_view hostname)
 }
 
 /* Definition of the contract on the declaration. */
-inline bool HostnamesEqual(std::string_view left, std::string_view right)
+inline bool HostnamesEqual(std::string_view left, std::string_view right) noexcept
 {
     return NormalizeHostname(left) == NormalizeHostname(right);
 }
@@ -447,6 +455,43 @@ inline void from_json(const nlohmann::json& json, Document& document)
     if (proxy != nullptr && proxy->is_object())
     {
         document.proxy = proxy->get<Proxy>();
+    }
+}
+
+/* Definition of the contract on the declaration. */
+inline tl::expected<Document, ErrorCode> ParseDocument(std::string_view text) noexcept
+{
+    /*
+     * The JSON layer runs with the exception reporting switched off, so a text
+     * which is no JSON document is answered by a discarded value, and the member
+     * layer is the `from_json()` of the schema, which reports a refused member
+     * through `IsolationDocumentError`. Both are turned into the code of the
+     * table here, so the reader of a file never sees an exception and never
+     * receives a text.
+     */
+    const auto parsed = nlohmann::json::parse(text.begin(), text.end(), nullptr, false);
+    if (parsed.is_discarded() || !parsed.is_object())
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kIsolationDocumentInvalid);
+    }
+
+    const auto* version = isolation_document::FindMember(parsed, kVersionKey);
+    if (version == nullptr || !version->is_number_integer())
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kIsolationDocumentInvalid);
+    }
+    if (version->get<int>() != kVersion)
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kIsolationDocumentUnsupportedVersion);
+    }
+
+    try
+    {
+        return parsed.get<Document>();
+    }
+    catch (const std::exception&)
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kIsolationDocumentInvalid);
     }
 }
 

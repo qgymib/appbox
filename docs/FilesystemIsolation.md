@@ -248,6 +248,23 @@ which are of another type, or which names a mode its kind cannot hold is
 therefore refused while the file is read, which is what keeps the packer and the
 sandbox in step.
 
+The reader the two sides share is
+`filesystem_isolation::ParseDocument(std::string_view)`: it turns the text of the
+file into the document of the schema and it reports a refusal by a code of
+`common/ErrorCode.hpp` alone, never by an exception and never by a message:
+
+| Code | Meaning |
+| --- | --- |
+| `kIsolationDocumentInvalid` | The text is no document of the schema: it is no JSON document, a member is missing or of another type, or an entry names a mode its kind cannot hold. |
+| `kIsolationDocumentUnsupportedVersion` | The document names a schema version this build does not read. |
+
+The `from_json()` members still throw `IsolationDocumentError` with the
+description of the member which was refused. `nlohmann::json` requires the fixed
+signatures `from_json(const json&, T&)` and `to_json(json&, const T&)`, so those
+two keep their signature and may throw. The error is internal to the schema:
+`ParseDocument()` catches it and returns the code, and the module which shows
+the failure writes the wording of the message.
+
 The modes are applied by the table of `common/FilesystemIsolationTable.hpp`,
 which the sandbox and the launcher share: the table translates the paths of the
 document into paths of the view with the layer mapping of the run, so the

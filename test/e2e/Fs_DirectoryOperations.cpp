@@ -93,7 +93,7 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
     /* The sandbox creates the directory. */
     {
         ProtocolCreateDirectoryW::Req req;
-        req.PathName = appbox::WideToUTF8(created);
+        req.PathName = appbox::WideToUTF8(created).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateDirectoryW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -102,7 +102,7 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
     /* The view reports it as a directory. */
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(created);
+        req.FileName = appbox::WideToUTF8(created).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -116,7 +116,7 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
     /* An entry the sandbox creates inside the directory is visible as well. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(file);
+        req.FileName = appbox::WideToUTF8(file).value_or(std::string());
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 
@@ -127,7 +127,7 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
     /* A directory which still holds a visible entry is not removed. */
     {
         ProtocolRemoveDirectory::Req req;
-        req.PathName = appbox::WideToUTF8(created);
+        req.PathName = appbox::WideToUTF8(created).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRemoveDirectory>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_DIR_NOT_EMPTY));
@@ -136,14 +136,14 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
     /* After the entry was removed, the directory is removed as well. */
     {
         ProtocolDeleteFileW::Req req;
-        req.FileName = appbox::WideToUTF8(file);
+        req.FileName = appbox::WideToUTF8(file).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolDeleteFileW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
     }
     {
         ProtocolRemoveDirectory::Req req;
-        req.PathName = appbox::WideToUTF8(created);
+        req.PathName = appbox::WideToUTF8(created).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRemoveDirectory>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -152,7 +152,7 @@ TEST_F(E2E_Fs, Directory_CreateAndDelete)
     /* The directory is gone from the view and from the overlay. */
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(created);
+        req.FileName = appbox::WideToUTF8(created).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));

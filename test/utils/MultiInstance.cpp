@@ -40,13 +40,13 @@ nlohmann::json appbox::test::MultiInstanceRequestDocument(const std::string& san
 
 bool appbox::test::WaitForControlPipe(const std::string& sandbox_id, int timeout_ms)
 {
-    const auto expected = appbox::SandboxPipeName(sandbox_id);
-    if (expected.empty())
+    const auto pipe_name = appbox::SandboxPipeName(sandbox_id);
+    if (!pipe_name.has_value())
     {
         return false;
     }
 
-    const std::wstring name = appbox::UTF8ToWide(expected);
+    const std::wstring name = appbox::UTF8ToWide(pipe_name.value()).value_or(std::wstring());
     const auto         deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
 
     for (;;)
@@ -113,7 +113,7 @@ std::vector<std::string> appbox::test::TreeSnapshot(const std::filesystem::path&
             continue;
         }
 
-        std::string description = appbox::WideToUTF8(relative.wstring());
+        std::string description = appbox::WideToUTF8(relative.wstring()).value_or(std::string());
 
         if (entry.is_regular_file(ec))
         {

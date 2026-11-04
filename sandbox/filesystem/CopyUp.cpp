@@ -57,7 +57,13 @@ bool appbox::filesystem::CopyUpEntry(const std::wstring& view_path, const Resolv
      */
     if ((hit.fInfo.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
     {
-        CreateDirectories(DirName(resolve.uPath), resolve.uPathBaseSize);
+        const auto parent = DirName(resolve.uPath);
+        if (!parent)
+        {
+            LOG_W(L"the path of the overlay carries no directory: {}", resolve.uPath);
+            return false;
+        }
+        CreateDirectories(*parent, resolve.uPathBaseSize);
 
         const NTSTATUS status = CopyReparsePointEntry(hit.fPath, resolve.uPath, hit.fInfo.FileAttributes);
         if (!NT_SUCCESS(status))

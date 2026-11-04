@@ -143,7 +143,8 @@ bool ReadValue(HKEY key, const std::wstring& name, DWORD& type, std::vector<BYTE
     LONG  status = RegQueryValueExW(key, name.c_str(), nullptr, &type, nullptr, &size);
     if (status != ERROR_SUCCESS && status != ERROR_MORE_DATA)
     {
-        error = fmt::format("failed to read the value '{}' of the hive: error {}", appbox::WideToUTF8(name), status);
+        error = fmt::format("failed to read the value '{}' of the hive: error {}",
+                            appbox::WideToUTF8(name).value_or(std::string()), status);
         return false;
     }
 
@@ -153,7 +154,8 @@ bool ReadValue(HKEY key, const std::wstring& name, DWORD& type, std::vector<BYTE
     status = RegQueryValueExW(key, name.c_str(), nullptr, &type, data.empty() ? nullptr : data.data(), &read);
     if (status != ERROR_SUCCESS)
     {
-        error = fmt::format("failed to read the value '{}' of the hive: error {}", appbox::WideToUTF8(name), status);
+        error = fmt::format("failed to read the value '{}' of the hive: error {}",
+                            appbox::WideToUTF8(name).value_or(std::string()), status);
         return false;
     }
 
@@ -179,7 +181,8 @@ bool WriteValue(HKEY key, const std::wstring& name, DWORD type, const std::vecto
     const LONG status = RegSetValueExW(key, name.c_str(), 0, type, payload, static_cast<DWORD>(data.size()));
     if (status != ERROR_SUCCESS)
     {
-        error = fmt::format("failed to write the value '{}' of the hive: error {}", appbox::WideToUTF8(name), status);
+        error = fmt::format("failed to write the value '{}' of the hive: error {}",
+                            appbox::WideToUTF8(name).value_or(std::string()), status);
         return false;
     }
 
@@ -245,7 +248,8 @@ bool MergeKey(HKEY target, HKEY source, std::size_t depth, std::string& error)
         LONG status = RegOpenKeyExW(source, name.c_str(), 0, KEY_READ, &source_child);
         if (status != ERROR_SUCCESS)
         {
-            error = fmt::format("failed to open the key '{}' of the hive: error {}", appbox::WideToUTF8(name), status);
+            error = fmt::format("failed to open the key '{}' of the hive: error {}",
+                                appbox::WideToUTF8(name).value_or(std::string()), status);
             return false;
         }
 
@@ -256,8 +260,8 @@ bool MergeKey(HKEY target, HKEY source, std::size_t depth, std::string& error)
         if (status != ERROR_SUCCESS)
         {
             RegCloseKey(source_child);
-            error =
-                fmt::format("failed to create the key '{}' of the hive: error {}", appbox::WideToUTF8(name), status);
+            error = fmt::format("failed to create the key '{}' of the hive: error {}",
+                                appbox::WideToUTF8(name).value_or(std::string()), status);
             return false;
         }
 
@@ -300,7 +304,8 @@ bool appbox::MergeHiveInto(const std::wstring& target_hive, const std::wstring& 
         const LONG target_status = RegLoadAppKeyW(target_hive.c_str(), &target, KEY_ALL_ACCESS, 0, 0);
         if (target_status != ERROR_SUCCESS)
         {
-            error = fmt::format("failed to mount '{}': error {}", appbox::WideToUTF8(target_hive), target_status);
+            error = fmt::format("failed to mount '{}': error {}",
+                                appbox::WideToUTF8(target_hive).value_or(std::string()), target_status);
             return false;
         }
 
@@ -309,7 +314,8 @@ bool appbox::MergeHiveInto(const std::wstring& target_hive, const std::wstring& 
         if (source_status != ERROR_SUCCESS)
         {
             RegCloseKey(target);
-            error = fmt::format("failed to mount '{}': error {}", appbox::WideToUTF8(source_hive), source_status);
+            error = fmt::format("failed to mount '{}': error {}",
+                                appbox::WideToUTF8(source_hive).value_or(std::string()), source_status);
             return false;
         }
 
@@ -467,7 +473,8 @@ bool CopyContent(HKEY source, HKEY destination, bool overwrite, std::size_t dept
         LONG status = RegOpenKeyExW(source, name.c_str(), 0, KEY_READ, &source_child);
         if (status != ERROR_SUCCESS)
         {
-            error = fmt::format("failed to open the key '{}' of the hive: error {}", appbox::WideToUTF8(name), status);
+            error = fmt::format("failed to open the key '{}' of the hive: error {}",
+                                appbox::WideToUTF8(name).value_or(std::string()), status);
             return false;
         }
 
@@ -478,8 +485,8 @@ bool CopyContent(HKEY source, HKEY destination, bool overwrite, std::size_t dept
         if (status != ERROR_SUCCESS)
         {
             RegCloseKey(source_child);
-            error =
-                fmt::format("failed to create the key '{}' of the hive: error {}", appbox::WideToUTF8(name), status);
+            error = fmt::format("failed to create the key '{}' of the hive: error {}",
+                                appbox::WideToUTF8(name).value_or(std::string()), status);
             return false;
         }
 
@@ -525,7 +532,8 @@ bool HideKey(HKEY view_parent, HKEY store_parent, const std::wstring& name, std:
     if (status != ERROR_SUCCESS)
     {
         RegCloseKey(view);
-        error = fmt::format("failed to create the hidden key '{}': error {}", appbox::WideToUTF8(name), status);
+        error = fmt::format("failed to create the hidden key '{}': error {}",
+                            appbox::WideToUTF8(name).value_or(std::string()), status);
         return false;
     }
 
@@ -540,7 +548,8 @@ bool HideKey(HKEY view_parent, HKEY store_parent, const std::wstring& name, std:
 
     if (RegDeleteTreeW(view_parent, name.c_str()) != ERROR_SUCCESS)
     {
-        error = fmt::format("failed to hide the key '{}' of the hive", appbox::WideToUTF8(name));
+        error =
+            fmt::format("failed to hide the key '{}' of the hive", appbox::WideToUTF8(name).value_or(std::string()));
         return false;
     }
 
@@ -572,7 +581,8 @@ bool RevealKey(HKEY view_parent, HKEY store_parent, const std::wstring& name, st
     if (status != ERROR_SUCCESS)
     {
         RegCloseKey(store);
-        error = fmt::format("failed to create the key '{}' of the hive: error {}", appbox::WideToUTF8(name), status);
+        error = fmt::format("failed to create the key '{}' of the hive: error {}",
+                            appbox::WideToUTF8(name).value_or(std::string()), status);
         return false;
     }
 
@@ -654,7 +664,8 @@ bool appbox::EnsureHiveFile(const std::wstring& hive, std::string& error)
         const LONG status = RegLoadAppKeyW(hive.c_str(), &root, KEY_ALL_ACCESS, 0, 0);
         if (status != ERROR_SUCCESS)
         {
-            error = fmt::format("failed to create '{}': error {}", appbox::WideToUTF8(hive), status);
+            error = fmt::format("failed to create '{}': error {}", appbox::WideToUTF8(hive).value_or(std::string()),
+                                status);
             return false;
         }
 
@@ -687,7 +698,8 @@ bool appbox::ApplyHiveIsolationModes(const std::wstring& hive, const std::vector
         const LONG status = RegLoadAppKeyW(hive.c_str(), &root, KEY_ALL_ACCESS, 0, 0);
         if (status != ERROR_SUCCESS)
         {
-            error = fmt::format("failed to mount '{}': error {}", appbox::WideToUTF8(hive), status);
+            error =
+                fmt::format("failed to mount '{}': error {}", appbox::WideToUTF8(hive).value_or(std::string()), status);
             return false;
         }
 
@@ -697,7 +709,7 @@ bool appbox::ApplyHiveIsolationModes(const std::wstring& hive, const std::vector
         for (const auto& entry : keys)
         {
             std::vector<std::wstring> parts;
-            SplitPath(appbox::UTF8ToWide(entry.path), parts);
+            SplitPath(appbox::UTF8ToWide(entry.path).value_or(std::wstring()), parts);
             if (parts.empty())
             {
                 continue;
@@ -757,7 +769,7 @@ bool appbox::ApplyHiveIsolationModes(const std::wstring& hive, const std::vector
             }
 
             std::vector<std::wstring> parts;
-            SplitPath(appbox::UTF8ToWide(entry.path), parts);
+            SplitPath(appbox::UTF8ToWide(entry.path).value_or(std::wstring()), parts);
             if (parts.empty())
             {
                 continue;
@@ -786,7 +798,7 @@ bool appbox::ApplyHiveIsolationModes(const std::wstring& hive, const std::vector
                 break;
             }
 
-            const std::wstring name = appbox::UTF8ToWide(entry.name);
+            const std::wstring name = appbox::UTF8ToWide(entry.name).value_or(std::wstring());
             applied = entry.isolation == RegistryValueIsolation::Hide ? HideValue(view_key, store_key, name, detail)
                                                                       : RevealValue(view_key, store_key, name, detail);
 

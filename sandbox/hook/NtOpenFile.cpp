@@ -49,13 +49,13 @@ static bool NtOpenFileGetDosNtPath(POBJECT_ATTRIBUTES ObjectAttributes, std::wst
         return false;
     }
 
-    std::wstring nativate_fs_path;
-    if (!appbox::MappingAsDosNtPath(nativate_fs_nt_path, nativate_fs_path))
+    const auto nativate_fs_path = appbox::MappingAsDosNtPath(nativate_fs_nt_path);
+    if (!nativate_fs_path)
     {
         return false;
     }
 
-    path = nativate_fs_path;
+    path = *nativate_fs_path;
     return true;
 }
 

@@ -89,7 +89,7 @@ appbox::test::ProtocolRegKeyApi::Rsp appbox::test::ProbeRegKeyApi_Entry(
 
     appbox::test::ProtocolRegKeyApi::Rsp rsp;
 
-    const auto   key_path = appbox::UTF8ToWide(req.Key);
+    const auto   key_path = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
     const REGSAM access = req.Mode == ModeKind::HiveHandle ? (KEY_SET_VALUE | KEY_QUERY_VALUE) : KEY_READ;
 
     HKEY key = nullptr;

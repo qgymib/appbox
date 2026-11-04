@@ -777,7 +777,7 @@ bool StartupTree::SetTrigger(const StartupNode& node, const std::wstring& trigge
     {
         if (static_cast<int>(i) != index && EqualsIgnoreCase(files_[i].trigger, trimmed))
         {
-            error = "the startup file trigger '" + WideToUTF8(trimmed) + "' is used twice";
+            error = "the startup file trigger '" + WideToUTF8(trimmed).value_or(std::string()) + "' is used twice";
             return false;
         }
     }

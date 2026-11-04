@@ -289,7 +289,8 @@ NTSTATUS appbox::environment::Isolation::Init()
             std::string text;
             if (!ReadTextFile(isolation_path, text))
             {
-                LOG_D("the environment isolation file does not exist: {}", appbox::WideToUTF8(isolation_path));
+                LOG_D("the environment isolation file does not exist: {}",
+                      appbox::WideToUTF8(isolation_path).value_or("<unconvertible>"));
                 continue;
             }
 
@@ -301,7 +302,8 @@ NTSTATUS appbox::environment::Isolation::Init()
                  * A layer which cannot be read configures no variable, so the
                  * layers below it stay in place.
                  */
-                LOG_W("the environment isolation file '{}' is ignored: {}", appbox::WideToUTF8(isolation_path), error);
+                LOG_W("the environment isolation file '{}' is ignored: {}",
+                      appbox::WideToUTF8(isolation_path).value_or("<unconvertible>"), error);
                 continue;
             }
 

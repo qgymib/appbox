@@ -1,7 +1,9 @@
 #ifndef APPBOX_COMMON_MAPPING_AS_SANDBOX_NT_PATH_HPP
 #define APPBOX_COMMON_MAPPING_AS_SANDBOX_NT_PATH_HPP
 
+#include "ErrorCode.hpp"
 #include <string>
+#include <tl/expected.hpp>
 
 namespace appbox
 {
@@ -28,11 +30,14 @@ namespace appbox
  *
  * @param[in] path Path of the view to map.
  * @param[in] sandbox Root of the upper layer, in the same form.
- * @param[out] out The path inside the upper layer, only set when the call
- *                 succeeds.
- * @return true when both paths are absolute paths of a drive.
+ * @return The path inside the upper layer, or the class of the refusal:
+ *         - `kPathNotDosDrivePath` when either path is no absolute path of a
+ *           drive in the form of the object namespace;
+ *         - `kPathEscapesDriveRoot` when the components of the path climb above
+ *           the root of their drive.
  */
-inline bool MappingPathInSandbox(const std::wstring& path, const std::wstring& sandbox, std::wstring& out);
+inline tl::expected<std::wstring, ErrorCode> MappingPathInSandbox(const std::wstring& path,
+                                                                  const std::wstring& sandbox) noexcept;
 
 } // namespace appbox
 

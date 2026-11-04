@@ -50,7 +50,7 @@ std::wstring FolderInOverlay(const std::wstring& cwd)
 DWORD CreateNew(const std::wstring& path, const std::filesystem::path& cwd, appbox::LauncherConfig& config)
 {
     ProtocolCreateFileW::Req req;
-    req.FileName = appbox::WideToUTF8(path);
+    req.FileName = appbox::WideToUTF8(path).value_or(std::string());
     req.dwDesiredAccess = GENERIC_WRITE;
     req.dwCreationDisposition = CREATE_NEW;
 
@@ -104,7 +104,7 @@ TEST_F(E2E_Fs, Marker_ForgeWhiteoutIsRefused)
     /* The entry the marker would hide stays visible. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kVictimName);
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kVictimName).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));

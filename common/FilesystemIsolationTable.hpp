@@ -1,10 +1,13 @@
 #ifndef APPBOX_COMMON_FILESYSTEM_ISOLATION_TABLE_HPP
 #define APPBOX_COMMON_FILESYSTEM_ISOLATION_TABLE_HPP
 
+#include "ErrorCode.hpp"
 #include "FilesystemIsolation.hpp"
 #include <cstddef>
 #include <map>
 #include <string>
+#include <string_view>
+#include <tl/expected.hpp>
 #include <vector>
 
 namespace appbox
@@ -49,7 +52,7 @@ struct IsolationPathLess
      * @param[in] right Right path.
      * @return true when left has to be placed before right.
      */
-    bool operator()(const std::wstring& left, const std::wstring& right) const;
+    bool operator()(const std::wstring& left, const std::wstring& right) const noexcept;
 };
 
 /**
@@ -94,7 +97,9 @@ struct IsolationEntry
  * covers, including the locations outside the virtual filesystem. A path which
  * neither a listed folder nor the root covers follows the default of the view
  * (`Merge`, see `kDefaultIsolation`), so a sandbox without an isolation file
- * behaves like one whose document lists no entry at all.
+ * behaves like one whose document lists no entry at all. The lookup reports
+ * that case as `kIsolationEntryNotListed`, so "the table says nothing about
+ * this path" is a value and not a coincidence.
  *
  * The class holds no dependency on the Windows API, so the lookup rules are
  * unit testable.
@@ -102,6 +107,40 @@ struct IsolationEntry
 class IsolationTable
 {
 public:
+    /**
+     * @brief What one document left for the caller to report.
+     */
+    struct ParseOutcome
+    {
+        /**
+         * @brief Virtual paths of the entries which no layer of the run maps.
+         *
+         * An entry whose layer key is not part of the layer mapping cannot be
+         * expressed as a view path, so it is skipped instead of failing the
+         * document: the layers of the run may differ from the layers of the
+         * pack, and the remaining entries stay usable. The caller reports the
+         * list with its own wording, because the message belongs to the module
+         * which read the file.
+         */
+        std::vector<std::wstring> unmapped;
+    };
+
+    /**
+     * @brief The answer of a lookup.
+     */
+    struct LookupResult
+    {
+        /**
+         * @brief Mode of the closest listed entry at or above the path.
+         */
+        FilesystemIsolation mode = FilesystemIsolation::WriteCopy;
+
+        /**
+         * @brief Kind of the entry which carries the mode.
+         */
+        FilesystemEntryKind source_kind = FilesystemEntryKind::Directory;
+    };
+
     /**
      * @brief Apply the text of one isolation file to the table.
      *
@@ -117,33 +156,32 @@ public:
      * first and are applied to the table only when the whole document was
      * accepted. A failure therefore leaves the table unchanged.
      *
-     * An entry whose layer key is not part of the layer mapping cannot be
-     * expressed as a view path, so it is skipped and reported through \p
-     * unmapped instead of failing the document: the layers of the run may
-     * differ from the layers of the pack, and the remaining entries stay
-     * usable. An entry without a path names the root of the view, which has no
-     * layer key to translate and is stored under the empty key.
+     * An entry whose layer key is not part of the layer mapping is reported
+     * through `ParseOutcome::unmapped` instead of failing the document. An
+     * entry without a path names the root of the view, which has no layer key
+     * to translate and is stored under the empty key.
      *
      * @param[in] text The UTF-8 text of the isolation file.
      * @param[in] layers The layers of the view, in mapping order.
-     * @param[out] unmapped Virtual paths of the entries which were skipped.
-     * @param[out] error Error description on failure.
-     * @return true when the document was applied.
+     * @return The report of the document, or the code which refused it:
+     *         `kIsolationDocumentInvalid` for a text which does not fit the
+     *         schema, `kIsolationDocumentUnsupportedVersion` for a document of
+     *         another version. The table stays unchanged when the call fails.
      */
-    bool Parse(const std::string& text, const std::vector<IsolationLayer>& layers, std::vector<std::wstring>& unmapped,
-               std::string& error);
+    tl::expected<ParseOutcome, ErrorCode> Parse(std::string_view                   text,
+                                                const std::vector<IsolationLayer>& layers) noexcept;
 
     /**
      * @brief Whether the table holds no entry.
      * @return true when no mode is listed.
      */
-    bool Empty() const;
+    bool Empty() const noexcept;
 
     /**
      * @brief Number of listed modes.
      * @return The number of entries.
      */
-    std::size_t Count() const;
+    std::size_t Count() const noexcept;
 
     /**
      * @brief Get the mode which applies to a path of the view.
@@ -153,19 +191,19 @@ public:
      * path which names an alternate data stream is probed as the entry of the
      * file which carries the stream as well, so the mode of a file covers the
      * streams of that file; an entry which names the stream itself is more
-     * specific than the file and therefore wins over it. The
-     * walk ends on the root of the view, whose entry decides every path no
-     * listed folder covers. The kind of the entry which decided the mode is
-     * reported as well, because the mode alone does not say which layers stay
-     * visible: `Full` hides the host folder of a *folder* together with its
-     * whole subtree, while `Full` of a *file* keeps the host file readable.
+     * specific than the file and therefore wins over it. The walk ends on the
+     * root of the view, whose entry decides every path no listed folder
+     * covers. The kind of the entry which decided the mode is reported as
+     * well, because the mode alone does not say which layers stay visible:
+     * `Full` hides the host folder of a *folder* together with its whole
+     * subtree, while `Full` of a *file* keeps the host file readable.
      *
      * @param[in] view_path Path of the entry inside the view.
-     * @param[out] mode The mode of the closest listed entry.
-     * @param[out] source_kind Kind of the entry which carries the mode.
-     * @return true when a listed entry decided the mode.
+     * @return The mode and the kind of the entry which decided it, or
+     *         `kIsolationEntryNotListed` when no entry covers the path, in which
+     *         case the caller applies the default of the view.
      */
-    bool Lookup(const std::wstring& view_path, FilesystemIsolation& mode, FilesystemEntryKind& source_kind) const;
+    tl::expected<LookupResult, ErrorCode> Lookup(const std::wstring& view_path) const noexcept;
 
     /**
      * @brief Normalize a view path to the shape the table stores.
@@ -178,7 +216,7 @@ public:
      * @param[in] path The path to normalize.
      * @return The normalized path, empty when it is not usable.
      */
-    static std::wstring NormalizeViewPath(const std::wstring& path);
+    static std::wstring NormalizeViewPath(const std::wstring& path) noexcept;
 
     /**
      * @brief Get the layer key of a mapped layer folder.
@@ -191,7 +229,7 @@ public:
      * @param[in] host_nt_path Host path of the layer.
      * @return The layer key, empty when the path has no component.
      */
-    static std::wstring LayerKeyOf(const std::wstring& host_nt_path);
+    static std::wstring LayerKeyOf(const std::wstring& host_nt_path) noexcept;
 
 private:
     /**

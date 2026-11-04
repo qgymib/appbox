@@ -160,8 +160,11 @@ static NTSTATUS CreateWhiteoutOfEntry(const std::wstring&                      v
         LOG_W("failed to copy the file of the stream into the upper layer");
     }
 
-    appbox::filesystem::CreateDirectories(appbox::filesystem::DirName(resolve_result.uPath),
-                                          resolve_result.uPathBaseSize);
+    const auto parent = appbox::filesystem::DirName(resolve_result.uPath);
+    if (parent)
+    {
+        appbox::filesystem::CreateDirectories(*parent, resolve_result.uPathBaseSize);
+    }
     return CreateWhiteout(resolve_result.uPath, Attributes);
 }
 
@@ -360,13 +363,13 @@ static NTSTATUS NTAPI Hook_NtDeleteFile(POBJECT_ATTRIBUTES ObjectAttributes)
 {
     logger.Log(ObjectAttributes);
 
-    std::wstring fs_path;
-    if (!appbox::MappingAsDosNtPath(ObjectAttributes->ObjectName->Buffer, fs_path))
+    const auto fs_path = appbox::MappingAsDosNtPath(ObjectAttributes->ObjectName->Buffer);
+    if (!fs_path)
     {
         return sys_NtDeleteFile(ObjectAttributes);
     }
 
-    return appbox::DeleteViewPath(fs_path, ObjectAttributes->Attributes);
+    return appbox::DeleteViewPath(*fs_path, ObjectAttributes->Attributes);
 }
 
 NTSTATUS appbox::DeleteViewPath(const std::wstring& path, ULONG Attributes)

@@ -108,8 +108,10 @@ TEST_F(E2E_Reg, SaveKey_MergedSnapshot)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\SaveKey_MergedSnapshot_" + appbox::UTF8ToWide(appbox::RandomString(8));
-    const auto hive_only = L"Software\\AppBoxTest\\SaveKey_HiveOnly_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\SaveKey_MergedSnapshot_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
+    const auto hive_only = L"Software\\AppBoxTest\\SaveKey_HiveOnly_" +
+                           appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
@@ -124,13 +126,14 @@ TEST_F(E2E_Reg, SaveKey_MergedSnapshot)
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;
 
-    const auto save_path = GetCWD() / (L"reg_save_" + appbox::UTF8ToWide(appbox::RandomString(8)) + L".hiv");
+    const auto save_path =
+        GetCWD() / (L"reg_save_" + appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring()) + L".hiv");
 
     /* The key which both layers hold: the export holds the merged view. */
     {
         ProtocolRegSaveKey::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
-        req.Path = appbox::WideToUTF8(save_path.wstring());
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
+        req.Path = appbox::WideToUTF8(save_path.wstring()).value_or(std::string());
         req.Expect = { "SandboxValue", "sandbox", "HostValue", "host" };
         req.Reject = { "Hidden", "hidden" };
 
@@ -148,8 +151,8 @@ TEST_F(E2E_Reg, SaveKey_MergedSnapshot)
     /* A key which only the hive holds is exported with its hive content. */
     {
         ProtocolRegSaveKey::Req req;
-        req.Key = appbox::WideToUTF8(hive_only);
-        req.Path = appbox::WideToUTF8(save_path.wstring());
+        req.Key = appbox::WideToUTF8(hive_only).value_or(std::string());
+        req.Path = appbox::WideToUTF8(save_path.wstring()).value_or(std::string());
         req.Expect = { "OnlyValue", "only" };
         req.Reject = { "SandboxValue" };
 
@@ -171,7 +174,7 @@ TEST_F(E2E_Reg, SaveKey_MergedSnapshot)
     ASSERT_EQ(RegQueryValueExW(key, L"Hidden", nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size),
               ERROR_SUCCESS);
     RegCloseKey(key);
-    EXPECT_EQ(appbox::WideToUTF8(buffer), "hidden");
+    EXPECT_EQ(appbox::WideToUTF8(buffer).value_or(std::string()), "hidden");
 }
 
 /**
@@ -204,8 +207,8 @@ TEST_F(E2E_Reg, SaveKeyEx_MergedSnapshot)
 
     auto config = tree.Build();
 
-    const auto subkey =
-        L"Software\\AppBoxTest\\SaveKeyEx_MergedSnapshot_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\SaveKeyEx_MergedSnapshot_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
@@ -219,11 +222,12 @@ TEST_F(E2E_Reg, SaveKeyEx_MergedSnapshot)
     std::string error;
     ASSERT_TRUE(builder.Write(error)) << error;
 
-    const auto save_path = GetCWD() / (L"reg_save_ex_" + appbox::UTF8ToWide(appbox::RandomString(8)) + L".hiv");
+    const auto save_path =
+        GetCWD() / (L"reg_save_ex_" + appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring()) + L".hiv");
 
     ProtocolRegSaveKey::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
-    req.Path = appbox::WideToUTF8(save_path.wstring());
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
+    req.Path = appbox::WideToUTF8(save_path.wstring()).value_or(std::string());
     req.use_save_ex = true;
     req.Expect = { "SandboxValue", "sandbox", "HostValue", "host" };
     req.Reject = { "Hidden", "hidden" };
@@ -246,5 +250,5 @@ TEST_F(E2E_Reg, SaveKeyEx_MergedSnapshot)
     ASSERT_EQ(RegQueryValueExW(key, L"Hidden", nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size),
               ERROR_SUCCESS);
     RegCloseKey(key);
-    EXPECT_EQ(appbox::WideToUTF8(buffer), "hidden");
+    EXPECT_EQ(appbox::WideToUTF8(buffer).value_or(std::string()), "hidden");
 }

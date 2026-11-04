@@ -34,7 +34,8 @@ TEST_F(E2E_Reg, Full_HidesRealKey)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\Full_HidesRealKey_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\Full_HidesRealKey_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
@@ -48,7 +49,7 @@ TEST_F(E2E_Reg, Full_HidesRealKey)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegReadValue::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Value = "TestValue";
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);
@@ -59,7 +60,7 @@ TEST_F(E2E_Reg, Full_HidesRealKey)
     /* A write access open hides the host entry as well: `Full` never copies
      * the host key up into the hive. */
     ProtocolRegOpenWriteValue::Req write_req;
-    write_req.Key = appbox::WideToUTF8(subkey);
+    write_req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     write_req.Value = "TestValue";
     write_req.Data = "sandbox";
 
@@ -74,5 +75,5 @@ TEST_F(E2E_Reg, Full_HidesRealKey)
     ASSERT_EQ(RegQueryValueExW(key, L"TestValue", nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size),
               ERROR_SUCCESS);
     RegCloseKey(key);
-    EXPECT_EQ(appbox::WideToUTF8(buffer), "host");
+    EXPECT_EQ(appbox::WideToUTF8(buffer).value_or(std::string()), "host");
 }

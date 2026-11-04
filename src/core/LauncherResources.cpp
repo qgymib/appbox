@@ -49,8 +49,8 @@ bool WriteResources(const std::filesystem::path& path, std::string_view config_j
     if (update == nullptr)
     {
         code = GetLastError();
-        error = "failed to open '" + appbox::WideToUTF8(path.wstring()) + "' for the resource update (error " +
-                std::to_string(code) + ")";
+        error = "failed to open '" + appbox::WideToUTF8(path.wstring()).value_or(std::string()) +
+                "' for the resource update (error " + std::to_string(code) + ")";
         return false;
     }
 
@@ -82,8 +82,8 @@ bool WriteResources(const std::filesystem::path& path, std::string_view config_j
     if (!session.Commit())
     {
         code = GetLastError();
-        error = "failed to write the launcher resources of '" + appbox::WideToUTF8(path.wstring()) + "' (error " +
-                std::to_string(code) + ")";
+        error = "failed to write the launcher resources of '" +
+                appbox::WideToUTF8(path.wstring()).value_or(std::string()) + "' (error " + std::to_string(code) + ")";
         return false;
     }
 

@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cwctype>
 #include <string>
+#include <tl/expected.hpp>
 #include <utility>
 #include <vector>
 
@@ -21,12 +22,28 @@ namespace detail
 {
 
 /**
+ * @brief A DOS style NT path of a drive, split at the colon of the drive.
+ *
+ * The drive is the upper case letter, so two spellings of the same drive
+ * compare equal, and the remainder holds the components below the root of the
+ * drive, without the separator which follows the colon.
+ */
+struct MappingDosDrive
+{
+    /** Upper case letter of the drive, for example `C`. */
+    wchar_t drive = 0;
+
+    /** Components below the root of the drive, without a leading separator. */
+    std::wstring remainder;
+};
+
+/**
  * @brief Whether a text starts with a prefix, ignoring the case.
  * @param[in] text Text to inspect.
  * @param[in] prefix Prefix to compare against.
  * @return true when the text starts with the prefix.
  */
-inline bool MappingStartsWithIgnoreCase(const std::wstring& text, const std::wstring& prefix)
+inline bool MappingStartsWithIgnoreCase(const std::wstring& text, const std::wstring& prefix) noexcept
 {
     if (text.size() < prefix.size())
     {
@@ -49,7 +66,7 @@ inline bool MappingStartsWithIgnoreCase(const std::wstring& text, const std::wst
  * @param[in] character Character to inspect.
  * @return true when the character is a separator.
  */
-inline bool IsMappingSeparator(wchar_t character)
+inline bool IsMappingSeparator(wchar_t character) noexcept
 {
     return character == L'\\' || character == L'/';
 }
@@ -59,7 +76,7 @@ inline bool IsMappingSeparator(wchar_t character)
  * @param[in] character Character to inspect.
  * @return true when the character is a letter.
  */
-inline bool IsMappingDriveLetter(wchar_t character)
+inline bool IsMappingDriveLetter(wchar_t character) noexcept
 {
     return (character >= L'A' && character <= L'Z') || (character >= L'a' && character <= L'z');
 }
@@ -72,11 +89,10 @@ inline bool IsMappingDriveLetter(wchar_t character)
  * alone addresses the current directory of the drive and names no entry.
  *
  * @param[in] path Path to parse.
- * @param[out] drive Upper case drive letter of the path.
- * @param[out] remainder Components below the root of the drive.
- * @return true when the path is a path of a drive.
+ * @return The drive and the remainder of the path, or `kPathNotDosDrivePath`
+ *         when the path is no absolute path of a drive in that namespace.
  */
-inline bool ParseMappingDosDrivePath(const std::wstring& path, wchar_t& drive, std::wstring& remainder)
+inline tl::expected<MappingDosDrive, ErrorCode> ParseMappingDosDrivePath(const std::wstring& path) noexcept
 {
     std::size_t prefix_size = 0;
 
@@ -90,24 +106,25 @@ inline bool ParseMappingDosDrivePath(const std::wstring& path, wchar_t& drive, s
     }
     else
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathNotDosDrivePath);
     }
 
     /* The path has to carry a drive letter, its colon and a separator. */
     if (path.size() < prefix_size + 3)
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathNotDosDrivePath);
     }
 
     const wchar_t letter = path[prefix_size];
     if (!IsMappingDriveLetter(letter) || path[prefix_size + 1] != L':' || !IsMappingSeparator(path[prefix_size + 2]))
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathNotDosDrivePath);
     }
 
-    drive = static_cast<wchar_t>(std::towupper(letter));
-    remainder = path.substr(prefix_size + 3);
-    return true;
+    MappingDosDrive drive;
+    drive.drive = static_cast<wchar_t>(std::towupper(letter));
+    drive.remainder = path.substr(prefix_size + 3);
+    return drive;
 }
 
 /**
@@ -120,10 +137,10 @@ inline bool ParseMappingDosDrivePath(const std::wstring& path, wchar_t& drive, s
  * a path outside of it.
  *
  * @param[in] path Components to normalize.
- * @param[out] normalized The components without a separator between them.
- * @return true when the path stays inside its drive.
+ * @return The components without a separator between them, or
+ *         `kPathEscapesDriveRoot` when the path leaves its drive.
  */
-inline bool NormalizeMappingRelativePath(const std::wstring& path, std::wstring& normalized)
+inline tl::expected<std::wstring, ErrorCode> NormalizeMappingRelativePath(const std::wstring& path) noexcept
 {
     std::vector<std::wstring> parts;
 
@@ -158,7 +175,7 @@ inline bool NormalizeMappingRelativePath(const std::wstring& path, std::wstring&
             if (parts.empty())
             {
                 /* The reference climbs above the root of the drive. */
-                return false;
+                return tl::make_unexpected(ErrorCode::kPathEscapesDriveRoot);
             }
             parts.pop_back();
             continue;
@@ -167,7 +184,7 @@ inline bool NormalizeMappingRelativePath(const std::wstring& path, std::wstring&
         parts.push_back(std::move(part));
     }
 
-    normalized.clear();
+    std::wstring normalized;
     for (std::size_t position = 0; position < parts.size(); ++position)
     {
         if (position != 0)
@@ -177,7 +194,7 @@ inline bool NormalizeMappingRelativePath(const std::wstring& path, std::wstring&
         normalized += parts[position];
     }
 
-    return true;
+    return normalized;
 }
 
 /**
@@ -186,57 +203,55 @@ inline bool NormalizeMappingRelativePath(const std::wstring& path, std::wstring&
  * The root of a drive keeps its separator, so a path which is the root of a
  * volume is left unchanged.
  *
- * @param[in,out] path Path to trim.
+ * @param[in] path Path to trim.
+ * @return The path without the separators at its end.
  */
-inline void TrimMappingTrailingSeparators(std::wstring& path)
+inline std::wstring TrimMappingTrailingSeparators(std::wstring path) noexcept
 {
     while (path.size() > 1 && IsMappingSeparator(path.back()))
     {
         path.pop_back();
     }
+    return path;
 }
 
 } // namespace detail
 
 /* Definition of the contract on the declaration. */
-inline bool MappingPathInSandbox(const std::wstring& path, const std::wstring& sandbox, std::wstring& out)
+inline tl::expected<std::wstring, ErrorCode> MappingPathInSandbox(const std::wstring& path,
+                                                                  const std::wstring& sandbox) noexcept
 {
-    wchar_t      drive = 0;
-    std::wstring remainder;
-
-    if (!detail::ParseMappingDosDrivePath(path, drive, remainder))
+    const auto parsed = detail::ParseMappingDosDrivePath(path);
+    if (!parsed)
     {
-        return false;
+        return tl::make_unexpected(parsed.error());
     }
 
     /* The root of the layer has to be a path of a drive as well. */
-    wchar_t      sandbox_drive = 0;
-    std::wstring sandbox_remainder;
-    if (!detail::ParseMappingDosDrivePath(sandbox, sandbox_drive, sandbox_remainder))
+    if (!detail::ParseMappingDosDrivePath(sandbox))
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathNotDosDrivePath);
     }
 
-    std::wstring normalized_remainder;
-    if (!detail::NormalizeMappingRelativePath(remainder, normalized_remainder))
+    const auto normalized_remainder = detail::NormalizeMappingRelativePath(parsed->remainder);
+    if (!normalized_remainder)
     {
-        return false;
+        return tl::make_unexpected(normalized_remainder.error());
     }
 
-    std::wstring root = sandbox;
-    detail::TrimMappingTrailingSeparators(root);
+    const std::wstring root = detail::TrimMappingTrailingSeparators(sandbox);
 
-    out = root;
+    std::wstring out = root;
     out += L'\\';
-    out += drive;
+    out += parsed->drive;
 
-    if (!normalized_remainder.empty())
+    if (!normalized_remainder->empty())
     {
         out += L'\\';
-        out += normalized_remainder;
+        out += *normalized_remainder;
     }
 
-    return true;
+    return out;
 }
 
 } // namespace appbox

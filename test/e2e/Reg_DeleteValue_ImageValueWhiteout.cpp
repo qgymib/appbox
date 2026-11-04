@@ -56,7 +56,8 @@ TEST_F(E2E_Reg, DeleteValue_ImageValueWhiteout)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\DeleteValue_Image_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\DeleteValue_Image_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto hive_key = L"HKEY_CURRENT_USER\\" + subkey;
 
     HiveBuilder builder(GetCWD());
@@ -68,7 +69,7 @@ TEST_F(E2E_Reg, DeleteValue_ImageValueWhiteout)
 
     {
         ProtocolRegDeleteValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "Value";
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteValue>(req);
@@ -84,7 +85,7 @@ TEST_F(E2E_Reg, DeleteValue_ImageValueWhiteout)
     /* The next run rebuilds the image and keeps the marker. */
     {
         ProtocolRegReadValues::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Values = { "Value", "Kept" };
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValues>(req);

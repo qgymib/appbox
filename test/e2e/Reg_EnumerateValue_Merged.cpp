@@ -48,7 +48,8 @@ TEST_F(E2E_Reg, EnumerateValue_Merged)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\EnumerateValue_Merged_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto        subkey = L"Software\\AppBoxTest\\EnumerateValue_Merged_" +
+                               appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const std::string real_data = "RealData";
     const std::string sandbox_data = "SandboxData";
 
@@ -59,7 +60,7 @@ TEST_F(E2E_Reg, EnumerateValue_Merged)
             RegCreateKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr),
             ERROR_SUCCESS);
 
-        auto wdata = appbox::UTF8ToWide(real_data);
+        auto wdata = appbox::UTF8ToWide(real_data).value_or(std::wstring());
         ASSERT_EQ(RegSetValueExW(key, L"RealValue", 0, REG_SZ, reinterpret_cast<const BYTE*>(wdata.c_str()),
                                  static_cast<DWORD>((wdata.size() + 1) * sizeof(wchar_t))),
                   ERROR_SUCCESS);
@@ -71,7 +72,7 @@ TEST_F(E2E_Reg, EnumerateValue_Merged)
     /* Create the shadow and write the sandbox value inside the sandbox. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "SandboxValue";
         req.Data = sandbox_data;
         auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
@@ -83,7 +84,7 @@ TEST_F(E2E_Reg, EnumerateValue_Merged)
     /* Enumerate the values inside the sandbox: merged view. */
     {
         ProtocolRegEnumValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         auto rsp = Probe(GetCWD(), config).Call<ProtocolRegEnumValue>(req);
         ASSERT_EQ(rsp.open_code, 0u);
         ASSERT_EQ(rsp.enum_code, 0u);

@@ -58,7 +58,7 @@ std::vector<std::wstring> BuildCmdArg(const appbox::LauncherStartup& startup)
     std::vector<std::wstring> args;
     for (const auto& arg : startup.arguments)
     {
-        args.push_back(appbox::UTF8ToWide(arg));
+        args.push_back(appbox::UTF8ToWide(arg).value_or(std::wstring()));
     }
 
     return args;
@@ -81,7 +81,8 @@ void BuildEnvironmentBlock(const std::vector<appbox::MsgLauncherStart::Environme
 
     for (const auto& entry : environment)
     {
-        const auto line = appbox::UTF8ToWide(entry.key) + L"=" + appbox::UTF8ToWide(entry.value);
+        const auto line = appbox::UTF8ToWide(entry.key).value_or(std::wstring()) + L"=" +
+                          appbox::UTF8ToWide(entry.value).value_or(std::wstring());
         block.insert(block.end(), line.begin(), line.end());
         block.push_back(L'\0');
     }
@@ -127,8 +128,8 @@ std::vector<appbox::MsgLauncherStart::EnvironmentEntry> CollectEnvironment()
         }
 
         appbox::MsgLauncherStart::EnvironmentEntry variable;
-        variable.key = appbox::WideToUTF8(entry.substr(0, separator));
-        variable.value = appbox::WideToUTF8(entry.substr(separator + 1));
+        variable.key = appbox::WideToUTF8(entry.substr(0, separator)).value_or(std::string());
+        variable.value = appbox::WideToUTF8(entry.substr(separator + 1)).value_or(std::string());
         entries.push_back(std::move(variable));
     }
 
@@ -155,7 +156,7 @@ std::string CurrentDirectory()
 
         if (length < buffer.size())
         {
-            return appbox::WideToUTF8(std::wstring(buffer.data(), length));
+            return appbox::WideToUTF8(std::wstring(buffer.data(), length)).value_or(std::string());
         }
 
         buffer.resize(length + 1);
@@ -271,11 +272,20 @@ void appbox::BuildLaunchTargets(const std::vector<const LauncherStartup*>& start
         auto args = BuildCmdArg(*startup);
         for (const auto& extra : extra_args)
         {
-            args.push_back(appbox::UTF8ToWide(extra));
+            args.push_back(appbox::UTF8ToWide(extra).value_or(std::wstring()));
         }
 
-        const auto path = appbox::ExpandKnownFolder(appbox::UTF8ToWide(startup->executable));
-        appbox::BuildStartupInvocation(path, args, target.exe_path, target.args, target.error);
+        const auto executable_path =
+            appbox::ExpandKnownFolder(appbox::UTF8ToWide(startup->executable).value_or(std::wstring()));
+        if (!executable_path)
+        {
+            target.error = "the known folder of the startup file cannot be resolved: " + startup->executable + " (" +
+                           std::to_string(static_cast<std::int32_t>(executable_path.error())) + ")";
+            targets.push_back(std::move(target));
+            continue;
+        }
+
+        appbox::BuildStartupInvocation(*executable_path, args, target.exe_path, target.args, target.error);
         if (target.error.empty())
         {
             resolver.Resolve(target.exe_path, target.image_path, target.error);
@@ -314,7 +324,7 @@ appbox::MsgLauncherStart::Req appbox::BuildLauncherStartRequest(const LauncherCo
     MsgLauncherStart::Req request;
     request.version = kLauncherStartVersion;
     request.sandbox_id = config.sandbox_id;
-    request.sandbox_root = appbox::WideToUTF8(NormalizeHostPath(sandbox_root));
+    request.sandbox_root = appbox::WideToUTF8(NormalizeHostPath(sandbox_root)).value_or(std::string());
     request.selection = selection;
     request.args = args;
     request.environment = CollectEnvironment();
@@ -388,20 +398,31 @@ appbox::SecondaryHandover appbox::RunSecondaryInstance(const std::string& pipe, 
      * The connector owns the IO thread the session runs on, so it is declared
      * before the session and released after it.
      */
-    auto connector = appbox::RemoteConnector::Create(pipe);
-    auto session = connector->Connect(kSecondaryConnectTimeoutMs);
-    if (!session)
+    const auto connector = appbox::RemoteConnector::Create(pipe);
+    if (!connector.has_value())
+    {
+        SPDLOG_ERROR("the connector of the control pipe '{}' cannot be created: {}", pipe,
+                     static_cast<int>(connector.error()));
+        handover.exit_code = ERROR_GEN_FAILURE;
+        return handover;
+    }
+
+    const auto connected = (*connector)->Connect(kSecondaryConnectTimeoutMs);
+    if (!connected.has_value())
     {
         /*
          * The pipe was named by the race which this run lost, so it existed a
          * moment ago: a pipe which cannot be reached any more belongs to a run
          * which is closing, and the sandbox may be started again at once.
          */
-        SPDLOG_INFO("the master instance of the sandbox cannot be reached over '{}'", pipe);
+        SPDLOG_INFO("the master instance of the sandbox cannot be reached over '{}': {}", pipe,
+                    static_cast<int>(connected.error()));
         handover.retry = true;
         handover.exit_code = ERROR_TIMEOUT;
         return handover;
     }
+
+    const appbox::RemoteSession::Ptr& session = *connected;
 
     /*
      * The server is verified before the request is sent: a process which
@@ -432,16 +453,21 @@ appbox::SecondaryHandover appbox::RunSecondaryInstance(const std::string& pipe, 
 
         if (result.error().code == appbox::kResponseDecodeErrorCode)
         {
-            /* The server answered, but not with the protocol this run speaks. */
-            SPDLOG_ERROR("the answer of the master instance cannot be read: {}", result.error().message);
+            /*
+             * The server answered, but not with the protocol this run speaks:
+             * another end holds the name of the pipe, which racing for it again
+             * would not change.
+             */
+            SPDLOG_ERROR("the master instance answered a payload this run cannot read: {}", result.error().message);
             handover.exit_code = ERROR_INVALID_DATA;
             return handover;
         }
 
         /*
          * A call which cannot be carried out any more means that the pipe was
-         * closed between the connection and the request, which is the shutdown
-         * of the sandbox: the request is raced again.
+         * closed between the connection and the request, or while the request
+         * was on its way, which is the shutdown of the sandbox: the request is
+         * raced again, so the sandbox which is started next serves it.
          */
         SPDLOG_INFO("the control pipe of the sandbox was closed before the request was answered: {}",
                     result.error().message);
@@ -934,7 +960,11 @@ void appbox::ControlPlane::Reply(const appbox::RemoteSession::Ptr& session, std:
         return;
     }
 
-    session->SendResponse(rpc_id, nlohmann::json(response));
+    const auto answered = session->SendResponse(rpc_id, nlohmann::json(response));
+    if (!answered.has_value())
+    {
+        SPDLOG_ERROR("the answer of the start request cannot be sent: {}", static_cast<int>(answered.error()));
+    }
 }
 
 bool appbox::ControlPlane::BuildRequestTargets(const MsgLauncherStart::Req& request, std::vector<LaunchTarget>& targets,
@@ -1011,7 +1041,8 @@ bool appbox::ControlPlane::ResolveRequestDirectory(const MsgLauncherStart::Req& 
         return true;
     }
 
-    const std::wstring view_path = appbox::UTF8ToWide(request.cwd);
+    /* A directory the code page cannot carry names no directory of the run. */
+    const std::wstring view_path = appbox::UTF8ToWide(request.cwd).value_or(std::wstring());
     if (view_path.empty())
     {
         error_message = "the current directory of the request cannot be read";
@@ -1026,7 +1057,8 @@ bool appbox::ControlPlane::ResolveRequestDirectory(const MsgLauncherStart::Req& 
         return false;
     }
 
-    SPDLOG_DEBUG("the current directory of the request is '{}'", appbox::WideToUTF8(directory));
+    SPDLOG_DEBUG("the current directory of the request is '{}'",
+                 appbox::WideToUTF8(directory).value_or("<unconvertible>"));
     return true;
 }
 

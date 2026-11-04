@@ -57,8 +57,8 @@ TEST_F(E2E_Reg, Merge_ValueDeletedInTheSandboxStaysInTheSandbox)
 
     auto config = tree.Build();
 
-    const auto subkey =
-        L"Software\\AppBoxTest\\Merge_DeletedInTheSandbox_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\Merge_DeletedInTheSandbox_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto hive_key = L"HKEY_CURRENT_USER\\" + subkey;
 
     RealHkcuKey host(subkey);
@@ -74,7 +74,7 @@ TEST_F(E2E_Reg, Merge_ValueDeletedInTheSandboxStaysInTheSandbox)
 
     {
         ProtocolRegDeleteValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "Shared";
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteValue>(req);
@@ -91,7 +91,7 @@ TEST_F(E2E_Reg, Merge_ValueDeletedInTheSandboxStaysInTheSandbox)
     /* The write after the delete lands in the sandbox again. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "Shared";
         req.Data = "again";
 

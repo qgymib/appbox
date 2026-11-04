@@ -59,26 +59,31 @@ NTSTATUS appbox::filesystem::Isolation::Init()
         std::ifstream stream(path, std::ios::binary);
         if (!stream.is_open())
         {
-            LOG_D("the filesystem isolation file does not exist: {}", appbox::WideToUTF8(path));
+            LOG_D("the filesystem isolation file does not exist: {}",
+                  appbox::WideToUTF8(path).value_or("<unconvertible>"));
             continue;
         }
 
         const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
 
-        std::vector<std::wstring> unmapped;
-        std::string               error;
-        if (!appbox::sandbox->fs_isolation.Parse(text, layers, unmapped, error))
+        const auto outcome = appbox::sandbox->fs_isolation.Parse(text, layers);
+        if (!outcome)
         {
-            LOG_W("the filesystem isolation file '{}' is ignored: {}", appbox::WideToUTF8(path), error);
+            LOG_W("the filesystem isolation file '{}' is ignored: {}",
+                  appbox::WideToUTF8(path).value_or("<unconvertible>"),
+                  outcome.error() == appbox::ErrorCode::kIsolationDocumentUnsupportedVersion
+                      ? "its schema version is not supported"
+                      : "it does not fit its schema");
             continue;
         }
 
-        for (const auto& entry : unmapped)
+        for (const auto& entry : outcome->unmapped)
         {
             LOG_W("the filesystem isolation file '{}' lists a path which no layer of the view maps: {}",
-                  appbox::WideToUTF8(path), appbox::WideToUTF8(entry));
+                  appbox::WideToUTF8(path).value_or("<unconvertible>"),
+                  appbox::WideToUTF8(entry).value_or("<unconvertible>"));
         }
-        unmapped_count += unmapped.size();
+        unmapped_count += outcome->unmapped.size();
     }
 
     LOG_I("filesystem isolation modes loaded: {} entries, {} paths without a layer",

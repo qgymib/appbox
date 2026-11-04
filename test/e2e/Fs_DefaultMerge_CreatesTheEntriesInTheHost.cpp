@@ -69,7 +69,7 @@ TEST_F(E2E_Fs, DefaultMerge_CreatesTheEntriesInTheHost)
     /* The directory of the case is created in the host filesystem. */
     {
         ProtocolCreateDirectoryW::Req req;
-        req.PathName = appbox::WideToUTF8(FolderPath() + L"\\created");
+        req.PathName = appbox::WideToUTF8(FolderPath() + L"\\created").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateDirectoryW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -78,7 +78,7 @@ TEST_F(E2E_Fs, DefaultMerge_CreatesTheEntriesInTheHost)
     /* A file which no layer holds is created in the host filesystem as well. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\created\\data.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\created\\data.txt").value_or(std::string());
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 

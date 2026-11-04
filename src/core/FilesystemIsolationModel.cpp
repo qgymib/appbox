@@ -63,7 +63,7 @@ std::string Quote(const std::wstring& text)
     {
         return "the root of the view";
     }
-    return "'" + appbox::WideToUTF8(text) + "'";
+    return "'" + appbox::WideToUTF8(text).value_or(std::string()) + "'";
 }
 
 /**

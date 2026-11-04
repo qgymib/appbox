@@ -64,36 +64,6 @@ struct RemoteConnector::Data
     }
 
     /**
-     * @brief Describe a Windows error code.
-     * @param[in] error Error code returned by GetLastError().
-     * @return The system description of the error, empty when not available.
-     */
-    static std::wstring GetErrorString(DWORD error)
-    {
-        if (error == 0)
-        {
-            return L"";
-        }
-
-        LPWSTR messageBuffer = nullptr;
-
-        const DWORD size = FormatMessageW(
-            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, error,
-            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPWSTR)&messageBuffer, 0, nullptr);
-
-        if (size == 0 || messageBuffer == nullptr)
-        {
-            /* No description is available for this error code. */
-            return L"";
-        }
-
-        std::wstring message(messageBuffer, size);
-        LocalFree(messageBuffer);
-
-        return message;
-    }
-
-    /**
      * @brief Open the pipe and start the session.
      *
      * The connect is a short blocking operation, it runs on the thread which
@@ -101,13 +71,13 @@ struct RemoteConnector::Data
      * retried with a growing delay until the budget is used up.
      *
      * @param[in] timeout_ms Budget of the connection attempts.
-     * @return The connected session, null when the pipe cannot be opened.
+     * @return The connected session, or the code of the reason it cannot be
+     *         opened.
      */
-    RemoteSession::Ptr Connect(std::uint32_t timeout_ms)
+    tl::expected<RemoteSession::Ptr, ErrorCode> Connect(std::uint32_t timeout_ms) noexcept
     {
         if (session != nullptr)
         {
-            SPDLOG_WARN("the connector is connected already");
             return session;
         }
 
@@ -127,15 +97,13 @@ struct RemoteConnector::Data
             const DWORD err = GetLastError();
             if (!detail::IsRetryableConnectorConnectError(err))
             {
-                SPDLOG_ERROR(L"cannot open pipe: {}({})", GetErrorString(err), err);
-                return nullptr;
+                return tl::unexpected<ErrorCode>(ErrorCode::kPipeConnectFailed);
             }
 
             const auto now = std::chrono::steady_clock::now();
             if (now >= deadline)
             {
-                SPDLOG_ERROR("cannot open pipe: the budget of {} ms is used up", timeout_ms);
-                return nullptr;
+                return tl::unexpected<ErrorCode>(ErrorCode::kPipeConnectTimeout);
             }
 
             auto wait_ms =
@@ -164,28 +132,38 @@ struct RemoteConnector::Data
         DWORD mode = PIPE_READMODE_BYTE;
         if (!SetNamedPipeHandleState(pipe, &mode, nullptr, nullptr))
         {
-            SPDLOG_ERROR("SetNamedPipeHandleState() failed: {}", GetLastError());
             CloseHandle(pipe);
-            return nullptr;
+            return tl::unexpected<ErrorCode>(ErrorCode::kPipeStateFailed);
         }
 
+        /*
+         * A process which cannot be queried leaves the peer unknown, which the
+         * caller reads as the zero it starts with.
+         */
         ULONG server_process_id = 0;
         if (GetNamedPipeServerProcessId(pipe, &server_process_id))
         {
             server_pid = server_process_id;
-        }
-        else
-        {
-            SPDLOG_WARN("cannot query the process of the server: {}", GetLastError());
         }
 
         /*
          * The session takes ownership of the handle and starts the thread which
          * serves it, so a caller may send a request as soon as the call returns.
          */
-        session = RemoteSession::Create(pipe, server_pid);
-        session->Start();
+        const auto created = RemoteSession::Create(pipe, server_pid);
+        if (!created.has_value())
+        {
+            /* The session closed the handle it was given. */
+            return tl::unexpected<ErrorCode>(created.error());
+        }
 
+        const auto started = (*created)->Start();
+        if (!started.has_value())
+        {
+            return tl::unexpected<ErrorCode>(started.error());
+        }
+
+        session = *created;
         return session;
     }
 
@@ -212,7 +190,7 @@ inline RemoteConnector::~RemoteConnector()
 }
 
 /* Definition of the contract on the declaration. */
-inline RemoteConnector::Ptr RemoteConnector::Create(const std::string& pipe_path)
+inline tl::expected<RemoteConnector::Ptr, ErrorCode> RemoteConnector::Create(const std::string& pipe_path) noexcept
 {
     Ptr obj(new RemoteConnector);
     obj->data_->pipe_path = pipe_path;
@@ -220,13 +198,13 @@ inline RemoteConnector::Ptr RemoteConnector::Create(const std::string& pipe_path
 }
 
 /* Definition of the contract on the declaration. */
-inline RemoteSession::Ptr RemoteConnector::Connect(std::uint32_t timeout_ms)
+inline tl::expected<RemoteSession::Ptr, ErrorCode> RemoteConnector::Connect(std::uint32_t timeout_ms) noexcept
 {
     return data_->Connect(timeout_ms);
 }
 
 /* Definition of the contract on the declaration. */
-inline DWORD RemoteConnector::ServerProcessId() const
+inline DWORD RemoteConnector::ServerProcessId() const noexcept
 {
     return data_->server_pid;
 }

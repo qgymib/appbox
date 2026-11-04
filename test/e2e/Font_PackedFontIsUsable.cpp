@@ -56,8 +56,8 @@ TEST_F(E2E_Font, PackedFontIsUsable)
     const std::wstring view_path = GetKnownFolderPath(L"#Fonts#", false) + L"\\" + packed_name;
 
     ProtocolFonts::Req req;
-    req.family = appbox::WideToUTF8(font.family);
-    req.view_path = appbox::WideToUTF8(view_path);
+    req.family = appbox::WideToUTF8(font.family).value_or(std::string());
+    req.view_path = appbox::WideToUTF8(view_path).value_or(std::string());
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolFonts>(req);
 

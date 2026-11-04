@@ -27,7 +27,11 @@ namespace
  */
 void ExpectProbeImage(ProbeBitness bitness)
 {
-    const bool is_32_bit_image = appbox::PeImage::FromFile(ProbePath(bitness)).Is32Bit();
+    const auto image = appbox::PeImage::FromFile(ProbePath(bitness));
+    ASSERT_TRUE(image.has_value()) << "the probe of the run can not be read: pass the probes as --probe32= and "
+                                   << "--probe64=";
+
+    const bool is_32_bit_image = image->Is32Bit();
     const bool is_32_bit_probe = bitness == ProbeBitness::Bit32;
 
     ASSERT_EQ(is_32_bit_image, is_32_bit_probe) << "the probe of the run is not a " << (is_32_bit_probe ? 32 : 64)
@@ -61,15 +65,16 @@ void ExpectChildProcess(const std::wstring& cwd, ProbeBitness parent, ProbeBitne
 
     auto launcher_config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\CrossBitness_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey =
+        L"Software\\AppBoxTest\\CrossBitness_" + appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     ProtocolRegTwoProcesses::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.ParentValue = "ParentValue";
     req.ParentData = "parent";
     req.ChildValue = "ChildValue";
     req.ChildData = "child";
-    req.ChildExecutable = appbox::WideToUTF8(ProbePath(child));
+    req.ChildExecutable = appbox::WideToUTF8(ProbePath(child)).value_or(std::string());
     req.ChildHoldMs = 2000;
 
     const auto rsp = Probe(cwd, launcher_config, parent).Call<ProtocolRegTwoProcesses>(req);

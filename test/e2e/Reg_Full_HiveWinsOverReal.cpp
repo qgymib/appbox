@@ -48,7 +48,8 @@ TEST_F(E2E_Reg, Full_HiveWinsOverReal)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\Full_HiveWinsOverReal_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto        subkey = L"Software\\AppBoxTest\\Full_HiveWinsOverReal_" +
+                               appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const std::string hive_data = "sandbox";
 
     RealHkcuKey real_key(subkey);
@@ -64,7 +65,7 @@ TEST_F(E2E_Reg, Full_HiveWinsOverReal)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegReadValue::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Value = "TestValue";
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);
@@ -81,5 +82,5 @@ TEST_F(E2E_Reg, Full_HiveWinsOverReal)
     ASSERT_EQ(RegQueryValueExW(key, L"TestValue", nullptr, &type, reinterpret_cast<LPBYTE>(buffer), &size),
               ERROR_SUCCESS);
     RegCloseKey(key);
-    EXPECT_EQ(appbox::WideToUTF8(buffer), "host");
+    EXPECT_EQ(appbox::WideToUTF8(buffer).value_or(std::string()), "host");
 }

@@ -48,7 +48,7 @@ void RegisterPing(const appbox::RemoteSession::Ptr& session, const std::string& 
     session->RegisterMethod(method, [weak_session](uint64_t id, const nlohmann::json& param) {
         if (auto bound = weak_session.lock())
         {
-            bound->SendResponse(id, param);
+            (void)bound->SendResponse(id, param);
         }
     });
 }
@@ -71,7 +71,9 @@ TEST(Unit_RemoteSession, AnswersWhileOwnRequestIsPending)
     std::condition_variable    cv;
     appbox::RemoteSession::Ptr accepted;
 
-    auto accepter = appbox::RemoteAccepter::Create(pipe);
+    const auto accepter_created = appbox::RemoteAccepter::Create(pipe);
+    ASSERT_TRUE(accepter_created.has_value());
+    const auto& accepter = *accepter_created;
     accepter->SetSessionCallback([&](const appbox::RemoteSession::Ptr& session) {
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -84,15 +86,17 @@ TEST(Unit_RemoteSession, AnswersWhileOwnRequestIsPending)
             std::this_thread::sleep_for(std::chrono::milliseconds(300));
             if (auto bound = weak_session.lock())
             {
-                bound->SendResponse(id, "slow");
+                (void)bound->SendResponse(id, "slow");
             }
         });
     });
-    ASSERT_TRUE(accepter->Start());
+    ASSERT_TRUE(accepter->Start().has_value());
 
-    auto connector = appbox::RemoteConnector::Create(pipe);
-    auto session = connector->Connect(5000);
-    ASSERT_NE(session, nullptr);
+    const auto connector_created = appbox::RemoteConnector::Create(pipe);
+    ASSERT_TRUE(connector_created.has_value());
+    const auto connected = (*connector_created)->Connect(5000);
+    ASSERT_TRUE(connected.has_value()) << static_cast<int>(connected.error());
+    const auto& session = *connected;
 
     /* The client answers the requests the accepter sends it. */
     RegisterPing(session, kPingMethod);
@@ -130,7 +134,9 @@ TEST(Unit_RemoteSession, LateAnswerIsDropped)
     std::condition_variable    cv;
     appbox::RemoteSession::Ptr accepted;
 
-    auto accepter = appbox::RemoteAccepter::Create(pipe);
+    const auto accepter_created = appbox::RemoteAccepter::Create(pipe);
+    ASSERT_TRUE(accepter_created.has_value());
+    const auto& accepter = *accepter_created;
     accepter->SetSessionCallback([&](const appbox::RemoteSession::Ptr& session) {
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -138,11 +144,13 @@ TEST(Unit_RemoteSession, LateAnswerIsDropped)
         }
         cv.notify_all();
     });
-    ASSERT_TRUE(accepter->Start());
+    ASSERT_TRUE(accepter->Start().has_value());
 
-    auto connector = appbox::RemoteConnector::Create(pipe);
-    auto session = connector->Connect(5000);
-    ASSERT_NE(session, nullptr);
+    const auto connector_created = appbox::RemoteConnector::Create(pipe);
+    ASSERT_TRUE(connector_created.has_value());
+    const auto connected = (*connector_created)->Connect(5000);
+    ASSERT_TRUE(connected.has_value()) << static_cast<int>(connected.error());
+    const auto& session = *connected;
 
     /* The client answers slowly, so the answer of the peer is late. */
     std::weak_ptr<appbox::RemoteSession> weak_session = session;
@@ -150,7 +158,7 @@ TEST(Unit_RemoteSession, LateAnswerIsDropped)
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
         if (auto bound = weak_session.lock())
         {
-            bound->SendResponse(id, "late");
+            (void)bound->SendResponse(id, "late");
         }
     });
     RegisterPing(session, kPingMethod);
@@ -178,6 +186,103 @@ TEST(Unit_RemoteSession, LateAnswerIsDropped)
 }
 
 /**
+ * @brief A call whose connection ends reports the closure, not an unreadable
+ *        answer.
+ *
+ * The two failures are told apart by a caller which can reach its peer again: a
+ * connection which closed is a peer which went away and the request may be sent
+ * once more, while an answer which cannot be read is a peer which answered
+ * something else. A shared code would make the two indistinguishable.
+ */
+TEST(Unit_RemoteSession, ClosedConnectionReportsTheClosure)
+{
+    const std::string pipe = MakePipePath();
+
+    std::mutex                 mutex;
+    std::condition_variable    cv;
+    appbox::RemoteSession::Ptr accepted;
+
+    const auto accepter_created = appbox::RemoteAccepter::Create(pipe);
+    ASSERT_TRUE(accepter_created.has_value());
+    const auto& accepter = *accepter_created;
+    accepter->SetSessionCallback([&](const appbox::RemoteSession::Ptr& session) {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            accepted = session;
+        }
+        cv.notify_all();
+    });
+    ASSERT_TRUE(accepter->Start().has_value());
+
+    const auto connector_created = appbox::RemoteConnector::Create(pipe);
+    ASSERT_TRUE(connector_created.has_value());
+    const auto connected = (*connector_created)->Connect(5000);
+    ASSERT_TRUE(connected.has_value()) << static_cast<int>(connected.error());
+    const auto& session = *connected;
+
+    appbox::RemoteSession::Ptr peer;
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ASSERT_TRUE(cv.wait_for(lock, std::chrono::seconds(10), [&accepted] { return accepted != nullptr; }));
+        peer = accepted;
+    }
+
+    /*
+     * The server answers nothing and ends the connection, so the request of the
+     * case is one which never reached its peer.
+     */
+    peer->Close();
+    peer->Stop();
+
+    const auto answer = session->Call(kPingMethod, nlohmann::json(), 5000);
+    ASSERT_FALSE(answer.has_value());
+
+    EXPECT_NE(answer.error().code, appbox::kResponseDecodeErrorCode)
+        << "a closed connection is reported as an answer which cannot be read";
+    EXPECT_NE(answer.error().code, static_cast<int>(ERROR_TIMEOUT)) << "a closed connection is no used up budget";
+
+    accepter->Stop();
+}
+
+/**
+ * @brief A call on a session which is already closed reports the closure at
+ *        once.
+ *
+ * A caller which kept a session its owner stopped asks a peer which is gone: the
+ * call answers without waiting for a budget, because no answer can arrive.
+ */
+TEST(Unit_RemoteSession, CallOnAClosedSessionReportsTheClosure)
+{
+    const std::string pipe = MakePipePath();
+
+    const auto accepter_created = appbox::RemoteAccepter::Create(pipe);
+    ASSERT_TRUE(accepter_created.has_value());
+    const auto& accepter = *accepter_created;
+    accepter->SetSessionCallback([](const appbox::RemoteSession::Ptr&) {});
+    ASSERT_TRUE(accepter->Start().has_value());
+
+    const auto connector_created = appbox::RemoteConnector::Create(pipe);
+    ASSERT_TRUE(connector_created.has_value());
+    const auto connected = (*connector_created)->Connect(5000);
+    ASSERT_TRUE(connected.has_value()) << static_cast<int>(connected.error());
+    const auto& session = *connected;
+
+    session->Close();
+    session->Stop();
+
+    const auto started = std::chrono::steady_clock::now();
+    const auto answer = session->Call(kPingMethod, nlohmann::json(), 5000);
+    const auto elapsed = std::chrono::steady_clock::now() - started;
+
+    ASSERT_FALSE(answer.has_value());
+    EXPECT_EQ(answer.error().code, appbox::kSessionClosedErrorCode);
+    EXPECT_LT(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count(), 5000)
+        << "a call on a closed session waited for its budget";
+
+    accepter->Stop();
+}
+
+/**
  * @brief Two sessions of one accepter do not share their request tables.
  *
  * The request ids of a session are its own: two peers of one accepter number
@@ -190,7 +295,9 @@ TEST(Unit_RemoteSession, SessionsDoNotShareRequestTables)
 
     std::atomic_int accepted_count = 0;
 
-    auto accepter = appbox::RemoteAccepter::Create(pipe);
+    const auto accepter_created = appbox::RemoteAccepter::Create(pipe);
+    ASSERT_TRUE(accepter_created.has_value());
+    const auto& accepter = *accepter_created;
     accepter->SetSessionCallback([&accepted_count](const appbox::RemoteSession::Ptr& session) {
         const int tag = accepted_count.fetch_add(1);
 
@@ -200,19 +307,23 @@ TEST(Unit_RemoteSession, SessionsDoNotShareRequestTables)
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             if (auto bound = weak_session.lock())
             {
-                bound->SendResponse(id, tag);
+                (void)bound->SendResponse(id, tag);
             }
         });
     });
-    ASSERT_TRUE(accepter->Start());
+    ASSERT_TRUE(accepter->Start().has_value());
 
-    auto first_connector = appbox::RemoteConnector::Create(pipe);
-    auto first = first_connector->Connect(5000);
-    ASSERT_NE(first, nullptr);
+    const auto first_connector = appbox::RemoteConnector::Create(pipe);
+    ASSERT_TRUE(first_connector.has_value());
+    const auto first_connected = (*first_connector)->Connect(5000);
+    ASSERT_TRUE(first_connected.has_value()) << static_cast<int>(first_connected.error());
+    const auto& first = *first_connected;
 
-    auto second_connector = appbox::RemoteConnector::Create(pipe);
-    auto second = second_connector->Connect(5000);
-    ASSERT_NE(second, nullptr);
+    const auto second_connector = appbox::RemoteConnector::Create(pipe);
+    ASSERT_TRUE(second_connector.has_value());
+    const auto second_connected = (*second_connector)->Connect(5000);
+    ASSERT_TRUE(second_connected.has_value()) << static_cast<int>(second_connected.error());
+    const auto& second = *second_connected;
 
     /* Both requests carry the first id of their own session. */
     auto first_pending = first->Call(kTagMethod, nlohmann::json());

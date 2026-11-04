@@ -2,6 +2,7 @@
 #include "RegQueryKeyName.hpp"
 #include "WString.hpp"
 #include <vector>
+#include "utils/TestText.hpp"
 
 /**
  * @brief Create a key below HKCU and query its kernel object names.
@@ -19,9 +20,10 @@ appbox::test::ProtocolRegQueryKeyName::Rsp appbox::test::ProbeRegQueryKeyName_En
 
     appbox::test::ProtocolRegQueryKeyName::Rsp rsp;
 
-    HKEY key = nullptr;
-    rsp.create_code = RegCreateKeyExW(HKEY_CURRENT_USER, appbox::UTF8ToWide(req.Key).c_str(), 0, nullptr, 0,
-                                      KEY_ALL_ACCESS, nullptr, &key, &rsp.disposition);
+    HKEY               key = nullptr;
+    const std::wstring wide_key = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
+    rsp.create_code = RegCreateKeyExW(HKEY_CURRENT_USER, wide_key.c_str(), 0, nullptr, 0, KEY_ALL_ACCESS, nullptr, &key,
+                                      &rsp.disposition);
     if (rsp.create_code != ERROR_SUCCESS)
     {
         return rsp;
@@ -46,7 +48,7 @@ appbox::test::ProtocolRegQueryKeyName::Rsp appbox::test::ProbeRegQueryKeyName_En
                 memcpy(&name_len, buf, sizeof(name_len));
                 if (name_len > 0 && 4 + name_len <= sizeof(buf))
                 {
-                    rsp.key_name = appbox::WideToUTF8(
+                    rsp.key_name = appbox::test::ToUTF8OrEmpty(
                         std::wstring(reinterpret_cast<const wchar_t*>(buf + 4), name_len / sizeof(wchar_t)));
                 }
             }
@@ -70,7 +72,7 @@ appbox::test::ProtocolRegQueryKeyName::Rsp appbox::test::ProbeRegQueryKeyName_En
                 memcpy(&buffer, reinterpret_cast<BYTE*>(buf) + sizeof(void*), sizeof(buffer));
                 if (length > 0 && buffer != nullptr)
                 {
-                    rsp.object_name = appbox::WideToUTF8(
+                    rsp.object_name = appbox::test::ToUTF8OrEmpty(
                         std::wstring(reinterpret_cast<const wchar_t*>(buffer), length / sizeof(wchar_t)));
                 }
             }

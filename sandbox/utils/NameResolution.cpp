@@ -38,26 +38,16 @@ std::string appbox::network::AnsiNameToUTF8(PCSTR name)
         return std::string();
     }
 
-    try
-    {
-        return appbox::WideToUTF8(text);
-    }
-    catch (...)
-    {
-        return std::string();
-    }
+    /* The conversion reports its failure by a code, so a name the code page
+     * cannot carry is an empty name and never an exception of the hook path. */
+    return appbox::WideToUTF8(text).value_or(std::string());
 }
 
 std::wstring appbox::network::RedirectToWide(const std::string& redirect)
 {
-    try
-    {
-        return appbox::UTF8ToWide(redirect);
-    }
-    catch (...)
-    {
-        return std::wstring();
-    }
+    /* A redirect the code page cannot carry is an empty redirect and never an
+     * exception of the hook path. */
+    return appbox::UTF8ToWide(redirect).value_or(std::wstring());
 }
 
 appbox::network::RequestedFamily appbox::network::FamilyOf(int family)

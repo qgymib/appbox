@@ -70,7 +70,7 @@ DWORD ReadStringValue(HKEY key, const std::wstring& name, std::string& data)
             {
                 text.pop_back();
             }
-            data = appbox::WideToUTF8(text);
+            data = appbox::WideToUTF8(text).value_or(std::string());
             return ERROR_SUCCESS;
         }
 
@@ -126,19 +126,20 @@ std::vector<std::wstring> ChildArguments(const appbox::test::ProtocolRegTwoProce
     if (!req.Root.empty())
     {
         args.push_back(L"--root");
-        args.push_back(appbox::UTF8ToWide(req.Root));
+        args.push_back(appbox::UTF8ToWide(req.Root).value_or(std::wstring()));
     }
 
     const std::string expected = req.ChildExpect.empty() ? req.ParentData : req.ChildExpect;
 
     args.push_back(L"--key");
-    args.push_back(appbox::UTF8ToWide(req.Key));
+    args.push_back(appbox::UTF8ToWide(req.Key).value_or(std::wstring()));
     args.push_back(L"--read");
-    args.push_back(appbox::UTF8ToWide(req.ParentValue));
+    args.push_back(appbox::UTF8ToWide(req.ParentValue).value_or(std::wstring()));
     args.push_back(L"--expect");
-    args.push_back(appbox::UTF8ToWide(expected));
+    args.push_back(appbox::UTF8ToWide(expected).value_or(std::wstring()));
     args.push_back(L"--set");
-    args.push_back(appbox::UTF8ToWide(req.ChildValue) + L"=" + appbox::UTF8ToWide(req.ChildData));
+    args.push_back(appbox::UTF8ToWide(req.ChildValue).value_or(std::wstring()) + L"=" +
+                   appbox::UTF8ToWide(req.ChildData).value_or(std::wstring()));
     args.push_back(L"--set");
     args.push_back(observation + L"={read}");
     args.push_back(L"--hold-ms");
@@ -185,7 +186,7 @@ appbox::test::ProtocolRegTwoProcesses::Rsp appbox::test::ProbeRegTwoProcesses_En
         return rsp;
     }
 
-    const std::wstring key_path = appbox::UTF8ToWide(req.Key);
+    const std::wstring key_path = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
 
     HKEY key = nullptr;
     rsp.create_code =
@@ -195,8 +196,8 @@ appbox::test::ProtocolRegTwoProcesses::Rsp appbox::test::ProbeRegTwoProcesses_En
         return rsp;
     }
 
-    const std::wstring parent_name = appbox::UTF8ToWide(req.ParentValue);
-    rsp.set_code = WriteStringValue(key, parent_name, appbox::UTF8ToWide(req.ParentData));
+    const std::wstring parent_name = appbox::UTF8ToWide(req.ParentValue).value_or(std::wstring());
+    rsp.set_code = WriteStringValue(key, parent_name, appbox::UTF8ToWide(req.ParentData).value_or(std::wstring()));
     if (rsp.set_code == ERROR_SUCCESS)
     {
         std::string readback;
@@ -208,7 +209,8 @@ appbox::test::ProtocolRegTwoProcesses::Rsp appbox::test::ProbeRegTwoProcesses_En
     RegCloseKey(key);
 
     /* The observation of the child is a value of the same key. */
-    const std::wstring observation = appbox::UTF8ToWide(appbox::test::kRegChildObservationValue);
+    const std::wstring observation =
+        appbox::UTF8ToWide(appbox::test::kRegChildObservationValue).value_or(std::wstring());
 
     /*
      * The worker is created by this process, so the sandbox is injected into it
@@ -217,7 +219,7 @@ appbox::test::ProtocolRegTwoProcesses::Rsp appbox::test::ProbeRegTwoProcesses_En
      * other bit size starts a worker of that bit size.
      */
     const std::wstring child_image =
-        req.ChildExecutable.empty() ? ModulePath() : appbox::UTF8ToWide(req.ChildExecutable);
+        req.ChildExecutable.empty() ? ModulePath() : appbox::UTF8ToWide(req.ChildExecutable).value_or(std::wstring());
     std::wstring cmdline = appbox::BuildCommandLine(child_image, ChildArguments(req, observation));
 
     STARTUPINFOW        startup_info;
@@ -239,7 +241,8 @@ appbox::test::ProtocolRegTwoProcesses::Rsp appbox::test::ProbeRegTwoProcesses_En
     for (;;)
     {
         std::string text;
-        const DWORD code = ReadValueOfKey(root, key_path, appbox::UTF8ToWide(req.ChildValue), text);
+        const DWORD code =
+            ReadValueOfKey(root, key_path, appbox::UTF8ToWide(req.ChildValue).value_or(std::wstring()), text);
         rsp.child_value_read_code = code;
         if (code == ERROR_SUCCESS)
         {

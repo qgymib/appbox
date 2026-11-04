@@ -33,7 +33,7 @@ ProtocolReadFileFull::Rsp ReadFile(const std::wstring& file, const std::filesyst
                                    const appbox::LauncherConfig& config)
 {
     ProtocolReadFileFull::Req req;
-    req.FileName = appbox::WideToUTF8(file);
+    req.FileName = appbox::WideToUTF8(file).value_or(std::string());
     return Probe(cwd, config).Call<ProtocolReadFileFull>(req);
 }
 

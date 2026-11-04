@@ -61,19 +61,19 @@ TEST_F(E2E_Fs, ReparsePoint_UnknownTagIsForwarded)
 
     ProtocolReparsePoint::Req::Item create;
     create.action = ProtocolReparsePoint::Req::Item::Action::SetTag;
-    create.path = appbox::WideToUTF8(folder + L"\\entry.txt");
+    create.path = appbox::WideToUTF8(folder + L"\\entry.txt").value_or(std::string());
     create.tag = kForeignTag;
     create.directory = false;
     req.items.push_back(create);
 
     ProtocolReparsePoint::Req::Item attributes;
     attributes.action = ProtocolReparsePoint::Req::Item::Action::Attributes;
-    attributes.path = appbox::WideToUTF8(folder + L"\\entry.txt");
+    attributes.path = appbox::WideToUTF8(folder + L"\\entry.txt").value_or(std::string());
     req.items.push_back(attributes);
 
     ProtocolReparsePoint::Req::Item read;
     read.action = ProtocolReparsePoint::Req::Item::Action::Read;
-    read.path = appbox::WideToUTF8(folder + L"\\entry.txt");
+    read.path = appbox::WideToUTF8(folder + L"\\entry.txt").value_or(std::string());
     req.items.push_back(read);
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolReparsePoint>(req);

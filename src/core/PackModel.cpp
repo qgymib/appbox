@@ -370,7 +370,8 @@ bool PackModel::ImportFolder(const std::string& preset_id, const std::wstring& s
     {
         if (imported.preset_id == preset_id && EqualsIgnoreCase(imported.import_name, name))
         {
-            error = "'" + WideToUTF8(name) + "' already exists below " + WideToUTF8(preset.display_name);
+            error = "'" + WideToUTF8(name).value_or(std::string()) + "' already exists below " +
+                    WideToUTF8(preset.display_name).value_or(std::string());
             return false;
         }
     }
@@ -489,14 +490,14 @@ bool PackModel::ImportFiles(const std::string& preset_id, const std::wstring& ta
         const auto name = source.filename().wstring();
         if (name.empty() || name == L"." || name == L"..")
         {
-            error = "the source file has no usable name: " + WideToUTF8(source_path);
+            error = "the source file has no usable name: " + WideToUTF8(source_path).value_or(std::string());
             return false;
         }
 
         std::error_code ec;
         if (!std::filesystem::is_regular_file(source, ec))
         {
-            error = "the source file does not exist: " + WideToUTF8(source_path);
+            error = "the source file does not exist: " + WideToUTF8(source_path).value_or(std::string());
             return false;
         }
 
@@ -512,7 +513,7 @@ bool PackModel::ImportFiles(const std::string& preset_id, const std::wstring& ta
         });
         if (duplicated)
         {
-            error = "'" + WideToUTF8(name) + "' was selected twice";
+            error = "'" + WideToUTF8(name).value_or(std::string()) + "' was selected twice";
             return false;
         }
 
@@ -523,7 +524,7 @@ bool PackModel::ImportFiles(const std::string& preset_id, const std::wstring& ta
         const auto path = canonical_dir.empty() ? name : canonical_dir + L"\\" + name;
         if (HostImportCarries(preset_id, path))
         {
-            error = "'" + WideToUTF8(name) + "' already exists in the imported folder";
+            error = "'" + WideToUTF8(name).value_or(std::string()) + "' already exists in the imported folder";
             return false;
         }
 
@@ -602,13 +603,13 @@ bool PackModel::CreateVirtualDirectory(const std::string& preset_id, const std::
 
     if (!IsPlainName(name))
     {
-        error = "'" + WideToUTF8(name) + "' is not a usable folder name";
+        error = "'" + WideToUTF8(name).value_or(std::string()) + "' is not a usable folder name";
         return false;
     }
 
     if (!DirectoryParentExists(preset_id, parent, true))
     {
-        error = "'" + WideToUTF8(parent) + "' is not a folder of the view";
+        error = "'" + WideToUTF8(parent).value_or(std::string()) + "' is not a folder of the view";
         return false;
     }
 
@@ -638,13 +639,13 @@ bool PackModel::RenameVirtualDirectory(const std::string& preset_id, const std::
     const auto path = NormalizeRelativeDir(target_dir);
     if (path.empty() || !HasVirtualDirectory(preset_id, path))
     {
-        error = "'" + WideToUTF8(target_dir) + "' is not a folder of the view";
+        error = "'" + WideToUTF8(target_dir).value_or(std::string()) + "' is not a folder of the view";
         return false;
     }
 
     if (!IsPlainName(new_name))
     {
-        error = "'" + WideToUTF8(new_name) + "' is not a usable folder name";
+        error = "'" + WideToUTF8(new_name).value_or(std::string()) + "' is not a usable folder name";
         return false;
     }
 
@@ -785,26 +786,26 @@ bool PackModel::RestoreVirtualDirectory(const std::string& preset_id, const std:
     const auto parent = ParentDirectory(path);
     if (!DirectoryParentExists(preset_id, parent, false))
     {
-        error = "'" + WideToUTF8(parent) + "' is not a folder of the view";
+        error = "'" + WideToUTF8(parent).value_or(std::string()) + "' is not a folder of the view";
         return false;
     }
 
     if (HasVirtualDirectory(preset_id, path))
     {
-        error = "'" + WideToUTF8(path) + "' is listed twice";
+        error = "'" + WideToUTF8(path).value_or(std::string()) + "' is listed twice";
         return false;
     }
 
     ImportedFolder imported;
     if (GetImport(preset_id, path, imported))
     {
-        error = "'" + WideToUTF8(path) + "' is an imported folder";
+        error = "'" + WideToUTF8(path).value_or(std::string()) + "' is an imported folder";
         return false;
     }
 
     if (HasImportedFileAt(preset_id, path))
     {
-        error = "'" + WideToUTF8(path) + "' is an imported file";
+        error = "'" + WideToUTF8(path).value_or(std::string()) + "' is an imported file";
         return false;
     }
 
@@ -834,7 +835,7 @@ bool PackModel::AddWhiteout(const std::string& preset_id, const std::wstring& ta
 
     if (!IsPlainName(name))
     {
-        error = "'" + WideToUTF8(name) + "' is not a usable name";
+        error = "'" + WideToUTF8(name).value_or(std::string()) + "' is not a usable name";
         return false;
     }
 
@@ -844,13 +845,13 @@ bool PackModel::AddWhiteout(const std::string& preset_id, const std::wstring& ta
      */
     if (IsMarkerName(name))
     {
-        error = "'" + WideToUTF8(name) + "' is a name the sandbox view reserves";
+        error = "'" + WideToUTF8(name).value_or(std::string()) + "' is a name the sandbox view reserves";
         return false;
     }
 
     if (HasWhiteout(preset_id, directory.empty() ? name : directory + L"\\" + name))
     {
-        error = "'" + WideToUTF8(name) + "' is hidden already";
+        error = "'" + WideToUTF8(name).value_or(std::string()) + "' is hidden already";
         return false;
     }
 
@@ -1016,7 +1017,7 @@ bool PackModel::ResolveStartupFile(const std::string& preset_id, const std::wstr
      */
     if (!IsStartableFile(relative))
     {
-        error = "the startup file '" + WideToUTF8(relative) + "' is not a startable file (" +
+        error = "the startup file '" + WideToUTF8(relative).value_or(std::string()) + "' is not a startable file (" +
                 StartupFileExtensionList() + ")";
         return false;
     }
@@ -1035,7 +1036,7 @@ bool PackModel::ResolveStartupFile(const std::string& preset_id, const std::wstr
     const auto name = LeafName(view_path);
     if (name.empty() || !IsDirectoryOfView(preset_id, directory))
     {
-        error = "the startup file '" + WideToUTF8(view_path) + "' is not a file of the view";
+        error = "the startup file '" + WideToUTF8(view_path).value_or(std::string()) + "' is not a file of the view";
         return false;
     }
 
@@ -1059,7 +1060,7 @@ bool PackModel::ResolveStartupFile(const std::string& preset_id, const std::wstr
 
         if (!exists)
         {
-            error = "the startup file does not exist: " + WideToUTF8(view_path);
+            error = "the startup file does not exist: " + WideToUTF8(view_path).value_or(std::string());
             return false;
         }
     }
@@ -1160,7 +1161,8 @@ bool PackModel::SetStartupFiles(std::vector<StartupFile> files, std::string& err
         });
         if (same_path)
         {
-            error = "the startup file '" + WideToUTF8(resolved.relative_path) + "' is listed twice";
+            error =
+                "the startup file '" + WideToUTF8(resolved.relative_path).value_or(std::string()) + "' is listed twice";
             return false;
         }
 
@@ -1169,7 +1171,8 @@ bool PackModel::SetStartupFiles(std::vector<StartupFile> files, std::string& err
         });
         if (same_trigger)
         {
-            error = "the startup file trigger '" + WideToUTF8(resolved.trigger) + "' is used twice";
+            error =
+                "the startup file trigger '" + WideToUTF8(resolved.trigger).value_or(std::string()) + "' is used twice";
             return false;
         }
 
@@ -1193,13 +1196,13 @@ bool PackModel::RestoreImportedFolder(const std::string& preset_id, const std::w
 
     if (!IsPlainName(import_name))
     {
-        error = "'" + WideToUTF8(import_name) + "' is not a usable folder name";
+        error = "'" + WideToUTF8(import_name).value_or(std::string()) + "' is not a usable folder name";
         return false;
     }
 
     if (source_path.empty())
     {
-        error = "'" + WideToUTF8(import_name) + "' has no source folder";
+        error = "'" + WideToUTF8(import_name).value_or(std::string()) + "' has no source folder";
         return false;
     }
 
@@ -1207,7 +1210,8 @@ bool PackModel::RestoreImportedFolder(const std::string& preset_id, const std::w
     {
         if (imported.preset_id == preset_id && EqualsIgnoreCase(imported.import_name, import_name))
         {
-            error = "'" + WideToUTF8(import_name) + "' already exists below " + WideToUTF8(preset.display_name);
+            error = "'" + WideToUTF8(import_name).value_or(std::string()) + "' already exists below " +
+                    WideToUTF8(preset.display_name).value_or(std::string());
             return false;
         }
     }
@@ -1232,7 +1236,7 @@ bool PackModel::RestoreImportedFile(const std::string& preset_id, const std::wst
 
     if (!IsPlainName(file_name))
     {
-        error = "'" + WideToUTF8(file_name) + "' is not a usable file name";
+        error = "'" + WideToUTF8(file_name).value_or(std::string()) + "' is not a usable file name";
         return false;
     }
 
@@ -1251,7 +1255,7 @@ bool PackModel::RestoreImportedFile(const std::string& preset_id, const std::wst
 
     if (source_path.empty())
     {
-        error = "'" + WideToUTF8(file_name) + "' has no source file";
+        error = "'" + WideToUTF8(file_name).value_or(std::string()) + "' has no source file";
         return false;
     }
 
@@ -1286,7 +1290,7 @@ bool PackModel::RestoreStartupFile(const std::string& preset_id, const std::wstr
     });
     if (same_path)
     {
-        error = "the startup file '" + WideToUTF8(resolved.relative_path) + "' is listed twice";
+        error = "the startup file '" + WideToUTF8(resolved.relative_path).value_or(std::string()) + "' is listed twice";
         return false;
     }
 
@@ -1295,7 +1299,7 @@ bool PackModel::RestoreStartupFile(const std::string& preset_id, const std::wstr
     });
     if (same_trigger)
     {
-        error = "the startup file trigger '" + WideToUTF8(resolved.trigger) + "' is used twice";
+        error = "the startup file trigger '" + WideToUTF8(resolved.trigger).value_or(std::string()) + "' is used twice";
         return false;
     }
 
@@ -1470,20 +1474,20 @@ std::string PackModel::CheckVirtualDirectoryName(const std::string& preset_id, c
 {
     if (!IsPlainName(name))
     {
-        return "'" + WideToUTF8(name) + "' is not a usable folder name";
+        return "'" + WideToUTF8(name).value_or(std::string()) + "' is not a usable folder name";
     }
 
     const auto path = parent_dir.empty() ? name : parent_dir + L"\\" + name;
 
     if (HasVirtualDirectory(preset_id, path))
     {
-        return "'" + WideToUTF8(name) + "' is already a folder of the view";
+        return "'" + WideToUTF8(name).value_or(std::string()) + "' is already a folder of the view";
     }
 
     ImportedFolder imported;
     if (GetImport(preset_id, path, imported))
     {
-        return "'" + WideToUTF8(name) + "' is an imported folder";
+        return "'" + WideToUTF8(name).value_or(std::string()) + "' is an imported folder";
     }
 
     /*
@@ -1492,7 +1496,7 @@ std::string PackModel::CheckVirtualDirectoryName(const std::string& preset_id, c
      */
     if (HasImportedFileAt(preset_id, path))
     {
-        return "'" + WideToUTF8(name) + "' is an imported file";
+        return "'" + WideToUTF8(name).value_or(std::string()) + "' is an imported file";
     }
 
     /*
@@ -1507,7 +1511,7 @@ std::string PackModel::CheckVirtualDirectoryName(const std::string& preset_id, c
         std::error_code ec;
         if (std::filesystem::exists(std::filesystem::path(host_parent) / name, ec) && !ec)
         {
-            return "'" + WideToUTF8(name) + "' already exists in the host folder of the view";
+            return "'" + WideToUTF8(name).value_or(std::string()) + "' already exists in the host folder of the view";
         }
     }
 
@@ -1535,7 +1539,7 @@ std::string PackModel::CheckImportedFilePlacement(const std::string& preset_id, 
 
     if (!IsPlainName(file_name))
     {
-        return "'" + WideToUTF8(file_name) + "' is not a usable file name";
+        return "'" + WideToUTF8(file_name).value_or(std::string()) + "' is not a usable file name";
     }
 
     /*
@@ -1546,19 +1550,20 @@ std::string PackModel::CheckImportedFilePlacement(const std::string& preset_id, 
      */
     if (!IsDirectoryOfView(preset_id, directory))
     {
-        return "'" + WideToUTF8(directory) + "' is not a folder of the view";
+        return "'" + WideToUTF8(directory).value_or(std::string()) + "' is not a folder of the view";
     }
 
     const auto path = directory.empty() ? file_name : directory + L"\\" + file_name;
 
     if (HasVirtualDirectory(preset_id, path))
     {
-        return "'" + WideToUTF8(file_name) + "' is a folder of the view";
+        return "'" + WideToUTF8(file_name).value_or(std::string()) + "' is a folder of the view";
     }
 
     if (HasImportedFileAt(preset_id, path))
     {
-        return "'" + WideToUTF8(file_name) + "' was already imported into " + WideToUTF8(directory);
+        return "'" + WideToUTF8(file_name).value_or(std::string()) + "' was already imported into " +
+               WideToUTF8(directory).value_or(std::string());
     }
 
     return {};

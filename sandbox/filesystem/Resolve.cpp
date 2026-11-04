@@ -64,19 +64,19 @@ appbox::filesystem::ResolveResult::Ptr appbox::filesystem::Resolve(const std::ws
 
 void appbox::filesystem::to_json(nlohmann::json& j, const ResolveFsMapping& r)
 {
-    j["mapped_nt_path"] = appbox::WideToUTF8(r.mapped_nt_path);
-    j["host_nt_path"] = appbox::WideToUTF8(r.host_nt_path);
+    j["mapped_nt_path"] = appbox::WideToUTF8(r.mapped_nt_path).value_or(std::string());
+    j["host_nt_path"] = appbox::WideToUTF8(r.host_nt_path).value_or(std::string());
 }
 
 void appbox::filesystem::from_json(const nlohmann::json& j, ResolveFsMapping& r)
 {
-    r.mapped_nt_path = appbox::UTF8ToWide(j.value("mapped_nt_path", ""));
-    r.host_nt_path = appbox::UTF8ToWide(j.value("host_nt_path", ""));
+    r.mapped_nt_path = appbox::UTF8ToWide(j.value("mapped_nt_path", "")).value_or(std::wstring());
+    r.host_nt_path = appbox::UTF8ToWide(j.value("host_nt_path", "")).value_or(std::wstring());
 }
 
 void appbox::filesystem::to_json(nlohmann::json& j, const ResolveFs& r)
 {
-    j["fs_upper"] = appbox::WideToUTF8(r.fs_upper);
+    j["fs_upper"] = appbox::WideToUTF8(r.fs_upper).value_or(std::string());
 
     for (auto& ele : r.fs_lower)
     {
@@ -86,7 +86,7 @@ void appbox::filesystem::to_json(nlohmann::json& j, const ResolveFs& r)
 
 void appbox::filesystem::from_json(const nlohmann::json& j, ResolveFs& r)
 {
-    r.fs_upper = appbox::UTF8ToWide(j.value("fs_upper", ""));
+    r.fs_upper = appbox::UTF8ToWide(j.value("fs_upper", "")).value_or(std::wstring());
     j.at("fs_lower").get_to(r.fs_lower);
 }
 
@@ -94,22 +94,22 @@ void appbox::filesystem::to_json(nlohmann::json& j, const ResolveResult& r)
 {
     j["status"] = r.status;
     j["bParentExist"] = r.bParentExist;
-    j["uPath"] = appbox::WideToUTF8(r.uPath);
+    j["uPath"] = appbox::WideToUTF8(r.uPath).value_or(std::string());
     j["uPathBaseSize"] = r.uPathBaseSize;
 
     j["bInUpper"] = r.bInUpper;
     for (const auto& p : r.hPath)
     {
-        j["hPath"].push_back(appbox::WideToUTF8(p.fPath));
+        j["hPath"].push_back(appbox::WideToUTF8(p.fPath).value_or(std::string()));
     }
 
-    j["whiteoutPath"] = appbox::WideToUTF8(r.whiteoutPath);
-    j["opaquePath"] = appbox::WideToUTF8(r.opaquePath);
+    j["whiteoutPath"] = appbox::WideToUTF8(r.whiteoutPath).value_or(std::string());
+    j["opaquePath"] = appbox::WideToUTF8(r.opaquePath).value_or(std::string());
     j["bWhiteoutInUpper"] = r.bWhiteoutInUpper;
     j["bOpaqueInUpper"] = r.bOpaqueInUpper;
 
     j["hostLayer"] = r.hostLayer;
-    j["hostPath"] = appbox::WideToUTF8(r.hostPath);
+    j["hostPath"] = appbox::WideToUTF8(r.hostPath).value_or(std::string());
     j["bSandboxHolds"] = r.bSandboxHolds;
 
     j["bIsolationListed"] = r.bIsolationListed;
@@ -117,6 +117,6 @@ void appbox::filesystem::to_json(nlohmann::json& j, const ResolveResult& r)
     j["isolation"] = appbox::filesystem_isolation::IsolationToken(r.isolation);
     j["isolationSource"] = appbox::filesystem_isolation::EntryKindToken(r.isolationSource);
 
-    j["viewPath"] = appbox::WideToUTF8(r.viewPath);
+    j["viewPath"] = appbox::WideToUTF8(r.viewPath).value_or(std::string());
     j["reparseStatus"] = r.reparseStatus;
 }

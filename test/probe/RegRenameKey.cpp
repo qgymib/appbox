@@ -69,7 +69,8 @@ void DumpStringValues(HKEY root, const std::wstring& key_path, DWORD& code, std:
             continue;
         }
 
-        values[appbox::WideToUTF8(name)] = appbox::WideToUTF8(reinterpret_cast<const wchar_t*>(data));
+        values[appbox::WideToUTF8(name).value_or(std::string())] =
+            appbox::WideToUTF8(reinterpret_cast<const wchar_t*>(data)).value_or(std::string());
     }
 
     RegCloseKey(key);
@@ -99,7 +100,7 @@ void DumpSubKeyNames(HKEY root, const std::wstring& key_path, std::vector<std::s
             break;
         }
 
-        names.push_back(appbox::WideToUTF8(name));
+        names.push_back(appbox::WideToUTF8(name).value_or(std::string()));
     }
 
     RegCloseKey(key);
@@ -130,8 +131,8 @@ appbox::test::ProtocolRegRenameKey::Rsp appbox::test::ProbeRegRenameKey_Entry(
         return rsp;
     }
 
-    const auto key_path = appbox::UTF8ToWide(req.Key);
-    const auto new_name = appbox::UTF8ToWide(req.NewName);
+    const auto key_path = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
+    const auto new_name = appbox::UTF8ToWide(req.NewName).value_or(std::wstring());
 
     /*
      * The kernel asks a rename for the whole `KEY_WRITE` mask of the handle,

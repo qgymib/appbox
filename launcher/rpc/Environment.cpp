@@ -34,7 +34,8 @@ bool WriteEnvironmentState(const std::wstring& path, const std::string& text, st
     std::filesystem::create_directories(target.parent_path(), ec);
     if (ec)
     {
-        error = "failed to create '" + appbox::WideToUTF8(target.parent_path().wstring()) + "': " + ec.message();
+        error = "failed to create '" + appbox::WideToUTF8(target.parent_path().wstring()).value_or(std::string()) +
+                "': " + ec.message();
         return false;
     }
 
@@ -42,7 +43,7 @@ bool WriteEnvironmentState(const std::wstring& path, const std::string& text, st
         std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
         if (!stream.is_open())
         {
-            error = "failed to open '" + appbox::WideToUTF8(temporary.wstring()) + "'";
+            error = "failed to open '" + appbox::WideToUTF8(temporary.wstring()).value_or(std::string()) + "'";
             return false;
         }
 
@@ -50,7 +51,7 @@ bool WriteEnvironmentState(const std::wstring& path, const std::string& text, st
         stream.flush();
         if (!stream.good())
         {
-            error = "failed to write '" + appbox::WideToUTF8(temporary.wstring()) + "'";
+            error = "failed to write '" + appbox::WideToUTF8(temporary.wstring()).value_or(std::string()) + "'";
             return false;
         }
     }
@@ -58,8 +59,8 @@ bool WriteEnvironmentState(const std::wstring& path, const std::string& text, st
     std::filesystem::rename(temporary, target, ec);
     if (ec)
     {
-        error = "failed to move '" + appbox::WideToUTF8(temporary.wstring()) + "' over '" +
-                appbox::WideToUTF8(target.wstring()) + "': " + ec.message();
+        error = "failed to move '" + appbox::WideToUTF8(temporary.wstring()).value_or(std::string()) + "' over '" +
+                appbox::WideToUTF8(target.wstring()).value_or(std::string()) + "': " + ec.message();
         return false;
     }
 
@@ -96,5 +97,10 @@ APPBOX_LAUNCHER_RPC_DEFINE(MsgEnvironment, id, param)
      * session of the request answers it, which is the only end which knows the
      * request id of its peer.
      */
-    session->SendResponse(id, {});
+    const auto answered = session->SendResponse(id, {});
+    if (!answered.has_value())
+    {
+        SPDLOG_ERROR("the answer of the environment of the sandbox cannot be sent: {}",
+                     static_cast<int>(answered.error()));
+    }
 }

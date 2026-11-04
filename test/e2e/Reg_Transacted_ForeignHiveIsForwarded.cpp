@@ -101,11 +101,12 @@ TEST_F(E2E_Reg, Transacted_ForeignHiveIsForwarded)
 
     auto config = tree.Build();
 
-    ScratchHive hive(GetCWD() / (L"transacted-" + appbox::UTF8ToWide(appbox::RandomString(8)) + L".hiv"));
+    ScratchHive hive(GetCWD() /
+                     (L"transacted-" + appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring()) + L".hiv"));
     ASSERT_TRUE(hive.created()) << "the hive of the case cannot be created";
 
     ProtocolRegTransacted::Req req;
-    req.Hive = appbox::WideToUTF8(hive.path().wstring());
+    req.Hive = appbox::WideToUTF8(hive.path().wstring()).value_or(std::string());
     req.Key = "AppBoxTransacted";
     req.Api = ProtocolRegTransacted::ApiKind::Create;
     req.Access = ProtocolRegTransacted::AccessKind::Write;

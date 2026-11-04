@@ -4,6 +4,7 @@
 #include <vector>
 #include "WString.hpp"
 #include "ReparsePoint.hpp"
+#include "utils/TestText.hpp"
 
 /* clang-format off */
 typedef NTSTATUS (*T_NtCreateFileProbe)(
@@ -241,12 +242,12 @@ static void ParseLinkData(const std::vector<BYTE>& data, appbox::test::ProtocolR
     const std::size_t printBegin = pathBufferOffset + printOffset;
     if (substituteBegin + substituteLength <= data.size() && (substituteLength % sizeof(wchar_t)) == 0)
     {
-        item.substitute = appbox::WideToUTF8(std::wstring(
+        item.substitute = appbox::test::ToUTF8OrEmpty(std::wstring(
             reinterpret_cast<const wchar_t*>(data.data() + substituteBegin), substituteLength / sizeof(wchar_t)));
     }
     if (printBegin + printLength <= data.size() && (printLength % sizeof(wchar_t)) == 0)
     {
-        item.print = appbox::WideToUTF8(
+        item.print = appbox::test::ToUTF8OrEmpty(
             std::wstring(reinterpret_cast<const wchar_t*>(data.data() + printBegin), printLength / sizeof(wchar_t)));
     }
 }
@@ -284,8 +285,8 @@ static void EnsureParentDirectory(const std::wstring& path)
 static void CreateJunction(const ReparseApi& api, const appbox::test::ProtocolReparsePoint::Req::Item& item,
                            appbox::test::ProtocolReparsePoint::Item& result)
 {
-    const std::wstring path = appbox::UTF8ToWide(item.path);
-    const std::wstring target = appbox::UTF8ToWide(item.target);
+    const std::wstring path = appbox::UTF8ToWide(item.path).value_or(std::wstring());
+    const std::wstring target = appbox::UTF8ToWide(item.target).value_or(std::wstring());
 
     EnsureParentDirectory(path);
     CreateDirectoryW(path.c_str(), nullptr);
@@ -314,7 +315,7 @@ static void CreateJunction(const ReparseApi& api, const appbox::test::ProtocolRe
 static void CreateSymbolicLink(const appbox::test::ProtocolReparsePoint::Req::Item& item,
                                appbox::test::ProtocolReparsePoint::Item&            result)
 {
-    const std::wstring path = appbox::UTF8ToWide(item.path);
+    const std::wstring path = appbox::UTF8ToWide(item.path).value_or(std::wstring());
 
     EnsureParentDirectory(path);
 
@@ -324,7 +325,9 @@ static void CreateSymbolicLink(const appbox::test::ProtocolReparsePoint::Req::It
         flags |= kDirectoryLink;
     }
 
-    if (CreateSymbolicLinkW(path.c_str(), appbox::UTF8ToWide(item.target).c_str(), flags))
+    const std::wstring target = appbox::UTF8ToWide(item.target).value_or(std::wstring());
+
+    if (CreateSymbolicLinkW(path.c_str(), target.c_str(), flags))
     {
         result.status = STATUS_SUCCESS;
         return;
@@ -348,7 +351,7 @@ static void CreateSymbolicLink(const appbox::test::ProtocolReparsePoint::Req::It
 static void CreateTaggedObject(const ReparseApi& api, const appbox::test::ProtocolReparsePoint::Req::Item& item,
                                appbox::test::ProtocolReparsePoint::Item& result)
 {
-    const std::wstring path = appbox::UTF8ToWide(item.path);
+    const std::wstring path = appbox::UTF8ToWide(item.path).value_or(std::wstring());
     EnsureParentDirectory(path);
 
     if (item.directory)
@@ -396,7 +399,8 @@ static void RemoveReparsePoint(const ReparseApi& api, const appbox::test::Protoc
                                appbox::test::ProtocolReparsePoint::Item& result)
 {
     HANDLE handle = nullptr;
-    result.status = OpenLink(api, appbox::UTF8ToWide(item.path), GENERIC_READ | GENERIC_WRITE, handle);
+    result.status =
+        OpenLink(api, appbox::UTF8ToWide(item.path).value_or(std::wstring()), GENERIC_READ | GENERIC_WRITE, handle);
     if (!NT_SUCCESS(result.status))
     {
         return;
@@ -423,7 +427,7 @@ static void ReadReparsePoint(const ReparseApi& api, const appbox::test::Protocol
                              appbox::test::ProtocolReparsePoint::Item& result)
 {
     HANDLE handle = nullptr;
-    result.status = OpenLink(api, appbox::UTF8ToWide(item.path), GENERIC_READ, handle);
+    result.status = OpenLink(api, appbox::UTF8ToWide(item.path).value_or(std::wstring()), GENERIC_READ, handle);
     if (!NT_SUCCESS(result.status))
     {
         return;
@@ -456,7 +460,7 @@ static void ReadReparsePoint(const ReparseApi& api, const appbox::test::Protocol
 static void ReadAttributes(const appbox::test::ProtocolReparsePoint::Req::Item& item,
                            appbox::test::ProtocolReparsePoint::Item&            result)
 {
-    const std::wstring path = appbox::UTF8ToWide(item.path);
+    const std::wstring path = appbox::UTF8ToWide(item.path).value_or(std::wstring());
     result.attributes = GetFileAttributesW(path.c_str());
     result.code = result.attributes == INVALID_FILE_ATTRIBUTES ? GetLastError() : ERROR_SUCCESS;
     result.status = result.attributes == INVALID_FILE_ATTRIBUTES ? STATUS_OBJECT_NAME_NOT_FOUND : STATUS_SUCCESS;
@@ -475,7 +479,8 @@ static void ReadFullAttributes(const appbox::test::ProtocolReparsePoint::Req::It
                                appbox::test::ProtocolReparsePoint::Item&            result)
 {
     WIN32_FILE_ATTRIBUTE_DATA data = {};
-    if (GetFileAttributesExW(appbox::UTF8ToWide(item.path).c_str(), GetFileExInfoStandard, &data))
+    const std::wstring        path = appbox::UTF8ToWide(item.path).value_or(std::wstring());
+    if (GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data))
     {
         result.attributes = data.dwFileAttributes;
         result.status = STATUS_SUCCESS;
@@ -496,7 +501,7 @@ static void ReadText(const ReparseApi& api, const appbox::test::ProtocolReparseP
                      appbox::test::ProtocolReparsePoint::Item& result)
 {
     /* The name keeps the buffer alive for the whole call. */
-    const std::wstring nt_path = AsNtPath(appbox::UTF8ToWide(item.path));
+    const std::wstring nt_path = AsNtPath(appbox::UTF8ToWide(item.path).value_or(std::wstring()));
 
     UNICODE_STRING name;
     api.init_unicode(&name, nt_path.c_str());
@@ -587,8 +592,9 @@ appbox::test::ProtocolReparsePoint::Rsp appbox::test::ProbeReparsePoint_Entry(
         case Action::ReadText:
             ReadText(api, item, result);
             break;
-        case Action::RemoveDir:
-            if (RemoveDirectoryW(appbox::UTF8ToWide(item.path).c_str()))
+        case Action::RemoveDir: {
+            const std::wstring directory = appbox::UTF8ToWide(item.path).value_or(std::wstring());
+            if (RemoveDirectoryW(directory.c_str()))
             {
                 result.status = STATUS_SUCCESS;
             }
@@ -598,6 +604,7 @@ appbox::test::ProtocolReparsePoint::Rsp appbox::test::ProbeReparsePoint_Entry(
                 result.status = STATUS_UNSUCCESSFUL;
             }
             break;
+        }
         case Action::Unknown:
             result.status = static_cast<long>(STATUS_INVALID_PARAMETER);
             break;

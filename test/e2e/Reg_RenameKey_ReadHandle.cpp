@@ -39,7 +39,8 @@ TEST_F(E2E_Reg, RenameKey_ReadHandle)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\RenameKey_ReadHandle_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\RenameKey_ReadHandle_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto leaf = subkey.substr(subkey.find_last_of(L'\\') + 1);
     const auto new_name = leaf + L"_Renamed";
     const auto new_subkey = subkey.substr(0, subkey.find_last_of(L'\\') + 1) + new_name;
@@ -49,8 +50,8 @@ TEST_F(E2E_Reg, RenameKey_ReadHandle)
     ASSERT_TRUE(real_key.SetString(L"HostValue", L"host"));
 
     ProtocolRegRenameKey::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
-    req.NewName = appbox::WideToUTF8(new_name);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
+    req.NewName = appbox::WideToUTF8(new_name).value_or(std::string());
     req.Mode = ProtocolRegRenameKey::ModeKind::ReadHandle;
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegRenameKey>(req);
@@ -62,7 +63,9 @@ TEST_F(E2E_Reg, RenameKey_ReadHandle)
     EXPECT_EQ(rsp.old_open_code, static_cast<DWORD>(ERROR_SUCCESS));
     EXPECT_EQ(rsp.old_values.count("HostValue"), 1u);
     EXPECT_EQ(rsp.new_open_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
-    EXPECT_EQ(std::count(rsp.parent_subkeys.begin(), rsp.parent_subkeys.end(), appbox::WideToUTF8(leaf)), 1);
+    EXPECT_EQ(std::count(rsp.parent_subkeys.begin(), rsp.parent_subkeys.end(),
+                         appbox::WideToUTF8(leaf).value_or(std::string())),
+              1);
 
     /* The host registry is untouched. */
     EXPECT_EQ(real_key.GetString(L"HostValue"), L"host");

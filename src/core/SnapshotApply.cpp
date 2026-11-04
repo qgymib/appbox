@@ -1,3 +1,13 @@
+/*
+ * The header chain of this file reaches `<windows.h>` through
+ * `common/ErrorCode.hpp`, and `winnt.h` defines aliases of the `STATUS_*`
+ * names which `ntstatus.h` defines. A translation unit which spells such a
+ * name therefore takes the table of `ntstatus.h`, which `common/WinAPI.h`
+ * is the first header of when it is used; the two lines below give the same
+ * precedence without the rest of that header.
+ */
+#include <ntstatus.h>
+#define WIN32_NO_STATUS
 #include "SnapshotApply.hpp"
 #include "KnownFolderReference.hpp"
 #include "PresetDirectory.hpp"
@@ -560,9 +570,10 @@ void ApplyAddedFiles(const appbox::SnapshotDiff& diff, appbox::PackModel& model,
             if (!known && !EnsureFolders(model, entry.preset_id, path, detail))
             {
                 Report(progress, appbox::CaptureFillDomain::Filesystem, kFilesystemAction, object,
-                       appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail));
+                       appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail).value_or(std::wstring()));
                 errors.Add(appbox::CaptureFillDomain::Filesystem,
-                           L"'" + object + L"' could not be created: " + appbox::UTF8ToWide(detail));
+                           L"'" + object + L"' could not be created: " +
+                               appbox::UTF8ToWide(detail).value_or(std::wstring()));
                 return;
             }
 
@@ -591,9 +602,9 @@ void ApplyAddedFiles(const appbox::SnapshotDiff& diff, appbox::PackModel& model,
         if (!EnsureFolders(model, entry.preset_id, directory, detail))
         {
             Report(progress, appbox::CaptureFillDomain::Filesystem, kFilesystemAction, object,
-                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail));
-            errors.Add(appbox::CaptureFillDomain::Filesystem,
-                       L"'" + object + L"' could not be written: " + appbox::UTF8ToWide(detail));
+                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail).value_or(std::wstring()));
+            errors.Add(appbox::CaptureFillDomain::Filesystem, L"'" + object + L"' could not be written: " +
+                                                                  appbox::UTF8ToWide(detail).value_or(std::wstring()));
             return;
         }
 
@@ -615,9 +626,9 @@ void ApplyAddedFiles(const appbox::SnapshotDiff& diff, appbox::PackModel& model,
         if (!model.RestoreImportedFile(entry.preset_id, directory, name, source, detail))
         {
             Report(progress, appbox::CaptureFillDomain::Filesystem, kFilesystemAction, object,
-                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail));
-            errors.Add(appbox::CaptureFillDomain::Filesystem,
-                       L"'" + object + L"' could not be written: " + appbox::UTF8ToWide(detail));
+                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail).value_or(std::wstring()));
+            errors.Add(appbox::CaptureFillDomain::Filesystem, L"'" + object + L"' could not be written: " +
+                                                                  appbox::UTF8ToWide(detail).value_or(std::wstring()));
             return;
         }
 
@@ -688,10 +699,10 @@ void ApplyRemovedFiles(const appbox::SnapshotDiff& diff, appbox::PackModel& mode
         std::string detail;
         if (!model.AddWhiteout(entry.preset_id, ParentOf(path), name, detail))
         {
-            errors.Add(appbox::CaptureFillDomain::Filesystem,
-                       L"'" + object + L"' could not be hidden: " + appbox::UTF8ToWide(detail));
+            errors.Add(appbox::CaptureFillDomain::Filesystem, L"'" + object + L"' could not be hidden: " +
+                                                                  appbox::UTF8ToWide(detail).value_or(std::wstring()));
             Report(progress, appbox::CaptureFillDomain::Filesystem, kFilesystemAction, object,
-                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail));
+                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail).value_or(std::wstring()));
             continue;
         }
 
@@ -732,10 +743,10 @@ void ApplyRegistry(const appbox::SnapshotDiff& diff, appbox::RegistryModel& regi
         std::string detail;
         if (!registry.EnsureKey(path, detail) || !registry.SetKeyIsolation(path, appbox::RegistryKeyIsolation::Hide))
         {
-            errors.Add(appbox::CaptureFillDomain::Registry,
-                       L"the registry key '" + path + L"' could not be hidden: " + appbox::UTF8ToWide(detail));
+            errors.Add(appbox::CaptureFillDomain::Registry, L"the registry key '" + path + L"' could not be hidden: " +
+                                                                appbox::UTF8ToWide(detail).value_or(std::wstring()));
             Report(progress, appbox::CaptureFillDomain::Registry, kRegistryAction, object,
-                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail));
+                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail).value_or(std::wstring()));
             continue;
         }
 
@@ -782,9 +793,9 @@ void ApplyRegistry(const appbox::SnapshotDiff& diff, appbox::RegistryModel& regi
         {
             errors.Add(appbox::CaptureFillDomain::Registry, L"the registry value '" + value.name + L"' of '" +
                                                                 value.path + L"' could not be hidden: " +
-                                                                appbox::UTF8ToWide(detail));
+                                                                appbox::UTF8ToWide(detail).value_or(std::wstring()));
             Report(progress, appbox::CaptureFillDomain::Registry, kRegistryAction, object,
-                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail));
+                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail).value_or(std::wstring()));
             continue;
         }
 
@@ -808,10 +819,10 @@ void ApplyRegistry(const appbox::SnapshotDiff& diff, appbox::RegistryModel& regi
         std::string detail;
         if (!registry.EnsureKey(path, detail))
         {
-            errors.Add(appbox::CaptureFillDomain::Registry,
-                       L"the registry key '" + path + L"' could not be created: " + appbox::UTF8ToWide(detail));
+            errors.Add(appbox::CaptureFillDomain::Registry, L"the registry key '" + path + L"' could not be created: " +
+                                                                appbox::UTF8ToWide(detail).value_or(std::wstring()));
             Report(progress, appbox::CaptureFillDomain::Registry, kRegistryAction, object,
-                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail));
+                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail).value_or(std::wstring()));
             continue;
         }
 
@@ -847,9 +858,9 @@ void ApplyRegistry(const appbox::SnapshotDiff& diff, appbox::RegistryModel& regi
         {
             errors.Add(appbox::CaptureFillDomain::Registry, L"the registry value '" + value.name + L"' of '" +
                                                                 value.path + L"' could not be written: " +
-                                                                appbox::UTF8ToWide(detail));
+                                                                appbox::UTF8ToWide(detail).value_or(std::wstring()));
             Report(progress, appbox::CaptureFillDomain::Registry, kRegistryAction, object,
-                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail));
+                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail).value_or(std::wstring()));
             return;
         }
 
@@ -910,9 +921,9 @@ void ApplyEnvironment(const appbox::SnapshotDiff& diff, appbox::EnvironmentModel
         {
             errors.Add(appbox::CaptureFillDomain::Environment, L"the environment variable '" + candidate.name +
                                                                    L"' could not be written: " +
-                                                                   appbox::UTF8ToWide(detail));
+                                                                   appbox::UTF8ToWide(detail).value_or(std::wstring()));
             Report(progress, appbox::CaptureFillDomain::Environment, kEnvironmentAction, entry.name,
-                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail));
+                   appbox::CaptureFillState::Failed, appbox::UTF8ToWide(detail).value_or(std::wstring()));
             return;
         }
 

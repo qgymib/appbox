@@ -73,35 +73,35 @@ TEST_F(E2E_Fs, ReparsePoint_SymlinkRelativeAndAbsolute)
 
     ProtocolReparsePoint::Req::Item relative;
     relative.action = ProtocolReparsePoint::Req::Item::Action::Symlink;
-    relative.path = appbox::WideToUTF8(folder + L"\\relative_link");
+    relative.path = appbox::WideToUTF8(folder + L"\\relative_link").value_or(std::string());
     relative.target = "packed";
     relative.relative = true;
     req.items.push_back(relative);
 
     ProtocolReparsePoint::Req::Item read_relative;
     read_relative.action = ProtocolReparsePoint::Req::Item::Action::ReadText;
-    read_relative.path = appbox::WideToUTF8(folder + L"\\relative_link\\data.txt");
+    read_relative.path = appbox::WideToUTF8(folder + L"\\relative_link\\data.txt").value_or(std::string());
     req.items.push_back(read_relative);
 
     ProtocolReparsePoint::Req::Item read_relative_data;
     read_relative_data.action = ProtocolReparsePoint::Req::Item::Action::Read;
-    read_relative_data.path = appbox::WideToUTF8(folder + L"\\relative_link");
+    read_relative_data.path = appbox::WideToUTF8(folder + L"\\relative_link").value_or(std::string());
     req.items.push_back(read_relative_data);
 
     ProtocolReparsePoint::Req::Item absolute;
     absolute.action = ProtocolReparsePoint::Req::Item::Action::Symlink;
-    absolute.path = appbox::WideToUTF8(folder + L"\\absolute_link");
-    absolute.target = appbox::WideToUTF8(folder + L"\\packed");
+    absolute.path = appbox::WideToUTF8(folder + L"\\absolute_link").value_or(std::string());
+    absolute.target = appbox::WideToUTF8(folder + L"\\packed").value_or(std::string());
     req.items.push_back(absolute);
 
     ProtocolReparsePoint::Req::Item read_absolute;
     read_absolute.action = ProtocolReparsePoint::Req::Item::Action::ReadText;
-    read_absolute.path = appbox::WideToUTF8(folder + L"\\absolute_link\\data.txt");
+    read_absolute.path = appbox::WideToUTF8(folder + L"\\absolute_link\\data.txt").value_or(std::string());
     req.items.push_back(read_absolute);
 
     ProtocolReparsePoint::Req::Item read_absolute_data;
     read_absolute_data.action = ProtocolReparsePoint::Req::Item::Action::Read;
-    read_absolute_data.path = appbox::WideToUTF8(folder + L"\\absolute_link");
+    read_absolute_data.path = appbox::WideToUTF8(folder + L"\\absolute_link").value_or(std::string());
     req.items.push_back(read_absolute_data);
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolReparsePoint>(req);

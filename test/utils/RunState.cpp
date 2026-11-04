@@ -13,9 +13,16 @@ appbox::test::RunStateClient::RunStateClient(const std::string& sandbox_id) : ne
      * The control pipe of a sandbox is named by the identifier of the sandbox,
      * which every case derives from its own working directory: a client which
      * names no legal identifier cannot reach a run, which the failed connection
-     * reports.
+     * reports. The pipe of an identifier the call refuses is left unnamed, so
+     * the client answers that it is closed.
      */
-    pipe_ = std::make_unique<RawControlPipe>(appbox::SandboxPipeName(sandbox_id));
+    const auto pipe_name = appbox::SandboxPipeName(sandbox_id);
+    if (!pipe_name.has_value())
+    {
+        return;
+    }
+
+    pipe_ = std::make_unique<RawControlPipe>(pipe_name.value());
 }
 
 appbox::test::RunStateClient::~RunStateClient() = default;

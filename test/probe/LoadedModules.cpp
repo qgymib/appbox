@@ -23,7 +23,7 @@ appbox::test::ProtocolLoadedModules::Rsp appbox::test::ProbeLoadedModules_Entry(
         {
             do
             {
-                rsp.modules.push_back(appbox::WideToUTF8(entry.szModule));
+                rsp.modules.push_back(appbox::WideToUTF8(entry.szModule).value_or(std::string()));
             } while (::Module32NextW(snapshot, &entry));
         }
 

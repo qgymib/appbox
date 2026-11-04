@@ -202,7 +202,7 @@ TEST(Unit_SnapshotStore, RoundTripsEveryPartOfAPhase)
     for (const auto& entry : sample.files)
     {
         const auto* found = appbox::test::FindFileEntry(loaded, entry.path);
-        ASSERT_NE(found, nullptr) << appbox::WideToUTF8(entry.path);
+        ASSERT_NE(found, nullptr) << appbox::WideToUTF8(entry.path).value_or(std::string());
         EXPECT_EQ(found->preset_id, entry.preset_id);
         EXPECT_EQ(found->directory, entry.directory);
         EXPECT_EQ(found->size, entry.size);
@@ -217,7 +217,7 @@ TEST(Unit_SnapshotStore, RoundTripsEveryPartOfAPhase)
     for (const auto& value : sample.registry_values)
     {
         const auto* found = appbox::test::FindRegistryValueEntry(loaded, value.path, value.name);
-        ASSERT_NE(found, nullptr) << appbox::WideToUTF8(value.name);
+        ASSERT_NE(found, nullptr) << appbox::WideToUTF8(value.name).value_or(std::string());
         EXPECT_EQ(found->type, value.type);
         EXPECT_EQ(found->data, value.data);
     }
@@ -228,7 +228,7 @@ TEST(Unit_SnapshotStore, RoundTripsEveryPartOfAPhase)
         const auto found = std::find_if(
             loaded.environment.begin(), loaded.environment.end(),
             [&variable](const appbox::SnapshotEnvironmentEntry& entry) { return entry.name == variable.name; });
-        ASSERT_NE(found, loaded.environment.end()) << appbox::WideToUTF8(variable.name);
+        ASSERT_NE(found, loaded.environment.end()) << appbox::WideToUTF8(variable.name).value_or(std::string());
         EXPECT_EQ(found->value, variable.value);
     }
 }

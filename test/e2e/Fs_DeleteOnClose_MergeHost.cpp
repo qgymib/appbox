@@ -72,7 +72,7 @@ TEST_F(E2E_Fs, DeleteOnClose_MergeHost)
     /* Open the file and let the close of the handle delete it. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt").value_or(std::string());
         req.dwDesiredAccess = DELETE;
         req.dwCreationDisposition = OPEN_EXISTING;
         req.dwFlagsAndAttributes = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE;

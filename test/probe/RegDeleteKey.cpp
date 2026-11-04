@@ -36,7 +36,7 @@ appbox::test::ProtocolRegDeleteKey::Rsp appbox::test::ProbeRegDeleteKey_Entry(
         return rsp;
     }
 
-    const auto key_path = appbox::UTF8ToWide(req.Key);
+    const auto key_path = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
 
     if (req.Mode == ModeKind::ReadHandle)
     {
@@ -72,7 +72,7 @@ appbox::test::ProtocolRegDeleteKey::Rsp appbox::test::ProbeRegDeleteKey_Entry(
             RegQueryValueExW(probe, L"HostValue", nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size);
         if (rsp.query_code == ERROR_SUCCESS)
         {
-            rsp.readback = appbox::WideToUTF8(buffer);
+            rsp.readback = appbox::WideToUTF8(buffer).value_or(std::string());
         }
 
         RegCloseKey(probe);

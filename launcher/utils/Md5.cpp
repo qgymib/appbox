@@ -184,13 +184,13 @@ bool appbox::Md5OfFile(const std::wstring& path, std::string& digest, std::strin
     FileGuard file;
     if (_wfopen_s(&file.file, path.c_str(), L"rb") != 0 || file.file == nullptr)
     {
-        error = "failed to open '" + appbox::WideToUTF8(path) + "'";
+        error = "failed to open '" + appbox::WideToUTF8(path).value_or(std::string()) + "'";
         return false;
     }
 
     if (!HashStream(hash.handle, file.file, error))
     {
-        error += " of '" + appbox::WideToUTF8(path) + "'";
+        error += " of '" + appbox::WideToUTF8(path).value_or(std::string()) + "'";
         return false;
     }
 

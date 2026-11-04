@@ -28,6 +28,28 @@ std::string FormatWin32Error(const char* context, DWORD code)
 }
 
 /**
+ * @brief Report a failure an interface of `common/` answered with a code.
+ * @param[in] context Description of the failed operation.
+ * @param[in] code Code the interface reported.
+ * @return The composed message.
+ */
+std::string FormatErrorCode(const char* context, appbox::ErrorCode code)
+{
+    return std::string(context) + " (error " + std::to_string(static_cast<std::int32_t>(code)) + ")";
+}
+
+/**
+ * @brief Compose the description of a file a module could not write.
+ * @param[in] action Operation which failed, for example `write`.
+ * @param[in] path Path of the file.
+ * @return The composed context, which outlives the call that reports it.
+ */
+std::string ModulePathContext(const char* action, const std::wstring& path)
+{
+    return std::string("failed to ") + action + " '" + appbox::WideToUTF8(path).value_or("<unconvertible>") + "'";
+}
+
+/**
  * @brief Whether a file exists and has exactly the given size.
  *
  * The attributes are read without opening the file for data access, so the
@@ -83,7 +105,8 @@ bool WriteModule(const std::wstring& path, std::string_view payload, std::string
     std::filesystem::create_directories(destination.parent_path(), ec);
     if (ec)
     {
-        error = "failed to create '" + appbox::WideToUTF8(destination.parent_path().wstring()) + "': " + ec.message();
+        error = "failed to create '" + appbox::WideToUTF8(destination.parent_path().wstring()).value_or(std::string()) +
+                "': " + ec.message();
         return false;
     }
 
@@ -95,11 +118,12 @@ bool WriteModule(const std::wstring& path, std::string_view payload, std::string
         if ((last_error == ERROR_SHARING_VIOLATION || last_error == ERROR_LOCK_VIOLATION) &&
             ExistingFileHasSize(path, payload.size()))
         {
-            SPDLOG_WARN("the sandbox module '{}' is in use, the existing file is reused", appbox::WideToUTF8(path));
+            SPDLOG_WARN("the sandbox module '{}' is in use, the existing file is reused",
+                        appbox::WideToUTF8(path).value_or("<unconvertible>"));
             return true;
         }
 
-        error = FormatWin32Error(("failed to write '" + appbox::WideToUTF8(path) + "'").c_str(), last_error);
+        error = FormatWin32Error(ModulePathContext("write", path).c_str(), last_error);
         return false;
     }
 
@@ -113,7 +137,7 @@ bool WriteModule(const std::wstring& path, std::string_view payload, std::string
             const DWORD last_error = GetLastError();
             CloseHandle(file);
             std::filesystem::remove(destination, ec);
-            error = FormatWin32Error(("failed to write '" + appbox::WideToUTF8(path) + "'").c_str(), last_error);
+            error = FormatWin32Error(ModulePathContext("write", path).c_str(), last_error);
             return false;
         }
 
@@ -125,7 +149,7 @@ bool WriteModule(const std::wstring& path, std::string_view payload, std::string
     {
         const DWORD last_error = GetLastError();
         std::filesystem::remove(destination, ec);
-        error = FormatWin32Error(("failed to close '" + appbox::WideToUTF8(path) + "'").c_str(), last_error);
+        error = FormatWin32Error(ModulePathContext("close", path).c_str(), last_error);
         return false;
     }
 
@@ -139,17 +163,17 @@ bool appbox::ReleaseSandboxModules(const std::wstring& cache_dir, SandboxModuleP
     modules = {};
     error.clear();
 
-    std::string_view payload32;
-    if (!appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_SANDBOX32, payload32, error))
+    const auto payload32 = appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_SANDBOX32);
+    if (!payload32)
     {
-        error = "failed to read the 32 bit sandbox module: " + error;
+        error = FormatErrorCode("failed to read the 32 bit sandbox module", payload32.error());
         return false;
     }
 
-    std::string_view payload64;
-    if (!appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_SANDBOX64, payload64, error))
+    const auto payload64 = appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_SANDBOX64);
+    if (!payload64)
     {
-        error = "failed to read the 64 bit sandbox module: " + error;
+        error = FormatErrorCode("failed to read the 64 bit sandbox module", payload64.error());
         return false;
     }
 
@@ -157,12 +181,12 @@ bool appbox::ReleaseSandboxModules(const std::wstring& cache_dir, SandboxModuleP
     modules.sandbox32_dll = (directory / appbox::layout::kSandbox32DllNameW).wstring();
     modules.sandbox64_dll = (directory / appbox::layout::kSandbox64DllNameW).wstring();
 
-    if (!WriteModule(modules.sandbox32_dll, payload32, error))
+    if (!WriteModule(modules.sandbox32_dll, *payload32, error))
     {
         return false;
     }
 
-    if (!WriteModule(modules.sandbox64_dll, payload64, error))
+    if (!WriteModule(modules.sandbox64_dll, *payload64, error))
     {
         return false;
     }

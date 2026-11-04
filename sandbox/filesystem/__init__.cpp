@@ -1,3 +1,4 @@
+#include "WinAPI.h" /* Must be first include file */
 #include "utils/CopyFileNt.hpp"
 #include "MappingAsDosNtPath.hpp"
 #include "WString.hpp"
@@ -38,8 +39,8 @@ appbox::OverlayFS::Data::Data(const Data& orig)
 
 appbox::OverlayFS::OverlayFS(const std::wstring& path)
 {
-    std::wstring dos_nt_path;
-    if (!appbox::MappingAsDosNtPath(path, dos_nt_path))
+    const auto dos_nt_path = appbox::MappingAsDosNtPath(path);
+    if (!dos_nt_path)
     {
         return;
     }
@@ -47,7 +48,7 @@ appbox::OverlayFS::OverlayFS(const std::wstring& path)
     auto data = std::make_shared<Data>();
 
     /* Split DOS style NT path into components. The first component should be empty. */
-    auto comp = appbox::Split(dos_nt_path, L"\\");
+    auto comp = appbox::Split(*dos_nt_path, L"\\");
     if (comp[0] != L"" || comp.size() < 2)
     {
         return;
@@ -161,7 +162,7 @@ std::wstring appbox::OverlayFS::RebasePath(const std::wstring& base_path) const
 
 std::wstring appbox::OverlayFS::RebasePath(const std::string& base_path) const
 {
-    auto w_base_path = appbox::UTF8ToWide(base_path);
+    auto w_base_path = appbox::UTF8ToWide(base_path).value_or(std::wstring());
     return RebasePath(w_base_path);
 }
 

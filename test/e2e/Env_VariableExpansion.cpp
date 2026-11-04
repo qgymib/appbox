@@ -93,24 +93,24 @@ TEST_F(E2E_Env, VariableExpansion)
     ASSERT_EQ(rsp.ansi_values.size(), req.names.size());
 
     EXPECT_TRUE(rsp.found[0]);
-    EXPECT_EQ(rsp.values[0], appbox::WideToUTF8(documents + L"\\Foo\\Bar"));
+    EXPECT_EQ(rsp.values[0], appbox::WideToUTF8(documents + L"\\Foo\\Bar").value_or(std::string()));
 
     /*
      * The prefix and the name are compared with the case of the table, so a
      * reference which is spelled with another case keeps its own spelling.
      */
     EXPECT_EQ(rsp.values[1], "%appbox:documents%\\Foo");
-    EXPECT_EQ(rsp.values[2], appbox::WideToUTF8(profile + L"\\Foo"));
+    EXPECT_EQ(rsp.values[2], appbox::WideToUTF8(profile + L"\\Foo").value_or(std::string()));
 
     /* The value of the host is joined behind the expanded text of the row. */
-    EXPECT_EQ(rsp.values[3], appbox::WideToUTF8(documents + L"\\Foo") + ";host");
+    EXPECT_EQ(rsp.values[3], appbox::WideToUTF8(documents + L"\\Foo").value_or(std::string()) + ";host");
 
     EXPECT_EQ(rsp.values[4], "%APPBOX:Unknown%\\Foo");
     EXPECT_EQ(rsp.values[5], "%PATH%");
 
     /* The system folder of the machine is referenced like the folders of the user. */
     EXPECT_TRUE(rsp.found[6]);
-    EXPECT_EQ(rsp.values[6], appbox::WideToUTF8(windows + L"\\Foo"));
+    EXPECT_EQ(rsp.values[6], appbox::WideToUTF8(windows + L"\\Foo").value_or(std::string()));
 
     /*
      * The 64 bit process sees the 64 bit program folders, whether the value
@@ -118,15 +118,15 @@ TEST_F(E2E_Env, VariableExpansion)
      * variable of the 64 bit folder.
      */
     EXPECT_TRUE(rsp.found[7]);
-    EXPECT_EQ(rsp.values[7], appbox::WideToUTF8(programs + L"\\Foo"));
+    EXPECT_EQ(rsp.values[7], appbox::WideToUTF8(programs + L"\\Foo").value_or(std::string()));
     EXPECT_TRUE(rsp.found[8]);
-    EXPECT_EQ(rsp.values[8], appbox::WideToUTF8(programs + L"\\Foo"));
+    EXPECT_EQ(rsp.values[8], appbox::WideToUTF8(programs + L"\\Foo").value_or(std::string()));
     EXPECT_TRUE(rsp.found[9]);
-    EXPECT_EQ(rsp.values[9], appbox::WideToUTF8(common_x64 + L"\\Foo"));
+    EXPECT_EQ(rsp.values[9], appbox::WideToUTF8(common_x64 + L"\\Foo").value_or(std::string()));
 
     /* The 32 bit system folder is reachable from a 64 bit process as well. */
     EXPECT_TRUE(rsp.found[10]);
-    EXPECT_EQ(rsp.values[10], appbox::WideToUTF8(system_x86 + L"\\Foo"));
+    EXPECT_EQ(rsp.values[10], appbox::WideToUTF8(system_x86 + L"\\Foo").value_or(std::string()));
 
     /* A name which is spelled with another case is kept like an unknown one. */
     EXPECT_EQ(rsp.values[11], "%APPBOX:documents%\\Foo");

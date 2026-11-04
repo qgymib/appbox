@@ -43,13 +43,15 @@ void RunParamCheck(const std::string& expected_image, const std::string& expecte
 {
     unsigned long bits = 0;
 
-    if (!expected_image.empty() && appbox::GetImagePathFromPeb() == appbox::UTF8ToWide(expected_image))
+    if (!expected_image.empty() &&
+        appbox::GetImagePathFromPeb() == appbox::UTF8ToWide(expected_image).value_or(std::wstring()))
     {
         bits |= appbox::test::ParamCheckImageMatched;
     }
 
-    if (!expected_directory.empty() && TrimTrailingSeparators(appbox::GetCurrentDirectoryFromPeb()) ==
-                                           TrimTrailingSeparators(appbox::UTF8ToWide(expected_directory)))
+    if (!expected_directory.empty() &&
+        TrimTrailingSeparators(appbox::GetCurrentDirectoryFromPeb()) ==
+            TrimTrailingSeparators(appbox::UTF8ToWide(expected_directory).value_or(std::wstring())))
     {
         bits |= appbox::test::ParamCheckCurrentDirectoryMatched;
     }

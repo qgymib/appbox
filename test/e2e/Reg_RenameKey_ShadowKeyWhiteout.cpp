@@ -55,8 +55,8 @@ TEST_F(E2E_Reg, RenameKey_ShadowKeyWhiteout)
 
     auto config = tree.Build();
 
-    const auto subkey =
-        L"Software\\AppBoxTest\\RenameKey_ShadowKeyWhiteout_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\RenameKey_ShadowKeyWhiteout_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto new_name = std::wstring(subkey.substr(subkey.find_last_of(L'\\') + 1)) + L"_Renamed";
     const auto new_subkey = subkey.substr(0, subkey.find_last_of(L'\\') + 1) + new_name;
 
@@ -71,8 +71,8 @@ TEST_F(E2E_Reg, RenameKey_ShadowKeyWhiteout)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegRenameKey::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
-    req.NewName = appbox::WideToUTF8(new_name);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
+    req.NewName = appbox::WideToUTF8(new_name).value_or(std::string());
     req.Mode = ProtocolRegRenameKey::ModeKind::HiveHandle;
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegRenameKey>(req);
@@ -88,9 +88,11 @@ TEST_F(E2E_Reg, RenameKey_ShadowKeyWhiteout)
      * the host layer. */
     EXPECT_EQ(rsp.old_open_code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
 
-    const auto old_leaf = appbox::WideToUTF8(subkey.substr(subkey.find_last_of(L'\\') + 1));
+    const auto old_leaf = appbox::WideToUTF8(subkey.substr(subkey.find_last_of(L'\\') + 1)).value_or(std::string());
     EXPECT_EQ(std::count(rsp.parent_subkeys.begin(), rsp.parent_subkeys.end(), old_leaf), 0);
-    EXPECT_EQ(std::count(rsp.parent_subkeys.begin(), rsp.parent_subkeys.end(), appbox::WideToUTF8(new_name)), 1);
+    EXPECT_EQ(std::count(rsp.parent_subkeys.begin(), rsp.parent_subkeys.end(),
+                         appbox::WideToUTF8(new_name).value_or(std::string())),
+              1);
 
     /* The host registry keeps the old key and does not hold the new name. */
     EXPECT_EQ(real_key.GetString(L"HostValue"), L"host");

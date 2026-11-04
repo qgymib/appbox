@@ -29,7 +29,11 @@ namespace
  */
 void ExpectProbeImage(ProbeBitness bitness)
 {
-    const bool is_32_bit_image = appbox::PeImage::FromFile(ProbePath(bitness)).Is32Bit();
+    const auto image = appbox::PeImage::FromFile(ProbePath(bitness));
+    ASSERT_TRUE(image.has_value()) << "the probe of the run can not be read: pass the probes as --probe32= and "
+                                   << "--probe64=";
+
+    const bool is_32_bit_image = image->Is32Bit();
     const bool is_32_bit_probe = bitness == ProbeBitness::Bit32;
 
     ASSERT_EQ(is_32_bit_image, is_32_bit_probe) << "the probe of the run is not a " << (is_32_bit_probe ? 32 : 64)
@@ -64,20 +68,21 @@ void ExpectExpansionAcrossBitness(const std::wstring& cwd, ProbeBitness parent, 
     const std::wstring programs_64 = GetKnownFolderPath(L"#ProgramFiles#", false);
     const std::wstring programs_86 = GetKnownFolderPath(L"#ProgramFilesX86#", false);
 
-    const auto subkey = L"Software\\AppBoxTest\\ExpansionAcrossBitness_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\ExpansionAcrossBitness_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     const std::wstring expected_parent =
         parent == ProbeBitness::Bit64 ? programs_64 + L"\\Foo" : programs_86 + L"\\Foo";
     const std::wstring expected_child = child == ProbeBitness::Bit64 ? programs_64 + L"\\Foo" : programs_86 + L"\\Foo";
 
     ProtocolRegTwoProcesses::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.ParentValue = "Path";
-    req.ParentData = appbox::WideToUTF8(L"%APPBOX:ProgramFiles%\\Foo");
+    req.ParentData = appbox::WideToUTF8(L"%APPBOX:ProgramFiles%\\Foo").value_or(std::string());
     req.ChildValue = "ChildValue";
     req.ChildData = "child";
-    req.ChildExpect = appbox::WideToUTF8(expected_child);
-    req.ChildExecutable = appbox::WideToUTF8(ProbePath(child));
+    req.ChildExpect = appbox::WideToUTF8(expected_child).value_or(std::string());
+    req.ChildExecutable = appbox::WideToUTF8(ProbePath(child)).value_or(std::string());
     req.ChildHoldMs = 1000;
 
     const auto rsp = Probe(cwd, launcher_config, parent).Call<ProtocolRegTwoProcesses>(req);
@@ -87,9 +92,10 @@ void ExpectExpansionAcrossBitness(const std::wstring& cwd, ProbeBitness parent, 
         "child: image='{}' launch={} exit={} timed_out={}\n"
         "child observation: {}\n"
         "parent read of the child: code={} data='{}' (expected '{}')",
-        rsp.create_code, rsp.set_code, rsp.parent_readback, appbox::WideToUTF8(expected_parent), req.ChildExecutable,
-        rsp.child_launch_code, rsp.child_exit_code, rsp.child_timed_out, DescribeRegChildExitCode(rsp.child_exit_code),
-        rsp.child_saw_read_code, rsp.child_saw_readback, appbox::WideToUTF8(expected_child));
+        rsp.create_code, rsp.set_code, rsp.parent_readback, appbox::WideToUTF8(expected_parent).value_or(std::string()),
+        req.ChildExecutable, rsp.child_launch_code, rsp.child_exit_code, rsp.child_timed_out,
+        DescribeRegChildExitCode(rsp.child_exit_code), rsp.child_saw_read_code, rsp.child_saw_readback,
+        appbox::WideToUTF8(expected_child).value_or(std::string()));
 
     ASSERT_EQ(rsp.create_code, static_cast<DWORD>(ERROR_SUCCESS)) << report;
     ASSERT_EQ(rsp.set_code, static_cast<DWORD>(ERROR_SUCCESS)) << report;
@@ -101,11 +107,11 @@ void ExpectExpansionAcrossBitness(const std::wstring& cwd, ProbeBitness parent, 
      * of the workspace is expanded while it is read and not while the hive is
      * mounted.
      */
-    EXPECT_EQ(rsp.parent_readback, appbox::WideToUTF8(expected_parent)) << report;
+    EXPECT_EQ(rsp.parent_readback, appbox::WideToUTF8(expected_parent).value_or(std::string())) << report;
 
     /* The child expands the same value with the table of its own bit size. */
     EXPECT_EQ(rsp.child_exit_code & RegChildValueMatched, static_cast<DWORD>(RegChildValueMatched)) << report;
-    EXPECT_EQ(rsp.child_saw_readback, appbox::WideToUTF8(expected_child)) << report;
+    EXPECT_EQ(rsp.child_saw_readback, appbox::WideToUTF8(expected_child).value_or(std::string())) << report;
 
     /* The real registry must not contain the key, so the exchange stayed in the sandbox. */
     {

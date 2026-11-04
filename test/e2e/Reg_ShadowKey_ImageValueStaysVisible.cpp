@@ -53,7 +53,8 @@ TEST_F(E2E_Reg, ShadowKey_ImageValueStaysVisible)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\ShadowKey_Image_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\ShadowKey_Image_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto hive_key = L"HKEY_CURRENT_USER\\" + subkey;
 
     HiveBuilder builder(GetCWD());
@@ -66,7 +67,7 @@ TEST_F(E2E_Reg, ShadowKey_ImageValueStaysVisible)
     /* The write of the sandbox copies the key of the image up. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "Value";
         req.Data = "sandbox";
 
@@ -80,7 +81,7 @@ TEST_F(E2E_Reg, ShadowKey_ImageValueStaysVisible)
 
     {
         ProtocolRegReadValues::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Values = { "Value", "Other" };
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValues>(req);

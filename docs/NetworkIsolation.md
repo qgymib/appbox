@@ -58,6 +58,28 @@ hostname is therefore refused while the file is read. The proxy is the one
 exception: its members are read leniently, so a proxy which cannot be used
 leaves a session without a proxy instead of failing the whole document.
 
+The reader both sides share is
+`network_isolation::ParseDocument(std::string_view)`, and it reports a refusal by
+a code of `common/ErrorCode.hpp` alone:
+
+| Code | Meaning |
+| --- | --- |
+| `kIsolationDocumentInvalid` | The text is no document of the schema. |
+| `kIsolationDocumentUnsupportedVersion` | The document names a schema version this build does not read. |
+| `kPortEmpty` | The `port` of the proxy is empty, which is the port which was not entered. |
+| `kPortNotDecimal` | The `port` holds a character which is not a decimal digit. |
+| `kPortLeadingZero` | The `port` carries more than one digit and starts with a zero. |
+| `kPortOutOfRange` | The `port` is not between 1 and 65535. |
+| `kAddressMalformed` | A redirect is no IPv4 or IPv6 address literal of the accepted syntax. |
+| `kIsolationTokenUnknown` | A token does not name the SOCKS5 protocol of the schema. |
+
+An address is read with `network_isolation::ParseAddress()`, which answers the
+parsed address or `kAddressMalformed`; a port is read with
+`network_isolation::ReadPortText()`, which answers the port or the code of the
+rule the text breaks. The workspace reports each of the four port rules with its
+own wording, which is why they are told apart by four codes while the sandbox
+only asks whether the text is a port at all.
+
 ## Sandbox side: DNS redirections
 
 The sandbox loads the file into its DNS table before the hooks are attached,

@@ -49,7 +49,8 @@ bool BuildTracerView(TracerView view, const std::filesystem::path& module_direct
     const appbox::tracer::ModuleImages modules = appbox::tracer::LoadTracedModules(module_directory);
     if (modules.empty())
     {
-        error = "the system modules below '" + WideToUTF8(module_directory.wstring()) + "' could not be read";
+        error = "the system modules below '" + WideToUTF8(module_directory.wstring()).value_or(std::string()) +
+                "' could not be read";
         return false;
     }
 
@@ -147,11 +148,11 @@ bool SaveTracerExport(const std::wstring& path, const std::wstring& program, Tra
     try
     {
         nlohmann::ordered_json document;
-        document["program"] = WideToUTF8(program);
+        document["program"] = WideToUTF8(program).value_or(std::string());
         document["view"] = TracerViewKey(view);
         document["result"] = result.status == appbox::tracer::RunStatus::Completed
                                  ? std::string("completed")
-                                 : "aborted: " + WideToUTF8(result.message);
+                                 : "aborted: " + WideToUTF8(result.message).value_or(std::string());
         document["processes"] = result.processes;
         document["breakpoints"] = result.breakpoints;
         document["functions"] = nlohmann::ordered_json::array();
@@ -159,7 +160,7 @@ bool SaveTracerExport(const std::wstring& path, const std::wstring& program, Tra
         {
             if (entry.used)
             {
-                document["functions"].push_back(WideToUTF8(entry.name));
+                document["functions"].push_back(WideToUTF8(entry.name).value_or(std::string()));
             }
         }
 
@@ -167,7 +168,7 @@ bool SaveTracerExport(const std::wstring& path, const std::wstring& program, Tra
         std::ofstream     out(std::filesystem::path(path), std::ios::binary | std::ios::trunc);
         if (!out.is_open())
         {
-            error = "cannot create the export file: " + WideToUTF8(path);
+            error = "cannot create the export file: " + WideToUTF8(path).value_or(std::string());
             return false;
         }
 
@@ -175,7 +176,7 @@ bool SaveTracerExport(const std::wstring& path, const std::wstring& program, Tra
         out.flush();
         if (!out.good())
         {
-            error = "cannot write the export file: " + WideToUTF8(path);
+            error = "cannot write the export file: " + WideToUTF8(path).value_or(std::string());
             return false;
         }
     }

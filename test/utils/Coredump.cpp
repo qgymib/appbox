@@ -152,7 +152,8 @@ bool WriteDumpOnce(HANDLE process, unsigned long pid, const std::filesystem::pat
         ::CreateFileW(dump_path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE)
     {
-        error = fmt::format("CreateFileW({}) failed: {}", appbox::WideToUTF8(dump_path.wstring()), ::GetLastError());
+        error = fmt::format("CreateFileW({}) failed: {}",
+                            appbox::WideToUTF8(dump_path.wstring()).value_or(std::string()), ::GetLastError());
         return false;
     }
 
@@ -390,7 +391,8 @@ std::vector<std::filesystem::path> appbox::test::DumpProcessTree(const CoredumpR
     if (ec)
     {
         errors.push_back(fmt::format("create_directories({}) failed: {}",
-                                     appbox::WideToUTF8(request.dump_dir.wstring()), ec.message()));
+                                     appbox::WideToUTF8(request.dump_dir.wstring()).value_or(std::string()),
+                                     ec.message()));
         return dumps;
     }
 
@@ -405,8 +407,8 @@ std::vector<std::filesystem::path> appbox::test::DumpProcessTree(const CoredumpR
         }
         else
         {
-            errors.push_back(
-                fmt::format("process {} ({}): {}", pid, appbox::WideToUTF8(GetProcessImageStem(pid)), error));
+            errors.push_back(fmt::format("process {} ({}): {}", pid,
+                                         appbox::WideToUTF8(GetProcessImageStem(pid)).value_or(std::string()), error));
         }
     }
 
@@ -450,7 +452,7 @@ bool appbox::test::RunCoredumpWriterIfRequested()
 
     for (const auto& dump : dumps)
     {
-        ReportToStderr(fmt::format("coredump: {}", appbox::WideToUTF8(dump.wstring())));
+        ReportToStderr(fmt::format("coredump: {}", appbox::WideToUTF8(dump.wstring()).value_or(std::string())));
     }
 
     for (const auto& error : errors)

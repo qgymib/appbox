@@ -143,7 +143,7 @@ std::string FormatAddress(int family, const void* address)
     {
         return std::string();
     }
-    return appbox::WideToUTF8(text);
+    return appbox::WideToUTF8(text).value_or(std::string());
 }
 
 /**
@@ -219,7 +219,7 @@ void ResolveWithGetAddrInfo(const appbox::test::ProtocolResolveName::Question& q
     hints.ai_family = question.family;
 
     PADDRINFOW result = nullptr;
-    const auto text = appbox::UTF8ToWide(question.name);
+    const auto text = appbox::UTF8ToWide(question.name).value_or(std::wstring());
     answer.code = GetAddrInfoW(text.c_str(), nullptr, &hints, &result);
 
     CollectAddresses(result, answer);
@@ -264,7 +264,7 @@ void ResolveWithGetAddrInfoEx(const appbox::test::ProtocolResolveName::Question&
     hints.ai_family = question.family;
 
     PADDRINFOEXW result = nullptr;
-    const auto   text = appbox::UTF8ToWide(question.name);
+    const auto   text = appbox::UTF8ToWide(question.name).value_or(std::wstring());
     answer.code =
         GetAddrInfoExW(text.c_str(), nullptr, NS_ALL, nullptr, &hints, &result, nullptr, nullptr, nullptr, nullptr);
 
@@ -354,7 +354,7 @@ void ResolveWithDnsQueryAnsi(const appbox::test::ProtocolResolveName::Question& 
 void ResolveWithDnsQueryWide(const appbox::test::ProtocolResolveName::Question& question, Answer& answer)
 {
     const auto type = static_cast<WORD>(question.type);
-    const auto text = appbox::UTF8ToWide(question.name);
+    const auto text = appbox::UTF8ToWide(question.name).value_or(std::wstring());
 
     PVOID records = nullptr;
     answer.code = static_cast<int>(DnsQuery_W(text.c_str(), type, 0, nullptr, &records, nullptr));

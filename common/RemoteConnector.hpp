@@ -5,7 +5,6 @@
 #define _WIN32_WINNT 0x0600
 #endif
 #include <windows.h>
-#include <spdlog/spdlog.h>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -43,7 +42,7 @@ public:
      * @param[in] pipe_path Full path of the pipe.
      * @return The new connector instance.
      */
-    static Ptr Create(const std::string& pipe_path);
+    static tl::expected<Ptr, ErrorCode> Create(const std::string& pipe_path) noexcept;
 
     /**
      * @brief Open the pipe and return the session which serves it.
@@ -54,15 +53,22 @@ public:
      * returns, so a peer may send a request at once.
      *
      * @param[in] timeout_ms Budget of the connection attempts.
-     * @return The connected session, null when the pipe cannot be opened.
+     * @return The connected session, or:
+     *         - `kPipeConnectTimeout` when no instance served the name within
+     *           the budget;
+     *         - `kPipeConnectFailed` when the pipe cannot be opened at all;
+     *         - `kPipeStateFailed` when the mode of the connected pipe cannot
+     *           be set;
+     *         - `kRemoteEventCreateFailed` or `kRemoteThreadStartFailed` when
+     *           the session of the connection cannot serve it.
      */
-    RemoteSession::Ptr Connect(std::uint32_t timeout_ms = 5000);
+    tl::expected<RemoteSession::Ptr, ErrorCode> Connect(std::uint32_t timeout_ms = 5000) noexcept;
 
     /**
      * @brief Process id of the server at the other end of the pipe.
      * @return Process id of the server, zero when it is unknown.
      */
-    DWORD ServerProcessId() const;
+    DWORD ServerProcessId() const noexcept;
 
 private:
     RemoteConnector();

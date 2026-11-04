@@ -60,7 +60,8 @@ TEST_F(E2E_Reg, RenameKey_ViewRootKey)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\RenameKey_ViewRootKey_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\RenameKey_ViewRootKey_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"SandboxValue", REG_SZ, StringData(L"sandbox"));
@@ -70,7 +71,7 @@ TEST_F(E2E_Reg, RenameKey_ViewRootKey)
 
     ProtocolRegRenameKey::Req req;
     req.Root = "HKEY_USERS";
-    req.Key = appbox::WideToUTF8(sid); /* The root key of the view itself. */
+    req.Key = appbox::WideToUTF8(sid).value_or(std::string()); /* The root key of the view itself. */
     req.NewName = "HKCU_Renamed";
     req.Mode = ProtocolRegRenameKey::ModeKind::HiveHandle;
 
@@ -80,7 +81,7 @@ TEST_F(E2E_Reg, RenameKey_ViewRootKey)
 
     /* The view keeps working: the key below the root is still readable. */
     ProtocolRegReadValue::Req read_req;
-    read_req.Key = appbox::WideToUTF8(subkey);
+    read_req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     read_req.Value = "SandboxValue";
 
     const auto read_rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(read_req);

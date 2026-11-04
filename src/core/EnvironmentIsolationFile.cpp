@@ -23,11 +23,11 @@ bool appbox::BuildEnvironmentIsolationFile(const EnvironmentModel& model, std::s
         for (const auto& entry : model.Entries())
         {
             environment_isolation::Entry item;
-            item.name = WideToUTF8(entry.name);
-            item.value = WideToUTF8(entry.value);
+            item.name = WideToUTF8(entry.name).value_or(std::string());
+            item.value = WideToUTF8(entry.value).value_or(std::string());
             item.isolation = entry.isolation;
             item.merge = entry.merge;
-            item.merge_string = WideToUTF8(entry.merge_string);
+            item.merge_string = WideToUTF8(entry.merge_string).value_or(std::string());
             document.entries.push_back(std::move(item));
         }
 

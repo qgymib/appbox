@@ -1,6 +1,8 @@
 #ifndef APPBOX_COMMON_PEIMAGE_HPP
 #define APPBOX_COMMON_PEIMAGE_HPP
 
+#include "ErrorCode.hpp"
+#include <tl/expected.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -18,6 +20,13 @@ struct ExportEntry
     std::wstring  forwarder; ///< Forward target `MODULE.Function`; empty for a normal export.
 };
 
+/** The target of a forwarded export, split into its two names. */
+struct ForwarderName
+{
+    std::wstring module;   ///< Module name without extension, lowercased.
+    std::wstring function; ///< Function name.
+};
+
 /**
  * @brief The parts of a PE image which arming breakpoints needs.
  *
@@ -30,6 +39,10 @@ struct ExportEntry
  * modules, and by the launcher, which picks the injection module by the bit
  * size of a startup image. The header is header-only like the rest of
  * `common/`, which is why every member is defined in the detail header.
+ *
+ * A failure is reported by a code and never by an exception: the two entry
+ * points answer an image or the code which says why the buffer is no image,
+ * and an image which was handed back is always completely parsed.
  */
 class PeImage
 {
@@ -38,19 +51,25 @@ public:
      * @brief Read and parse an image file.
      *
      * @param[in] path Path of the image.
-     * @return The parsed image.
-     * @throw std::runtime_error The file can not be read or is not a PE image.
+     * @return The parsed image, or `kPeFileUnreadable` when the file cannot be
+     *         measured, opened or read, or one of the codes `FromBuffer()`
+     *         reports.
      */
-    static PeImage FromFile(const std::filesystem::path& path);
+    static tl::expected<PeImage, ErrorCode> FromFile(const std::filesystem::path& path) noexcept;
 
     /**
      * @brief Parse an image from memory.
      *
      * @param[in] buffer Content of the image.
-     * @return The parsed image.
-     * @throw std::runtime_error The buffer is not a PE image.
+     * @return The parsed image, or the code of the failed step:
+     *         `kPeImageTruncated` when a header field lies past the end of the
+     *         buffer, `kPeNotAnImage` when the signature or the optional header
+     *         magic is not one of the image, `kPeInvalidSection` when a table of
+     *         the image names a position no section covers, and
+     *         `kPeInvalidExportDirectory` when the export directory contradicts
+     *         itself.
      */
-    static PeImage FromBuffer(std::vector<std::uint8_t> buffer);
+    static tl::expected<PeImage, ErrorCode> FromBuffer(std::vector<std::uint8_t> buffer) noexcept;
 
     /** @return The exports of the image, forwarded ones included. */
     const std::vector<ExportEntry>& Exports() const noexcept
@@ -77,7 +96,9 @@ public:
      * anything else would corrupt data of the debugged process.
      *
      * @param[in] rva Offset relative to the image base.
-     * @return Whether the RVA is executable; false for 0 and for unknown RVAs.
+     * @return Whether the RVA is executable; false for 0, for an RVA outside
+     *         every section, and for a section whose content the buffer does
+     *         not hold.
      */
     bool IsExecutable(std::uint32_t rva) const noexcept;
 
@@ -92,8 +113,16 @@ private:
         std::uint32_t characteristics = 0; ///< Section flags (IMAGE_SCN_*).
     };
 
-    /** Parse the buffer which was handed to FromBuffer. */
-    void Parse();
+    /**
+     * @brief Parse the buffer which was handed to FromBuffer.
+     *
+     * The members are cleared before the headers are read, so a failure of a
+     * repeated parse never leaves the content of the former attempt behind.
+     *
+     * @return The success value, or the code of the failed step, which is one
+     *         of the codes `FromBuffer()` documents.
+     */
+    tl::expected<void, ErrorCode> Parse() noexcept;
 
     /**
      * @brief Translate an RVA into an offset inside the image buffer.
@@ -103,10 +132,11 @@ private:
      * RVA as if it were an offset therefore only works by accident.
      *
      * @param[in] rva Offset relative to the image base.
-     * @return Offset of the same byte inside the buffer.
-     * @throw std::runtime_error The RVA does not belong to any section.
+     * @return Offset of the same byte inside the buffer, or `kPeInvalidSection`
+     *         when no section covers the RVA or when the content of the section
+     *         lies past the end of the buffer.
      */
-    std::size_t OffsetOfRva(std::uint32_t rva) const;
+    tl::expected<std::size_t, ErrorCode> OffsetOfRva(std::uint32_t rva) const noexcept;
 
     std::vector<std::uint8_t> data_;              ///< Image content.
     std::uint16_t             machine_ = 0;       ///< COFF machine type.
@@ -119,11 +149,11 @@ private:
  * @brief Split a forwarder string into module and function name.
  *
  * @param[in] forwarder String such as `KERNELBASE.GetCommandLineW`.
- * @param[out] module Module name without extension, lowercased.
- * @param[out] function Function name.
- * @return Whether the string has the expected `module.function` form.
+ * @return The two names, or `kForwarderMalformed` when the string has no
+ *         `module.function` form: no separator, an empty module or an empty
+ *         function name.
  */
-inline bool SplitForwarder(const std::wstring& forwarder, std::wstring& module, std::wstring& function);
+inline tl::expected<ForwarderName, ErrorCode> SplitForwarder(const std::wstring& forwarder) noexcept;
 
 } // namespace appbox
 

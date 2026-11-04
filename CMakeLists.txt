@@ -126,6 +126,7 @@ add_executable(AppBox WIN32
     "${APPBOX_SOURCE_DIR}/core/EnvironmentIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/EnvironmentModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/EtwEventDecoder.cpp"
+    "${APPBOX_SOURCE_DIR}/core/ExtractionCleanup.cpp"
     "${APPBOX_SOURCE_DIR}/core/FilesystemIsolationFile.cpp"
     "${APPBOX_SOURCE_DIR}/core/FilesystemIsolationModel.cpp"
     "${APPBOX_SOURCE_DIR}/core/FilesystemTree.cpp"

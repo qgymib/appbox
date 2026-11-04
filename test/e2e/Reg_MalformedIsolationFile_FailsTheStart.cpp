@@ -80,8 +80,8 @@ ProtocolRegReadValue::Rsp ReadSandboxValue(const std::wstring& subkey, const std
                                            const std::filesystem::path& cwd, const appbox::LauncherConfig& config)
 {
     ProtocolRegReadValue::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
-    req.Value = appbox::WideToUTF8(name);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
+    req.Value = appbox::WideToUTF8(name).value_or(std::string());
     return Probe(cwd, config).Call<ProtocolRegReadValue>(req);
 }
 
@@ -127,7 +127,8 @@ TEST_F(E2E_Reg, MalformedIsolationFile_FailsTheStart)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\MalformedIsolation_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\MalformedIsolation_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     RealKeyGuard guard{ subkey };
     ASSERT_TRUE(WriteRealValue(subkey, L"HostValue", L"host"));

@@ -46,7 +46,8 @@ TEST_F(E2E_Fs, LaunchProcess_ThroughNtCreateUserProcess)
     /* Launch the executable of the view through the runtime of the system. */
     {
         ProtocolLaunchProcess::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\cmd.exe");
+        req.FileName =
+            appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\cmd.exe").value_or(std::string());
         req.Arguments = { "/c", "exit 42" };
         req.Api = LaunchApi::RtlCreateUserProcess;
 

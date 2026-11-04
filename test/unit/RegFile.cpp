@@ -153,9 +153,9 @@ TEST(Unit_RegFile, ParsesEverySupportedDataForm)
     ASSERT_TRUE(appbox::RegistryDwordValue(count->data, number));
     EXPECT_EQ(number, 30u);
 
-    const auto* small = FindEntry(entries, L"Small");
-    ASSERT_NE(small, nullptr);
-    ASSERT_TRUE(appbox::RegistryDwordValue(small->data, number));
+    const auto* short_value = FindEntry(entries, L"Small");
+    ASSERT_NE(short_value, nullptr);
+    ASSERT_TRUE(appbox::RegistryDwordValue(short_value->data, number));
     EXPECT_EQ(number, 30u);
 
     const auto* multi = FindEntry(entries, L"Multi");

@@ -90,6 +90,7 @@ add_executable(${probe_name}
     "${CMAKE_CURRENT_SOURCE_DIR}/../utils/NtDirectoryQuery.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../utils/ReadFileFull.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../utils/RegistryRootKey.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../utils/TestText.cpp"
 
     # The probe names the environment of the process the way the runtime of the
     # operating system does, so it reads the address of the environment pointer

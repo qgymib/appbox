@@ -377,7 +377,8 @@ bool DiffSnapshotPhases(const std::wstring& path, SnapshotDiff& diff, std::strin
             return true;
         }
 
-        error_text = std::string("the snapshot file does not hold ") + PhaseText(phase) + ": " + WideToUTF8(path);
+        error_text = std::string("the snapshot file does not hold ") + PhaseText(phase) + ": " +
+                     WideToUTF8(path).value_or(std::string());
         return false;
     };
 

@@ -88,7 +88,7 @@ TEST_F(E2E_Fs, Merge_WritesTheSandboxBelowAnOpaqueFolder)
     /* The entry a sandbox layer holds is written inside the sandbox. */
     {
         ProtocolWriteFile::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt").value_or(std::string());
         req.Data = "written";
         req.dwCreationDisposition = CREATE_ALWAYS;
 

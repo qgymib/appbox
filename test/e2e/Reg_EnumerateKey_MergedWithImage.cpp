@@ -36,7 +36,8 @@ TEST_F(E2E_Reg, EnumerateKey_MergedWithImage)
 
     auto config = tree.Build();
 
-    const auto parent = L"Software\\AppBoxTest\\EnumKey_Image_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto parent =
+        L"Software\\AppBoxTest\\EnumKey_Image_" + appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto hive_parent = L"HKEY_CURRENT_USER\\" + parent;
 
     HiveBuilder builder(GetCWD());
@@ -49,7 +50,7 @@ TEST_F(E2E_Reg, EnumerateKey_MergedWithImage)
     /* The create of the sandbox adds the third sub key. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(parent + L"\\Gamma");
+        req.Key = appbox::WideToUTF8(parent + L"\\Gamma").value_or(std::string());
         req.Value = "Value";
         req.Data = "gamma";
 
@@ -60,7 +61,7 @@ TEST_F(E2E_Reg, EnumerateKey_MergedWithImage)
 
     {
         ProtocolRegEnumKey::Req req;
-        req.Key = appbox::WideToUTF8(parent);
+        req.Key = appbox::WideToUTF8(parent).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegEnumKey>(req);
         ASSERT_EQ(rsp.open_code, static_cast<DWORD>(ERROR_SUCCESS));

@@ -70,9 +70,10 @@ std::pair<FsRoot, appbox::LauncherConfig> BuildCase(const std::filesystem::path&
     auto config = tree.Build();
 
     appbox::LauncherStartup startup;
-    startup.trigger = appbox::WideToUTF8(std::filesystem::path(script_name).stem().wstring());
+    startup.trigger = appbox::WideToUTF8(std::filesystem::path(script_name).stem().wstring()).value_or(std::string());
     startup.auto_start = true;
-    startup.executable = appbox::WideToUTF8(std::wstring(L"#USERPROFILE#\\") + kFolderName + L"\\" + script_name);
+    startup.executable = appbox::WideToUTF8(std::wstring(L"#USERPROFILE#\\") + kFolderName + L"\\" + script_name)
+                             .value_or(std::string());
     config.startups.push_back(std::move(startup));
 
     return { tree, config };

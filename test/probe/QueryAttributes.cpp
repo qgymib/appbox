@@ -8,7 +8,8 @@ appbox::test::ProtocolQueryAttributes::Rsp appbox::test::ProbeQueryAttributes_En
     const auto& req = request;
 
     appbox::test::ProtocolQueryAttributes::Rsp rsp;
-    rsp.attributes = GetFileAttributesW(appbox::UTF8ToWide(req.FileName).c_str());
+    const std::wstring                         path = appbox::UTF8ToWide(req.FileName).value_or(std::wstring());
+    rsp.attributes = GetFileAttributesW(path.c_str());
     rsp.code = (rsp.attributes == INVALID_FILE_ATTRIBUTES) ? GetLastError() : 0;
 
     return rsp;

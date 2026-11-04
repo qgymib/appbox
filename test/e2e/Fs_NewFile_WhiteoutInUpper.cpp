@@ -57,7 +57,8 @@ TEST_F(E2E_Fs, NewFile_WhiteoutInUpper)
     /* Create file in the state of the sandbox. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt");
+        req.FileName =
+            appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt").value_or(std::string());
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
         auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateFileW>(req);

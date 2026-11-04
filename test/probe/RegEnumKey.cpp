@@ -16,8 +16,9 @@ appbox::test::ProtocolRegEnumKey::Rsp appbox::test::ProbeRegEnumKey_Entry(
 
     appbox::test::ProtocolRegEnumKey::Rsp rsp;
 
-    HKEY key = nullptr;
-    rsp.open_code = RegOpenKeyExW(HKEY_CURRENT_USER, appbox::UTF8ToWide(req.Key).c_str(), 0, KEY_READ, &key);
+    HKEY               key = nullptr;
+    const std::wstring wide_key = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
+    rsp.open_code = RegOpenKeyExW(HKEY_CURRENT_USER, wide_key.c_str(), 0, KEY_READ, &key);
     if (rsp.open_code != ERROR_SUCCESS)
     {
         return rsp;
@@ -41,7 +42,7 @@ appbox::test::ProtocolRegEnumKey::Rsp appbox::test::ProbeRegEnumKey_Entry(
             rsp.enum_code = static_cast<DWORD>(rc);
             break;
         }
-        rsp.names.push_back(appbox::WideToUTF8(name));
+        rsp.names.push_back(appbox::WideToUTF8(name).value_or(std::string()));
     }
 
     RegCloseKey(key);

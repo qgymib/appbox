@@ -124,10 +124,10 @@ TEST(Unit_EnvironmentIsolation, IsolationTokensRoundTrip)
 {
     for (const auto isolation : { EnvironmentIsolation::Full, EnvironmentIsolation::WriteCopy })
     {
-        EnvironmentIsolation parsed = EnvironmentIsolation::Full;
-        ASSERT_TRUE(appbox::environment_isolation::ParseIsolationToken(
-            appbox::environment_isolation::IsolationToken(isolation), parsed));
-        EXPECT_EQ(parsed, isolation);
+        const auto parsed = appbox::environment_isolation::ParseIsolationToken(
+            appbox::environment_isolation::IsolationToken(isolation));
+        ASSERT_TRUE(parsed);
+        EXPECT_EQ(*parsed, isolation);
     }
 }
 
@@ -136,32 +136,44 @@ TEST(Unit_EnvironmentIsolation, MergeModeTokensRoundTrip)
     for (const auto merge : { EnvironmentMergeMode::Replace, EnvironmentMergeMode::Host, EnvironmentMergeMode::Prepend,
                               EnvironmentMergeMode::Append })
     {
-        EnvironmentMergeMode parsed = EnvironmentMergeMode::Replace;
-        ASSERT_TRUE(appbox::environment_isolation::ParseMergeModeToken(
-            appbox::environment_isolation::MergeModeToken(merge), parsed));
-        EXPECT_EQ(parsed, merge);
+        const auto parsed =
+            appbox::environment_isolation::ParseMergeModeToken(appbox::environment_isolation::MergeModeToken(merge));
+        ASSERT_TRUE(parsed);
+        EXPECT_EQ(*parsed, merge);
     }
 }
 
 TEST(Unit_EnvironmentIsolation, TokensAreReadIgnoringTheCaseAndTheSeparator)
 {
     /* The display names of the workspace are accepted as well. */
-    EnvironmentIsolation isolation = EnvironmentIsolation::Full;
-    EXPECT_TRUE(appbox::environment_isolation::ParseIsolationToken("Write Copy", isolation));
-    EXPECT_EQ(isolation, EnvironmentIsolation::WriteCopy);
-    EXPECT_TRUE(appbox::environment_isolation::ParseIsolationToken("WRITE-COPY", isolation));
-    EXPECT_EQ(isolation, EnvironmentIsolation::WriteCopy);
-    EXPECT_TRUE(appbox::environment_isolation::ParseIsolationToken("writecopy", isolation));
-    EXPECT_EQ(isolation, EnvironmentIsolation::WriteCopy);
+    for (const char* token : { "Write Copy", "WRITE-COPY", "writecopy" })
+    {
+        const auto isolation = appbox::environment_isolation::ParseIsolationToken(token);
+        ASSERT_TRUE(isolation) << "token: '" << token << "'";
+        EXPECT_EQ(*isolation, EnvironmentIsolation::WriteCopy);
+    }
 
-    EnvironmentMergeMode merge = EnvironmentMergeMode::Replace;
-    EXPECT_TRUE(appbox::environment_isolation::ParseMergeModeToken("PREPEND", merge));
-    EXPECT_EQ(merge, EnvironmentMergeMode::Prepend);
-    EXPECT_TRUE(appbox::environment_isolation::ParseMergeModeToken("append", merge));
-    EXPECT_EQ(merge, EnvironmentMergeMode::Append);
+    const auto prepend = appbox::environment_isolation::ParseMergeModeToken("PREPEND");
+    ASSERT_TRUE(prepend);
+    EXPECT_EQ(*prepend, EnvironmentMergeMode::Prepend);
 
-    EXPECT_FALSE(appbox::environment_isolation::ParseIsolationToken("merge", isolation));
-    EXPECT_FALSE(appbox::environment_isolation::ParseMergeModeToken("whiteout", merge));
+    const auto append = appbox::environment_isolation::ParseMergeModeToken("append");
+    ASSERT_TRUE(append);
+    EXPECT_EQ(*append, EnvironmentMergeMode::Append);
+}
+
+/**
+ * @brief A token of another vocabulary is refused with the code of the domain.
+ */
+TEST(Unit_EnvironmentIsolation, UnknownTokenIsReportedByItsCode)
+{
+    const auto isolation = appbox::environment_isolation::ParseIsolationToken("merge");
+    ASSERT_FALSE(isolation);
+    EXPECT_EQ(isolation.error(), appbox::ErrorCode::kIsolationTokenUnknown);
+
+    const auto merge = appbox::environment_isolation::ParseMergeModeToken("whiteout");
+    ASSERT_FALSE(merge);
+    EXPECT_EQ(merge.error(), appbox::ErrorCode::kIsolationTokenUnknown);
 }
 
 TEST(Unit_EnvironmentIsolation, IsolationFileSchemaIsStable)

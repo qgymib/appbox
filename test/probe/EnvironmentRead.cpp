@@ -4,6 +4,7 @@
 #include <intrin.h>
 #include <string>
 #include <vector>
+#include "utils/TestText.hpp"
 
 namespace
 {
@@ -110,7 +111,7 @@ std::string ReadWide(const std::wstring& name, bool& found)
         return std::string();
     }
 
-    return appbox::WideToUTF8(std::wstring(buffer.data(), length));
+    return appbox::test::ToUTF8OrEmpty(std::wstring(buffer.data(), length));
 }
 
 /**
@@ -120,7 +121,7 @@ std::string ReadWide(const std::wstring& name, bool& found)
  */
 std::string ReadAnsi(const std::wstring& name)
 {
-    const std::string ansi_name = appbox::WideToUTF8(name);
+    const std::string ansi_name = appbox::WideToUTF8(name).value_or(std::string());
 
     std::vector<char> buffer(32768);
     const DWORD length = ::GetEnvironmentVariableA(ansi_name.c_str(), buffer.data(), static_cast<DWORD>(buffer.size()));
@@ -149,7 +150,7 @@ std::vector<std::string> ReadWideEntries()
     for (const wchar_t* cursor = block; *cursor != L'\0';)
     {
         const std::wstring entry(cursor);
-        entries.push_back(appbox::WideToUTF8(entry));
+        entries.push_back(appbox::WideToUTF8(entry).value_or(std::string()));
         cursor += entry.size() + 1;
     }
 
@@ -203,7 +204,7 @@ std::string ExpandWide(const std::wstring& text)
     }
 
     /* The reported size counts the terminator of the text. */
-    return appbox::WideToUTF8(std::wstring(buffer.data(), written - 1));
+    return appbox::test::ToUTF8OrEmpty(std::wstring(buffer.data(), written - 1));
 }
 
 /**
@@ -288,7 +289,7 @@ appbox::test::ProtocolEnvironmentRead::Rsp appbox::test::ProbeEnvironmentRead_En
 
     for (const auto& name : req.names)
     {
-        const std::wstring wide_name = appbox::UTF8ToWide(name);
+        const std::wstring wide_name = appbox::UTF8ToWide(name).value_or(std::wstring());
 
         bool found = false;
         rsp.values.push_back(ReadWide(wide_name, found));
@@ -298,7 +299,7 @@ appbox::test::ProtocolEnvironmentRead::Rsp appbox::test::ProbeEnvironmentRead_En
 
     for (const auto& text : req.expand)
     {
-        rsp.expanded.push_back(ExpandWide(appbox::UTF8ToWide(text)));
+        rsp.expanded.push_back(ExpandWide(appbox::UTF8ToWide(text).value_or(std::wstring())));
         rsp.ansi_expanded.push_back(ExpandAnsi(text));
     }
 
@@ -313,12 +314,12 @@ appbox::test::ProtocolEnvironmentRead::Rsp appbox::test::ProbeEnvironmentRead_En
 
     for (const auto& entry : block)
     {
-        rsp.block_entries.push_back(appbox::WideToUTF8(entry));
+        rsp.block_entries.push_back(appbox::WideToUTF8(entry).value_or(std::string()));
     }
 
     for (const auto& name : req.names)
     {
-        const std::wstring wide_name = appbox::UTF8ToWide(name);
+        const std::wstring wide_name = appbox::UTF8ToWide(name).value_or(std::wstring());
 
         std::wstring value;
         bool         found = false;
@@ -331,13 +332,13 @@ appbox::test::ProtocolEnvironmentRead::Rsp appbox::test::ProbeEnvironmentRead_En
             }
         }
 
-        rsp.block_values.push_back(found ? appbox::WideToUTF8(value) : std::string());
+        rsp.block_values.push_back(found ? appbox::WideToUTF8(value).value_or(std::string()) : std::string());
         rsp.block_found.push_back(found);
     }
 
     if (!req.names.empty())
     {
-        QueryWithoutABuffer(appbox::UTF8ToWide(req.names.front()), rsp.rtl_size_query_status,
+        QueryWithoutABuffer(appbox::UTF8ToWide(req.names.front()).value_or(std::wstring()), rsp.rtl_size_query_status,
                             rsp.rtl_size_query_length);
     }
 

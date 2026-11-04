@@ -18,15 +18,15 @@ void CollectEntries(const appbox::RegistryKeyNode& key, const std::wstring& path
                     appbox::registry_isolation::Document& document)
 {
     appbox::registry_isolation::KeyEntry key_entry;
-    key_entry.path = appbox::WideToUTF8(path);
+    key_entry.path = appbox::WideToUTF8(path).value_or(std::string());
     key_entry.isolation = key.isolation;
     document.keys.push_back(std::move(key_entry));
 
     for (const auto& value : key.values)
     {
         appbox::registry_isolation::ValueEntry value_entry;
-        value_entry.path = appbox::WideToUTF8(path);
-        value_entry.name = appbox::WideToUTF8(value.name);
+        value_entry.path = appbox::WideToUTF8(path).value_or(std::string());
+        value_entry.name = appbox::WideToUTF8(value.name).value_or(std::string());
         value_entry.isolation = value.isolation;
         document.values.push_back(std::move(value_entry));
     }

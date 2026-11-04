@@ -56,8 +56,8 @@ appbox::filesystem::HandlePathStatus appbox::filesystem::ViewPathOfHandle(HANDLE
      * names cannot be expressed as a path of the view: they belong to another
      * isolation domain and are forwarded unchanged.
      */
-    std::wstring dosPath;
-    if (!appbox::MappingAsDosNtPath(nativePath, dosPath))
+    const auto dos_path = appbox::MappingAsDosNtPath(nativePath);
+    if (!dos_path)
     {
         return HandlePathStatus::Foreign;
     }
@@ -68,12 +68,12 @@ appbox::filesystem::HandlePathStatus appbox::filesystem::ViewPathOfHandle(HANDLE
      * view already.
      */
     std::wstring rebased;
-    if (RebaseLayerPathToView(dosPath, rebased))
+    if (RebaseLayerPathToView(*dos_path, rebased))
     {
         viewPath = rebased;
         return HandlePathStatus::View;
     }
 
-    viewPath = dosPath;
+    viewPath = *dos_path;
     return HandlePathStatus::View;
 }

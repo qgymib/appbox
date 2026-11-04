@@ -38,8 +38,8 @@ TEST_F(E2E_Reg, LockRegistryKey_HiveHandle)
 
     auto config = tree.Build();
 
-    const auto subkey =
-        L"Software\\AppBoxTest\\LockRegistryKey_HiveHandle_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\LockRegistryKey_HiveHandle_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
@@ -53,7 +53,7 @@ TEST_F(E2E_Reg, LockRegistryKey_HiveHandle)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegKeyApi::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Api = ProtocolRegKeyApi::ApiKind::LockRegistryKey;
     req.Mode = ProtocolRegKeyApi::ModeKind::HiveHandle;
 

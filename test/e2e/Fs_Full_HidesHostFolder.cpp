@@ -63,7 +63,7 @@ TEST_F(E2E_Fs, Full_HidesTheHostFolder)
     /* The content of the lower layer stays visible. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\packed.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\packed.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -73,7 +73,7 @@ TEST_F(E2E_Fs, Full_HidesTheHostFolder)
     /* The content of the host folder is not. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\host.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\host.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -82,7 +82,7 @@ TEST_F(E2E_Fs, Full_HidesTheHostFolder)
     /* A folder which only the host holds is not visible either. */
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\data");
+        req.FileName = appbox::WideToUTF8(folder + L"\\data").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         EXPECT_EQ(rsp.attributes, static_cast<DWORD>(INVALID_FILE_ATTRIBUTES));
@@ -92,7 +92,7 @@ TEST_F(E2E_Fs, Full_HidesTheHostFolder)
     /* The listing shows the virtual content and none of the host entries. */
     {
         ProtocolListDir::Req req;
-        req.path = appbox::WideToUTF8(folder);
+        req.path = appbox::WideToUTF8(folder).value_or(std::string());
         req.method = ProtocolListDir::Req::Method::WinAPI;
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);
@@ -110,7 +110,7 @@ TEST_F(E2E_Fs, Full_HidesTheHostFolder)
     /* A file which the sandbox creates lands in the overlay. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\new.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\new.txt").value_or(std::string());
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 

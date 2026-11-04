@@ -81,8 +81,8 @@ TEST_F(E2E_Fs, Link_LowerLayer)
         ProtocolSetInformationFile::Req       req;
         ProtocolSetInformationFile::Req::Item item;
         item.action = ProtocolSetInformationFile::Req::Item::Action::Link;
-        item.source = appbox::WideToUTF8(Folder() + L"\\data.txt");
-        item.target = appbox::WideToUTF8(Folder() + L"\\linked.txt");
+        item.source = appbox::WideToUTF8(Folder() + L"\\data.txt").value_or(std::string());
+        item.target = appbox::WideToUTF8(Folder() + L"\\linked.txt").value_or(std::string());
         item.access = ProtocolSetInformationFile::Req::Item::Access::Read;
         req.items.push_back(item);
 

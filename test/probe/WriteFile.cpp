@@ -10,7 +10,7 @@ appbox::test::ProtocolWriteFile::Rsp appbox::test::ProbeWriteFile_Entry(
 {
     const auto& req = request;
 
-    const auto wFileName = appbox::UTF8ToWide(req.FileName);
+    const auto wFileName = appbox::UTF8ToWide(req.FileName).value_or(std::wstring());
 
     ProtocolWriteFile::Rsp rsp;
 

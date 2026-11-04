@@ -55,7 +55,8 @@ TEST_F(E2E_Reg, Transacted_OpenIsRefused)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\Transacted_Open_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\Transacted_Open_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"SandboxValue", REG_SZ, StringData(L"sandbox"));
@@ -74,7 +75,7 @@ TEST_F(E2E_Reg, Transacted_OpenIsRefused)
         ProtocolRegTransacted::Req req;
         req.Api = api;
         req.Access = ProtocolRegTransacted::AccessKind::Read;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "SandboxValue";
         req.End = ProtocolRegTransacted::EndKind::Close;
 

@@ -3,14 +3,17 @@
 
 /*
  * Implementation of `common/FilesystemIsolation.hpp`: the token parsing of the
- * modes and entry kinds and the JSON members of the schema. The header is
- * included by the public header and is not meant to be included on its own.
+ * modes and entry kinds, the JSON members of the schema and the noexcept reader
+ * of a document. The header is included by the public header and is not meant to
+ * be included on its own.
  */
 
 #include "FilesystemIsolation.hpp"
 #include <nlohmann/json.hpp>
+#include <exception>
 #include <string>
 #include <string_view>
+#include <tl/expected.hpp>
 #include <utility>
 #include <vector>
 
@@ -20,7 +23,7 @@ namespace filesystem_isolation
 {
 
 /* Definition of the contract on the declaration. */
-inline const char* IsolationToken(FilesystemIsolation isolation)
+inline const char* IsolationToken(FilesystemIsolation isolation) noexcept
 {
     switch (isolation)
     {
@@ -37,7 +40,7 @@ inline const char* IsolationToken(FilesystemIsolation isolation)
 }
 
 /* Definition of the contract on the declaration. */
-inline bool ParseIsolationToken(std::string_view token, FilesystemIsolation& out)
+inline tl::expected<FilesystemIsolation, ErrorCode> ParseIsolationToken(std::string_view token) noexcept
 {
     std::string normalized;
     normalized.reserve(token.size());
@@ -57,29 +60,26 @@ inline bool ParseIsolationToken(std::string_view token, FilesystemIsolation& out
 
     if (normalized == "full")
     {
-        out = FilesystemIsolation::Full;
-        return true;
+        return FilesystemIsolation::Full;
     }
     if (normalized == "write_copy" || normalized == "writecopy")
     {
-        out = FilesystemIsolation::WriteCopy;
-        return true;
+        return FilesystemIsolation::WriteCopy;
     }
     if (normalized == "merge")
     {
-        out = FilesystemIsolation::Merge;
-        return true;
+        return FilesystemIsolation::Merge;
     }
     if (normalized == "whiteout")
     {
-        out = FilesystemIsolation::Whiteout;
-        return true;
+        return FilesystemIsolation::Whiteout;
     }
-    return false;
+
+    return tl::unexpected<ErrorCode>(ErrorCode::kIsolationTokenUnknown);
 }
 
 /* Definition of the contract on the declaration. */
-inline const char* EntryKindToken(FilesystemEntryKind kind)
+inline const char* EntryKindToken(FilesystemEntryKind kind) noexcept
 {
     switch (kind)
     {
@@ -92,7 +92,7 @@ inline const char* EntryKindToken(FilesystemEntryKind kind)
 }
 
 /* Definition of the contract on the declaration. */
-inline bool ParseEntryKindToken(std::string_view token, FilesystemEntryKind& out)
+inline tl::expected<FilesystemEntryKind, ErrorCode> ParseEntryKindToken(std::string_view token) noexcept
 {
     std::string normalized;
     normalized.reserve(token.size());
@@ -108,19 +108,18 @@ inline bool ParseEntryKindToken(std::string_view token, FilesystemEntryKind& out
 
     if (normalized == "file")
     {
-        out = FilesystemEntryKind::File;
-        return true;
+        return FilesystemEntryKind::File;
     }
     if (normalized == "directory" || normalized == "folder" || normalized == "dir")
     {
-        out = FilesystemEntryKind::Directory;
-        return true;
+        return FilesystemEntryKind::Directory;
     }
-    return false;
+
+    return tl::unexpected<ErrorCode>(ErrorCode::kEntryKindTokenUnknown);
 }
 
 /* Definition of the contract on the declaration. */
-inline bool IsAllowed(FilesystemIsolation isolation, FilesystemEntryKind kind)
+inline bool IsAllowed(FilesystemIsolation isolation, FilesystemEntryKind kind) noexcept
 {
     if (kind == FilesystemEntryKind::Directory)
     {
@@ -148,7 +147,11 @@ inline void from_json(const nlohmann::json& json, Entry& entry)
 
     const std::string   kind_token = isolation_document::RequiredText(json, kKindKey, holder);
     FilesystemEntryKind kind = FilesystemEntryKind::Directory;
-    if (!ParseEntryKindToken(kind_token, kind))
+    if (const auto parsed = ParseEntryKindToken(kind_token))
+    {
+        kind = *parsed;
+    }
+    else
     {
         isolation_document::Throw("unknown entry kind '" + kind_token + "' in the filesystem isolation file");
     }
@@ -164,7 +167,11 @@ inline void from_json(const nlohmann::json& json, Entry& entry)
 
     const std::string   isolation_token = isolation_document::RequiredText(json, kIsolationKey, holder);
     FilesystemIsolation isolation = FilesystemIsolation::Full;
-    if (!ParseIsolationToken(isolation_token, isolation))
+    if (const auto parsed = ParseIsolationToken(isolation_token))
+    {
+        isolation = *parsed;
+    }
+    else
     {
         isolation_document::Throw("unknown isolation mode '" + isolation_token + "' in the filesystem isolation file");
     }
@@ -211,6 +218,43 @@ inline void from_json(const nlohmann::json& json, Document& document)
     for (const auto& item : *entries)
     {
         document.entries.push_back(item.get<Entry>());
+    }
+}
+
+/* Definition of the contract on the declaration. */
+inline tl::expected<Document, ErrorCode> ParseDocument(std::string_view text) noexcept
+{
+    /*
+     * The text is read in two steps: the JSON layer runs with the exception
+     * reporting switched off, so a text which is no JSON document is answered by
+     * a discarded value instead of an exception, and the member layer is the
+     * `from_json()` of the schema, which reports a refused member through
+     * `IsolationDocumentError`. Both are turned into the code of the table here,
+     * so the reader of a file never sees an exception and never receives a text.
+     */
+    const auto parsed = nlohmann::json::parse(text.begin(), text.end(), nullptr, false);
+    if (parsed.is_discarded() || !parsed.is_object())
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kIsolationDocumentInvalid);
+    }
+
+    const auto* version = isolation_document::FindMember(parsed, kVersionKey);
+    if (version == nullptr || !version->is_number_integer())
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kIsolationDocumentInvalid);
+    }
+    if (version->get<int>() != kVersion)
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kIsolationDocumentUnsupportedVersion);
+    }
+
+    try
+    {
+        return parsed.get<Document>();
+    }
+    catch (const std::exception&)
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kIsolationDocumentInvalid);
     }
 }
 

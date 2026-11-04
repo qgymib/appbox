@@ -1,6 +1,7 @@
 #include "probe/ReadFileFull.hpp"
 #include "utils/ProbeCall.hpp"
 #include "utils/CommonFixture.hpp"
+#include "utils/ErrorCodeText.hpp"
 #include "utils/LauncherPath.hpp"
 #include "utils/RealFsFolder.hpp"
 #include "utils/TestKnownFolder.hpp"
@@ -200,7 +201,8 @@ TEST_F(E2E_Snapshot, StrictCaptureFillsOnlyTheCapturedEntries)
                            appbox::ApplicationMetadata(), appbox::StartupScreen{}, payloads,
                            appbox::CompressionLevel::Normal, zip_path.wstring(), nullptr),
               "");
-    ASSERT_EQ(appbox::ExtractArchive(zip_path.wstring(), GetCWDString()), appbox::ZIPREADER_SUCCESS);
+    const auto extracted = appbox::ExtractArchive(zip_path.wstring(), GetCWDString());
+    ASSERT_TRUE(extracted) << appbox::test::DescribeErrorCode(extracted.error());
 
     /*
      * The layer of the archive carries the captured file, the marker of the
@@ -223,14 +225,14 @@ TEST_F(E2E_Snapshot, StrictCaptureFillsOnlyTheCapturedEntries)
     const auto root = GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + name;
 
     ProtocolReadFileFull::Req captured;
-    captured.FileName = appbox::WideToUTF8(root + L"\\new.exe");
+    captured.FileName = appbox::WideToUTF8(root + L"\\new.exe").value_or(std::string());
     const auto captured_rsp = Probe(GetCWD(), appbox::LauncherConfig{}).Call<ProtocolReadFileFull>(captured);
     ASSERT_EQ(captured_rsp.code, 0u);
     EXPECT_EQ(captured_rsp.data, "PACKED-BY-THE-CAPTURE");
 
     /* The file which the capture never reported is not part of the archive. */
     ProtocolReadFileFull::Req untouched;
-    untouched.FileName = appbox::WideToUTF8(root + L"\\kept.exe");
+    untouched.FileName = appbox::WideToUTF8(root + L"\\kept.exe").value_or(std::string());
     const auto untouched_rsp = Probe(GetCWD(), appbox::LauncherConfig{}).Call<ProtocolReadFileFull>(untouched);
     EXPECT_NE(untouched_rsp.code, 0u);
 }

@@ -96,10 +96,10 @@ appbox::test::ProtocolFonts::Rsp appbox::test::ProbeFonts_Entry(const appbox::te
 
     appbox::test::ProtocolFonts::Rsp rsp;
 
-    const std::wstring family = appbox::UTF8ToWide(req.family);
+    const std::wstring family = appbox::UTF8ToWide(req.family).value_or(std::wstring());
     const std::wstring absent_family =
-        req.absent_family.empty() ? std::wstring() : appbox::UTF8ToWide(req.absent_family);
-    const std::wstring view_path = appbox::UTF8ToWide(req.view_path);
+        req.absent_family.empty() ? std::wstring() : appbox::UTF8ToWide(req.absent_family).value_or(std::wstring());
+    const std::wstring view_path = appbox::UTF8ToWide(req.view_path).value_or(std::wstring());
 
     /* The font table of this process carries the family. */
     for (const auto& name : EnumerateFamilies())
@@ -120,7 +120,7 @@ appbox::test::ProtocolFonts::Rsp appbox::test::ProbeFonts_Entry(const appbox::te
     std::wstring face;
     if (CreateFontOfFamily(family, face))
     {
-        rsp.face = appbox::WideToUTF8(face);
+        rsp.face = appbox::WideToUTF8(face).value_or(std::string());
         rsp.created = CompareStringOrdinal(face.c_str(), -1, family.c_str(), -1, TRUE) == CSTR_EQUAL;
     }
 

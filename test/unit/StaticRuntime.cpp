@@ -10,6 +10,7 @@
 #include "EmbeddedResource.hpp"
 #include "launcher/EmbeddedResourceIds.h"
 #include "SandboxLayout.hpp"
+#include "utils/ErrorCodeText.hpp"
 #include "utils/LauncherPath.hpp"
 #include "utils/ModuleList.hpp"
 #include "utils/ProbePath.hpp"
@@ -109,7 +110,8 @@ std::uint32_t ImportDirectoryRva(const T& optional_header)
  * @param[out] error Reason of a failure, in UTF-8.
  * @return Whether the image was read and parsed.
  */
-bool ReadImportedModules(const std::wstring& path, std::vector<std::string>& modules, std::string& error)
+bool ReadImportedModules(const std::wstring& path, std::vector<std::uint8_t>& modules_image,
+                         std::vector<std::string>& modules, std::string& error)
 {
     std::vector<std::uint8_t> image;
     if (appbox::test::ReadFileFull(path, image) != ERROR_SUCCESS || image.empty())
@@ -117,6 +119,9 @@ bool ReadImportedModules(const std::wstring& path, std::vector<std::string>& mod
         error = "the image cannot be read";
         return false;
     }
+
+    /* The caller keeps the image, so it can look for the resources of a payload. */
+    modules_image = image;
 
     IMAGE_DOS_HEADER dos_header{};
     if (!ReadStruct(image, 0, dos_header) || dos_header.e_magic != IMAGE_DOS_SIGNATURE)
@@ -262,11 +267,12 @@ bool ReadImportedModules(const std::wstring& path, std::vector<std::string>& mod
  */
 void ExpectStaticRuntime(const std::wstring& path)
 {
-    const auto name = appbox::WideToUTF8(path);
+    const auto name = appbox::WideToUTF8(path).value_or(std::string());
 
-    std::vector<std::string> modules;
-    std::string              error;
-    ASSERT_TRUE(ReadImportedModules(path, modules, error)) << name << ": " << error;
+    std::vector<std::uint8_t> image;
+    std::vector<std::string>  modules;
+    std::string               error;
+    ASSERT_TRUE(ReadImportedModules(path, image, modules, error)) << name << ": " << error;
 
     /*
      * The reader is only trusted while it reports the modules every product of
@@ -339,7 +345,8 @@ public:
         const auto module = ::LoadLibraryExW(launcher.c_str(), nullptr, LOAD_LIBRARY_AS_DATAFILE);
         if (module == nullptr)
         {
-            error_ = "the launcher `" + appbox::WideToUTF8(launcher) + "` cannot be opened as a data file";
+            error_ = "the launcher `" + appbox::WideToUTF8(launcher).value_or(std::string()) +
+                     "` cannot be opened as a data file";
             return;
         }
 
@@ -460,20 +467,20 @@ private:
      */
     bool Release(HMODULE module, int resource_id, const wchar_t* name, std::wstring& path)
     {
-        std::string_view payload;
-        std::string      error;
-        if (!appbox::ReadEmbeddedResource(module, resource_id, payload, error))
+        const auto payload = appbox::ReadEmbeddedResource(module, resource_id);
+        if (!payload)
         {
-            error_ = error;
+            error_ = appbox::test::DescribeErrorCode(payload.error());
             return false;
         }
 
         path = (directory_ / name).wstring();
 
-        const auto status = appbox::test::WriteFileFull(path, std::string(payload));
+        const auto status = appbox::test::WriteFileFull(path, std::string(*payload));
         if (status != ERROR_SUCCESS)
         {
-            error_ = "the module `" + appbox::WideToUTF8(path) + "` cannot be written: error " + std::to_string(status);
+            error_ = "the module `" + appbox::WideToUTF8(path).value_or(std::string()) + "` cannot be written: error " +
+                     std::to_string(status);
             return false;
         }
 

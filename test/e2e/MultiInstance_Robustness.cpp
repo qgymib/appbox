@@ -36,7 +36,7 @@ appbox::MsgLauncherStart::Req RequestOf(const std::string& id, const std::wstrin
     appbox::MsgLauncherStart::Req request;
     request.version = appbox::kLauncherStartVersion;
     request.sandbox_id = id;
-    request.sandbox_root = appbox::WideToUTF8(root);
+    request.sandbox_root = appbox::WideToUTF8(root).value_or(std::string());
     request.selection = "auto";
     return request;
 }
@@ -78,7 +78,9 @@ TEST_F(E2E_MultiInstance, MalformedRequests)
     std::vector<int>         error_codes;
     std::vector<std::string> refusal_codes;
 
-    RawControlPipe pipe(appbox::SandboxPipeName(id));
+    const auto     pipe_name = appbox::SandboxPipeName(id);
+    RawControlPipe pipe(pipe_name.has_value() ? pipe_name.value() : std::string{});
+    ASSERT_TRUE(pipe_name.has_value()) << "the identifier of the case names no control pipe";
     ASSERT_TRUE(pipe.IsOpen()) << pipe.LastError();
 
     nlohmann::json answer;
@@ -202,7 +204,8 @@ TEST_F(E2E_MultiInstance, ConcurrentRequests)
         for (std::size_t index = 0; index < kEnvironmentCount; ++index)
         {
             workers.emplace_back([&, index]() {
-                RawControlPipe pipe(appbox::SandboxPipeName(id));
+                const auto     pipe_name = appbox::SandboxPipeName(id);
+                RawControlPipe pipe(pipe_name.has_value() ? pipe_name.value() : std::string{});
                 if (!pipe.IsOpen())
                 {
                     environment_errors[index] = pipe.LastError();

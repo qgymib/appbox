@@ -22,7 +22,7 @@ bool appbox::BuildFilesystemIsolationFile(const FilesystemIsolationModel& model,
         for (const auto& entry : model.Entries())
         {
             filesystem_isolation::Entry item;
-            item.path = WideToUTF8(entry.path);
+            item.path = WideToUTF8(entry.path).value_or(std::string());
             item.kind = entry.kind;
             item.isolation = entry.isolation;
             document.entries.push_back(std::move(item));

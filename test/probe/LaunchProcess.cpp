@@ -11,6 +11,87 @@ namespace
 constexpr ULONG kRtlUserProcParamsNormalized = 0x00000001;
 
 /**
+ * @brief The prefix of `RTL_USER_PROCESS_PARAMETERS` which decides the window.
+ *
+ * The structure is not part of the headers of the SDK, so the members the
+ * creation of a child needs are declared here with the layout the runtime of
+ * the system fills: the counted length of the block, the flags of the block,
+ * the handle and the flags of the console, the three standard streams, the
+ * counted strings of the block and the window flags. The `static_assert` below
+ * pins the offsets, so a layout the runtime of the system changes is a failure
+ * of the build instead of a write past the field.
+ *
+ * A block built by `RtlCreateProcessParametersEx` names no window flags, which
+ * the runtime of the system reads as `SW_SHOWDEFAULT`: a child of a process
+ * without a console opens a console window then. A caller which sets
+ * `WindowFlags` and `ShowWindowFlags` says that the window is hidden instead,
+ * which is the countermovement of `CREATE_NO_WINDOW` on the Win32 path. The
+ * console flags carry the same statement, so a runtime of the system which
+ * creates the console of the child itself keeps the window hidden as well.
+ */
+struct RTL_USER_PROCESS_PARAMETERS_PREFIX
+{
+    ULONG          MaximumLength;
+    ULONG          Length;
+    ULONG          Flags;
+    ULONG          DebugFlags;
+    HANDLE         ConsoleHandle;
+    ULONG          ConsoleFlags;
+    HANDLE         StandardInput;
+    HANDLE         StandardOutput;
+    HANDLE         StandardError;
+    UNICODE_STRING CurrentDirectory;
+    HANDLE         CurrentDirectoryHandle;
+    UNICODE_STRING DllPath;
+    UNICODE_STRING ImagePathName;
+    UNICODE_STRING CommandLine;
+    PWSTR          Environment;
+    ULONG          StartingPositionLeft;
+    ULONG          StartingPositionTop;
+    ULONG          Width;
+    ULONG          Height;
+    ULONG          CharWidth;
+    ULONG          CharHeight;
+    ULONG          ConsoleTextAttributes;
+    ULONG          WindowFlags;
+    ULONG          ShowWindowFlags;
+};
+
+/*
+ * The offsets the block of the runtime of the system carries, per bit size: the
+ * counted strings of the block are as wide as a pointer of the process, so the
+ * window members of the 32 bit block start four counted strings earlier than
+ * the ones of the 64 bit block. A member which the runtime of the system adds,
+ * removes or realigns breaks one of the two assertions instead of turning the
+ * write of the window flags into a write past the block.
+ */
+#if defined(_WIN64)
+static_assert(offsetof(RTL_USER_PROCESS_PARAMETERS_PREFIX, ConsoleHandle) == 0x10,
+              "the console handle of the process parameters moved");
+static_assert(offsetof(RTL_USER_PROCESS_PARAMETERS_PREFIX, Width) == 0x90,
+              "the window position of the process parameters moved");
+static_assert(offsetof(RTL_USER_PROCESS_PARAMETERS_PREFIX, WindowFlags) == 0xA4,
+              "the window flags of the process parameters moved");
+static_assert(offsetof(RTL_USER_PROCESS_PARAMETERS_PREFIX, ShowWindowFlags) == 0xA8,
+              "the show window flags of the process parameters moved");
+#else
+static_assert(offsetof(RTL_USER_PROCESS_PARAMETERS_PREFIX, ConsoleHandle) == 0x10,
+              "the console handle of the process parameters moved");
+static_assert(offsetof(RTL_USER_PROCESS_PARAMETERS_PREFIX, Width) == 0x54,
+              "the window position of the process parameters moved");
+static_assert(offsetof(RTL_USER_PROCESS_PARAMETERS_PREFIX, WindowFlags) == 0x68,
+              "the window flags of the process parameters moved");
+static_assert(offsetof(RTL_USER_PROCESS_PARAMETERS_PREFIX, ShowWindowFlags) == 0x6C,
+              "the show window flags of the process parameters moved");
+#endif
+
+/* The block carries the window fields, so the runtime of the system reads them. */
+constexpr ULONG kRtlUserProcParamsWindowFlags = 0x00000080;
+
+/* The flag of the block which keeps the console the block inherits. */
+constexpr ULONG kRtlUserProcParamsConsoleNoWindow = 0x00000002;
+
+/**
  * @brief The record `RtlCreateUserProcess` reports the new process in.
  *
  * The structure is not part of the headers of the SDK, so it is declared here
@@ -183,6 +264,21 @@ DWORD LaunchThroughRtlCreateUserProcess(const std::wstring& file, const std::wst
         return StatusToErrorCode(status);
     }
 
+    /*
+     * A caller of this path reaches `NtCreateUserProcess` without the Win32
+     * creation code, so it carries no `STARTUPINFO` and no `CREATE_NO_WINDOW`:
+     * the window of the child is what the parameters of the block say. The
+     * probe itself owns a console whose window is hidden, so a child which
+     * inherited that reading would open a console window of its own and show
+     * it on the desktop. The block is told to hide the window instead, which
+     * keeps the console of the child, and therefore its standard streams, and
+     * keeps the window off the desktop of the machine the cases run on.
+     */
+    auto prefix = reinterpret_cast<RTL_USER_PROCESS_PARAMETERS_PREFIX*>(parameters);
+    prefix->WindowFlags |= kRtlUserProcParamsWindowFlags;
+    prefix->ShowWindowFlags = SW_HIDE;
+    prefix->ConsoleFlags |= kRtlUserProcParamsConsoleNoWindow;
+
     RTL_USER_PROCESS_INFORMATION information;
     ZeroMemory(&information, sizeof(information));
     information.Length = sizeof(information);
@@ -212,6 +308,14 @@ DWORD LaunchThroughRtlCreateUserProcess(const std::wstring& file, const std::wst
 /**
  * @brief Launch a program through `CreateProcessW`.
  *
+ * The child is created without a console window: the probe runs in a sandbox
+ * whose launcher starts it without a console window as well, so a child created
+ * with the default flags would be given a console of its own and would show it
+ * on the desktop of the machine the cases run on. The flag creates that console
+ * hidden instead, so the child keeps its console and its standard streams, and
+ * `startup_info` is left to its defaults, which keeps the handles of the probe
+ * out of the child.
+ *
  * @param[in] file Path of the image in UTF-8.
  * @param[in] command_line Command line of the child.
  * @param[in] current_directory Working directory, empty to inherit.
@@ -230,7 +334,7 @@ DWORD LaunchThroughCreateProcess(const std::wstring& file, std::wstring& command
     startup_info.cb = sizeof(startup_info);
     ZeroMemory(&process_info, sizeof(process_info));
 
-    if (!CreateProcessW(file.c_str(), buffer.data(), nullptr, nullptr, FALSE, 0, nullptr,
+    if (!CreateProcessW(file.c_str(), buffer.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
                         current_directory.empty() ? nullptr : current_directory.c_str(), &startup_info, &process_info))
     {
         return GetLastError();
@@ -261,14 +365,15 @@ appbox::test::ProtocolLaunchProcess::Rsp appbox::test::ProbeLaunchProcess_Entry(
      */
     if (!req.ParentCurrentDirectory.empty())
     {
-        if (!SetCurrentDirectoryW(appbox::UTF8ToWide(req.ParentCurrentDirectory).c_str()))
+        const std::wstring parent_directory = appbox::UTF8ToWide(req.ParentCurrentDirectory).value_or(std::wstring());
+        if (!SetCurrentDirectoryW(parent_directory.c_str()))
         {
             rsp.code = GetLastError();
             return rsp;
         }
     }
 
-    const std::wstring file = appbox::UTF8ToWide(req.FileName);
+    const std::wstring file = appbox::UTF8ToWide(req.FileName).value_or(std::wstring());
 
     /* Build the command line: "<exe>" <arg> <arg> ... The arguments are
      * joined with plain spaces, quoting stays under the caller's control. */
@@ -276,10 +381,10 @@ appbox::test::ProtocolLaunchProcess::Rsp appbox::test::ProbeLaunchProcess_Entry(
     for (const auto& arg : req.Arguments)
     {
         cmdline += L" ";
-        cmdline += appbox::UTF8ToWide(arg);
+        cmdline += appbox::UTF8ToWide(arg).value_or(std::wstring());
     }
 
-    const std::wstring current_directory = appbox::UTF8ToWide(req.CurrentDirectory);
+    const std::wstring current_directory = appbox::UTF8ToWide(req.CurrentDirectory).value_or(std::wstring());
 
     switch (req.Api)
     {

@@ -118,7 +118,7 @@ bool StepAddress(const Step& step, sockaddr_in& address)
     address.sin_family = AF_INET;
     address.sin_port = htons(step.port);
 
-    const std::wstring text = appbox::UTF8ToWide(step.address);
+    const std::wstring text = appbox::UTF8ToWide(step.address).value_or(std::wstring());
     return InetPtonW(AF_INET, text.c_str(), &address.sin_addr) == 1;
 }
 

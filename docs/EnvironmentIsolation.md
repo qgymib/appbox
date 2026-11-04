@@ -152,8 +152,25 @@ entries of the state file below, and both sides convert them with `to_json()`
 and `from_json()` instead of reading or writing the members of a JSON object. An
 entry whose members are incomplete, which are of another type, which names an
 unknown mode, which carries no name or whose name carries an equals sign is
-therefore refused while the file is read, and the error text names the position
-of the entry in the list.
+therefore refused while the file is read.
+
+The readers both sides share are
+`environment_isolation::ParseDocument(std::string_view)` for the isolation file
+and `environment_isolation::ParseStateDocument(std::string_view)` for the state
+file, and they report a refusal by a code of `common/ErrorCode.hpp` alone:
+
+| Code | Meaning |
+| --- | --- |
+| `kIsolationDocumentInvalid` | The text is no document of the schema: it is no JSON document, a member is missing or of another type, an entry carries no name, a name carries an equals sign, or a mode is unknown. |
+| `kIsolationDocumentUnsupportedVersion` | The document names a schema version this build does not read. |
+| `kIsolationTokenUnknown` | A text does not name an isolation mode or a merge mode; `ParseIsolationToken()` and `ParseMergeModeToken()` answer it. |
+
+The `from_json()` members still throw `IsolationDocumentError`, whose text names
+the position of the entry in the list. `nlohmann::json` requires the fixed
+signatures `from_json(const json&, T&)` and `to_json(json&, const T&)`, so those
+two keep their signature and may throw. The error is internal to the schema: the
+readers catch it and return the code, and the module which shows the failure
+writes the wording of the message.
 
 The file belongs to the resources of the archive, so it is part of the content
 of a session and not of its state: `common/SandboxLayout.hpp` lists it together

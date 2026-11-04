@@ -50,7 +50,10 @@ namespace appbox
 ZipWriter::ZipWriter(const std::wstring& path, CompressionLevel level) : level_(level)
 {
     int error = 0;
-    archive_ = zip_open(WideToUTF8(path).c_str(), ZIP_CREATE | ZIP_TRUNCATE, &error);
+    /* The path has to outlive the call, so it is a named value: the buffer of a
+     * temporary would be released before zip_open() reads it. */
+    const std::string host_path = WideToUTF8(path).value_or(std::string());
+    archive_ = zip_open(host_path.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &error);
     if (archive_ == nullptr)
     {
         zip_error_t detail;
@@ -132,7 +135,7 @@ bool ZipWriter::AddFileDisk(const std::wstring& disk_path, const std::string& en
     }
 
     /* libzip interprets file names as UTF-8 and converts them to UTF-16. */
-    const auto  path = WideToUTF8(disk_path);
+    const auto  path = WideToUTF8(disk_path).value_or(std::string());
     zip_source* source = zip_source_file(archive_, path.c_str(), 0, -1);
     if (source == nullptr)
     {

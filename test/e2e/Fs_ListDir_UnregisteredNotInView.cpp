@@ -103,7 +103,7 @@ TEST_F(E2E_Fs, ListDir_UnregisteredNotInView)
         SCOPED_TRACE("file");
 
         ProtocolListDirNt::Req req;
-        req.path = appbox::WideToUTF8(file);
+        req.path = appbox::WideToUTF8(file).value_or(std::string());
         req.create_file = true; /* A file is not opened with `FILE_DIRECTORY_FILE`. */
         req.duplicate = true;
 
@@ -129,7 +129,7 @@ TEST_F(E2E_Fs, ListDir_UnregisteredNotInView)
         SCOPED_TRACE("removed folder");
 
         ProtocolListDirNt::Req req;
-        req.path = appbox::WideToUTF8(removed_folder);
+        req.path = appbox::WideToUTF8(removed_folder).value_or(std::string());
         req.duplicate = true;
         req.remove_before_query = true;
 

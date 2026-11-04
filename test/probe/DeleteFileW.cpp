@@ -7,7 +7,7 @@ appbox::test::ProtocolDeleteFileW::Rsp appbox::test::ProbeDeleteFileW_Entry(
     const appbox::test::ProtocolDeleteFileW::Req& request)
 {
     const auto& req = request;
-    auto        wFileName = appbox::UTF8ToWide(req.FileName);
+    auto        wFileName = appbox::UTF8ToWide(req.FileName).value_or(std::wstring());
 
     ProtocolDeleteFileW::Rsp rsp;
     if (!DeleteFileW(wFileName.c_str()))

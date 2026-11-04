@@ -104,10 +104,10 @@ appbox::filesystem::QueryPathResult appbox::filesystem::ResolveViewPath(const st
      */
     if (!resolve_result->bParentExist && resolve_result->status == ResolveResult::Status::Exists)
     {
-        const std::wstring parent = DirName(resolve_result->viewPath);
-        if (!parent.empty() && parent != resolve_result->viewPath)
+        const auto parent = DirName(resolve_result->viewPath);
+        if (parent && !parent->empty() && *parent != resolve_result->viewPath)
         {
-            resolve_result->bParentExist = Resolve(parent, ResolveOption{})->status == ResolveResult::Status::Exists;
+            resolve_result->bParentExist = Resolve(*parent, ResolveOption{})->status == ResolveResult::Status::Exists;
         }
     }
 
@@ -130,11 +130,11 @@ appbox::filesystem::QueryPathResult appbox::filesystem::ResolveQueryPath(const P
         return result;
     }
 
-    std::wstring native_fs_path;
-    if (!appbox::MappingAsDosNtPath(native_fs_nt_path, native_fs_path))
+    const auto native_fs_path = appbox::MappingAsDosNtPath(native_fs_nt_path);
+    if (!native_fs_path)
     {
         return result;
     }
 
-    return ResolveViewPath(native_fs_path, ObjectAttributes->Attributes);
+    return ResolveViewPath(*native_fs_path, ObjectAttributes->Attributes);
 }

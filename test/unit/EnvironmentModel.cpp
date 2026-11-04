@@ -333,20 +333,24 @@ TEST(Unit_EnvironmentModel, IsolationTokensRoundTrip)
     EXPECT_STREQ(IsolationToken(appbox::EnvironmentIsolation::Full), "full");
     EXPECT_STREQ(IsolationToken(appbox::EnvironmentIsolation::WriteCopy), "write_copy");
 
-    appbox::EnvironmentIsolation isolation = appbox::EnvironmentIsolation::Full;
-    EXPECT_TRUE(ParseIsolationToken("write_copy", isolation));
-    EXPECT_EQ(isolation, appbox::EnvironmentIsolation::WriteCopy);
-    EXPECT_TRUE(ParseIsolationToken("Write Copy", isolation));
-    EXPECT_EQ(isolation, appbox::EnvironmentIsolation::WriteCopy);
-    EXPECT_TRUE(ParseIsolationToken("write-copy", isolation));
-    EXPECT_EQ(isolation, appbox::EnvironmentIsolation::WriteCopy);
-    EXPECT_TRUE(ParseIsolationToken("WRITECOPY", isolation));
-    EXPECT_EQ(isolation, appbox::EnvironmentIsolation::WriteCopy);
-    EXPECT_TRUE(ParseIsolationToken("FULL", isolation));
-    EXPECT_EQ(isolation, appbox::EnvironmentIsolation::Full);
+    for (const char* token : { "write_copy", "Write Copy", "write-copy", "WRITECOPY" })
+    {
+        const auto isolation = ParseIsolationToken(token);
+        ASSERT_TRUE(isolation) << "token: '" << token << "'";
+        EXPECT_EQ(*isolation, appbox::EnvironmentIsolation::WriteCopy);
+    }
 
-    EXPECT_FALSE(ParseIsolationToken("hide", isolation));
-    EXPECT_FALSE(ParseIsolationToken("", isolation));
+    const auto full = ParseIsolationToken("FULL");
+    ASSERT_TRUE(full);
+    EXPECT_EQ(*full, appbox::EnvironmentIsolation::Full);
+
+    const auto unknown = ParseIsolationToken("hide");
+    ASSERT_FALSE(unknown);
+    EXPECT_EQ(unknown.error(), appbox::ErrorCode::kIsolationTokenUnknown);
+
+    const auto empty = ParseIsolationToken("");
+    ASSERT_FALSE(empty);
+    EXPECT_EQ(empty.error(), appbox::ErrorCode::kIsolationTokenUnknown);
 }
 
 TEST(Unit_EnvironmentModel, MergeModeTokensRoundTrip)
@@ -358,18 +362,25 @@ TEST(Unit_EnvironmentModel, MergeModeTokensRoundTrip)
     EXPECT_STREQ(MergeModeToken(appbox::EnvironmentMergeMode::Prepend), "prepend");
     EXPECT_STREQ(MergeModeToken(appbox::EnvironmentMergeMode::Append), "append");
 
-    appbox::EnvironmentMergeMode merge = appbox::EnvironmentMergeMode::Replace;
-    EXPECT_TRUE(ParseMergeModeToken("Host", merge));
-    EXPECT_EQ(merge, appbox::EnvironmentMergeMode::Host);
-    EXPECT_TRUE(ParseMergeModeToken("PREPEND", merge));
-    EXPECT_EQ(merge, appbox::EnvironmentMergeMode::Prepend);
-    EXPECT_TRUE(ParseMergeModeToken("append", merge));
-    EXPECT_EQ(merge, appbox::EnvironmentMergeMode::Append);
-    EXPECT_TRUE(ParseMergeModeToken("replace", merge));
-    EXPECT_EQ(merge, appbox::EnvironmentMergeMode::Replace);
+    const auto host = ParseMergeModeToken("Host");
+    ASSERT_TRUE(host);
+    EXPECT_EQ(*host, appbox::EnvironmentMergeMode::Host);
 
-    EXPECT_FALSE(ParseMergeModeToken("merge", merge));
-    EXPECT_FALSE(ParseMergeModeToken("", merge));
+    const auto prepend = ParseMergeModeToken("PREPEND");
+    ASSERT_TRUE(prepend);
+    EXPECT_EQ(*prepend, appbox::EnvironmentMergeMode::Prepend);
+
+    const auto append = ParseMergeModeToken("append");
+    ASSERT_TRUE(append);
+    EXPECT_EQ(*append, appbox::EnvironmentMergeMode::Append);
+
+    const auto replace = ParseMergeModeToken("replace");
+    ASSERT_TRUE(replace);
+    EXPECT_EQ(*replace, appbox::EnvironmentMergeMode::Replace);
+
+    const auto unknown = ParseMergeModeToken("merge");
+    ASSERT_FALSE(unknown);
+    EXPECT_EQ(unknown.error(), appbox::ErrorCode::kIsolationTokenUnknown);
 }
 
 /**

@@ -97,7 +97,7 @@ void RegisterOnSessions(const appbox::RemoteAccepter::Ptr& accepter, const std::
  */
 void Echo(const appbox::RemoteSession::Ptr& session, uint64_t id, const nlohmann::json& param)
 {
-    session->SendResponse(id, param);
+    (void)session->SendResponse(id, param);
 }
 
 /**
@@ -178,8 +178,9 @@ TEST(Unit_RemoteConnector, StartOnRegularFileFailsWithoutLeakingHandle)
     const DWORD before = CountHandles();
 
     {
-        auto connector = appbox::RemoteConnector::Create(file_path);
-        EXPECT_EQ(connector->Connect(), nullptr);
+        const auto connector = appbox::RemoteConnector::Create(file_path);
+        ASSERT_TRUE(connector.has_value());
+        EXPECT_FALSE((*connector)->Connect().has_value());
     }
 
     const DWORD after = CountHandles();
@@ -198,16 +199,18 @@ TEST(Unit_RemoteConnector, RepeatedFailedStartDoesNotLeakHandles)
 
     /* Warm up, the first attempt may create lazily initialized resources. */
     {
-        auto connector = appbox::RemoteConnector::Create(file_path);
-        EXPECT_EQ(connector->Connect(), nullptr);
+        const auto connector = appbox::RemoteConnector::Create(file_path);
+        ASSERT_TRUE(connector.has_value());
+        EXPECT_FALSE((*connector)->Connect().has_value());
     }
 
     const DWORD before = CountHandles();
 
     for (int i = 0; i < 10; ++i)
     {
-        auto connector = appbox::RemoteConnector::Create(file_path);
-        EXPECT_EQ(connector->Connect(), nullptr);
+        const auto connector = appbox::RemoteConnector::Create(file_path);
+        ASSERT_TRUE(connector.has_value());
+        EXPECT_FALSE((*connector)->Connect().has_value());
     }
 
     const DWORD after = CountHandles();
@@ -221,10 +224,11 @@ TEST(Unit_RemoteConnector, RepeatedFailedStartDoesNotLeakHandles)
  */
 TEST(Unit_RemoteConnector, StartOnMissingPipeFails)
 {
-    auto connector = appbox::RemoteConnector::Create(MakePipePath());
+    const auto connector = appbox::RemoteConnector::Create(MakePipePath());
+    ASSERT_TRUE(connector.has_value());
 
     /* The budget of the attempts is short, no server will ever appear. */
-    EXPECT_EQ(connector->Connect(200), nullptr);
+    EXPECT_FALSE((*connector)->Connect(200).has_value());
 }
 
 /**
@@ -235,12 +239,16 @@ TEST(Unit_RemoteConnector, CallUnknownMethodReturnsError)
 {
     const std::string pipe_path = MakePipePath();
 
-    auto accepter = appbox::RemoteAccepter::Create(pipe_path);
-    ASSERT_TRUE(accepter->Start());
+    const auto accepter_created = appbox::RemoteAccepter::Create(pipe_path);
+    ASSERT_TRUE(accepter_created.has_value());
+    const auto& accepter = *accepter_created;
+    ASSERT_TRUE(accepter->Start().has_value());
 
-    auto connector = appbox::RemoteConnector::Create(pipe_path);
-    auto session = connector->Connect();
-    ASSERT_NE(session, nullptr);
+    const auto connector_created = appbox::RemoteConnector::Create(pipe_path);
+    ASSERT_TRUE(connector_created.has_value());
+    const auto connected = (*connector_created)->Connect();
+    ASSERT_TRUE(connected.has_value()) << static_cast<int>(connected.error());
+    const auto& session = *connected;
 
     auto rsp = session->Call("appbox_unit_missing_method", nlohmann::json::object()).get();
 
@@ -257,13 +265,17 @@ TEST(Unit_RemoteConnector, CallRegisteredMethod)
 {
     const std::string pipe_path = MakePipePath();
 
-    auto accepter = appbox::RemoteAccepter::Create(pipe_path);
+    const auto accepter_created = appbox::RemoteAccepter::Create(pipe_path);
+    ASSERT_TRUE(accepter_created.has_value());
+    const auto& accepter = *accepter_created;
     RegisterEcho(accepter);
-    ASSERT_TRUE(accepter->Start());
+    ASSERT_TRUE(accepter->Start().has_value());
 
-    auto connector = appbox::RemoteConnector::Create(pipe_path);
-    auto session = connector->Connect();
-    ASSERT_NE(session, nullptr);
+    const auto connector_created = appbox::RemoteConnector::Create(pipe_path);
+    ASSERT_TRUE(connector_created.has_value());
+    const auto connected = (*connector_created)->Connect();
+    ASSERT_TRUE(connected.has_value()) << static_cast<int>(connected.error());
+    const auto& session = *connected;
 
     auto rsp = session->Call(kEchoMethod, "hello").get();
 
@@ -281,21 +293,25 @@ TEST(Unit_RemoteConnector, CallTimesOut)
 {
     const std::string pipe_path = MakePipePath();
 
-    auto accepter = appbox::RemoteAccepter::Create(pipe_path);
+    const auto accepter_created = appbox::RemoteAccepter::Create(pipe_path);
+    ASSERT_TRUE(accepter_created.has_value());
+    const auto& accepter = *accepter_created;
     RegisterOnSessions(accepter,
                        {
                            { kSlowMethod,
                             [](const appbox::RemoteSession::Ptr& session, uint64_t id, const nlohmann::json&) {
                                  std::this_thread::sleep_for(std::chrono::milliseconds(400));
-                                 session->SendResponse(id, "late");
+                                 (void)session->SendResponse(id, "late");
                              } },
                            { kEchoMethod, Echo }
     });
-    ASSERT_TRUE(accepter->Start());
+    ASSERT_TRUE(accepter->Start().has_value());
 
-    auto connector = appbox::RemoteConnector::Create(pipe_path);
-    auto session = connector->Connect(5000);
-    ASSERT_NE(session, nullptr);
+    const auto connector_created = appbox::RemoteConnector::Create(pipe_path);
+    ASSERT_TRUE(connector_created.has_value());
+    const auto connected = (*connector_created)->Connect(5000);
+    ASSERT_TRUE(connected.has_value()) << static_cast<int>(connected.error());
+    const auto& session = *connected;
 
     const auto started = std::chrono::steady_clock::now();
     const auto rsp = session->Call(kSlowMethod, nlohmann::json(), 100);
@@ -335,13 +351,21 @@ TEST(Unit_RemoteConnector, RetriesOnBrokenPipe)
     std::thread                 late_accepter([&accepter, &pipe_path]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
-        accepter = appbox::RemoteAccepter::Create(pipe_path);
+        const auto created = appbox::RemoteAccepter::Create(pipe_path);
+        if (!created.has_value())
+        {
+            return;
+        }
+        accepter = *created;
         RegisterEcho(accepter);
-        accepter->Start();
+        (void)accepter->Start();
     });
 
-    auto       connector = appbox::RemoteConnector::Create(pipe_path);
-    const auto session = connector->Connect(5000);
+    const auto connector_created = appbox::RemoteConnector::Create(pipe_path);
+    ASSERT_TRUE(connector_created.has_value());
+    const auto connected = (*connector_created)->Connect(5000);
+    ASSERT_TRUE(connected.has_value()) << static_cast<int>(connected.error());
+    const auto& session = *connected;
 
     late_accepter.join();
 
@@ -363,15 +387,19 @@ TEST(Unit_RemoteConnector, ServerProcessIdIsAvailable)
 {
     const std::string pipe_path = MakePipePath();
 
-    auto accepter = appbox::RemoteAccepter::Create(pipe_path);
-    ASSERT_TRUE(accepter->Start());
+    const auto accepter_created = appbox::RemoteAccepter::Create(pipe_path);
+    ASSERT_TRUE(accepter_created.has_value());
+    const auto& accepter = *accepter_created;
+    ASSERT_TRUE(accepter->Start().has_value());
 
-    auto connector = appbox::RemoteConnector::Create(pipe_path);
-    auto session = connector->Connect(5000);
-    ASSERT_NE(session, nullptr);
+    const auto connector_created = appbox::RemoteConnector::Create(pipe_path);
+    ASSERT_TRUE(connector_created.has_value());
+    const auto connected = (*connector_created)->Connect(5000);
+    ASSERT_TRUE(connected.has_value()) << static_cast<int>(connected.error());
+    const auto& session = *connected;
 
     /* The accepter of the case runs in the process of the test. */
-    EXPECT_EQ(connector->ServerProcessId(), ::GetCurrentProcessId());
+    EXPECT_EQ((*connector_created)->ServerProcessId(), ::GetCurrentProcessId());
     EXPECT_EQ(session->PeerProcessId(), ::GetCurrentProcessId());
 
     accepter->Stop();
@@ -389,21 +417,25 @@ TEST(Unit_RemoteConnector, StrongTypedCallHonoursBudget)
 {
     const std::string pipe_path = MakePipePath();
 
-    auto accepter = appbox::RemoteAccepter::Create(pipe_path);
+    const auto accepter_created = appbox::RemoteAccepter::Create(pipe_path);
+    ASSERT_TRUE(accepter_created.has_value());
+    const auto& accepter = *accepter_created;
     RegisterOnSessions(accepter,
                        {
                            { DeferredMessage::Method,
                             [](const appbox::RemoteSession::Ptr& session, uint64_t id, const nlohmann::json&) {
                                  std::this_thread::sleep_for(std::chrono::milliseconds(300));
-                                 session->SendResponse(id, DeferredMessage::Rsp{ "late" });
+                                 (void)session->SendResponse(id, DeferredMessage::Rsp{ "late" });
                              } },
                            { kEchoMethod, Echo }
     });
-    ASSERT_TRUE(accepter->Start());
+    ASSERT_TRUE(accepter->Start().has_value());
 
-    auto connector = appbox::RemoteConnector::Create(pipe_path);
-    auto session = connector->Connect(5000);
-    ASSERT_NE(session, nullptr);
+    const auto connector_created = appbox::RemoteConnector::Create(pipe_path);
+    ASSERT_TRUE(connector_created.has_value());
+    const auto connected = (*connector_created)->Connect(5000);
+    ASSERT_TRUE(connected.has_value()) << static_cast<int>(connected.error());
+    const auto& session = *connected;
 
     DeferredMessage::Req req;
     req.value = "hello";

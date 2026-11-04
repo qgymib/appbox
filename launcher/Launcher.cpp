@@ -119,7 +119,7 @@ static bool MapOverlayFS(const std::wstring& state_dir, std::string& mapped_fs)
         return false;
     }
 
-    mapped_fs = appbox::WideToUTF8(nt_path_w);
+    mapped_fs = appbox::WideToUTF8(nt_path_w).value_or(std::string());
 
     /* Create directory */
     return std::filesystem::create_directories(dos_path_w);
@@ -140,10 +140,11 @@ static bool MapOverlayFS(const std::wstring& state_dir, std::string& mapped_fs)
  */
 static bool MountLowerFS(const std::wstring& layer_root, std::vector<appbox::SandboxLowerFS>& mapped_fs)
 {
-    const auto ret = appbox::MapBaseFS(appbox::WideToUTF8(layer_root), mapped_fs);
+    const auto ret = appbox::MapBaseFS(appbox::WideToUTF8(layer_root).value_or(std::string()), mapped_fs);
     if (ret != 0)
     {
-        SPDLOG_WARN("the filesystem layers of '{}' are skipped: {}", appbox::WideToUTF8(layer_root), ret);
+        SPDLOG_WARN("the filesystem layers of '{}' are skipped: {}",
+                    appbox::WideToUTF8(layer_root).value_or("<unconvertible>"), ret);
         return false;
     }
 
@@ -296,7 +297,8 @@ static std::string BuildRegistryImage(const appbox::SandboxPaths& paths, const s
     const std::filesystem::path state_hive(paths.StateRegistryHiveFile());
     if (!std::filesystem::exists(image_dir, ec) && std::filesystem::exists(state_hive, ec))
     {
-        SPDLOG_INFO("the state hive of an earlier layout is dropped: {}", appbox::WideToUTF8(state_hive.wstring()));
+        SPDLOG_INFO("the state hive of an earlier layout is dropped: {}",
+                    appbox::WideToUTF8(state_hive.wstring()).value_or("<unconvertible>"));
         RemoveHiveFiles(state_hive.wstring());
     }
 
@@ -306,7 +308,8 @@ static std::string BuildRegistryImage(const appbox::SandboxPaths& paths, const s
     std::filesystem::create_directories(image_dir, ec);
     if (ec)
     {
-        return fmt::format("failed to create '{}': {}", appbox::WideToUTF8(image_dir.wstring()), ec.message());
+        return fmt::format("failed to create '{}': {}",
+                           appbox::WideToUTF8(image_dir.wstring()).value_or("<unconvertible>"), ec.message());
     }
 
     const std::filesystem::path packed_hive(paths.RegistryHiveFile());
@@ -315,8 +318,9 @@ static std::string BuildRegistryImage(const appbox::SandboxPaths& paths, const s
         std::filesystem::copy_file(packed_hive, image_hive, std::filesystem::copy_options::none, ec);
         if (ec)
         {
-            return fmt::format("failed to copy '{}' into '{}': {}", appbox::WideToUTF8(packed_hive.wstring()),
-                               appbox::WideToUTF8(image_hive.wstring()), ec.message());
+            return fmt::format("failed to copy '{}' into '{}': {}",
+                               appbox::WideToUTF8(packed_hive.wstring()).value_or(std::string()),
+                               appbox::WideToUTF8(image_hive.wstring()).value_or(std::string()), ec.message());
         }
     }
     else
@@ -336,13 +340,13 @@ static std::string BuildRegistryImage(const appbox::SandboxPaths& paths, const s
         {
             if (!appbox::MergeHiveInto(image_hive.wstring(), layer.registry_hive, error))
             {
-                SPDLOG_ERROR("the registry of the patch package '{}' is skipped: {}", appbox::WideToUTF8(layer.name),
-                             error);
+                SPDLOG_ERROR("the registry of the patch package '{}' is skipped: {}",
+                             appbox::WideToUTF8(layer.name).value_or("<unconvertible>"), error);
             }
             else
             {
                 SPDLOG_DEBUG("applied the registry of the patch package '{}' to the image",
-                             appbox::WideToUTF8(layer.name));
+                             appbox::WideToUTF8(layer.name).value_or("<unconvertible>"));
             }
         }
 
@@ -355,19 +359,19 @@ static std::string BuildRegistryImage(const appbox::SandboxPaths& paths, const s
         if (!ReadRegistryIsolationDocument(layer.registry_isolation_file, document, error))
         {
             SPDLOG_ERROR("the registry isolation of the patch package '{}' is skipped: {}",
-                         appbox::WideToUTF8(layer.name), error);
+                         appbox::WideToUTF8(layer.name).value_or("<unconvertible>"), error);
             continue;
         }
 
         if (!appbox::ApplyHiveIsolationModes(image_hive.wstring(), document.keys, document.values, error))
         {
             SPDLOG_ERROR("the registry isolation of the patch package '{}' is skipped: {}",
-                         appbox::WideToUTF8(layer.name), error);
+                         appbox::WideToUTF8(layer.name).value_or("<unconvertible>"), error);
             continue;
         }
 
         SPDLOG_DEBUG("applied the registry isolation of the patch package '{}' to the image",
-                     appbox::WideToUTF8(layer.name));
+                     appbox::WideToUTF8(layer.name).value_or("<unconvertible>"));
     }
 
     return {};
@@ -456,13 +460,13 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const
         SPDLOG_ERROR("{}", image_error);
     }
 
-    inject_data.registry_hive_dos_path = appbox::WideToUTF8(paths.StateRegistryHiveFile());
+    inject_data.registry_hive_dos_path = appbox::WideToUTF8(paths.StateRegistryHiveFile()).value_or(std::string());
     {
         std::error_code ec;
         const auto      image_hive = paths.StateRegistryImageHiveFile();
         if (std::filesystem::is_regular_file(image_hive, ec))
         {
-            inject_data.registry_image_hive_dos_path = appbox::WideToUTF8(image_hive);
+            inject_data.registry_image_hive_dos_path = appbox::WideToUTF8(image_hive).value_or(std::string());
         }
         else
         {
@@ -487,31 +491,39 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const
      * the file of a package which carries no resource of a domain is not
      * listed, so that domain keeps the configuration of the layers below it.
      */
-    inject_data.filesystem_isolation_dos_paths.push_back(appbox::WideToUTF8(paths.FilesystemIsolationFile()));
-    inject_data.registry_isolation_dos_paths.push_back(appbox::WideToUTF8(paths.RegistryIsolationFile()));
-    inject_data.network_isolation_dos_paths.push_back(appbox::WideToUTF8(paths.NetworkIsolationFile()));
-    inject_data.environment_isolation_dos_paths.push_back(appbox::WideToUTF8(paths.EnvironmentIsolationFile()));
+    inject_data.filesystem_isolation_dos_paths.push_back(
+        appbox::WideToUTF8(paths.FilesystemIsolationFile()).value_or(std::string()));
+    inject_data.registry_isolation_dos_paths.push_back(
+        appbox::WideToUTF8(paths.RegistryIsolationFile()).value_or(std::string()));
+    inject_data.network_isolation_dos_paths.push_back(
+        appbox::WideToUTF8(paths.NetworkIsolationFile()).value_or(std::string()));
+    inject_data.environment_isolation_dos_paths.push_back(
+        appbox::WideToUTF8(paths.EnvironmentIsolationFile()).value_or(std::string()));
     for (const auto& layer : patch_layers)
     {
         if (!layer.isolation_file.empty())
         {
-            inject_data.filesystem_isolation_dos_paths.push_back(appbox::WideToUTF8(layer.isolation_file));
+            inject_data.filesystem_isolation_dos_paths.push_back(
+                appbox::WideToUTF8(layer.isolation_file).value_or(std::string()));
         }
         if (!layer.registry_isolation_file.empty())
         {
-            inject_data.registry_isolation_dos_paths.push_back(appbox::WideToUTF8(layer.registry_isolation_file));
+            inject_data.registry_isolation_dos_paths.push_back(
+                appbox::WideToUTF8(layer.registry_isolation_file).value_or(std::string()));
         }
         if (!layer.network_isolation_file.empty())
         {
-            inject_data.network_isolation_dos_paths.push_back(appbox::WideToUTF8(layer.network_isolation_file));
+            inject_data.network_isolation_dos_paths.push_back(
+                appbox::WideToUTF8(layer.network_isolation_file).value_or(std::string()));
         }
         if (!layer.environment_isolation_file.empty())
         {
-            inject_data.environment_isolation_dos_paths.push_back(appbox::WideToUTF8(layer.environment_isolation_file));
+            inject_data.environment_isolation_dos_paths.push_back(
+                appbox::WideToUTF8(layer.environment_isolation_file).value_or(std::string()));
         }
     }
 
-    inject_data.environment_state_dos_path = appbox::WideToUTF8(paths.StateEnvironmentFile());
+    inject_data.environment_state_dos_path = appbox::WideToUTF8(paths.StateEnvironmentFile()).value_or(std::string());
 
     /*
      * Every process the sandbox is injected into writes a log file of its own
@@ -521,7 +533,7 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const
      * that file. A run which asks for no log file hands the sandbox no
      * directory at all, so no process of that run creates a log file.
      */
-    inject_data.log_dir = appbox::WideToUTF8(log_dir);
+    inject_data.log_dir = appbox::WideToUTF8(log_dir).value_or(std::string());
     inject_data.log_level = log_level;
 
     /*
@@ -535,7 +547,8 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const
         std::filesystem::create_directories(state_file.parent_path(), ec);
         if (ec)
         {
-            SPDLOG_ERROR("failed to create '{}': {}", appbox::WideToUTF8(state_file.parent_path().wstring()),
+            SPDLOG_ERROR("failed to create '{}': {}",
+                         appbox::WideToUTF8(state_file.parent_path().wstring()).value_or("<unconvertible>"),
                          ec.message());
         }
     }
@@ -545,8 +558,10 @@ AppBoxLauncherRuntime::AppBoxLauncherRuntime(const std::string& log_level, const
      * released into the cache directory before the runtime was created, so
      * the sandbox is injected from the files of that run.
      */
-    this->inject_data.sandbox32_dos_path = appbox::WideToUTF8(LauncherApp().sandbox_modules.sandbox32_dll);
-    this->inject_data.sandbox64_dos_path = appbox::WideToUTF8(LauncherApp().sandbox_modules.sandbox64_dll);
+    this->inject_data.sandbox32_dos_path =
+        appbox::WideToUTF8(LauncherApp().sandbox_modules.sandbox32_dll).value_or(std::string());
+    this->inject_data.sandbox64_dos_path =
+        appbox::WideToUTF8(LauncherApp().sandbox_modules.sandbox64_dll).value_or(std::string());
 
     ReportStartupStage(appbox::StartupStage::MountingSandbox, 1.0);
 }

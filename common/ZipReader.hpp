@@ -1,16 +1,16 @@
 #ifndef APPBOX_COMMON_ZIP_READER_HPP
 #define APPBOX_COMMON_ZIP_READER_HPP
 
-#include "ZipReaderError.hpp"
-#include "details/ZipReaderDetail.hpp"
+#include "ErrorCode.hpp"
+#include "WString.hpp"
+#include <tl/expected.hpp>
 #include <cstddef>
 #include <cstdint>
-#include <exception>
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
-#include <system_error>
 
 namespace appbox
 {
@@ -48,9 +48,20 @@ struct ExtractProgress
  * @brief Progress callback of an extraction.
  *
  * The callback is invoked once per extracted file; returning false aborts the
- * extraction with ZIPREADER_CANCELLED.
+ * extraction with `kZipCancelled`.
  */
 using ExtractProgressCallback = std::function<bool(const ExtractProgress&)>;
+
+} // namespace appbox
+
+/*
+ * The helpers of the extraction are defined in their own header, which needs the
+ * declaration of the progress report and of the callback above.
+ */
+#include "details/ZipReaderDetail.hpp"
+
+namespace appbox
+{
 
 namespace detail
 {
@@ -61,14 +72,17 @@ namespace detail
  * The archive is owned by the caller, so both the path variant and the
  * embedded region variant share this body.
  *
+ * A callback which throws is refused with `kInvalidState`: the extraction is a
+ * `noexcept` interface, and a callback which breaks its contract must not turn
+ * the answer of the extraction into a call of `std::terminate()`.
+ *
  * @param[in] archive Opened archive.
  * @param[in] dest_dir Destination folder.
  * @param[in] progress Called once per extracted file; may be empty.
- * @return ZIPREADER_SUCCESS on success, the error code of the failed step
- *         otherwise.
+ * @return The success value, or the code of the failed step.
  */
-inline ZipReaderErrno ExtractArchiveEntries(zip_t* archive, const std::wstring& dest_dir,
-                                            const ExtractProgressCallback& progress)
+inline tl::expected<void, ErrorCode> ExtractArchiveEntries(zip_t* archive, const std::wstring& dest_dir,
+                                                           const ExtractProgressCallback& progress) noexcept
 {
     const auto root = std::filesystem::path(dest_dir).lexically_normal();
 
@@ -76,7 +90,7 @@ inline ZipReaderErrno ExtractArchiveEntries(zip_t* archive, const std::wstring& 
     std::filesystem::create_directories(root, ec);
     if (ec)
     {
-        return ZIPREADER_CREATE_DESTINATION_FAILED;
+        return tl::unexpected<ErrorCode>(ErrorCode::kZipCreateDestinationFailed);
     }
 
     const auto count = zip_get_num_entries(archive, 0);
@@ -97,9 +111,37 @@ inline ZipReaderErrno ExtractArchiveEntries(zip_t* archive, const std::wstring& 
         }
     }
 
-    if (progress && !progress(ExtractProgress{ 0, total, {} }))
+    /*
+     * The callback is the only caller code this body invokes, so it is the only
+     * place which catches: a callback which throws breaks its contract, and the
+     * code of that failure is answered instead of letting the exception escape
+     * a `noexcept` interface. A callback which answers false abandons the
+     * extraction, which is the cancellation of the run.
+     */
+    const auto report = [&progress](const ExtractProgress& state) noexcept -> std::optional<bool> {
+        if (!progress)
+        {
+            return true;
+        }
+
+        try
+        {
+            return progress(state);
+        }
+        catch (...)
+        {
+            return std::nullopt;
+        }
+    };
+
+    const auto opening = report(ExtractProgress{ 0, total, {} });
+    if (!opening)
     {
-        return ZIPREADER_CANCELLED;
+        return tl::unexpected<ErrorCode>(ErrorCode::kInvalidState);
+    }
+    if (!*opening)
+    {
+        return tl::unexpected<ErrorCode>(ErrorCode::kZipCancelled);
     }
 
     std::size_t done = 0;
@@ -108,35 +150,27 @@ inline ZipReaderErrno ExtractArchiveEntries(zip_t* archive, const std::wstring& 
         zip_stat_t stat = {};
         if (zip_stat_index(archive, index, 0, &stat) < 0)
         {
-            return ZIPREADER_READ_ENTRY_FAILED;
+            return tl::unexpected<ErrorCode>(ErrorCode::kZipReadEntryFailed);
         }
         if (stat.name == nullptr || (stat.valid & ZIP_STAT_NAME) == 0)
         {
             continue;
         }
 
-        std::wstring relative;
-        try
+        const auto sanitized = detail::SanitizeZipEntryName(stat.name);
+        if (!sanitized)
         {
-            relative = detail::SanitizeZipEntryName(stat.name);
-        }
-        catch (const std::exception&)
-        {
-            return ZIPREADER_UNREADABLE_ENTRY_NAME;
+            return tl::unexpected<ErrorCode>(sanitized.error());
         }
 
-        if (relative.empty())
-        {
-            return ZIPREADER_UNSAFE_ENTRY_NAME;
-        }
-
-        const auto target = root / relative;
+        const auto& relative = *sanitized;
+        const auto  target = root / relative;
         if (detail::IsZipDirectoryEntry(stat.name))
         {
             std::filesystem::create_directories(target, ec);
             if (ec)
             {
-                return ZIPREADER_CREATE_ENTRY_FAILED;
+                return tl::unexpected<ErrorCode>(ErrorCode::kZipCreateEntryFailed);
             }
             continue;
         }
@@ -144,7 +178,7 @@ inline ZipReaderErrno ExtractArchiveEntries(zip_t* archive, const std::wstring& 
         std::filesystem::create_directories(target.parent_path(), ec);
         if (ec)
         {
-            return ZIPREADER_CREATE_ENTRY_FAILED;
+            return tl::unexpected<ErrorCode>(ErrorCode::kZipCreateEntryFailed);
         }
 
         /*
@@ -152,19 +186,24 @@ inline ZipReaderErrno ExtractArchiveEntries(zip_t* archive, const std::wstring& 
          * file while it is being extracted instead of after the fact.
          */
         done++;
-        if (progress && !progress(ExtractProgress{ done, total, detail::DisplayZipEntryName(relative) }))
+        const auto accepted = report(ExtractProgress{ done, total, detail::DisplayZipEntryName(relative) });
+        if (!accepted)
         {
-            return ZIPREADER_CANCELLED;
+            return tl::unexpected<ErrorCode>(ErrorCode::kInvalidState);
+        }
+        if (!*accepted)
+        {
+            return tl::unexpected<ErrorCode>(ErrorCode::kZipCancelled);
         }
 
-        const auto error = detail::WriteZipEntry(archive, index, target);
-        if (error != ZIPREADER_SUCCESS)
+        const auto written = detail::WriteZipEntry(archive, index, target);
+        if (!written)
         {
-            return error;
+            return tl::unexpected<ErrorCode>(written.error());
         }
     }
 
-    return ZIPREADER_SUCCESS;
+    return {};
 }
 
 } // namespace detail
@@ -190,22 +229,28 @@ inline ZipReaderErrno ExtractArchiveEntries(zip_t* archive, const std::wstring& 
  * @param[in] zip_path Archive to extract.
  * @param[in] dest_dir Destination folder.
  * @param[in] progress Called once per extracted file; returning false aborts
- *                     the extraction with ZIPREADER_CANCELLED. May be empty
- *                     to disable progress reporting.
- * @return ZIPREADER_SUCCESS on success, the error code of the failed step
- *         otherwise.
+ *                     the extraction with `kZipCancelled`. May be empty to
+ *                     disable progress reporting.
+ * @return The success value, or the code of the failed step.
  */
-inline ZipReaderErrno ExtractArchive(const std::wstring& zip_path, const std::wstring& dest_dir,
-                                     const ExtractProgressCallback& progress = {})
+inline tl::expected<void, ErrorCode> ExtractArchive(const std::wstring& zip_path, const std::wstring& dest_dir,
+                                                    const ExtractProgressCallback& progress = {}) noexcept
 {
-    const auto path = WideToUTF8(zip_path);
+    /* The archive is opened by the library through a UTF-8 path, so a path
+     * which the code page cannot carry is the code of the conversion. */
+    const auto converted_path = WideToUTF8(zip_path);
+    if (!converted_path)
+    {
+        return tl::unexpected<ErrorCode>(converted_path.error());
+    }
+    const std::string& path = *converted_path;
 
     int                                                    error_code = 0;
     const std::unique_ptr<zip_t, detail::ZipArchiveCloser> archive(zip_open(path.c_str(), ZIP_RDONLY, &error_code),
                                                                    detail::ZipArchiveCloser{});
     if (archive == nullptr)
     {
-        return ZIPREADER_OPEN_ARCHIVE_FAILED;
+        return tl::unexpected<ErrorCode>(ErrorCode::kZipOpenFailed);
     }
 
     return detail::ExtractArchiveEntries(archive.get(), dest_dir, progress);
@@ -224,21 +269,29 @@ inline ZipReaderErrno ExtractArchive(const std::wstring& zip_path, const std::ws
  * @param[in] length Length of the archive region, in bytes.
  * @param[in] dest_dir Destination folder.
  * @param[in] progress Called once per extracted file; may be empty.
- * @return ZIPREADER_SUCCESS on success, the error code of the failed step
- *         otherwise.
+ * @return The success value, or the code of the failed step.
  */
-inline ZipReaderErrno ExtractArchiveAt(const std::wstring& path, std::uint64_t offset, std::uint64_t length,
-                                       const std::wstring& dest_dir, const ExtractProgressCallback& progress = {})
+inline tl::expected<void, ErrorCode> ExtractArchiveAt(const std::wstring& path, std::uint64_t offset,
+                                                      std::uint64_t length, const std::wstring& dest_dir,
+                                                      const ExtractProgressCallback& progress = {}) noexcept
 {
+    /* The region is described by a UTF-8 path as well, so a path which the code
+     * page cannot carry is the code of the conversion. */
+    const auto converted_path = WideToUTF8(path);
+    if (!converted_path)
+    {
+        return tl::unexpected<ErrorCode>(converted_path.error());
+    }
+    const std::string& host_path = *converted_path;
+
     zip_error_t error;
     zip_error_init(&error);
 
-    zip_source_t* source =
-        zip_source_file_create(WideToUTF8(path).c_str(), offset, static_cast<zip_int64_t>(length), &error);
+    zip_source_t* source = zip_source_file_create(host_path.c_str(), offset, static_cast<zip_int64_t>(length), &error);
     if (source == nullptr)
     {
         zip_error_fini(&error);
-        return ZIPREADER_OPEN_ARCHIVE_FAILED;
+        return tl::unexpected<ErrorCode>(ErrorCode::kZipOpenFailed);
     }
 
     zip_t* opened = zip_open_from_source(source, ZIP_RDONLY, &error);
@@ -247,7 +300,7 @@ inline ZipReaderErrno ExtractArchiveAt(const std::wstring& path, std::uint64_t o
         /* zip_open_from_source() does not take the source on failure. */
         zip_source_free(source);
         zip_error_fini(&error);
-        return ZIPREADER_OPEN_ARCHIVE_FAILED;
+        return tl::unexpected<ErrorCode>(ErrorCode::kZipOpenFailed);
     }
 
     zip_error_fini(&error);

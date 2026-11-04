@@ -74,8 +74,8 @@ ProtocolSetInformationFile::Rsp SetNames(const std::vector<SetNameAction>& actio
     {
         ProtocolSetInformationFile::Req::Item item;
         item.action = action.action;
-        item.source = appbox::WideToUTF8(FolderPath() + L"\\source.txt");
-        item.target = appbox::WideToUTF8(action.target);
+        item.source = appbox::WideToUTF8(FolderPath() + L"\\source.txt").value_or(std::string());
+        item.target = appbox::WideToUTF8(action.target).value_or(std::string());
         item.access = action.access;
         req.items.push_back(item);
     }
@@ -137,7 +137,7 @@ TEST_F(E2E_Fs, Marker_RenameToAReservedNameIsRefused)
     /* The source keeps its name and its content. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\source.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\source.txt").value_or(std::string());
 
         const auto read = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(read.code, static_cast<DWORD>(ERROR_SUCCESS));

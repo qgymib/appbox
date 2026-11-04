@@ -119,7 +119,7 @@ std::vector<std::string> PipeNamesWithPrefix(const std::string& prefix)
 
     do
     {
-        const auto name = appbox::WideToUTF8(entry.cFileName);
+        const auto name = appbox::WideToUTF8(entry.cFileName).value_or(std::string());
         if (name.rfind(prefix, 0) == 0)
         {
             names.push_back(name);

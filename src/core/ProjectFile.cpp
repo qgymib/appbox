@@ -1,3 +1,13 @@
+/*
+ * The header chain of this file reaches `<windows.h>` through
+ * `common/ErrorCode.hpp`, and `winnt.h` defines aliases of the `STATUS_*`
+ * names which `ntstatus.h` defines. A translation unit which spells such a
+ * name therefore takes the table of `ntstatus.h`, which `common/WinAPI.h`
+ * is the first header of when it is used; the two lines below give the same
+ * precedence without the rest of that header.
+ */
+#include <ntstatus.h>
+#define WIN32_NO_STATUS
 #include "ProjectFile.hpp"
 #include "SandboxId.hpp"
 #include "WString.hpp"
@@ -205,7 +215,7 @@ bool ApplyRegistryKey(const appbox::ProjectRegistryKeyRecord& record, const std:
     {
         if (model.FindKey(path) == nullptr)
         {
-            error = Scoped(scope, "unknown root key '" + appbox::WideToUTF8(record.name) + "'");
+            error = Scoped(scope, "unknown root key '" + appbox::WideToUTF8(record.name).value_or(std::string()) + "'");
             return false;
         }
     }
@@ -706,12 +716,14 @@ bool ApplyProjectDocument(const ProjectDocument& document, PackModel& model, Reg
     std::string candidate_sandbox_id;
     if (!document.sandbox_id.empty())
     {
-        candidate_sandbox_id = NormalizeSandboxId(document.sandbox_id);
-        if (candidate_sandbox_id.empty())
+        const auto normalized = NormalizeSandboxId(document.sandbox_id);
+        if (!normalized.has_value())
         {
             error = Scoped("sandbox_id", "'" + document.sandbox_id + "' is not a sandbox identifier");
             return false;
         }
+
+        candidate_sandbox_id = normalized.value();
     }
 
     /* Every entry was accepted: the document can replace the caller. */
@@ -745,7 +757,7 @@ bool SaveProject(const ProjectDocument& document, const std::wstring& path, std:
         std::ofstream out(std::filesystem::path(path), std::ios::binary | std::ios::trunc);
         if (!out.is_open())
         {
-            error = "cannot create the project file: " + WideToUTF8(path);
+            error = "cannot create the project file: " + WideToUTF8(path).value_or(std::string());
             return false;
         }
 
@@ -753,7 +765,7 @@ bool SaveProject(const ProjectDocument& document, const std::wstring& path, std:
         out.flush();
         if (!out.good())
         {
-            error = "cannot write the project file: " + WideToUTF8(path);
+            error = "cannot write the project file: " + WideToUTF8(path).value_or(std::string());
             return false;
         }
     }
@@ -780,14 +792,14 @@ bool LoadProject(const std::wstring& path, ProjectDocument& document, std::strin
         std::ifstream in(std::filesystem::path(path), std::ios::binary);
         if (!in.is_open())
         {
-            error = "cannot open the project file: " + WideToUTF8(path);
+            error = "cannot open the project file: " + WideToUTF8(path).value_or(std::string());
             return false;
         }
 
         text.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
         if (in.bad())
         {
-            error = "cannot read the project file: " + WideToUTF8(path);
+            error = "cannot read the project file: " + WideToUTF8(path).value_or(std::string());
             return false;
         }
     }

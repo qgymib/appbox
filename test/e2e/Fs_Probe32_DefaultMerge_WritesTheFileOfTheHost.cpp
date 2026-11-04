@@ -61,7 +61,9 @@ std::wstring FolderInOverlay(const std::wstring& cwd)
  */
 TEST_F(E2E_Fs, Probe32_DefaultMerge_WritesTheFileOfTheHost)
 {
-    ASSERT_TRUE(appbox::PeImage::FromFile(ProbePath(ProbeBitness::Bit32)).Is32Bit())
+    const auto probe_image = appbox::PeImage::FromFile(ProbePath(ProbeBitness::Bit32));
+    ASSERT_TRUE(probe_image.has_value()) << "the probe of the run can not be read: pass the 32 bit probe as --probe32=";
+    ASSERT_TRUE(probe_image->Is32Bit())
         << "the probe of the run is not a 32 bit image: pass the 32 bit probe as --probe32=";
 
     RealFsFolder host(L"#USERPROFILE#", kFolderName);
@@ -79,7 +81,7 @@ TEST_F(E2E_Fs, Probe32_DefaultMerge_WritesTheFileOfTheHost)
     /* The write reaches the file of the host filesystem. */
     {
         ProtocolWriteFile::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt").value_or(std::string());
         req.Data = "written";
 
         const auto rsp = Probe(GetCWD(), launcher_config, ProbeBitness::Bit32).Call<ProtocolWriteFile>(req);

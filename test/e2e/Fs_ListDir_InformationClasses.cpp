@@ -130,7 +130,7 @@ TEST_F(E2E_Fs, ListDir_InformationClasses)
             SCOPED_TRACE(std::string(cls) + (extended ? " (extended)" : " (plain)"));
 
             ProtocolListDirNt::Req req;
-            req.path = appbox::WideToUTF8(folder);
+            req.path = appbox::WideToUTF8(folder).value_or(std::string());
             req.extended = extended;
             req.info_class = cls;
 

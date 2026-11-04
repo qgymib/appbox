@@ -57,7 +57,8 @@ TEST_F(E2E_Patch, RegistryStateBelowThePatchIsKept)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\PatchRegistryState_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\PatchRegistryState_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto hive_key = L"HKEY_CURRENT_USER\\" + subkey;
 
     HiveBuilder app(GetCWD());
@@ -77,7 +78,7 @@ TEST_F(E2E_Patch, RegistryStateBelowThePatchIsKept)
     /* The first run writes a value which no package names. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "Runtime";
         req.Data = "written";
 
@@ -90,7 +91,7 @@ TEST_F(E2E_Patch, RegistryStateBelowThePatchIsKept)
     /* The second run applies the package again and reads the state back. */
     {
         ProtocolRegReadValues::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Values = { "Value", "Runtime" };
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValues>(req);

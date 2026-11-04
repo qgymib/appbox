@@ -56,7 +56,7 @@ TEST_F(E2E_Fs, WriteLowerLayerFile_CopyUp)
      * the write. */
     {
         ProtocolWriteFile::Req req;
-        req.FileName = appbox::WideToUTF8(file);
+        req.FileName = appbox::WideToUTF8(file).value_or(std::string());
         req.Data = "written";
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolWriteFile>(req);

@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <spdlog/spdlog.h>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <system_error>
@@ -29,23 +30,24 @@ bool ExtractProgramPayload(const std::wstring& program, const ExtractProgressCal
     extraction_root.clear();
     error.clear();
 
-    executable_payload::PayloadLocation location;
-    std::string                         trailer_error;
-    switch (executable_payload::ReadTrailer(std::filesystem::path(program), location, trailer_error))
+    const auto trailer = executable_payload::ReadTrailer(std::filesystem::path(program));
+    if (!trailer)
     {
-    case executable_payload::TrailerStatus::Absent:
-        /* An ordinary launcher reads its resources from the folder beside it. */
-        return true;
-    case executable_payload::TrailerStatus::Unreadable:
         /*
          * An ordinary launcher must still run when its own image cannot be
          * inspected, so a trailer which cannot be read is not an error.
          */
-        SPDLOG_WARN("the payload trailer cannot be read: {}", trailer_error);
+        SPDLOG_WARN("the payload trailer cannot be read (error {})", static_cast<std::int32_t>(trailer.error()));
         return true;
-    case executable_payload::TrailerStatus::Present:
-        break;
     }
+
+    if (!trailer->has_value())
+    {
+        /* An ordinary launcher reads its resources from the folder beside it. */
+        return true;
+    }
+
+    const auto& location = **trailer;
 
     std::error_code ec;
     const auto      temp = std::filesystem::temp_directory_path(ec);
@@ -64,7 +66,7 @@ bool ExtractProgramPayload(const std::wstring& program, const ExtractProgressCal
     std::filesystem::create_directories(folder, ec);
     if (ec)
     {
-        error = "failed to create '" + WideToUTF8(folder.wstring()) + "': " + ec.message();
+        error = "failed to create '" + WideToUTF8(folder.wstring()).value_or(std::string()) + "': " + ec.message();
         return false;
     }
 
@@ -72,13 +74,15 @@ bool ExtractProgramPayload(const std::wstring& program, const ExtractProgressCal
     extraction_root = folder.wstring();
 
     const auto result = ExtractArchiveAt(program, location.offset, location.size, extraction_root, progress);
-    if (result != ZIPREADER_SUCCESS)
+    if (!result)
     {
-        error = ZipReaderErrorMessage(result);
+        error =
+            "failed to extract the payload (error " + std::to_string(static_cast<std::int32_t>(result.error())) + ")";
         return false;
     }
 
-    SPDLOG_INFO("the payload of '{}' is extracted to '{}'", WideToUTF8(program), WideToUTF8(folder.wstring()));
+    SPDLOG_INFO("the payload of '{}' is extracted to '{}'", WideToUTF8(program).value_or("<unconvertible>"),
+                WideToUTF8(folder.wstring()).value_or("<unconvertible>"));
     return true;
 }
 

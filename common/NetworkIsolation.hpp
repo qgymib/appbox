@@ -1,6 +1,7 @@
 #ifndef APPBOX_COMMON_NETWORK_ISOLATION_HPP
 #define APPBOX_COMMON_NETWORK_ISOLATION_HPP
 
+#include "ErrorCode.hpp"
 #include "IsolationDocument.hpp"
 #include <nlohmann/json.hpp>
 #include <array>
@@ -9,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tl/expected.hpp>
 #include <vector>
 
 namespace appbox
@@ -128,36 +130,27 @@ inline constexpr const char* kSocks5Token = "socks5";
  * @param[in] token The token to read.
  * @return true when the token names SOCKS5.
  */
-inline bool IsSocks5Token(std::string_view token);
-
-/**
- * @brief Outcome of reading the text of a proxy port.
- *
- * The port is stored as the text the user entered, so both the packer and the
- * sandbox have to agree on what a valid port is. The outcome names the rule
- * which failed instead of a single flag, so the packer can report the value
- * with its own wording while the sandbox only asks whether the text is a port.
- */
-enum class PortText
-{
-    Ok,          ///< The text is a port.
-    Empty,       ///< The text is empty, which is the port which was not entered.
-    NotDecimal,  ///< The text holds a character which is not a decimal digit.
-    LeadingZero, ///< The text carries more than one digit and starts with a zero.
-    OutOfRange   ///< The text is not between 1 and 65535.
-};
+inline bool IsSocks5Token(std::string_view token) noexcept;
 
 /**
  * @brief Read the text of a proxy port.
  *
- * A port is a decimal number between 1 and 65535 without a leading zero, so
- * the text the user entered is never silently read as another port.
+ * A port is a decimal number between 1 and 65535 without a leading zero, so the
+ * text the user entered is never silently read as another port. The rules which
+ * a text has to follow are told apart by the code, so the workspace can report
+ * the entered value with its own wording while the sandbox only asks whether the
+ * text is a port at all:
+ *
+ * - `kPortEmpty` - the text is empty, which is the port which was not entered;
+ * - `kPortNotDecimal` - the text holds a character which is not a decimal digit;
+ * - `kPortLeadingZero` - the text carries more than one digit and starts with a
+ *   zero;
+ * - `kPortOutOfRange` - the text is not between 1 and 65535.
  *
  * @param[in] text The text to read.
- * @param[out] port The port of the text, untouched unless the text is a port.
- * @return The outcome of the reading.
+ * @return The port of the text, or the code of the rule which the text breaks.
  */
-inline PortText ReadPortText(std::string_view text, std::uint16_t& port);
+inline tl::expected<std::uint16_t, ErrorCode> ReadPortText(std::string_view text) noexcept;
 
 /**
  * @brief Address family of a redirect address.
@@ -191,14 +184,14 @@ struct Address
  * @param[in] character The character to inspect.
  * @return true when the character is `0`-`9`, `a`-`f` or `A`-`F`.
  */
-inline bool IsHexDigit(char character);
+inline bool IsHexDigit(char character) noexcept;
 
 /**
  * @brief Convert a hexadecimal digit to its value.
  * @param[in] character The character to convert.
  * @return The value of the digit, zero when the character is not a digit.
  */
-inline std::uint8_t HexDigitValue(char character);
+inline std::uint8_t HexDigitValue(char character) noexcept;
 
 /**
  * @brief Parse a dotted quad IPv4 address.
@@ -209,19 +202,18 @@ inline std::uint8_t HexDigitValue(char character);
  * the name resolution which the sandbox redirects.
  *
  * @param[in] text The text to parse.
- * @param[out] address The parsed address, untouched on failure.
- * @return true when the text is a dotted quad IPv4 address.
+ * @return The parsed address, or `kAddressMalformed` when the text is no dotted
+ *         quad IPv4 address.
  */
-inline bool ParseIpv4(std::string_view text, Address& address);
+inline tl::expected<Address, ErrorCode> ParseIpv4(std::string_view text) noexcept;
 
 /**
  * @brief Parse one group of an IPv6 address.
- *
  * @param[in] text The text of the group.
- * @param[out] value The parsed value.
- * @return true when the text holds one to four hexadecimal digits.
+ * @return The parsed value, or `kAddressMalformed` when the text holds no one to
+ *         four hexadecimal digits.
  */
-inline bool ParseIpv6Group(std::string_view text, std::uint16_t& value);
+inline tl::expected<std::uint16_t, ErrorCode> ParseIpv6Group(std::string_view text) noexcept;
 
 /**
  * @brief Parse an IPv6 address, including a compressed and an embedded form.
@@ -232,10 +224,10 @@ inline bool ParseIpv6Group(std::string_view text, std::uint16_t& value);
  * rejected, because it names an interface of the host instead of an address.
  *
  * @param[in] text The text to parse.
- * @param[out] address The parsed address, untouched on failure.
- * @return true when the text is an IPv6 address.
+ * @return The parsed address, or `kAddressMalformed` when the text is no IPv6
+ *         address.
  */
-inline bool ParseIpv6(std::string_view text, Address& address);
+inline tl::expected<Address, ErrorCode> ParseIpv6(std::string_view text) noexcept;
 
 /**
  * @brief Parse an IPv4 or an IPv6 address literal.
@@ -245,10 +237,10 @@ inline bool ParseIpv6(std::string_view text, Address& address);
  * redirected name with the literal the packer stored.
  *
  * @param[in] text The text to parse.
- * @param[out] address The parsed address, untouched on failure.
- * @return true when the text is an address literal.
+ * @return The parsed address, or `kAddressMalformed` when the text is no address
+ *         literal.
  */
-inline bool ParseAddress(std::string_view text, Address& address);
+inline tl::expected<Address, ErrorCode> ParseAddress(std::string_view text) noexcept;
 
 /**
  * @brief Normalize a hostname for the comparison.
@@ -260,7 +252,7 @@ inline bool ParseAddress(std::string_view text, Address& address);
  * @param[in] hostname The hostname to normalize.
  * @return The normalized hostname.
  */
-inline std::string NormalizeHostname(std::string_view hostname);
+inline std::string NormalizeHostname(std::string_view hostname) noexcept;
 
 /**
  * @brief Whether two hostnames name the same host.
@@ -268,7 +260,7 @@ inline std::string NormalizeHostname(std::string_view hostname);
  * @param[in] right Right hostname.
  * @return true when both names are equal after normalization.
  */
-inline bool HostnamesEqual(std::string_view left, std::string_view right);
+inline bool HostnamesEqual(std::string_view left, std::string_view right) noexcept;
 
 /**
  * @brief One DNS redirection of the network isolation file.
@@ -421,6 +413,20 @@ inline void to_json(nlohmann::json& json, const Document& document);
  * @throw appbox::IsolationDocumentError The document does not fit the schema.
  */
 inline void from_json(const nlohmann::json& json, Document& document);
+
+/**
+ * @brief Read the text of a network isolation file.
+ *
+ * The call is the reader the packer and the sandbox use: it turns the text of
+ * the file into the document of the schema, and it reports why a text was
+ * refused by a code instead of an exception or a message.
+ *
+ * @param[in] text UTF-8 text of the isolation file.
+ * @return The document of the text, `kIsolationDocumentInvalid` when the text is
+ *         no document of this schema, `kIsolationDocumentUnsupportedVersion`
+ *         when the document names another schema version.
+ */
+inline tl::expected<Document, ErrorCode> ParseDocument(std::string_view text) noexcept;
 
 } // namespace network_isolation
 

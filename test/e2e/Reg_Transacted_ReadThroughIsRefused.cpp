@@ -44,7 +44,8 @@ TEST_F(E2E_Reg, Transacted_ReadThroughIsRefused)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\Transacted_ReadThrough_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\Transacted_ReadThrough_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
@@ -53,7 +54,7 @@ TEST_F(E2E_Reg, Transacted_ReadThroughIsRefused)
     ProtocolRegTransacted::Req read_req;
     read_req.Api = ProtocolRegTransacted::ApiKind::Open;
     read_req.Access = ProtocolRegTransacted::AccessKind::Read;
-    read_req.Key = appbox::WideToUTF8(subkey);
+    read_req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     read_req.Value = "HostValue";
     read_req.End = ProtocolRegTransacted::EndKind::Close;
 
@@ -70,7 +71,7 @@ TEST_F(E2E_Reg, Transacted_ReadThroughIsRefused)
     ProtocolRegTransacted::Req write_req;
     write_req.Api = ProtocolRegTransacted::ApiKind::OpenEx;
     write_req.Access = ProtocolRegTransacted::AccessKind::Write;
-    write_req.Key = appbox::WideToUTF8(subkey);
+    write_req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     write_req.Value = "TestValue";
     write_req.Data = "sandbox";
     write_req.End = ProtocolRegTransacted::EndKind::Commit;
@@ -82,7 +83,7 @@ TEST_F(E2E_Reg, Transacted_ReadThroughIsRefused)
 
     /* The real registry is unchanged: the host key keeps its own value and the
      * value of the sandbox never reached it. */
-    EXPECT_EQ(appbox::WideToUTF8(real_key.GetString(L"HostValue")), "host");
+    EXPECT_EQ(appbox::WideToUTF8(real_key.GetString(L"HostValue")).value_or(std::string()), "host");
 
     HKEY key = nullptr;
     ASSERT_EQ(RegOpenKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, KEY_QUERY_VALUE, &key), ERROR_SUCCESS);

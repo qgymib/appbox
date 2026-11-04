@@ -812,7 +812,7 @@ std::unique_ptr<SnapshotWriter> SnapshotWriter::Open(const std::wstring& path, s
     std::error_code ec;
     if (!std::filesystem::is_regular_file(std::filesystem::path(path), ec) || ec)
     {
-        error = "cannot open the snapshot file: " + WideToUTF8(path);
+        error = "cannot open the snapshot file: " + WideToUTF8(path).value_or(std::string());
         return nullptr;
     }
 
@@ -1013,7 +1013,7 @@ std::unique_ptr<SnapshotReader> SnapshotReader::Open(const std::wstring& path, s
     std::error_code ec;
     if (!std::filesystem::is_regular_file(std::filesystem::path(path), ec) || ec)
     {
-        error = "cannot open the snapshot file: " + WideToUTF8(path);
+        error = "cannot open the snapshot file: " + WideToUTF8(path).value_or(std::string());
         return nullptr;
     }
 
@@ -1141,7 +1141,8 @@ bool CopySnapshotPhase(const std::wstring& source, SnapshotPhase phase, const st
     }
     if (!present)
     {
-        error = std::string("the snapshot file does not hold ") + PhaseText(phase) + ": " + WideToUTF8(source);
+        error = std::string("the snapshot file does not hold ") + PhaseText(phase) + ": " +
+                WideToUTF8(source).value_or(std::string());
         return false;
     }
 

@@ -71,7 +71,7 @@ bool ContainsText(const std::vector<BYTE>& data, const std::string& text)
         return true;
     }
 
-    const std::wstring wide = appbox::UTF8ToWide(text);
+    const std::wstring wide = appbox::UTF8ToWide(text).value_or(std::wstring());
     const auto*        wide_bytes = reinterpret_cast<const BYTE*>(wide.c_str());
     const std::size_t  wide_size = wide.size() * sizeof(wchar_t);
     return std::search(data.begin(), data.end(), wide_bytes, wide_bytes + wide_size) != data.end();
@@ -105,10 +105,11 @@ appbox::test::ProtocolRegSaveKey::Rsp appbox::test::ProbeRegSaveKey_Entry(
         return rsp;
     }
 
-    const auto path = appbox::UTF8ToWide(req.Path);
+    const auto path = appbox::UTF8ToWide(req.Path).value_or(std::wstring());
 
-    HKEY key = nullptr;
-    rsp.open_code = RegOpenKeyExW(root, appbox::UTF8ToWide(req.Key).c_str(), 0, KEY_READ, &key);
+    HKEY               key = nullptr;
+    const std::wstring wide_key = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
+    rsp.open_code = RegOpenKeyExW(root, wide_key.c_str(), 0, KEY_READ, &key);
     if (rsp.open_code != ERROR_SUCCESS)
     {
         return rsp;

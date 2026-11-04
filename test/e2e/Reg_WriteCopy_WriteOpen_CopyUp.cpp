@@ -34,8 +34,8 @@ TEST_F(E2E_Reg, WriteCopy_WriteOpen_CopyUp)
 
     auto config = tree.Build();
 
-    const auto subkey =
-        L"Software\\AppBoxTest\\WriteCopy_WriteOpen_CopyUp_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto        subkey = L"Software\\AppBoxTest\\WriteCopy_WriteOpen_CopyUp_" +
+                               appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const std::string expected = "CopiedUp";
 
     RealHkcuKey real_key(subkey);
@@ -45,7 +45,7 @@ TEST_F(E2E_Reg, WriteCopy_WriteOpen_CopyUp)
     /* No isolation file entry: `WriteCopy` is the default mode of every key. */
 
     ProtocolRegOpenWriteValue::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Value = "TestValue";
     req.Data = expected;
 
@@ -69,13 +69,14 @@ TEST_F(E2E_Reg, WriteCopy_WriteOpen_CopyUp)
         ASSERT_EQ(RegQueryValueExW(key, L"HostValue", nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size),
                   ERROR_SUCCESS);
         RegCloseKey(key);
-        EXPECT_EQ(appbox::WideToUTF8(buffer), "host");
+        EXPECT_EQ(appbox::WideToUTF8(buffer).value_or(std::string()), "host");
     }
 
     /* An open never creates a key, not even with write access. */
     ProtocolRegOpenWriteValue::Req missing;
-    missing.Key =
-        appbox::WideToUTF8(L"Software\\AppBoxTest\\WriteCopy_Missing_" + appbox::UTF8ToWide(appbox::RandomString(8)));
+    missing.Key = appbox::WideToUTF8(L"Software\\AppBoxTest\\WriteCopy_Missing_" +
+                                     appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring()))
+                      .value_or(std::string());
     missing.Value = "TestValue";
     missing.Data = expected;
 

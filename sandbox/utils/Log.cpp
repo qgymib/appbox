@@ -287,18 +287,14 @@ void appbox::Log(MsgLogLevel level, const char* file, int line, const std::wstri
      * not throw. The message is reported as dropped instead, exactly like a
      * message which the sink could not deliver.
      */
-    std::string msgu8;
-    try
-    {
-        msgu8 = appbox::WideToUTF8(msg.c_str());
-    }
-    catch (...)
+    const auto converted = appbox::WideToUTF8(msg.c_str());
+    if (!converted)
     {
         s_dropped_logs.fetch_add(1, std::memory_order_relaxed);
         return;
     }
 
-    appbox::Log(level, file, line, msgu8);
+    appbox::Log(level, file, line, *converted);
 }
 
 void appbox::Log(MsgLogLevel level, const char* file, int line, const std::string& msg)
@@ -437,14 +433,12 @@ std::string appbox::UnicodeStringToUTF8(const PUNICODE_STRING str)
      * This function is called from hooks, so it reports an empty string
      * instead of letting the exception escape.
      */
-    try
-    {
-        return appbox::WideToUTF8(text);
-    }
-    catch (...)
-    {
-        return std::string();
-    }
+    return appbox::ToUTF8OrEmpty(text);
+}
+
+std::string appbox::ToUTF8OrEmpty(const std::wstring& text)
+{
+    return appbox::WideToUTF8(text).value_or(std::string());
 }
 
 nlohmann::json appbox::ToJson(const PUNICODE_STRING FileName)

@@ -92,7 +92,7 @@ std::string appbox::test::BuildRegistryIsolationText(const std::vector<RegistryK
     for (const auto& entry : keys)
     {
         appbox::registry_isolation::KeyEntry item;
-        item.path = appbox::WideToUTF8(entry.key_path);
+        item.path = appbox::WideToUTF8(entry.key_path).value_or(std::string());
         item.isolation = entry.isolation;
         document.keys.push_back(std::move(item));
     }
@@ -100,8 +100,8 @@ std::string appbox::test::BuildRegistryIsolationText(const std::vector<RegistryK
     for (const auto& entry : values)
     {
         appbox::registry_isolation::ValueEntry item;
-        item.path = appbox::WideToUTF8(entry.key_path);
-        item.name = appbox::WideToUTF8(entry.value_name);
+        item.path = appbox::WideToUTF8(entry.key_path).value_or(std::string());
+        item.name = appbox::WideToUTF8(entry.value_name).value_or(std::string());
         item.isolation = entry.isolation;
         document.values.push_back(std::move(item));
     }

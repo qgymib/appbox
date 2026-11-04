@@ -1,9 +1,10 @@
 #ifndef APPBOX_COMMON_EMBEDDED_RESOURCE_HPP
 #define APPBOX_COMMON_EMBEDDED_RESOURCE_HPP
 
-#include <windows.h>
-#include <string>
+#include "ErrorCode.hpp"
+#include <tl/expected.hpp>
 #include <string_view>
+#include <windows.h>
 
 namespace appbox
 {
@@ -31,15 +32,13 @@ namespace appbox
  * @param[in] module Module which carries the resource; a null handle reads the
  *                   resources of the running executable.
  * @param[in] resource_id Identifier of the payload in that module.
- * @param[out] payload The bytes of the payload, empty when the call fails.
- * @param[out] error Description of the failure, empty when the call succeeds.
- * @return true when the payload was read, false otherwise.
+ * @return The bytes of the payload, or the code of the failure:
+ *         `kEmbeddedResourceMissing` when the module carries no resource of that
+ *         identifier, `kEmbeddedResourceEmpty` when the resource holds no byte,
+ *         and `kEmbeddedResourceLockFailed` when the bytes cannot be handed out.
  */
-inline bool ReadEmbeddedResource(void* module, int resource_id, std::string_view& payload, std::string& error)
+inline tl::expected<std::string_view, ErrorCode> ReadEmbeddedResource(void* module, int resource_id) noexcept
 {
-    payload = {};
-    error.clear();
-
     const auto instance = static_cast<HMODULE>(module);
     const auto name = MAKEINTRESOURCEW(static_cast<WORD>(resource_id));
 
@@ -55,8 +54,7 @@ inline bool ReadEmbeddedResource(void* module, int resource_id, std::string_view
     const auto resource = FindResourceW(instance, name, type);
     if (resource == nullptr)
     {
-        error = "the embedded resource " + std::to_string(resource_id) + " is missing";
-        return false;
+        return tl::unexpected<ErrorCode>(ErrorCode::kEmbeddedResourceMissing);
     }
 
     /*
@@ -67,19 +65,16 @@ inline bool ReadEmbeddedResource(void* module, int resource_id, std::string_view
     const auto size = SizeofResource(instance, resource);
     if (size == 0)
     {
-        error = "the embedded resource " + std::to_string(resource_id) + " is empty";
-        return false;
+        return tl::unexpected<ErrorCode>(ErrorCode::kEmbeddedResourceEmpty);
     }
 
     const auto data = static_cast<const char*>(LockResource(LoadResource(instance, resource)));
     if (data == nullptr)
     {
-        error = "the embedded resource " + std::to_string(resource_id) + " cannot be locked";
-        return false;
+        return tl::unexpected<ErrorCode>(ErrorCode::kEmbeddedResourceLockFailed);
     }
 
-    payload = std::string_view(data, size);
-    return true;
+    return std::string_view(data, size);
 }
 
 } // namespace appbox

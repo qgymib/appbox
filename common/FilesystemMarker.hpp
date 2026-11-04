@@ -38,7 +38,7 @@ inline constexpr std::wstring_view kOpaqueName = L".$APPBOX_OPAQUE$";
  * @param[in] name Name of the entry to hide.
  * @return The name of the marker, e.g. `L"tool.exe.$APPBOX_DELETE$"`.
  */
-inline std::wstring WhiteoutNameOf(std::wstring_view name)
+inline std::wstring WhiteoutNameOf(std::wstring_view name) noexcept
 {
     return std::wstring(name) + std::wstring(kWhiteoutSuffix);
 }
@@ -58,7 +58,7 @@ inline std::wstring WhiteoutNameOf(std::wstring_view name)
  * @param[in] path Path of the entry inside a layer.
  * @return Path of the marker of the entry.
  */
-inline std::wstring WhiteoutPathOf(std::wstring_view path)
+inline std::wstring WhiteoutPathOf(std::wstring_view path) noexcept
 {
     return std::wstring(path) + std::wstring(kWhiteoutSuffix);
 }
@@ -72,7 +72,7 @@ inline std::wstring WhiteoutPathOf(std::wstring_view path)
  * @param[in] directory Path of the folder inside a layer.
  * @return Path of the marker of the folder.
  */
-inline std::wstring OpaquePathOf(std::wstring_view directory)
+inline std::wstring OpaquePathOf(std::wstring_view directory) noexcept
 {
     return std::wstring(directory) + L"\\" + std::wstring(kOpaqueName);
 }

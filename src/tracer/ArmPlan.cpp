@@ -3,7 +3,6 @@
 #include "WString.hpp"
 #include <algorithm>
 #include <set>
-#include <stdexcept>
 #include <utility>
 
 namespace appbox::tracer
@@ -152,17 +151,16 @@ private:
             return nullptr;
         }
 
-        try
-        {
-            const auto inserted = extra_images_.emplace(module, PeImage::FromFile(directory_ / (module + L".dll")));
-            return &inserted.first->second;
-        }
-        catch (const std::runtime_error&)
+        auto image = PeImage::FromFile(directory_ / (module + L".dll"));
+        if (!image)
         {
             /* Remember the failure: the same module is looked up once per name. */
             missing_images_.insert(module);
             return nullptr;
         }
+
+        const auto inserted = extra_images_.emplace(module, std::move(*image));
+        return &inserted.first->second;
     }
 
     /**
@@ -216,14 +214,13 @@ private:
             return true;
         }
 
-        std::wstring forwarded_module;
-        std::wstring forwarded_name;
-        if (!SplitForwarder(entry->forwarder, forwarded_module, forwarded_name))
+        const auto forwarder = SplitForwarder(entry->forwarder);
+        if (!forwarder)
         {
             return false;
         }
 
-        return ResolveRecursive(forwarded_module, forwarded_name, target_module, target_rva, depth + 1);
+        return ResolveRecursive(forwarder->module, forwarder->function, target_module, target_rva, depth + 1);
     }
 
     const ModuleImages&             modules_;        ///< Traced modules.
@@ -337,7 +334,7 @@ std::vector<std::string> BuildArmLines(const std::vector<ArmGroup>& plan, const 
         for (const auto& name : group.names)
         {
             line += ' ';
-            line += appbox::WideToUTF8(name);
+            line += appbox::WideToUTF8(name).value_or(std::string());
         }
 
         line += "; g\"";
@@ -389,7 +386,7 @@ std::vector<std::string> BuildLoadFilterLines(const std::vector<std::wstring>& m
     lines.reserve(modules.size());
     for (const auto& module : modules)
     {
-        lines.push_back("sxe ld:" + appbox::WideToUTF8(module));
+        lines.push_back("sxe ld:" + appbox::WideToUTF8(module).value_or(std::string()));
     }
 
     return lines;

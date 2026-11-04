@@ -70,28 +70,28 @@ TEST_F(E2E_Fs, ReparsePoint_LinkInTheSandboxReachesALowerLayer)
 
     ProtocolReparsePoint::Req::Item create;
     create.action = ProtocolReparsePoint::Req::Item::Action::Junction;
-    create.path = appbox::WideToUTF8(folder + L"\\link");
-    create.target = appbox::WideToUTF8(folder + L"\\packed");
+    create.path = appbox::WideToUTF8(folder + L"\\link").value_or(std::string());
+    create.target = appbox::WideToUTF8(folder + L"\\packed").value_or(std::string());
     req.items.push_back(create);
 
     ProtocolReparsePoint::Req::Item read_through;
     read_through.action = ProtocolReparsePoint::Req::Item::Action::ReadText;
-    read_through.path = appbox::WideToUTF8(folder + L"\\link\\data.txt");
+    read_through.path = appbox::WideToUTF8(folder + L"\\link\\data.txt").value_or(std::string());
     req.items.push_back(read_through);
 
     ProtocolReparsePoint::Req::Item read_data;
     read_data.action = ProtocolReparsePoint::Req::Item::Action::Read;
-    read_data.path = appbox::WideToUTF8(folder + L"\\link");
+    read_data.path = appbox::WideToUTF8(folder + L"\\link").value_or(std::string());
     req.items.push_back(read_data);
 
     ProtocolReparsePoint::Req::Item remove_data;
     remove_data.action = ProtocolReparsePoint::Req::Item::Action::Remove;
-    remove_data.path = appbox::WideToUTF8(folder + L"\\link");
+    remove_data.path = appbox::WideToUTF8(folder + L"\\link").value_or(std::string());
     req.items.push_back(remove_data);
 
     ProtocolReparsePoint::Req::Item attributes;
     attributes.action = ProtocolReparsePoint::Req::Item::Action::Attributes;
-    attributes.path = appbox::WideToUTF8(folder + L"\\link");
+    attributes.path = appbox::WideToUTF8(folder + L"\\link").value_or(std::string());
     req.items.push_back(attributes);
 
     /*
@@ -101,7 +101,7 @@ TEST_F(E2E_Fs, ReparsePoint_LinkInTheSandboxReachesALowerLayer)
      */
     ProtocolReparsePoint::Req::Item not_a_link;
     not_a_link.action = ProtocolReparsePoint::Req::Item::Action::Read;
-    not_a_link.path = appbox::WideToUTF8(folder + L"\\packed\\data.txt");
+    not_a_link.path = appbox::WideToUTF8(folder + L"\\packed\\data.txt").value_or(std::string());
     req.items.push_back(not_a_link);
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolReparsePoint>(req);

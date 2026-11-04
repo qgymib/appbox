@@ -9,7 +9,7 @@ appbox::test::ProtocolCreateFileW::Rsp appbox::test::ProbeCreateFileW_Entry(
 {
     const auto& req = request;
 
-    auto wFileName = appbox::UTF8ToWide(req.FileName);
+    auto wFileName = appbox::UTF8ToWide(req.FileName).value_or(std::wstring());
     auto hFile = CreateFileW(wFileName.c_str(), req.dwDesiredAccess, req.dwShareMode, nullptr,
                              req.dwCreationDisposition, req.dwFlagsAndAttributes, nullptr);
 

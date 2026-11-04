@@ -1,10 +1,12 @@
 #ifndef APPBOX_COMMON_FILESYSTEM_ISOLATION_HPP
 #define APPBOX_COMMON_FILESYSTEM_ISOLATION_HPP
 
+#include "ErrorCode.hpp"
 #include "IsolationDocument.hpp"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <string_view>
+#include <tl/expected.hpp>
 #include <vector>
 
 namespace appbox
@@ -167,7 +169,7 @@ inline constexpr const char* kIsolationKey = "isolation";
  * @param[in] isolation The isolation mode.
  * @return The canonical lower case token, for example `"write_copy"`.
  */
-inline const char* IsolationToken(FilesystemIsolation isolation);
+inline const char* IsolationToken(FilesystemIsolation isolation) noexcept;
 
 /**
  * @brief Resolve an isolation mode from its token.
@@ -177,17 +179,17 @@ inline const char* IsolationToken(FilesystemIsolation isolation);
  * resolve as well.
  *
  * @param[in] token The token to resolve.
- * @param[out] out The resolved mode when the token is known.
- * @return true when the token names an isolation mode.
+ * @return The resolved mode, or `kIsolationTokenUnknown` when the token names
+ *         no isolation mode of this domain.
  */
-inline bool ParseIsolationToken(std::string_view token, FilesystemIsolation& out);
+inline tl::expected<FilesystemIsolation, ErrorCode> ParseIsolationToken(std::string_view token) noexcept;
 
 /**
  * @brief Get the token of an entry kind.
  * @param[in] kind The entry kind.
  * @return The canonical lower case token, either `"file"` or `"directory"`.
  */
-inline const char* EntryKindToken(FilesystemEntryKind kind);
+inline const char* EntryKindToken(FilesystemEntryKind kind) noexcept;
 
 /**
  * @brief Resolve an entry kind from its token.
@@ -196,10 +198,10 @@ inline const char* EntryKindToken(FilesystemEntryKind kind);
  * synonyms of the canonical `"directory"` token.
  *
  * @param[in] token The token to resolve.
- * @param[out] out The resolved kind when the token is known.
- * @return true when the token names an entry kind.
+ * @return The resolved kind, or `kEntryKindTokenUnknown` when the token names no
+ *         entry kind.
  */
-inline bool ParseEntryKindToken(std::string_view token, FilesystemEntryKind& out);
+inline tl::expected<FilesystemEntryKind, ErrorCode> ParseEntryKindToken(std::string_view token) noexcept;
 
 /**
  * @brief Whether an isolation mode may be used for an entry kind.
@@ -212,7 +214,7 @@ inline bool ParseEntryKindToken(std::string_view token, FilesystemEntryKind& out
  * @param[in] kind The kind of the entry.
  * @return true when the mode is usable for the kind.
  */
-inline bool IsAllowed(FilesystemIsolation isolation, FilesystemEntryKind kind);
+inline bool IsAllowed(FilesystemIsolation isolation, FilesystemEntryKind kind) noexcept;
 
 /**
  * @brief Default isolation mode of a path of the view.
@@ -324,6 +326,20 @@ inline void to_json(nlohmann::json& json, const Document& document);
  * @throw appbox::IsolationDocumentError The document does not fit the schema.
  */
 inline void from_json(const nlohmann::json& json, Document& document);
+
+/**
+ * @brief Read the text of a filesystem isolation file.
+ *
+ * The call is the reader the packer and the sandbox use: it turns the text of
+ * the file into the document of the schema, and it reports why a text was
+ * refused by a code instead of an exception or a message.
+ *
+ * @param[in] text UTF-8 text of the isolation file.
+ * @return The document of the text, `kIsolationDocumentInvalid` when the text is
+ *         no document of this schema, `kIsolationDocumentUnsupportedVersion`
+ *         when the document names another schema version.
+ */
+inline tl::expected<Document, ErrorCode> ParseDocument(std::string_view text) noexcept;
 
 } // namespace filesystem_isolation
 

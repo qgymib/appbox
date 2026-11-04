@@ -29,7 +29,7 @@ constexpr wchar_t kLastPackageName[] = L"appbox-patch-broken-last.invalid";
 ProtocolResolveName::Question QuestionOf(const wchar_t* name)
 {
     ProtocolResolveName::Question question;
-    question.name = appbox::WideToUTF8(name);
+    question.name = appbox::WideToUTF8(name).value_or(std::string());
     question.api = ProtocolResolveName::Api::GetAddrInfo;
     question.family = AF_UNSPEC;
     question.type = DNS_TYPE_A;

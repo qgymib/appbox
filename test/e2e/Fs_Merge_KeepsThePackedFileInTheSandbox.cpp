@@ -79,7 +79,7 @@ TEST_F(E2E_Fs, Merge_KeepsThePackedFileInTheSandbox)
     /* The entry only the sandbox holds is written inside the sandbox. */
     {
         ProtocolWriteFile::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt").value_or(std::string());
         req.Data = "written";
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolWriteFile>(req);

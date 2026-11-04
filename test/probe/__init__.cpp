@@ -78,13 +78,13 @@ static appbox::RemoteSession::MethodHandler BindHandler(const appbox::RemoteSess
 
         try
         {
-            bound->SendResponse(id, handler(param));
+            (void)bound->SendResponse(id, handler(param));
         }
         catch (const nlohmann::json::exception& e)
         {
             SPDLOG_ERROR("the parameters of a probe cannot be read: {}", e.what());
-            bound->SendResponse(id, tl::unexpected<appbox::RemoteError>(appbox::RemoteError{
-                                        appbox::test::kInvalidParamsCode, "Invalid params", nlohmann::json() }));
+            (void)bound->SendResponse(id, tl::unexpected<appbox::RemoteError>(appbox::RemoteError{
+                                              appbox::test::kInvalidParamsCode, "Invalid params", nlohmann::json() }));
         }
     };
 }
@@ -114,13 +114,21 @@ static void ParseProbePipe(const std::wstring& url)
 {
     SPDLOG_INFO("connect the probe to '{}'", CLI::narrow(url));
 
-    s_probe_ctx->connector = appbox::RemoteConnector::Create(CLI::narrow(url));
-    s_probe_ctx->session = s_probe_ctx->connector->Connect(kConnectTimeoutMs);
-    if (!s_probe_ctx->session)
+    const auto connector = appbox::RemoteConnector::Create(CLI::narrow(url));
+    if (!connector.has_value())
     {
-        SPDLOG_ERROR("Failed to connect the probe to the pipe");
+        SPDLOG_ERROR("Failed to create the connector of the probe");
+        throw std::runtime_error("Failed to create the connector of the probe");
+    }
+    s_probe_ctx->connector = *connector;
+
+    const auto connected = s_probe_ctx->connector->Connect(kConnectTimeoutMs);
+    if (!connected.has_value())
+    {
+        SPDLOG_ERROR("Failed to connect the probe to the pipe: {}", static_cast<int>(connected.error()));
         throw std::runtime_error("Failed to connect the probe to the pipe");
     }
+    s_probe_ctx->session = *connected;
 }
 
 /**

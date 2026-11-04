@@ -60,7 +60,7 @@ TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
     /* The entry does not exist in the view. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(file);
+        req.FileName = appbox::WideToUTF8(file).value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -69,7 +69,7 @@ TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
     /* Creating it succeeds and lands in the sandbox. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(file);
+        req.FileName = appbox::WideToUTF8(file).value_or(std::string());
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 
@@ -80,7 +80,7 @@ TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
     /* The entry the sandbox holds itself is visible from now on. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(file);
+        req.FileName = appbox::WideToUTF8(file).value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -88,7 +88,7 @@ TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
     }
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(file);
+        req.FileName = appbox::WideToUTF8(file).value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -96,7 +96,8 @@ TEST_F(E2E_Fs, Whiteout_CreateInSandbox)
     }
     {
         ProtocolListDir::Req req;
-        req.path = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName);
+        req.path = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName)
+                       .value_or(std::string());
         req.method = ProtocolListDir::Req::Method::WinAPI;
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);

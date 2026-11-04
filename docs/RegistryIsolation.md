@@ -273,6 +273,23 @@ incomplete, which are of another type, or which names an unknown mode is
 therefore refused while the file is read, which is what keeps the packer and the
 sandbox in step.
 
+The reader both sides share is
+`registry_isolation::ParseDocument(std::string_view)`, and it reports a refusal by
+a code of `common/ErrorCode.hpp` alone:
+
+| Code | Meaning |
+| --- | --- |
+| `kIsolationDocumentInvalid` | The text is no document of the schema: it is no JSON document, a member is missing or of another type, a key path is empty, or a mode is unknown. |
+| `kIsolationDocumentUnsupportedVersion` | The document names a schema version this build does not read. |
+| `kIsolationTokenUnknown` | A text does not name a key or a value isolation mode; `ParseKeyIsolationToken()` and `ParseValueIsolationToken()` answer it. |
+
+The `from_json()` members still throw `IsolationDocumentError` with the
+description of the member which was refused. `nlohmann::json` requires the fixed
+signatures `from_json(const json&, T&)` and `to_json(json&, const T&)`, so those
+two keep their signature and may throw. The error is internal to the schema:
+`ParseDocument()` catches it and returns the code, and the module which shows
+the failure writes the wording of the message.
+
 Every hive holds the five root keys of the view. The image carries the hidden
 store of the entries whose mode is `Hide`, and the state hive carries, below a
 reserved key which is not part of the view, the **whiteout store** of the entries

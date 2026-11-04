@@ -85,7 +85,7 @@ TEST_F(E2E_Fs, Stream_MergeKeepsThePackedStreamInTheSandbox)
     /* The stream of the packed file is readable through the view. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -96,7 +96,7 @@ TEST_F(E2E_Fs, Stream_MergeKeepsThePackedStreamInTheSandbox)
      * filesystem holds no such entry. */
     {
         ProtocolWriteFile::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream").value_or(std::string());
         req.Data = "written";
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolWriteFile>(req);
@@ -108,7 +108,7 @@ TEST_F(E2E_Fs, Stream_MergeKeepsThePackedStreamInTheSandbox)
      * content of the lower layer for the file itself. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));

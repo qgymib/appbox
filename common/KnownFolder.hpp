@@ -1,7 +1,9 @@
 #ifndef APPBOX_COMMON_KNOWN_FOLDER_HPP
 #define APPBOX_COMMON_KNOWN_FOLDER_HPP
 
+#include "ErrorCode.hpp"
 #include <string>
+#include <tl/expected.hpp>
 #include <vector>
 
 namespace appbox
@@ -99,15 +101,14 @@ struct KnownFolderReference
  *
  * One entry is produced per known folder of the table which can be resolved on
  * this machine, in the order of the table. A folder whose path cannot be
- * resolved is skipped with a warning, so the other variables stay usable
- * instead of failing the whole start. A folder which cannot be resolved for a
- * 32 bit process leaves the second view empty, which keeps the variable usable
- * in a 64 bit process and reports the reference as it is spelled in a 32 bit
- * one.
+ * resolved is skipped, so the other variables stay usable instead of failing the
+ * whole start. A folder which cannot be resolved for a 32 bit process leaves the
+ * second view empty, which keeps the variable usable in a 64 bit process and
+ * reports the reference as it is spelled in a 32 bit one.
  *
  * @return The variables, in the order of the known folder table.
  */
-inline std::vector<KnownFolderVariable> KnownFolderVariables();
+inline std::vector<KnownFolderVariable> KnownFolderVariables() noexcept;
 
 /**
  * @brief Get the folders the capture writes as references into the archive.
@@ -119,7 +120,7 @@ inline std::vector<KnownFolderVariable> KnownFolderVariables();
  *
  * @return The folders, in the order of the known folder table.
  */
-inline std::vector<KnownFolderReference> KnownFolderReferences();
+inline std::vector<KnownFolderReference> KnownFolderReferences() noexcept;
 
 /**
  * @brief Search for a known folder by name.
@@ -131,10 +132,13 @@ inline std::vector<KnownFolderReference> KnownFolderReferences();
  * layer and no folder.
  *
  * @param[in] name Layer key of the folder.
- * @param[out] folder_path Folder path.
- * @return true if the folder is found, false otherwise.
+ * @return Path of the folder on this machine, or the class of the refusal:
+ *         - `kKnownFolderUnknown` for a text which is no layer key of the
+ *           table;
+ *         - `kKnownFolderUnavailable` for a key of the table whose folder this
+ *           machine cannot resolve.
  */
-inline bool SearchFolderID(const std::wstring& name, std::wstring& folder_path);
+inline tl::expected<std::wstring, ErrorCode> SearchFolderID(const std::wstring& name) noexcept;
 
 /**
  * @brief Expand a known folder path.
@@ -149,9 +153,11 @@ inline bool SearchFolderID(const std::wstring& name, std::wstring& folder_path);
  * finds only such a key.
  *
  * @param[in] path File path.
- * @return Expanded file path.
+ * @return The expanded path, the path itself when it names no known folder, or
+ *         `kKnownFolderUnavailable` when the key names a folder this machine
+ *         cannot resolve.
  */
-inline std::wstring ExpandKnownFolder(const std::wstring& path);
+inline tl::expected<std::wstring, ErrorCode> ExpandKnownFolder(const std::wstring& path) noexcept;
 
 } // namespace appbox
 

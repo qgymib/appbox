@@ -5,6 +5,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include "utils/TestText.hpp"
 
 namespace
 {
@@ -57,7 +58,7 @@ std::string ReadWide(const std::wstring& name, bool& found)
         return std::string();
     }
 
-    return appbox::WideToUTF8(std::wstring(buffer.data(), length));
+    return appbox::test::ToUTF8OrEmpty(std::wstring(buffer.data(), length));
 }
 
 /**
@@ -271,8 +272,9 @@ bool WriteVariable(appbox::test::ProtocolEnvironmentWrite::Entry entry, const st
     switch (entry)
     {
     case Entry::Ansi: {
-        const std::string ansi_name = appbox::WideToUTF8(name);
-        const std::string ansi_value = value == nullptr ? std::string() : appbox::WideToUTF8(*value);
+        const std::string ansi_name = appbox::WideToUTF8(name).value_or(std::string());
+        const std::string ansi_value =
+            value == nullptr ? std::string() : appbox::WideToUTF8(*value).value_or(std::string());
         return ::SetEnvironmentVariableA(ansi_name.c_str(), value == nullptr ? nullptr : ansi_value.c_str()) != FALSE;
     }
     case Entry::RtlNull:
@@ -314,14 +316,14 @@ appbox::test::ProtocolEnvironmentWrite::Rsp appbox::test::ProbeEnvironmentWrite_
 
         for (const auto& name : req.remove)
         {
-            const std::wstring wide_name = appbox::UTF8ToWide(name);
+            const std::wstring wide_name = appbox::UTF8ToWide(name).value_or(std::wstring());
             ApplyEntry(entries, wide_name, nullptr);
         }
 
         for (std::size_t index = 0; index < count; ++index)
         {
-            const std::wstring wide_name = appbox::UTF8ToWide(req.names[index]);
-            const std::wstring wide_value = appbox::UTF8ToWide(req.values[index]);
+            const std::wstring wide_name = appbox::UTF8ToWide(req.names[index]).value_or(std::wstring());
+            const std::wstring wide_value = appbox::UTF8ToWide(req.values[index]).value_or(std::wstring());
             ApplyEntry(entries, wide_name, &wide_value);
         }
 
@@ -335,21 +337,21 @@ appbox::test::ProtocolEnvironmentWrite::Rsp appbox::test::ProbeEnvironmentWrite_
     {
         for (std::size_t index = 0; index < count; ++index)
         {
-            const std::wstring name = appbox::UTF8ToWide(req.names[index]);
-            const std::wstring value = appbox::UTF8ToWide(req.values[index]);
+            const std::wstring name = appbox::UTF8ToWide(req.names[index]).value_or(std::wstring());
+            const std::wstring value = appbox::UTF8ToWide(req.values[index]).value_or(std::wstring());
             rsp.stored.push_back(WriteVariable(req.entry, name, &value));
         }
 
         for (const auto& name : req.remove)
         {
-            rsp.removed.push_back(WriteVariable(req.entry, appbox::UTF8ToWide(name), nullptr));
+            rsp.removed.push_back(WriteVariable(req.entry, appbox::UTF8ToWide(name).value_or(std::wstring()), nullptr));
         }
     }
 
     for (const auto& name : req.read)
     {
         bool found = false;
-        rsp.values.push_back(ReadWide(appbox::UTF8ToWide(name), found));
+        rsp.values.push_back(ReadWide(appbox::UTF8ToWide(name).value_or(std::wstring()), found));
         rsp.found.push_back(found);
     }
 

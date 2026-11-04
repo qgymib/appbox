@@ -43,7 +43,7 @@ ProtocolQueryInformationByName::Rsp QueryInformationByName(const std::vector<std
     ProtocolQueryInformationByName::Req req;
     for (const auto& path : paths)
     {
-        req.paths.push_back(appbox::WideToUTF8(path));
+        req.paths.push_back(appbox::WideToUTF8(path).value_or(std::string()));
     }
 
     return Probe(cwd, config).Call<ProtocolQueryInformationByName>(req);

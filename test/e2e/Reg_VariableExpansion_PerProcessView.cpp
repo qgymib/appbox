@@ -76,16 +76,16 @@ TEST_F(E2E_Reg, VariableExpansion_PerProcessView)
     const std::wstring programs_64 = GetKnownFolderPath(L"#ProgramFiles#", false);
     const std::wstring programs_86 = GetKnownFolderPath(L"#ProgramFilesX86#", false);
 
-    const std::wstring subkey =
-        L"Software\\AppBoxTest\\VariableExpansionPerProcessView_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const std::wstring subkey = L"Software\\AppBoxTest\\VariableExpansionPerProcessView_" +
+                                appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const std::wstring reference = L"%APPBOX:ProgramFiles%\\Foo";
 
     /* The application stores the reference as it is spelled in the workspace. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "Path";
-        req.Data = appbox::WideToUTF8(reference);
+        req.Data = appbox::WideToUTF8(reference).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), launcher_config, ProbeBitness::Bit32).Call<ProtocolRegWriteValue>(req);
 
@@ -95,13 +95,13 @@ TEST_F(E2E_Reg, VariableExpansion_PerProcessView)
         ASSERT_EQ(rsp.set_code, static_cast<DWORD>(ERROR_SUCCESS)) << report;
 
         /* The process which wrote the value reads the folder of its own view. */
-        EXPECT_EQ(rsp.readback, appbox::WideToUTF8(programs_86 + L"\\Foo")) << report;
+        EXPECT_EQ(rsp.readback, appbox::WideToUTF8(programs_86 + L"\\Foo").value_or(std::string())) << report;
     }
 
     /* The 32 bit process of a later run reads the folder of its own view. */
     {
         ProtocolRegReadValues::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Values = { "Path" };
 
         const auto rsp = Probe(GetCWD(), launcher_config, ProbeBitness::Bit32).Call<ProtocolRegReadValues>(req);
@@ -109,7 +109,7 @@ TEST_F(E2E_Reg, VariableExpansion_PerProcessView)
         ASSERT_EQ(rsp.values.size(), req.Values.size());
         ASSERT_EQ(rsp.values[0].query_code, static_cast<DWORD>(ERROR_SUCCESS));
 
-        EXPECT_EQ(rsp.values[0].text, appbox::WideToUTF8(programs_86 + L"\\Foo"));
+        EXPECT_EQ(rsp.values[0].text, appbox::WideToUTF8(programs_86 + L"\\Foo").value_or(std::string()));
     }
 
     /*
@@ -118,7 +118,7 @@ TEST_F(E2E_Reg, VariableExpansion_PerProcessView)
      */
     {
         ProtocolRegReadValues::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Values = { "Path" };
 
         const auto rsp = Probe(GetCWD(), launcher_config).Call<ProtocolRegReadValues>(req);
@@ -126,7 +126,7 @@ TEST_F(E2E_Reg, VariableExpansion_PerProcessView)
         ASSERT_EQ(rsp.values.size(), req.Values.size());
         ASSERT_EQ(rsp.values[0].query_code, static_cast<DWORD>(ERROR_SUCCESS));
 
-        EXPECT_EQ(rsp.values[0].text, appbox::WideToUTF8(programs_64 + L"\\Foo"));
+        EXPECT_EQ(rsp.values[0].text, appbox::WideToUTF8(programs_64 + L"\\Foo").value_or(std::string()));
     }
 
     /* The hive of the state directory keeps the reference of the application. */

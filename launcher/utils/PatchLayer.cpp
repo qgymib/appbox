@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -121,10 +122,11 @@ bool ExtractPackage(const appbox::SandboxPaths& paths, const std::wstring& packa
     std::filesystem::remove_all(staging, ec);
     ec.clear();
 
-    const auto extract_error = appbox::ExtractArchive(package_path, staging.wstring(), on_file);
-    if (extract_error != appbox::ZIPREADER_SUCCESS)
+    const auto extracted = appbox::ExtractArchive(package_path, staging.wstring(), on_file);
+    if (!extracted)
     {
-        error = appbox::ZipReaderErrorMessage(extract_error);
+        error = "failed to extract the package (error " + std::to_string(static_cast<std::int32_t>(extracted.error())) +
+                ")";
         std::filesystem::remove_all(staging, ec);
         return false;
     }
@@ -232,13 +234,14 @@ std::vector<appbox::PatchLayer> appbox::LoadPatchLayers(const SandboxPaths&     
     std::error_code ec;
     if (!std::filesystem::exists(paths.patch, ec))
     {
-        SPDLOG_DEBUG("the run has no patch directory: {}", WideToUTF8(paths.patch));
+        SPDLOG_DEBUG("the run has no patch directory: {}", WideToUTF8(paths.patch).value_or("<unconvertible>"));
         return layers;
     }
 
     if (!std::filesystem::is_directory(paths.patch, ec))
     {
-        SPDLOG_WARN("the patch path '{}' is not a directory, no package is applied", WideToUTF8(paths.patch));
+        SPDLOG_WARN("the patch path '{}' is not a directory, no package is applied",
+                    WideToUTF8(paths.patch).value_or("<unconvertible>"));
         return layers;
     }
 
@@ -264,13 +267,14 @@ std::vector<appbox::PatchLayer> appbox::LoadPatchLayers(const SandboxPaths&     
 
     if (ec)
     {
-        SPDLOG_ERROR("failed to enumerate the patch directory '{}': {}", WideToUTF8(paths.patch), ec.message());
+        SPDLOG_ERROR("failed to enumerate the patch directory '{}': {}",
+                     WideToUTF8(paths.patch).value_or("<unconvertible>"), ec.message());
         return layers;
     }
 
     if (packages.empty())
     {
-        SPDLOG_DEBUG("the patch directory holds no package: {}", WideToUTF8(paths.patch));
+        SPDLOG_DEBUG("the patch directory holds no package: {}", WideToUTF8(paths.patch).value_or("<unconvertible>"));
         return layers;
     }
 
@@ -285,7 +289,8 @@ std::vector<appbox::PatchLayer> appbox::LoadPatchLayers(const SandboxPaths&     
     std::filesystem::create_directories(paths.cache, ec);
     if (ec)
     {
-        SPDLOG_ERROR("failed to create the patch cache '{}': {}", WideToUTF8(paths.cache), ec.message());
+        SPDLOG_ERROR("failed to create the patch cache '{}': {}", WideToUTF8(paths.cache).value_or("<unconvertible>"),
+                     ec.message());
         return layers;
     }
 
@@ -308,7 +313,7 @@ std::vector<appbox::PatchLayer> appbox::LoadPatchLayers(const SandboxPaths&     
              * part the name of the entry drops.
              */
             SPDLOG_WARN("the patch package '{}' shares its cache entry with an earlier package, it is skipped",
-                        WideToUTF8(file_name));
+                        WideToUTF8(file_name).value_or("<unconvertible>"));
             ++handled;
             continue;
         }
@@ -318,7 +323,8 @@ std::vector<appbox::PatchLayer> appbox::LoadPatchLayers(const SandboxPaths&     
         std::string error;
         if (!Md5OfFile(package_path, digest, error))
         {
-            SPDLOG_ERROR("the patch package '{}' is skipped: {}", WideToUTF8(file_name), error);
+            SPDLOG_ERROR("the patch package '{}' is skipped: {}", WideToUTF8(file_name).value_or("<unconvertible>"),
+                         error);
             ++handled;
             continue;
         }
@@ -339,11 +345,13 @@ std::vector<appbox::PatchLayer> appbox::LoadPatchLayers(const SandboxPaths&     
         const bool  reused = ReadRecordedDigest(paths.PatchDigestFile(name), recorded) && recorded == digest;
         if (reused)
         {
-            SPDLOG_DEBUG("the cache entry of the patch package '{}' is reused", WideToUTF8(file_name));
+            SPDLOG_DEBUG("the cache entry of the patch package '{}' is reused",
+                         WideToUTF8(file_name).value_or("<unconvertible>"));
         }
         else if (!ExtractPackage(paths, package_path, name, digest, on_file, error))
         {
-            SPDLOG_ERROR("the patch package '{}' is skipped: {}", WideToUTF8(file_name), error);
+            SPDLOG_ERROR("the patch package '{}' is skipped: {}", WideToUTF8(file_name).value_or("<unconvertible>"),
+                         error);
             ++handled;
             continue;
         }

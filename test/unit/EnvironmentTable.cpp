@@ -256,12 +256,16 @@ TEST(Unit_EnvironmentTable, RefusesABrokenIsolationDocument)
 
     EXPECT_FALSE(appbox::environment::ParseIsolationDocument("{ \"version\": 2, \"entries\": [] }", variables, error));
 
-    /* An unknown mode names the entry which carries it. */
+    /*
+     * An unknown mode is refused by the reader of the document and reported by
+     * the module which shows the failure: the position of the entry is the
+     * diagnostic of the schema and never leaves `common/`.
+     */
     const std::string unknown_mode =
         "{ \"version\": 1, \"entries\": [ { \"name\": \"A\", \"value\": \"1\", \"isolation\": \"whiteout\","
         " \"merge\": \"replace\", \"merge_string\": \"\" } ] }";
     EXPECT_FALSE(appbox::environment::ParseIsolationDocument(unknown_mode, variables, error));
-    EXPECT_NE(error.find("entries[0]"), std::string::npos);
+    EXPECT_FALSE(error.empty());
 
     const std::string no_name =
         "{ \"version\": 1, \"entries\": [ { \"name\": \"\", \"value\": \"1\", \"isolation\": \"full\","

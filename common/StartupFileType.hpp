@@ -49,7 +49,7 @@ inline constexpr std::size_t kStartupFileExtensionCount = 4;
  * @param[in] character Character to fold.
  * @return The folded character, unchanged when it is not an ASCII letter.
  */
-inline wchar_t FoldAscii(wchar_t character)
+inline wchar_t FoldAscii(wchar_t character) noexcept
 {
     if (character >= L'A' && character <= L'Z')
     {
@@ -64,7 +64,7 @@ inline wchar_t FoldAscii(wchar_t character)
  * @param[in] extension Extension to test, including the dot.
  * @return true when the name ends with the extension.
  */
-inline bool EndsWithExtension(const std::wstring& name, const wchar_t* extension)
+inline bool EndsWithExtension(const std::wstring& name, const wchar_t* extension) noexcept
 {
     std::size_t size = 0;
     while (extension[size] != L'\0')
@@ -99,7 +99,7 @@ inline bool EndsWithExtension(const std::wstring& name, const wchar_t* extension
  * @param[in] path Path to inspect.
  * @return The index of the file name inside the path.
  */
-inline std::size_t FileNameOffset(const std::wstring& path)
+inline std::size_t FileNameOffset(const std::wstring& path) noexcept
 {
     const auto separator = path.find_last_of(L"\\/");
     return separator == std::wstring::npos ? 0 : separator + 1;
@@ -118,7 +118,7 @@ inline std::size_t FileNameOffset(const std::wstring& path)
  * @return The kind of the file, `StartupFileKind::None` when its extension is
  *         not one of the startable ones.
  */
-inline StartupFileKind StartupFileKindOf(const std::wstring& path)
+inline StartupFileKind StartupFileKindOf(const std::wstring& path) noexcept
 {
     const auto name = path.substr(detail::FileNameOffset(path));
 
@@ -155,7 +155,7 @@ inline StartupFileKind StartupFileKindOf(const std::wstring& path)
  * @param[in] path Path or name of a file.
  * @return true when the file carries one of the startable extensions.
  */
-inline bool IsStartableFile(const std::wstring& path)
+inline bool IsStartableFile(const std::wstring& path) noexcept
 {
     return StartupFileKindOf(path) != StartupFileKind::None;
 }
@@ -169,7 +169,7 @@ inline bool IsStartableFile(const std::wstring& path)
  *
  * @return The extension list.
  */
-inline std::string StartupFileExtensionList()
+inline std::string StartupFileExtensionList() noexcept
 {
     std::string list;
     for (std::size_t index = 0; index < detail::kStartupFileExtensionCount; ++index)

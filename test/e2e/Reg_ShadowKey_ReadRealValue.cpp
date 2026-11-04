@@ -48,7 +48,8 @@ TEST_F(E2E_Reg, ShadowKey_ReadRealValue)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\ShadowKey_ReadRealValue_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto        subkey = L"Software\\AppBoxTest\\ShadowKey_ReadRealValue_" +
+                               appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const std::string expected = "RealValue";
 
     /* Create the key and the value in the real registry. */
@@ -58,7 +59,7 @@ TEST_F(E2E_Reg, ShadowKey_ReadRealValue)
             RegCreateKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr),
             ERROR_SUCCESS);
 
-        auto wdata = appbox::UTF8ToWide(expected);
+        auto wdata = appbox::UTF8ToWide(expected).value_or(std::wstring());
         ASSERT_EQ(RegSetValueExW(key, L"TestValue", 0, REG_SZ, reinterpret_cast<const BYTE*>(wdata.c_str()),
                                  static_cast<DWORD>((wdata.size() + 1) * sizeof(wchar_t))),
                   ERROR_SUCCESS);
@@ -68,7 +69,7 @@ TEST_F(E2E_Reg, ShadowKey_ReadRealValue)
     RealKeyGuard guard{ subkey };
 
     ProtocolRegShadowRead::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Value = "TestValue";
 
     auto rsp = Probe(GetCWD(), config).Call<ProtocolRegShadowRead>(req);
@@ -87,6 +88,6 @@ TEST_F(E2E_Reg, ShadowKey_ReadRealValue)
         ASSERT_EQ(RegQueryValueExW(key, L"TestValue", nullptr, nullptr, reinterpret_cast<LPBYTE>(buf), &buf_size),
                   ERROR_SUCCESS);
         RegCloseKey(key);
-        ASSERT_EQ(appbox::WideToUTF8(buf), expected);
+        ASSERT_EQ(appbox::WideToUTF8(buf).value_or(std::string()), expected);
     }
 }

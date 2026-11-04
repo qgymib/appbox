@@ -86,7 +86,7 @@ TEST_F(E2E_Fs, Stream_FullFileWritesIntoTheSandbox)
     /* The stream of the file of the host filesystem is readable through the view. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -96,7 +96,7 @@ TEST_F(E2E_Fs, Stream_FullFileWritesIntoTheSandbox)
     /* The write of the stream lands in the sandbox. */
     {
         ProtocolWriteFile::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream").value_or(std::string());
         req.Data = "written";
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolWriteFile>(req);
@@ -107,7 +107,7 @@ TEST_F(E2E_Fs, Stream_FullFileWritesIntoTheSandbox)
     /* A stream the view does not hold yet is created in the sandbox as well. */
     {
         ProtocolWriteFile::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\g.txt:created");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\g.txt:created").value_or(std::string());
         req.Data = "created";
         req.dwCreationDisposition = CREATE_NEW;
 
@@ -120,7 +120,7 @@ TEST_F(E2E_Fs, Stream_FullFileWritesIntoTheSandbox)
      * content of the host filesystem for them. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -128,7 +128,7 @@ TEST_F(E2E_Fs, Stream_FullFileWritesIntoTheSandbox)
     }
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\g.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\g.txt").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));

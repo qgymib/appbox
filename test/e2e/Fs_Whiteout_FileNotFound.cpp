@@ -62,14 +62,14 @@ TEST_F(E2E_Fs, Whiteout_FileIsNotFound)
     /* The hidden file cannot be read, the other file keeps its read through. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\hidden.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\hidden.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\visible.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\visible.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -79,7 +79,7 @@ TEST_F(E2E_Fs, Whiteout_FileIsNotFound)
     /* The attributes of the hidden file are not reported either. */
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\hidden.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\hidden.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         EXPECT_EQ(rsp.attributes, static_cast<DWORD>(INVALID_FILE_ATTRIBUTES));
@@ -89,7 +89,7 @@ TEST_F(E2E_Fs, Whiteout_FileIsNotFound)
     /* The hidden file cannot be deleted. */
     {
         ProtocolDeleteFileW::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\hidden.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\hidden.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolDeleteFileW>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -98,7 +98,7 @@ TEST_F(E2E_Fs, Whiteout_FileIsNotFound)
     /* The listing does not report the hidden file. */
     {
         ProtocolListDir::Req req;
-        req.path = appbox::WideToUTF8(folder);
+        req.path = appbox::WideToUTF8(folder).value_or(std::string());
         req.method = ProtocolListDir::Req::Method::WinAPI;
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);

@@ -81,8 +81,8 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
 
     auto config = tree.Build();
 
-    const auto prefix =
-        L"Software\\AppBoxTest\\WriteCopy_CreateDisposition_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto        prefix = L"Software\\AppBoxTest\\WriteCopy_CreateDisposition_" +
+                               appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const std::string host_text = "HostValue";
     const std::string sandbox_text = "SandboxValue";
 
@@ -95,11 +95,11 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
      * file marks one of the host keys `Full`. */
     RealHkcuKey host_only_key(host_only);
     ASSERT_NE(host_only_key.get(), nullptr);
-    ASSERT_TRUE(host_only_key.SetString(L"HostValue", appbox::UTF8ToWide(host_text)));
+    ASSERT_TRUE(host_only_key.SetString(L"HostValue", appbox::UTF8ToWide(host_text).value_or(std::wstring())));
 
     RealHkcuKey full_key_host(full_key);
     ASSERT_NE(full_key_host.get(), nullptr);
-    ASSERT_TRUE(full_key_host.SetString(L"HostValue", appbox::UTF8ToWide(host_text)));
+    ASSERT_TRUE(full_key_host.SetString(L"HostValue", appbox::UTF8ToWide(host_text).value_or(std::wstring())));
 
     HiveBuilder builder(GetCWD());
     builder.EnsureKey(L"HKEY_CURRENT_USER\\" + hive_held);
@@ -112,7 +112,7 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
      * merged view of `WriteCopy`. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(host_only);
+        req.Key = appbox::WideToUTF8(host_only).value_or(std::string());
         req.Value = "TestValue";
         req.Data = sandbox_text;
 
@@ -127,7 +127,7 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
      * as well. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(hive_held);
+        req.Key = appbox::WideToUTF8(hive_held).value_or(std::string());
         req.Value = "TestValue";
         req.Data = sandbox_text;
 
@@ -142,7 +142,7 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
      * sandbox. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(full_key);
+        req.Key = appbox::WideToUTF8(full_key).value_or(std::string());
         req.Value = "TestValue";
         req.Data = sandbox_text;
 
@@ -156,7 +156,7 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
     /* Neither layer holds the key: the create builds it inside the hive. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(new_key);
+        req.Key = appbox::WideToUTF8(new_key).value_or(std::string());
         req.Value = "TestValue";
         req.Data = sandbox_text;
 
@@ -171,10 +171,10 @@ TEST_F(E2E_Reg, WriteCopy_CreateDisposition)
      * shadow key of the hive. */
     std::wstring host_value;
     ASSERT_EQ(ReadHostString(host_only, L"HostValue", host_value), ERROR_SUCCESS);
-    EXPECT_EQ(host_value, appbox::UTF8ToWide(host_text));
+    EXPECT_EQ(host_value, appbox::UTF8ToWide(host_text).value_or(std::wstring()));
     EXPECT_NE(ReadHostString(host_only, L"TestValue", host_value), ERROR_SUCCESS);
 
     ASSERT_EQ(ReadHostString(full_key, L"HostValue", host_value), ERROR_SUCCESS);
-    EXPECT_EQ(host_value, appbox::UTF8ToWide(host_text));
+    EXPECT_EQ(host_value, appbox::UTF8ToWide(host_text).value_or(std::wstring()));
     EXPECT_NE(ReadHostString(full_key, L"TestValue", host_value), ERROR_SUCCESS);
 }

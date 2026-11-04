@@ -56,7 +56,8 @@ TEST_F(E2E_Launcher, RegistryStateIsSeeded)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\RegistryStateIsSeeded_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\RegistryStateIsSeeded_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"TestValue", REG_SZ, StringData(L"packed"));
@@ -79,7 +80,7 @@ TEST_F(E2E_Launcher, RegistryStateIsSeeded)
     ASSERT_FALSE(std::filesystem::exists(state_hive));
 
     ProtocolRegReadValue::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Value = "TestValue";
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);

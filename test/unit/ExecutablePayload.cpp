@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "ExecutablePayload.hpp"
+#include "utils/ErrorCodeText.hpp"
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -93,14 +94,12 @@ TEST(Unit_ExecutablePayload, TrailerRoundTripsThroughAProgramFile)
         ASSERT_TRUE(file.good());
     }
 
-    appbox::executable_payload::PayloadLocation location;
-    std::string                                 error;
-    ASSERT_EQ(appbox::executable_payload::ReadTrailer(host.Get(), location, error),
-              appbox::executable_payload::TrailerStatus::Present)
-        << error;
-    EXPECT_TRUE(error.empty());
-    EXPECT_EQ(location.offset, static_cast<std::uint64_t>(100));
-    EXPECT_EQ(location.size, static_cast<std::uint64_t>(40));
+    const auto trailer_read = appbox::executable_payload::ReadTrailer(host.Get());
+    ASSERT_TRUE(trailer_read) << appbox::test::DescribeErrorCode(trailer_read.error());
+    ASSERT_TRUE(trailer_read->has_value());
+
+    EXPECT_EQ((*trailer_read)->offset, static_cast<std::uint64_t>(100));
+    EXPECT_EQ((*trailer_read)->size, static_cast<std::uint64_t>(40));
 }
 
 TEST(Unit_ExecutablePayload, AProgramWithoutATrailerCarriesNoPayload)
@@ -111,20 +110,18 @@ TEST(Unit_ExecutablePayload, AProgramWithoutATrailerCarriesNoPayload)
     const std::vector<char> tiny(4, 'M');
     WriteFile(host.Get(), tiny.data(), tiny.size());
 
-    appbox::executable_payload::PayloadLocation location;
-    std::string                                 error;
-    EXPECT_EQ(appbox::executable_payload::ReadTrailer(host.Get(), location, error),
-              appbox::executable_payload::TrailerStatus::Absent);
-    EXPECT_TRUE(error.empty());
+    const auto short_read = appbox::executable_payload::ReadTrailer(host.Get());
+    ASSERT_TRUE(short_read) << appbox::test::DescribeErrorCode(short_read.error());
+    EXPECT_FALSE(short_read->has_value());
 
     /* An image which ends with other bytes ends with no magic either. */
     TempPath                image(L".exe");
     const std::vector<char> longer(120, 'M');
     WriteFile(image.Get(), longer.data(), longer.size());
 
-    EXPECT_EQ(appbox::executable_payload::ReadTrailer(image.Get(), location, error),
-              appbox::executable_payload::TrailerStatus::Absent);
-    EXPECT_TRUE(error.empty());
+    const auto long_read = appbox::executable_payload::ReadTrailer(image.Get());
+    ASSERT_TRUE(long_read) << appbox::test::DescribeErrorCode(long_read.error());
+    EXPECT_FALSE(long_read->has_value());
 }
 
 TEST(Unit_ExecutablePayload, AnInconsistentTrailerIsNotTrusted)
@@ -147,11 +144,9 @@ TEST(Unit_ExecutablePayload, AnInconsistentTrailerIsNotTrusted)
         ASSERT_TRUE(file.good());
     }
 
-    appbox::executable_payload::PayloadLocation location;
-    std::string                                 error;
-    EXPECT_EQ(appbox::executable_payload::ReadTrailer(host.Get(), location, error),
-              appbox::executable_payload::TrailerStatus::Unreadable);
-    EXPECT_FALSE(error.empty());
+    const auto read = appbox::executable_payload::ReadTrailer(host.Get());
+    ASSERT_FALSE(read);
+    EXPECT_EQ(read.error(), appbox::ErrorCode::kPayloadTrailerInconsistent);
 }
 
 TEST(Unit_ExecutablePayload, AnUnknownVersionIsRefused)
@@ -173,19 +168,16 @@ TEST(Unit_ExecutablePayload, AnUnknownVersionIsRefused)
         ASSERT_TRUE(file.good());
     }
 
-    appbox::executable_payload::PayloadLocation location;
-    std::string                                 error;
-    EXPECT_EQ(appbox::executable_payload::ReadTrailer(host.Get(), location, error),
-              appbox::executable_payload::TrailerStatus::Unreadable);
-    EXPECT_FALSE(error.empty());
+    const auto read = appbox::executable_payload::ReadTrailer(host.Get());
+    ASSERT_FALSE(read);
+    EXPECT_EQ(read.error(), appbox::ErrorCode::kPayloadTrailerInconsistent);
 }
 
 TEST(Unit_ExecutablePayload, AMissingFileIsUnreadable)
 {
     const auto missing = std::filesystem::temp_directory_path() / L"appbox-payload-missing.exe";
-    appbox::executable_payload::PayloadLocation location;
-    std::string                                 error;
-    EXPECT_EQ(appbox::executable_payload::ReadTrailer(missing, location, error),
-              appbox::executable_payload::TrailerStatus::Unreadable);
-    EXPECT_FALSE(error.empty());
+
+    const auto read = appbox::executable_payload::ReadTrailer(missing);
+    ASSERT_FALSE(read);
+    EXPECT_EQ(read.error(), appbox::ErrorCode::kPayloadTrailerUnreadable);
 }

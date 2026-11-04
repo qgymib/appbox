@@ -37,8 +37,8 @@ TEST_F(E2E_Reg, Merge_DeletesTheHostValue)
 
     auto config = tree.Build();
 
-    const auto subkey =
-        L"Software\\AppBoxTest\\Merge_DeletesTheHostValue_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\Merge_DeletesTheHostValue_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto hive_key = L"HKEY_CURRENT_USER\\" + subkey;
 
     RealHkcuKey host(subkey);
@@ -54,7 +54,7 @@ TEST_F(E2E_Reg, Merge_DeletesTheHostValue)
 
     {
         ProtocolRegDeleteValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "HostValue";
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteValue>(req);
@@ -73,7 +73,7 @@ TEST_F(E2E_Reg, Merge_DeletesTheHostValue)
 
     {
         ProtocolRegReadValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "HostValue";
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);

@@ -58,7 +58,8 @@ TEST_F(E2E_Reg, UsersRoot_MapsToTheCurrentUserHive)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\UsersRoot_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey =
+        L"Software\\AppBoxTest\\UsersRoot_" + appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     RealKeyGuard guard{ subkey };
 
@@ -70,7 +71,7 @@ TEST_F(E2E_Reg, UsersRoot_MapsToTheCurrentUserHive)
     {
         ProtocolRegWriteValue::Req req;
         req.Root = "HKEY_USERS";
-        req.Key = appbox::WideToUTF8(sid + L"\\" + subkey);
+        req.Key = appbox::WideToUTF8(sid + L"\\" + subkey).value_or(std::string());
         req.Value = "UsersValue";
         req.Data = "users";
 
@@ -84,7 +85,7 @@ TEST_F(E2E_Reg, UsersRoot_MapsToTheCurrentUserHive)
     {
         ProtocolRegReadValue::Req req;
         req.Root = "HKEY_CURRENT_USER";
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "UsersValue";
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);

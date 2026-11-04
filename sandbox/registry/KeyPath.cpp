@@ -5,21 +5,21 @@ bool appbox::registry::StripKeyPrefix(const std::wstring& path, const std::wstri
 {
     /*
      * Reuse the case insensitive prefix compare of the common module. The
-     * replacement is empty, so the output holds the un-matched suffix.
+     * replacement is empty, so the answer holds the un-matched suffix.
      */
-    std::wstring suffix;
-    if (!appbox::PrefixCompareExchange(path, prefix, L"", true, suffix))
+    const auto suffix = appbox::PrefixCompareExchange(path, prefix, L"", true);
+    if (!suffix)
     {
         return false;
     }
 
     /* The prefix must end on a component boundary. */
-    if (!suffix.empty() && suffix.front() != L'\\')
+    if (!suffix->empty() && suffix->front() != L'\\')
     {
         return false;
     }
 
-    relative.assign(suffix, suffix.empty() ? 0 : 1, std::wstring::npos);
+    relative.assign(*suffix, suffix->empty() ? 0 : 1, std::wstring::npos);
     return true;
 }
 

@@ -118,7 +118,7 @@ appbox::test::ProtocolSetInformationFile::Rsp appbox::test::ProbeSetInformationF
             continue;
         }
 
-        const std::wstring source = appbox::UTF8ToWide(item.source);
+        const std::wstring source = appbox::UTF8ToWide(item.source).value_or(std::wstring());
         const ACCESS_MASK  access = item.access == Access::Read ? kReadAccess : kDeleteAccess;
         HANDLE             handle =
             CreateFileW(source.c_str(), access, kShareAll, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
@@ -132,7 +132,7 @@ appbox::test::ProtocolSetInformationFile::Rsp appbox::test::ProbeSetInformationF
         HANDLE root = nullptr;
         if (!item.rootDirectory.empty())
         {
-            const std::wstring root_path = appbox::UTF8ToWide(item.rootDirectory);
+            const std::wstring root_path = appbox::UTF8ToWide(item.rootDirectory).value_or(std::wstring());
             root = CreateFileW(root_path.c_str(), FILE_LIST_DIRECTORY | SYNCHRONIZE, kShareAll, nullptr, OPEN_EXISTING,
                                FILE_FLAG_BACKUP_SEMANTICS, nullptr);
             if (root == INVALID_HANDLE_VALUE)
@@ -141,7 +141,7 @@ appbox::test::ProtocolSetInformationFile::Rsp appbox::test::ProbeSetInformationF
             }
         }
 
-        const std::wstring target = AsNtName(appbox::UTF8ToWide(item.target));
+        const std::wstring target = AsNtName(appbox::UTF8ToWide(item.target).value_or(std::wstring()));
         const size_t       name_offset = offsetof(FILE_RENAME_INFORMATION, FileName);
         const ULONG        name_bytes = static_cast<ULONG>(target.size() * sizeof(wchar_t));
 

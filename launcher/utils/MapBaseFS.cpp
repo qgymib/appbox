@@ -82,12 +82,12 @@ DWORD appbox::MapBaseFS(const std::string& layer_root, std::vector<SandboxLowerF
             return ERROR_INVALID_PARAMETER;
         }
 
-        std::wstring folder_path;
-        if (appbox::SearchFolderID(name, folder_path))
+        const auto folder_path = appbox::SearchFolderID(name);
+        if (folder_path)
         {
-            if (appbox::ConvertDosPathToNtPath(CLI::narrow(folder_path), lower_fs.mapped_nt_path) != 0)
+            if (appbox::ConvertDosPathToNtPath(CLI::narrow(*folder_path), lower_fs.mapped_nt_path) != 0)
             {
-                SPDLOG_ERROR(L"failed to convert the known folder path: {}", folder_path);
+                SPDLOG_ERROR(L"failed to convert the known folder path: {}", *folder_path);
                 return ERROR_INVALID_PARAMETER;
             }
         }

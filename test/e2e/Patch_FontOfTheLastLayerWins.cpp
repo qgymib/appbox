@@ -69,9 +69,10 @@ TEST_F(E2E_Patch, FontOfTheLastLayerWins)
     }));
 
     ProtocolFonts::Req req;
-    req.family = appbox::WideToUTF8(patch_font.family);
-    req.absent_family = appbox::WideToUTF8(app_font.family);
-    req.view_path = appbox::WideToUTF8(GetKnownFolderPath(L"#Fonts#", false) + L"\\" + packed_name);
+    req.family = appbox::WideToUTF8(patch_font.family).value_or(std::string());
+    req.absent_family = appbox::WideToUTF8(app_font.family).value_or(std::string());
+    req.view_path =
+        appbox::WideToUTF8(GetKnownFolderPath(L"#Fonts#", false) + L"\\" + packed_name).value_or(std::string());
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolFonts>(req);
 

@@ -36,14 +36,8 @@ namespace
  */
 bool Is32BitImage(const std::wstring& image_path)
 {
-    try
-    {
-        return appbox::PeImage::FromFile(image_path).Is32Bit();
-    }
-    catch (const std::exception&)
-    {
-        return sizeof(void*) == 4;
-    }
+    const auto image = appbox::PeImage::FromFile(image_path);
+    return image ? image->Is32Bit() : sizeof(void*) == 4;
 }
 
 /**
@@ -334,8 +328,8 @@ DWORD appbox::ProcessJob::Start()
     auto cmdline = appbox::BuildCommandLine(data_->command_line_path, data_->exe_args);
 
     /* The command line is what a reader of a failed run needs to reproduce it. */
-    SPDLOG_DEBUG("create the process '{}' with '{}'", appbox::WideToUTF8(data_->image_path),
-                 appbox::WideToUTF8(cmdline));
+    SPDLOG_DEBUG("create the process '{}' with '{}'", appbox::WideToUTF8(data_->image_path).value_or("<unconvertible>"),
+                 appbox::WideToUTF8(cmdline).value_or("<unconvertible>"));
 
     /*
      * The environment block belongs to the options of the job, which outlive

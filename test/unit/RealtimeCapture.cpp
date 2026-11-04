@@ -344,9 +344,9 @@ TEST(Unit_RealtimeCapture, ReportsAChangeWhichBelongsToNoPresetDirectory)
     ASSERT_EQ(report.ignored.size(), 1u);
     EXPECT_EQ(report.total_ignored, 1u);
     EXPECT_NE(report.ignored[0].message.find(L"Z:\\NoPreset\\App.exe"), std::wstring::npos)
-        << appbox::WideToUTF8(report.ignored[0].message);
+        << appbox::WideToUTF8(report.ignored[0].message).value_or(std::string());
     EXPECT_NE(report.ignored[0].message.find(L"no preset directory"), std::wstring::npos)
-        << appbox::WideToUTF8(report.ignored[0].message);
+        << appbox::WideToUTF8(report.ignored[0].message).value_or(std::string());
 }
 
 TEST(Unit_RealtimeCapture, ReportsAFileWhichWasCreatedAndRemovedAgain)

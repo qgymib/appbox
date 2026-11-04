@@ -1,7 +1,7 @@
 #include "tracer/TracedModules.hpp"
 #include <windows.h>
 #include <algorithm>
-#include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace appbox::tracer
@@ -73,15 +73,14 @@ std::filesystem::path SystemDirectoryForMachine(std::uint16_t machine)
 
 std::filesystem::path ModuleDirectoryForTarget(const std::filesystem::path& target)
 {
-    try
-    {
-        return SystemDirectoryForMachine(PeImage::FromFile(target).Machine());
-    }
-    catch (const std::runtime_error&)
+    const auto image = PeImage::FromFile(target);
+    if (!image)
     {
         /* Without a readable image the 64 bit system modules are the best guess. */
         return SystemDirectoryForMachine(0);
     }
+
+    return SystemDirectoryForMachine(image->Machine());
 }
 
 ModuleImages LoadTracedModules(const std::filesystem::path& directory)
@@ -100,17 +99,17 @@ ModuleImages LoadTracedModules(const std::map<std::wstring, std::filesystem::pat
     ModuleImages modules;
     for (const auto& path : paths)
     {
-        try
-        {
-            TracedModule module;
-            module.path = path.second;
-            module.image = PeImage::FromFile(path.second);
-            modules.emplace(path.first, std::move(module));
-        }
-        catch (const std::runtime_error&)
+        auto image = PeImage::FromFile(path.second);
+        if (!image)
         {
             /* A module which can not be read simply stays out of the set. */
+            continue;
         }
+
+        TracedModule module;
+        module.path = path.second;
+        module.image = std::move(*image);
+        modules.emplace(path.first, std::move(module));
     }
 
     return modules;

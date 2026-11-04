@@ -33,8 +33,11 @@ add_executable(AppBoxTests
     "unit/EnvironmentIsolationFile.cpp"
     "unit/EnvironmentModel.cpp"
     "unit/EnvironmentTable.cpp"
+    "unit/EmbeddedResource.cpp"
+    "unit/ErrorCodeMapping.cpp"
     "unit/EtwEventDecoder.cpp"
     "unit/ExecutablePayload.cpp"
+    "unit/ExtractionCleanup.cpp"
     "unit/ExpandKnownFolder.cpp"
     "unit/FilesystemIsolation.cpp"
     "unit/FilesystemMarker.cpp"
@@ -48,12 +51,16 @@ add_executable(AppBoxTests
     "unit/LauncherStartMessage.cpp"
     "unit/Log.cpp"
     "unit/LogFile.cpp"
+    "unit/LogLevelName.cpp"
     "unit/Md5.cpp"
     "unit/ModuleTable.cpp"
+    "unit/NetworkIsolation.cpp"
     "unit/NetworkIsolationFile.cpp"
     "unit/NetworkModel.cpp"
     "unit/PackModel.cpp"
     "unit/PackService.cpp"
+    "unit/PathMapping.cpp"
+    "unit/PeImage.cpp"
     "unit/PeerIdentity.cpp"
     "unit/PipeClient.cpp"
     "unit/ProcessJob.cpp"
@@ -345,6 +352,7 @@ add_executable(AppBoxTests
     "utils/CWD.cpp"
     "utils/EchoServer.cpp"
     "utils/EnvironmentIsolationBuilder.cpp"
+    "utils/ErrorCodeText.cpp"
     "utils/FsBuilder.cpp"
     "utils/FsIsolationBuilder.cpp"
     "utils/HiveBuilder.cpp"
@@ -370,6 +378,7 @@ add_executable(AppBoxTests
     "utils/TestKnownFolder.cpp"
     "utils/TestLog.cpp"
     "utils/TestSandboxId.cpp"
+    "utils/TestText.cpp"
     "utils/TestTimeout.cpp"
     "utils/WriteFileFull.cpp"
 
@@ -404,6 +413,7 @@ add_executable(AppBoxTests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EnvironmentModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/EtwEventDecoder.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/ExtractionCleanup.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemIsolationModel.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/FilesystemTree.cpp

@@ -12,7 +12,7 @@ namespace
  */
 std::string Quote(const std::wstring& text)
 {
-    return "'" + appbox::WideToUTF8(text) + "'";
+    return "'" + appbox::WideToUTF8(text).value_or(std::string()) + "'";
 }
 
 /**

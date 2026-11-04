@@ -23,6 +23,7 @@
 #include <cwctype>
 #include <iterator>
 #include <string>
+#include <tl/expected.hpp>
 #include <vector>
 
 namespace appbox
@@ -50,7 +51,7 @@ struct DosNtDriveMapping
  * @param[in] prefix Prefix to compare against, terminated by a null character.
  * @return true when the text starts with the prefix.
  */
-inline bool DosNtStartsWithIgnoreCase(const std::wstring& text, const wchar_t* prefix)
+inline bool DosNtStartsWithIgnoreCase(const std::wstring& text, const wchar_t* prefix) noexcept
 {
     const std::size_t size = std::wcslen(prefix);
 
@@ -75,7 +76,7 @@ inline bool DosNtStartsWithIgnoreCase(const std::wstring& text, const wchar_t* p
  * @param[in] character Character to inspect.
  * @return true when the character is a letter.
  */
-inline bool DosNtIsDriveLetter(wchar_t character)
+inline bool DosNtIsDriveLetter(wchar_t character) noexcept
 {
     const wchar_t upper = static_cast<wchar_t>(std::towupper(character));
     return upper >= L'A' && upper <= L'Z';
@@ -91,7 +92,7 @@ inline bool DosNtIsDriveLetter(wchar_t character)
  * @param[in] path Path to inspect.
  * @return true when the path belongs to one of the rejected namespaces.
  */
-inline bool DosNtIsRejectedNamespace(const std::wstring& path)
+inline bool DosNtIsRejectedNamespace(const std::wstring& path) noexcept
 {
     for (const wchar_t* prefix : kDosNtRejectedNamespacePrefixes)
     {
@@ -114,7 +115,7 @@ inline bool DosNtIsRejectedNamespace(const std::wstring& path)
  * @param[in] path Path to inspect.
  * @return true when the path is an absolute path of a drive.
  */
-inline bool DosNtIsAbsolutePath(const std::wstring& path)
+inline bool DosNtIsAbsolutePath(const std::wstring& path) noexcept
 {
     /** Number of the characters of the namespace, which is `\??\`. */
     constexpr std::size_t kNamespaceSize = 4;
@@ -148,7 +149,7 @@ inline bool DosNtIsAbsolutePath(const std::wstring& path)
  * @param[in] drive Letter of the drive to inspect.
  * @return true when the drive is a local file system.
  */
-inline bool DosNtIsLocalDrive(wchar_t drive)
+inline bool DosNtIsLocalDrive(wchar_t drive) noexcept
 {
     if (!DosNtIsDriveLetter(drive))
     {
@@ -173,7 +174,7 @@ inline bool DosNtIsLocalDrive(wchar_t drive)
  * @param[in] prefix Prefix to compare against, terminated by a null character.
  * @return true when the path starts with the prefix.
  */
-inline bool DosNtIsPathPrefix(const std::wstring& path, const wchar_t* prefix)
+inline bool DosNtIsPathPrefix(const std::wstring& path, const wchar_t* prefix) noexcept
 {
     if (!DosNtStartsWithIgnoreCase(path, prefix))
     {
@@ -196,14 +197,17 @@ inline bool DosNtIsPathPrefix(const std::wstring& path, const wchar_t* prefix)
  * The root of a drive keeps its separator, so a path which is the root of a
  * volume is left unchanged.
  *
- * @param[in,out] path Path to trim.
+ * @param[in] path Path to trim.
+ * @return The path without the separators at its end.
  */
-inline void DosNtTrimTrailingSeparators(std::wstring& path)
+inline std::wstring DosNtTrimTrailingSeparators(std::wstring path) noexcept
 {
     while (path.size() > 1 && path.back() == L'\\')
     {
         path.pop_back();
     }
+
+    return path;
 }
 
 /**
@@ -215,10 +219,11 @@ inline void DosNtTrimTrailingSeparators(std::wstring& path)
  * only names no drive, so the call refuses it.
  *
  * @param[in] path Path to map.
- * @param[out] mapped DOS style NT path of the volume, e.g. `\??\D:\dir\file`.
- * @return true when the volume is mounted on the root of a local drive.
+ * @return The DOS style NT path of the volume, e.g. `\??\D:\dir\file`, or
+ *         `kPathVolumeUnmounted` when the volume is mounted on no local drive
+ *         of the machine.
  */
-inline bool DosNtMapVolumeGuidPath(const std::wstring& path, std::wstring& mapped)
+inline tl::expected<std::wstring, ErrorCode> DosNtMapVolumeGuidPath(const std::wstring& path) noexcept
 {
     constexpr wchar_t kPrefix[] = L"\\??\\Volume{";
 
@@ -227,19 +232,19 @@ inline bool DosNtMapVolumeGuidPath(const std::wstring& path, std::wstring& mappe
 
     if (!DosNtStartsWithIgnoreCase(path, kPrefix))
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathVolumeUnmounted);
     }
 
     const std::size_t close_brace = path.find(L'}', kPrefixSize);
     if (close_brace == std::wstring::npos)
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathVolumeUnmounted);
     }
 
     /* The name of the volume has to be followed by the separator of the path. */
     if (close_brace + 1 >= path.size() || path[close_brace + 1] != L'\\')
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathVolumeUnmounted);
     }
 
     /* The component of the volume, `Volume{GUID}\`, without the namespace. */
@@ -254,19 +259,19 @@ inline bool DosNtMapVolumeGuidPath(const std::wstring& path, std::wstring& mappe
     if (!GetVolumePathNamesForVolumeNameW(win32_volume_name.c_str(), nullptr, 0, &required) &&
         GetLastError() != ERROR_MORE_DATA)
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathVolumeUnmounted);
     }
 
     if (required == 0)
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathVolumeUnmounted);
     }
 
     std::vector<wchar_t> buffer(static_cast<std::size_t>(required) + 2);
     if (!GetVolumePathNamesForVolumeNameW(win32_volume_name.c_str(), buffer.data(), static_cast<DWORD>(buffer.size()),
                                           &required))
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathVolumeUnmounted);
     }
 
     /*
@@ -290,10 +295,10 @@ inline bool DosNtMapVolumeGuidPath(const std::wstring& path, std::wstring& mappe
 
     if (drive == 0)
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathVolumeUnmounted);
     }
 
-    mapped.clear();
+    std::wstring mapped;
     mapped += L"\\??\\";
     mapped += drive;
     mapped += L':';
@@ -301,7 +306,7 @@ inline bool DosNtMapVolumeGuidPath(const std::wstring& path, std::wstring& mappe
     /* The remainder of the path, which starts with a separator. */
     mapped += path.substr(close_brace + 1);
 
-    return true;
+    return mapped;
 }
 
 /**
@@ -312,11 +317,11 @@ inline bool DosNtMapVolumeGuidPath(const std::wstring& path, std::wstring& mappe
  * installed on.
  *
  * @param[in] path Path to map.
- * @param[out] mapped DOS style NT path of the entry, e.g.
- *             `\??\C:\Windows\System32\ntdll.dll`.
- * @return true when the path starts with the name of the Windows directory.
+ * @return The DOS style NT path of the entry, e.g.
+ *         `\??\C:\Windows\System32\ntdll.dll`, or `kPathNotLocalDrive` when the
+ *         directory of Windows is not on a local drive this view can key.
  */
-inline bool DosNtMapSystemRootPath(const std::wstring& path, std::wstring& mapped)
+inline tl::expected<std::wstring, ErrorCode> DosNtMapSystemRootPath(const std::wstring& path) noexcept
 {
     constexpr wchar_t kSystemRoot[] = L"\\SystemRoot";
 
@@ -325,28 +330,27 @@ inline bool DosNtMapSystemRootPath(const std::wstring& path, std::wstring& mappe
 
     if (!DosNtIsPathPrefix(path, kSystemRoot))
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathNotLocalDrive);
     }
 
     wchar_t            windows_directory[MAX_PATH]{};
     const unsigned int length = GetWindowsDirectoryW(windows_directory, MAX_PATH);
     if (length == 0 || length >= MAX_PATH)
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathNotLocalDrive);
     }
 
-    std::wstring windows_path = windows_directory;
-    DosNtTrimTrailingSeparators(windows_path);
+    const std::wstring windows_path = DosNtTrimTrailingSeparators(windows_directory);
 
     if (windows_path.size() < 3 || !DosNtIsDriveLetter(windows_path[0]) || windows_path[1] != L':' ||
         windows_path[2] != L'\\')
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathNotLocalDrive);
     }
 
     if (!DosNtIsLocalDrive(windows_path[0]))
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathNotLocalDrive);
     }
 
     std::wstring remainder;
@@ -356,11 +360,11 @@ inline bool DosNtMapSystemRootPath(const std::wstring& path, std::wstring& mappe
         remainder = path.substr(kSystemRootSize);
     }
 
-    mapped = L"\\??\\";
+    std::wstring mapped = L"\\??\\";
     mapped += windows_path;
     mapped += remainder;
 
-    return true;
+    return mapped;
 }
 
 /**
@@ -371,10 +375,10 @@ inline bool DosNtMapSystemRootPath(const std::wstring& path, std::wstring& mappe
  * drive, e.g. `\Device\HarddiskVolume3`.
  *
  * @param[in] dos_device_name Name of the device, e.g. `C:`.
- * @param[out] target Target of the device, empty when the query fails.
- * @return true when the device maps to a target.
+ * @return The target of the device, or `kPathDeviceUnknown` when the device
+ *         maps to nothing.
  */
-inline bool DosNtQueryDosDeviceTarget(const std::wstring& dos_device_name, std::wstring& target)
+inline tl::expected<std::wstring, ErrorCode> DosNtQueryDosDeviceTarget(const std::wstring& dos_device_name) noexcept
 {
     /** Capacity of the first buffer of the query, in characters. */
     constexpr std::size_t kInitialCapacity = 1024;
@@ -390,13 +394,17 @@ inline bool DosNtQueryDosDeviceTarget(const std::wstring& dos_device_name, std::
 
         if (length != 0)
         {
-            target.assign(buffer.data());
-            return !target.empty();
+            std::wstring target(buffer.data());
+            if (target.empty())
+            {
+                return tl::make_unexpected(ErrorCode::kPathDeviceUnknown);
+            }
+            return target;
         }
 
         if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || buffer.size() >= kMaximumCapacity)
         {
-            return false;
+            return tl::make_unexpected(ErrorCode::kPathDeviceUnknown);
         }
 
         buffer.resize(buffer.size() * 2);
@@ -413,7 +421,7 @@ inline bool DosNtQueryDosDeviceTarget(const std::wstring& dos_device_name, std::
  * @return The drives, longest device path first, so that the first hit of a
  *         lookup is the most specific one.
  */
-inline std::vector<DosNtDriveMapping> DosNtBuildDriveDeviceMappings()
+inline std::vector<DosNtDriveMapping> DosNtBuildDriveDeviceMappings() noexcept
 {
     /** Capacity of the buffer which receives the names of the drives, in characters. */
     constexpr std::size_t kDriveListCapacity = 512;
@@ -444,22 +452,22 @@ inline std::vector<DosNtDriveMapping> DosNtBuildDriveDeviceMappings()
         wchar_t device_name[] = L"C:";
         device_name[0] = drive;
 
-        std::wstring target;
-        if (!DosNtQueryDosDeviceTarget(device_name, target))
+        const auto target = DosNtQueryDosDeviceTarget(device_name);
+        if (!target)
         {
             continue;
         }
 
-        DosNtTrimTrailingSeparators(target);
+        const std::wstring device_path = DosNtTrimTrailingSeparators(*target);
 
         /*
          * A local volume is a device path such as `\Device\HarddiskVolume3`. The
          * target of a substituted drive is a path of another drive instead,
          * which is no device path and is therefore not used for the lookup.
          */
-        if (DosNtStartsWithIgnoreCase(target, L"\\Device\\"))
+        if (DosNtStartsWithIgnoreCase(device_path, L"\\Device\\"))
         {
-            result.push_back({ drive, target });
+            result.push_back({ drive, device_path });
         }
     }
 
@@ -474,11 +482,11 @@ inline std::vector<DosNtDriveMapping> DosNtBuildDriveDeviceMappings()
  * @brief Map a device path to the DOS style path of the drive of its volume.
  *
  * @param[in] path Path to map, e.g. `\Device\HarddiskVolume3\Windows\notepad.exe`.
- * @param[out] mapped DOS style NT path of the entry, e.g.
- *             `\??\C:\Windows\notepad.exe`.
- * @return true when the device of the path belongs to a local drive.
+ * @return The DOS style NT path of the entry, e.g.
+ *         `\??\C:\Windows\notepad.exe`, or `kPathDeviceUnknown` when the device
+ *         of the path belongs to no local drive of the machine.
  */
-inline bool DosNtMapDevicePath(const std::wstring& path, std::wstring& mapped)
+inline tl::expected<std::wstring, ErrorCode> DosNtMapDevicePath(const std::wstring& path) noexcept
 {
     const std::vector<DosNtDriveMapping> mappings = DosNtBuildDriveDeviceMappings();
 
@@ -489,7 +497,7 @@ inline bool DosNtMapDevicePath(const std::wstring& path, std::wstring& mapped)
             continue;
         }
 
-        mapped.clear();
+        std::wstring mapped;
         mapped += L"\\??\\";
         mapped += mapping.drive;
         mapped += L':';
@@ -504,10 +512,10 @@ inline bool DosNtMapDevicePath(const std::wstring& path, std::wstring& mapped)
             mapped += L'\\';
         }
 
-        return true;
+        return mapped;
     }
 
-    return false;
+    return tl::make_unexpected(ErrorCode::kPathDeviceUnknown);
 }
 
 /**
@@ -518,10 +526,10 @@ inline bool DosNtMapDevicePath(const std::wstring& path, std::wstring& mapped)
  * path alone names.
  *
  * @param[in] path Path to map.
- * @param[out] mapped DOS style NT path of the entry.
- * @return true when the device below the namespace belongs to a local drive.
+ * @return The DOS style NT path of the entry, or the class of the refusal of
+ *         the device path below the namespace.
  */
-inline bool DosNtMapGlobalRootPath(const std::wstring& path, std::wstring& mapped)
+inline tl::expected<std::wstring, ErrorCode> DosNtMapGlobalRootPath(const std::wstring& path) noexcept
 {
     constexpr wchar_t kGlobalRoot[] = L"\\??\\GLOBALROOT";
 
@@ -530,16 +538,16 @@ inline bool DosNtMapGlobalRootPath(const std::wstring& path, std::wstring& mappe
 
     if (!DosNtIsPathPrefix(path, kGlobalRoot))
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathDeviceUnknown);
     }
 
     const std::wstring device_path = path.substr(kGlobalRootSize);
     if (device_path.empty() || device_path[0] != L'\\')
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathDeviceUnknown);
     }
 
-    return DosNtMapDevicePath(device_path, mapped);
+    return DosNtMapDevicePath(device_path);
 }
 
 /**
@@ -551,19 +559,25 @@ inline bool DosNtMapGlobalRootPath(const std::wstring& path, std::wstring& mappe
  * namespace, and a device path is the name the file system reports.
  *
  * @param[in] path Native path to map.
- * @param[out] mapped DOS style NT path of the entry.
- * @return true when the path names an entry of a local file system.
+ * @return The DOS style NT path of the entry, or the class of the refusal, see
+ *         `MappingAsDosNtPath()`.
  */
-inline bool DosNtMapAsPathImpl(const std::wstring& path, std::wstring& mapped)
+inline tl::expected<std::wstring, ErrorCode> DosNtMapAsPathImpl(const std::wstring& path) noexcept
 {
-    if (path.empty() || path[0] != L'\\')
+    if (path.empty())
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathEmpty);
+    }
+
+    if (path[0] != L'\\')
+    {
+        /* A relative path names no entry the view can key by a drive. */
+        return tl::make_unexpected(ErrorCode::kPathNotInViewNamespace);
     }
 
     if (DosNtIsRejectedNamespace(path))
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kPathNotInViewNamespace);
     }
 
     if (DosNtIsAbsolutePath(path))
@@ -574,51 +588,44 @@ inline bool DosNtMapAsPathImpl(const std::wstring& path, std::wstring& mapped)
         const wchar_t drive = static_cast<wchar_t>(std::towupper(path[kDriveOffset]));
         if (!DosNtIsLocalDrive(drive))
         {
-            return false;
+            return tl::make_unexpected(ErrorCode::kPathNotLocalDrive);
         }
 
-        mapped = path;
+        std::wstring mapped = path;
         mapped[kDriveOffset] = drive;
-        return true;
+        return mapped;
     }
 
-    if (DosNtMapVolumeGuidPath(path, mapped))
+    if (DosNtStartsWithIgnoreCase(path, L"\\??\\Volume{"))
     {
-        return true;
+        return DosNtMapVolumeGuidPath(path);
     }
 
-    if (DosNtMapSystemRootPath(path, mapped))
+    if (DosNtIsPathPrefix(path, L"\\SystemRoot"))
     {
-        return true;
+        return DosNtMapSystemRootPath(path);
     }
 
-    if (DosNtMapGlobalRootPath(path, mapped))
+    if (DosNtIsPathPrefix(path, L"\\??\\GLOBALROOT"))
     {
-        return true;
+        return DosNtMapGlobalRootPath(path);
     }
 
-    if (DosNtStartsWithIgnoreCase(path, L"\\Device\\") && DosNtMapDevicePath(path, mapped))
+    if (DosNtStartsWithIgnoreCase(path, L"\\Device\\"))
     {
-        return true;
+        return DosNtMapDevicePath(path);
     }
 
-    return false;
+    /* A path of the object namespace which is no form the view keys. */
+    return tl::make_unexpected(ErrorCode::kPathNotInViewNamespace);
 }
 
 } // namespace detail
 
 /* Definition of the contract on the declaration. */
-inline bool MappingAsDosNtPath(const std::wstring& path, std::wstring& mapped)
+inline tl::expected<std::wstring, ErrorCode> MappingAsDosNtPath(const std::wstring& path) noexcept
 {
-    std::wstring result;
-
-    if (!detail::DosNtMapAsPathImpl(path, result))
-    {
-        return false;
-    }
-
-    mapped = result;
-    return true;
+    return detail::DosNtMapAsPathImpl(path);
 }
 
 } // namespace appbox

@@ -1,3 +1,13 @@
+/*
+ * The header chain of this file reaches `<windows.h>` through
+ * `common/ErrorCode.hpp`, and `winnt.h` defines aliases of the `STATUS_*`
+ * names which `ntstatus.h` defines. A translation unit which spells such a
+ * name therefore takes the table of `ntstatus.h`, which `common/WinAPI.h`
+ * is the first header of when it is used; the two lines below give the same
+ * precedence without the rest of that header.
+ */
+#include <ntstatus.h>
+#define WIN32_NO_STATUS
 #include "ProjectDocument.hpp"
 #include "ApplicationMetadata.hpp"
 #include "WString.hpp"
@@ -113,7 +123,7 @@ std::string ReadRequiredString(const Json& json, const char* key)
  */
 std::wstring ReadRequiredText(const Json& json, const char* key)
 {
-    return appbox::UTF8ToWide(ReadRequiredString(json, key));
+    return appbox::UTF8ToWide(ReadRequiredString(json, key)).value_or(std::wstring());
 }
 
 /**
@@ -161,7 +171,7 @@ std::wstring ReadOptionalText(const Json& json, const char* key)
         throw appbox::ProjectDocumentError(std::string("the '") + key + "' member is not a string");
     }
 
-    return appbox::UTF8ToWide(member->get<std::string>());
+    return appbox::UTF8ToWide(member->get<std::string>()).value_or(std::wstring());
 }
 
 /**
@@ -260,13 +270,13 @@ appbox::RegistryKeyIsolation ReadRegistryKeyIsolation(const Json& json, const ch
 {
     const auto text = ReadRequiredString(json, key);
 
-    appbox::RegistryKeyIsolation isolation = appbox::RegistryKeyIsolation::Merge;
-    if (!appbox::registry_isolation::ParseKeyIsolationToken(text, isolation))
+    const auto isolation = appbox::registry_isolation::ParseKeyIsolationToken(text);
+    if (!isolation)
     {
         throw appbox::ProjectDocumentError("unknown key isolation mode '" + text + "'");
     }
 
-    return isolation;
+    return *isolation;
 }
 
 /**
@@ -280,13 +290,13 @@ appbox::RegistryValueIsolation ReadRegistryValueIsolation(const Json& json, cons
 {
     const auto text = ReadRequiredString(json, key);
 
-    appbox::RegistryValueIsolation isolation = appbox::RegistryValueIsolation::Full;
-    if (!appbox::registry_isolation::ParseValueIsolationToken(text, isolation))
+    const auto isolation = appbox::registry_isolation::ParseValueIsolationToken(text);
+    if (!isolation)
     {
         throw appbox::ProjectDocumentError("unknown value isolation mode '" + text + "'");
     }
 
-    return isolation;
+    return *isolation;
 }
 
 /**
@@ -301,7 +311,7 @@ appbox::RegistryValueType ReadRegistryValueType(const Json& json, const char* ke
     const auto text = ReadRequiredString(json, key);
 
     appbox::RegistryValueType type = appbox::RegistryValueType::String;
-    if (!appbox::ParseRegistryValueType(appbox::UTF8ToWide(text), type))
+    if (!appbox::ParseRegistryValueType(appbox::UTF8ToWide(text).value_or(std::wstring()), type))
     {
         throw appbox::ProjectDocumentError("unknown value type '" + text + "'");
     }
@@ -322,7 +332,7 @@ std::vector<std::uint8_t> ReadRegistryValueData(const Json& json, const char* ke
 
     std::vector<std::uint8_t> data;
     std::string               error;
-    if (!appbox::ParseRegistryHexText(appbox::UTF8ToWide(text), data, error))
+    if (!appbox::ParseRegistryHexText(appbox::UTF8ToWide(text).value_or(std::wstring()), data, error))
     {
         throw appbox::ProjectDocumentError(error);
     }
@@ -341,13 +351,13 @@ appbox::FilesystemIsolation ReadFilesystemIsolation(const Json& json, const char
 {
     const auto text = ReadRequiredString(json, key);
 
-    appbox::FilesystemIsolation isolation = appbox::FilesystemIsolation::WriteCopy;
-    if (!appbox::filesystem_isolation::ParseIsolationToken(text, isolation))
+    const auto isolation = appbox::filesystem_isolation::ParseIsolationToken(text);
+    if (!isolation)
     {
         throw appbox::ProjectDocumentError("unknown isolation mode '" + text + "'");
     }
 
-    return isolation;
+    return *isolation;
 }
 
 /**
@@ -361,13 +371,13 @@ appbox::FilesystemEntryKind ReadFilesystemEntryKind(const Json& json, const char
 {
     const auto text = ReadRequiredString(json, key);
 
-    appbox::FilesystemEntryKind kind = appbox::FilesystemEntryKind::Directory;
-    if (!appbox::filesystem_isolation::ParseEntryKindToken(text, kind))
+    const auto kind = appbox::filesystem_isolation::ParseEntryKindToken(text);
+    if (!kind)
     {
         throw appbox::ProjectDocumentError("unknown entry kind '" + text + "'");
     }
 
-    return kind;
+    return *kind;
 }
 
 /**
@@ -401,13 +411,13 @@ appbox::EnvironmentIsolation ReadEnvironmentIsolation(const Json& json, const ch
 {
     const auto text = ReadRequiredString(json, key);
 
-    appbox::EnvironmentIsolation isolation = appbox::EnvironmentIsolation::WriteCopy;
-    if (!appbox::environment_isolation::ParseIsolationToken(text, isolation))
+    const auto isolation = appbox::environment_isolation::ParseIsolationToken(text);
+    if (!isolation)
     {
         throw appbox::ProjectDocumentError("unknown isolation mode '" + text + "'");
     }
 
-    return isolation;
+    return *isolation;
 }
 
 /**
@@ -421,13 +431,13 @@ appbox::EnvironmentMergeMode ReadEnvironmentMergeMode(const Json& json, const ch
 {
     const auto text = ReadRequiredString(json, key);
 
-    appbox::EnvironmentMergeMode merge = appbox::environment_isolation::kDefaultMergeMode;
-    if (!appbox::environment_isolation::ParseMergeModeToken(text, merge))
+    const auto merge = appbox::environment_isolation::ParseMergeModeToken(text);
+    if (!merge)
     {
         throw appbox::ProjectDocumentError("unknown merge mode '" + text + "'");
     }
 
-    return merge;
+    return *merge;
 }
 
 /**
@@ -538,7 +548,7 @@ void to_json(nlohmann::ordered_json& json, const ProjectMetadataFieldRecord& rec
 {
     json = nlohmann::ordered_json::object();
     json[kKeyKey] = record.key;
-    json[kValueKey] = WideToUTF8(record.value);
+    json[kValueKey] = WideToUTF8(record.value).value_or(std::string());
 }
 
 void from_json(const nlohmann::ordered_json& json, ProjectMetadataFieldRecord& record)
@@ -562,7 +572,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectMetadataFieldRecord& r
 void to_json(nlohmann::ordered_json& json, const ProjectMetadataRecord& record)
 {
     json = nlohmann::ordered_json::object();
-    json[kSourceKey] = WideToUTF8(record.source);
+    json[kSourceKey] = WideToUTF8(record.source).value_or(std::string());
     json[kOverridesKey] = record.overrides;
 }
 
@@ -599,7 +609,7 @@ void to_json(nlohmann::ordered_json& json, const ProjectStartupScreenRecord& rec
 {
     json = nlohmann::ordered_json::object();
     json[kScreenKey] = record.enabled;
-    json[kImageKey] = WideToUTF8(record.image);
+    json[kImageKey] = WideToUTF8(record.image).value_or(std::string());
 }
 
 void from_json(const nlohmann::ordered_json& json, ProjectStartupScreenRecord& record)
@@ -632,8 +642,8 @@ void to_json(nlohmann::ordered_json& json, const ProjectFolderRecord& record)
 {
     json = nlohmann::ordered_json::object();
     json[kPresetKey] = record.preset_id;
-    json[kNameKey] = WideToUTF8(record.name);
-    json[kSourceKey] = WideToUTF8(record.source_path);
+    json[kNameKey] = WideToUTF8(record.name).value_or(std::string());
+    json[kSourceKey] = WideToUTF8(record.source_path).value_or(std::string());
 }
 
 void from_json(const nlohmann::ordered_json& json, ProjectFolderRecord& record)
@@ -652,9 +662,9 @@ void to_json(nlohmann::ordered_json& json, const ProjectFileRecord& record)
 {
     json = nlohmann::ordered_json::object();
     json[kPresetKey] = record.preset_id;
-    json[kTargetDirKey] = WideToUTF8(record.target_dir);
-    json[kNameKey] = WideToUTF8(record.name);
-    json[kSourceKey] = WideToUTF8(record.source_path);
+    json[kTargetDirKey] = WideToUTF8(record.target_dir).value_or(std::string());
+    json[kNameKey] = WideToUTF8(record.name).value_or(std::string());
+    json[kSourceKey] = WideToUTF8(record.source_path).value_or(std::string());
 }
 
 void from_json(const nlohmann::ordered_json& json, ProjectFileRecord& record)
@@ -674,7 +684,7 @@ void to_json(nlohmann::ordered_json& json, const ProjectDirectoryRecord& record)
 {
     json = nlohmann::ordered_json::object();
     json[kPresetKey] = record.preset_id;
-    json[kPathKey] = WideToUTF8(record.path);
+    json[kPathKey] = WideToUTF8(record.path).value_or(std::string());
 }
 
 void from_json(const nlohmann::ordered_json& json, ProjectDirectoryRecord& record)
@@ -692,8 +702,8 @@ void to_json(nlohmann::ordered_json& json, const ProjectWhiteoutRecord& record)
 {
     json = nlohmann::ordered_json::object();
     json[kPresetKey] = record.preset_id;
-    json[kTargetDirKey] = WideToUTF8(record.target_dir);
-    json[kNameKey] = WideToUTF8(record.name);
+    json[kTargetDirKey] = WideToUTF8(record.target_dir).value_or(std::string());
+    json[kNameKey] = WideToUTF8(record.name).value_or(std::string());
 }
 
 void from_json(const nlohmann::ordered_json& json, ProjectWhiteoutRecord& record)
@@ -712,9 +722,9 @@ void to_json(nlohmann::ordered_json& json, const ProjectStartupRecord& record)
 {
     json = nlohmann::ordered_json::object();
     json[kPresetKey] = record.preset_id;
-    json[kFolderKey] = WideToUTF8(record.folder);
-    json[kPathKey] = WideToUTF8(record.relative_path);
-    json[kTriggerKey] = WideToUTF8(record.trigger);
+    json[kFolderKey] = WideToUTF8(record.folder).value_or(std::string());
+    json[kPathKey] = WideToUTF8(record.relative_path).value_or(std::string());
+    json[kTriggerKey] = WideToUTF8(record.trigger).value_or(std::string());
     json[kAutoStartKey] = record.auto_start;
 }
 
@@ -735,9 +745,9 @@ void from_json(const nlohmann::ordered_json& json, ProjectStartupRecord& record)
 void to_json(nlohmann::ordered_json& json, const ProjectRegistryValueRecord& record)
 {
     json = nlohmann::ordered_json::object();
-    json[kNameKey] = WideToUTF8(record.name);
-    json[kTypeKey] = WideToUTF8(RegistryValueTypeName(record.type));
-    json[kDataKey] = WideToUTF8(FormatRegistryHexText(record.data));
+    json[kNameKey] = WideToUTF8(record.name).value_or(std::string());
+    json[kTypeKey] = WideToUTF8(RegistryValueTypeName(record.type)).value_or(std::string());
+    json[kDataKey] = WideToUTF8(FormatRegistryHexText(record.data)).value_or(std::string());
     json[kIsolationKey] = registry_isolation::ValueIsolationToken(record.isolation);
 }
 
@@ -757,7 +767,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectRegistryValueRecord& r
 void to_json(nlohmann::ordered_json& json, const ProjectRegistryKeyRecord& record)
 {
     json = nlohmann::ordered_json::object();
-    json[kNameKey] = WideToUTF8(record.name);
+    json[kNameKey] = WideToUTF8(record.name).value_or(std::string());
     json[kIsolationKey] = registry_isolation::KeyIsolationToken(record.isolation);
     json[kValuesKey] = record.values;
     json[kChildrenKey] = record.children;
@@ -779,7 +789,7 @@ void from_json(const nlohmann::ordered_json& json, ProjectRegistryKeyRecord& rec
 void to_json(nlohmann::ordered_json& json, const ProjectFilesystemRecord& record)
 {
     json = nlohmann::ordered_json::object();
-    json[kPathKey] = WideToUTF8(record.path);
+    json[kPathKey] = WideToUTF8(record.path).value_or(std::string());
     json[kKindKey] = filesystem_isolation::EntryKindToken(record.kind);
     json[kIsolationKey] = filesystem_isolation::IsolationToken(record.isolation);
 }
@@ -799,8 +809,8 @@ void from_json(const nlohmann::ordered_json& json, ProjectFilesystemRecord& reco
 void to_json(nlohmann::ordered_json& json, const ProjectDnsRecord& record)
 {
     json = nlohmann::ordered_json::object();
-    json[kHostnameKey] = WideToUTF8(record.hostname);
-    json[kRedirectKey] = WideToUTF8(record.redirect);
+    json[kHostnameKey] = WideToUTF8(record.hostname).value_or(std::string());
+    json[kRedirectKey] = WideToUTF8(record.redirect).value_or(std::string());
 }
 
 void from_json(const nlohmann::ordered_json& json, ProjectDnsRecord& record)
@@ -820,10 +830,10 @@ void to_json(nlohmann::ordered_json& json, const ProjectProxyRecord& record)
     json[kTypeKey] = ProxyTypeToken(record.type);
     json[kTcpKey] = record.tcp;
     json[kUdpKey] = record.udp;
-    json[kServerKey] = WideToUTF8(record.server);
-    json[kPortKey] = WideToUTF8(record.port);
-    json[kUsernameKey] = WideToUTF8(record.username);
-    json[kPasswordKey] = WideToUTF8(record.password);
+    json[kServerKey] = WideToUTF8(record.server).value_or(std::string());
+    json[kPortKey] = WideToUTF8(record.port).value_or(std::string());
+    json[kUsernameKey] = WideToUTF8(record.username).value_or(std::string());
+    json[kPasswordKey] = WideToUTF8(record.password).value_or(std::string());
 }
 
 void from_json(const nlohmann::ordered_json& json, ProjectProxyRecord& record)
@@ -845,11 +855,11 @@ void from_json(const nlohmann::ordered_json& json, ProjectProxyRecord& record)
 void to_json(nlohmann::ordered_json& json, const ProjectEnvironmentRecord& record)
 {
     json = nlohmann::ordered_json::object();
-    json[kNameKey] = WideToUTF8(record.name);
-    json[kValueKey] = WideToUTF8(record.value);
+    json[kNameKey] = WideToUTF8(record.name).value_or(std::string());
+    json[kValueKey] = WideToUTF8(record.value).value_or(std::string());
     json[kIsolationKey] = environment_isolation::IsolationToken(record.isolation);
     json[kMergeKey] = environment_isolation::MergeModeToken(record.merge);
-    json[kMergeStringKey] = WideToUTF8(record.merge_string);
+    json[kMergeStringKey] = WideToUTF8(record.merge_string).value_or(std::string());
 }
 
 void from_json(const nlohmann::ordered_json& json, ProjectEnvironmentRecord& record)
@@ -870,7 +880,7 @@ void to_json(nlohmann::ordered_json& json, const ProjectDocument& document)
 {
     json = nlohmann::ordered_json::object();
     json[kVersionKey] = kProjectFileVersion;
-    json[kOutputPathKey] = WideToUTF8(document.output_path);
+    json[kOutputPathKey] = WideToUTF8(document.output_path).value_or(std::string());
 
     /* A document of a session without an identifier does not name the member
      * at all, which keeps the text of a session written before it existed. */

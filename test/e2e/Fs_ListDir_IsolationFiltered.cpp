@@ -79,7 +79,7 @@ TEST_F(E2E_Fs, ListDir_IsolationFiltersTheEntries)
          { ProtocolListDir::Req::Method::Std, ProtocolListDir::Req::Method::WinAPI, ProtocolListDir::Req::Method::CRT })
     {
         ProtocolListDir::Req req;
-        req.path = appbox::WideToUTF8(folder);
+        req.path = appbox::WideToUTF8(folder).value_or(std::string());
         req.method = method;
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);
@@ -96,7 +96,7 @@ TEST_F(E2E_Fs, ListDir_IsolationFiltersTheEntries)
     for (const bool extended : { false, true })
     {
         ProtocolListDirNt::Req req;
-        req.path = appbox::WideToUTF8(folder);
+        req.path = appbox::WideToUTF8(folder).value_or(std::string());
         req.extended = extended;
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolListDirNt>(req);

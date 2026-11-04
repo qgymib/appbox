@@ -74,8 +74,9 @@ TEST_F(E2E_Reg, EnumerateKey_Merged)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\EnumerateKey_Merged_" + appbox::UTF8ToWide(appbox::RandomString(8));
-    const auto sandbox_child = appbox::WideToUTF8(subkey) + "\\SandboxC";
+    const auto subkey = L"Software\\AppBoxTest\\EnumerateKey_Merged_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
+    const auto sandbox_child = appbox::WideToUTF8(subkey).value_or(std::string()) + "\\SandboxC";
 
     /* Create the real sub keys "RealA" and "RealB" outside the sandbox. */
     {
@@ -95,7 +96,7 @@ TEST_F(E2E_Reg, EnumerateKey_Merged)
     /* Create the shadow of the test key inside the sandbox. */
     {
         ProtocolRegQueryKeyName::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         auto rsp = Probe(GetCWD(), config).Call<ProtocolRegQueryKeyName>(req);
         ASSERT_EQ(rsp.create_code, 0u);
     }
@@ -113,7 +114,7 @@ TEST_F(E2E_Reg, EnumerateKey_Merged)
     /* Enumerate the sub keys inside the sandbox: merged view. */
     {
         ProtocolRegEnumKey::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         auto rsp = Probe(GetCWD(), config).Call<ProtocolRegEnumKey>(req);
         ASSERT_EQ(rsp.open_code, 0u);
         ASSERT_EQ(rsp.enum_code, 0u);

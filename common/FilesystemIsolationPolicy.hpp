@@ -54,7 +54,7 @@ namespace filesystem
  * @param[in] source_kind The kind of the entry which carries the mode.
  * @return true when a hit of the host layer must not be part of the view.
  */
-inline bool HidesHost(FilesystemIsolation mode, FilesystemEntryKind source_kind)
+inline bool HidesHost(FilesystemIsolation mode, FilesystemEntryKind source_kind) noexcept
 {
     if (mode == FilesystemIsolation::Whiteout)
     {
@@ -73,7 +73,7 @@ inline bool HidesHost(FilesystemIsolation mode, FilesystemEntryKind source_kind)
  * @param[in] mode The isolation mode of the closest listed entry.
  * @return true when a hit of a lower layer must not be part of the view.
  */
-inline bool HidesLower(FilesystemIsolation mode)
+inline bool HidesLower(FilesystemIsolation mode) noexcept
 {
     return mode == FilesystemIsolation::Whiteout;
 }
@@ -89,7 +89,7 @@ inline bool HidesLower(FilesystemIsolation mode)
  * @param[in] mode The isolation mode of the closest listed entry.
  * @return true when the entry has no visible layer of its own.
  */
-inline bool HidesEntry(FilesystemIsolation mode)
+inline bool HidesEntry(FilesystemIsolation mode) noexcept
 {
     return mode == FilesystemIsolation::Whiteout;
 }
@@ -125,7 +125,7 @@ inline bool HidesEntry(FilesystemIsolation mode)
  *                          entry, or hides it with a marker of the view.
  * @return true when the modification has to be applied to the host layer.
  */
-inline bool WritesToHost(FilesystemIsolation mode, bool sandbox_holds)
+inline bool WritesToHost(FilesystemIsolation mode, bool sandbox_holds) noexcept
 {
     if (mode != FilesystemIsolation::Merge)
     {

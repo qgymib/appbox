@@ -1,3 +1,13 @@
+/*
+ * The header chain of this file reaches `<windows.h>` through
+ * `common/ErrorCode.hpp`, and `winnt.h` defines aliases of the `STATUS_*`
+ * names which `ntstatus.h` defines. A translation unit which spells such a
+ * name therefore takes the table of `ntstatus.h`, which `common/WinAPI.h`
+ * is the first header of when it is used; the two lines below give the same
+ * precedence without the rest of that header.
+ */
+#include <ntstatus.h>
+#define WIN32_NO_STATUS
 #include "MainFrame.hpp"
 #include "AboutDialog.hpp"
 #include "ActionDialog.hpp"
@@ -26,6 +36,7 @@
 #include <wx/filename.h>
 #include <wx/icon.h>
 #include <wx/msgdlg.h>
+#include <wx/process.h>
 #include <wx/simplebook.h>
 #include <wx/strconv.h>
 #include <wx/utils.h>
@@ -379,7 +390,8 @@ bool ReadSnapshotBaseline(const std::wstring& path, appbox::SnapshotPhaseCounts&
     }
     if (!present)
     {
-        error = "the snapshot file does not hold the state before the change: " + appbox::WideToUTF8(path);
+        error = "the snapshot file does not hold the state before the change: " +
+                appbox::WideToUTF8(path).value_or(std::string());
         return false;
     }
 
@@ -487,6 +499,13 @@ MainFrame::MainFrame() : wxFrame(nullptr, wxID_ANY, "AppBox", wxDefaultPosition,
     Bind(APPBOX_STARTUP_CHANGED, &MainFrame::OnStartupScreenChanged, this);
     Bind(APPBOX_PACK_PROGRESS, &MainFrame::OnPackProgress, this);
     Bind(APPBOX_PACK_FINISHED, &MainFrame::OnPackFinished, this);
+
+    /*
+     * A program started by `Build and Run` holds the folder it was extracted
+     * into, so the folder is released when the program ends rather than when
+     * the run which started it returns.
+     */
+    Bind(wxEVT_END_PROCESS, &MainFrame::OnProcessTerminated, this);
 }
 
 MainFrame::~MainFrame()
@@ -536,6 +555,17 @@ MainFrame::~MainFrame()
         progress_dialog_->Destroy();
         progress_dialog_ = nullptr;
     }
+
+    /*
+     * The window goes away before the programs it started may, so the folders
+     * those programs hold are released here as far as their programs ended:
+     * an entry of a program which still runs stays out of reach, because the
+     * program is the one that holds its folder open.
+     *
+     * The cleanup runs after the threads of the window were joined, so no pack
+     * run registers a folder while the table is drained.
+     */
+    ReleaseExitedExtractions();
 }
 
 void MainFrame::CreateMenuBar()
@@ -1212,16 +1242,17 @@ void MainFrame::StartPack(bool run_after)
     appbox::PackPayloads payloads;
     if (!patch)
     {
-        std::string      error;
-        std::string_view launcher;
-        if (!appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_LAUNCHER, launcher, error))
+        const auto launcher = appbox::ReadEmbeddedResource(nullptr, IDR_APPBOX_LAUNCHER);
+        if (!launcher)
         {
-            wxMessageBox("The embedded launcher is unavailable: " + error, "Build", wxOK | wxICON_ERROR, this);
+            wxMessageBox("The embedded launcher is unavailable (error " +
+                             std::to_string(static_cast<std::int32_t>(launcher.error())) + ").",
+                         "Build", wxOK | wxICON_ERROR, this);
             return;
         }
 
-        payloads.launcher_bytes = launcher.data();
-        payloads.launcher_size = launcher.size();
+        payloads.launcher_bytes = launcher->data();
+        payloads.launcher_size = launcher->size();
     }
 
     /*
@@ -1346,10 +1377,31 @@ void MainFrame::StartPack(bool run_after)
         if (outcome.error.empty() && run_after && !outcome.self_extracting)
         {
             const auto folder = std::filesystem::temp_directory_path() / UniqueExtractFolder();
-            const auto extract_error = appbox::ExtractArchive(zip_wide, folder.wstring(), extract_progress);
-            if (extract_error != appbox::ZIPREADER_SUCCESS)
+            const auto extracted = appbox::ExtractArchive(zip_wide, folder.wstring(), extract_progress);
+            if (!extracted)
             {
-                outcome.error = appbox::ZipReaderErrorMessage(extract_error);
+                /*
+                 * The extraction reports an abandoned run by its own code, and
+                 * the dialog tells a cancelled run apart from a failed one by
+                 * that code alone: an abandoned extraction leaves no message
+                 * for a user, because the user is the one who stopped it.
+                 */
+                if (extracted.error() == appbox::ErrorCode::kZipCancelled)
+                {
+                    outcome.cancelled = true;
+                }
+                else
+                {
+                    outcome.error = "failed to extract the archive (error " +
+                                    std::to_string(static_cast<std::int32_t>(extracted.error())) + ")";
+                }
+
+                /*
+                 * The extraction creates the folder before it writes the first
+                 * entry, so a run which stops half way leaves the part it wrote
+                 * behind and nothing will ever start from it.
+                 */
+                appbox::ExtractionCleanup::RemoveFolder(folder);
             }
             else
             {
@@ -1423,8 +1475,7 @@ void MainFrame::OnPackFinished(wxThreadEvent& event)
     std::string result_error;
     wxString    final_status;
 
-    if (outcome.error == appbox::kBuildCancelledError ||
-        outcome.error == appbox::ZipReaderErrorMessage(appbox::ZIPREADER_CANCELLED))
+    if (outcome.cancelled || outcome.error == appbox::kBuildCancelledError)
     {
         result = appbox::BuildOutcome::Cancelled;
     }
@@ -1451,7 +1502,34 @@ void MainFrame::OnPackFinished(wxThreadEvent& event)
             program = std::filesystem::path(outcome.extract_dir) / outcome.launcher_entry;
         }
 
-        const long pid = program.empty() ? 0 : wxExecute("\"" + wxString(program.wstring()) + "\"", wxEXEC_ASYNC);
+        /*
+         * The process object is what carries the end of the program. It is
+         * created without a parent of its own on purpose: wx hands the exit
+         * event to the parent of the object, so a parent here would take the
+         * event away from this window.
+         */
+        wxProcess* process = program.empty() ? nullptr : new wxProcess(wxPROCESS_DEFAULT);
+        const long pid =
+            program.empty() ? 0 : wxExecute("\"" + wxString(program.wstring()) + "\"", wxEXEC_ASYNC, process);
+        if (pid > 0)
+        {
+            /*
+             * The exit event reaches this window through the chain the object
+             * was linked to, which is why the object is chained here instead of
+             * being handed to the constructor.
+             */
+            process->SetNextHandler(this);
+        }
+        else if (process != nullptr)
+        {
+            /*
+             * A program which could not be started reports no exit, so the
+             * object would wait forever.
+             */
+            delete process;
+            process = nullptr;
+        }
+
         if (pid <= 0)
         {
             result = appbox::BuildOutcome::LaunchFailed;
@@ -1463,6 +1541,12 @@ void MainFrame::OnPackFinished(wxThreadEvent& event)
                                ? "Running " + wxString(outcome.archive_path)
                                : "Running the packaged application from " + wxString(outcome.extract_dir);
         }
+
+        /*
+         * The folder belongs to the program started from it: it is released
+         * when the program ends, and at once when there is no program.
+         */
+        ReleaseExtraction(outcome.extract_dir, pid);
     }
 
     UpdateTitle();
@@ -1498,6 +1582,61 @@ void MainFrame::OnPackFinished(wxThreadEvent& event)
 
     progress_dialog_->Destroy();
     progress_dialog_ = nullptr;
+}
+
+void MainFrame::ReleaseExtraction(const std::wstring& folder, long process_id)
+{
+    if (folder.empty())
+    {
+        return;
+    }
+
+    /*
+     * A run without a program started nothing from the folder, so nothing holds
+     * it and it goes away at once. A run with a program registers the folder
+     * for the program: Windows answers the end of a process with an event of
+     * its own, which is what releases the folder afterwards.
+     */
+    if (process_id <= 0)
+    {
+        appbox::ExtractionCleanup::RemoveFolder(folder);
+        return;
+    }
+
+    extraction_cleanup_.Register(static_cast<unsigned long>(process_id), folder);
+}
+
+void MainFrame::OnProcessTerminated(wxProcessEvent& event)
+{
+    /*
+     * The event names the process which ended, which is the one the folder was
+     * registered for. A program which was started outside of this handler
+     * carries no entry, and its event releases nothing.
+     */
+    const auto folder = extraction_cleanup_.Take(static_cast<unsigned long>(event.GetPid()));
+    if (folder.empty())
+    {
+        return;
+    }
+
+    appbox::ExtractionCleanup::RemoveFolder(folder);
+
+    /* The folder names the run, so a line in the log is what explains the release. */
+    spdlog::info("released the extraction folder '{}' of the program which ended",
+                 appbox::WideToUTF8(folder.wstring()).value_or("<unconvertible>"));
+}
+
+void MainFrame::ReleaseExitedExtractions()
+{
+    /*
+     * A program of another run may still be reading its folder, so only the
+     * entries whose process ended are released here; the rest stays registered
+     * until its own event arrives.
+     */
+    for (const auto& folder : extraction_cleanup_.TakeExited())
+    {
+        appbox::ExtractionCleanup::RemoveFolder(folder);
+    }
 }
 
 bool MainFrame::OnSnapshotPathBrowse(appbox::SnapshotBaselineSource source, std::wstring& path)
@@ -2112,7 +2251,7 @@ void MainFrame::OnFillFinished(wxThreadEvent& event)
         spdlog::error("the changes of the capture could not be written: {}", outcome.error);
         appbox::AddErrorNotice(outcome.report, appbox::CaptureFillDomain::Filesystem,
                                L"the changes of the capture could not be written: " +
-                                   appbox::UTF8ToWide(outcome.error));
+                                   appbox::UTF8ToWide(outcome.error).value_or(std::wstring()));
     }
 
     /*

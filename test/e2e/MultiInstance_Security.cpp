@@ -185,13 +185,15 @@ TEST_F(E2E_MultiInstance, UnauthorizedClient)
     nlohmann::json environment = nlohmann::json::object();
     bool           served = false;
 
-    RawControlPipe pipe(appbox::SandboxPipeName(id));
+    const auto     pipe_name = appbox::SandboxPipeName(id);
+    RawControlPipe pipe(pipe_name.has_value() ? pipe_name.value() : std::string{});
+    ASSERT_TRUE(pipe_name.has_value()) << "the identifier of the case names no control pipe";
     ASSERT_TRUE(pipe.IsOpen()) << pipe.LastError();
 
     appbox::MsgLauncherStart::Req request;
     request.version = appbox::kLauncherStartVersion;
     request.sandbox_id = id;
-    request.sandbox_root = appbox::WideToUTF8(cwd.wstring());
+    request.sandbox_root = appbox::WideToUTF8(cwd.wstring()).value_or(std::string());
     request.selection = "auto";
 
     ASSERT_TRUE(pipe.Call(1, appbox::MsgLauncherStart::Method, nlohmann::json(request), refused, kAnswerTimeoutMs))
@@ -282,10 +284,13 @@ TEST_F(E2E_MultiInstance, ServerIdentityMismatch)
 
     appbox::RemoteAccepter::Options options;
     options.first_instance = true;
-    const auto created = appbox::RemoteAccepter::CreateCompetitive(appbox::SandboxPipeName(id), options);
-    ASSERT_EQ(created.status, appbox::ServerCreateStatus::Created) << created.error_code;
+    const auto pipe_name = appbox::SandboxPipeName(id);
+    ASSERT_TRUE(pipe_name.has_value()) << "the identifier of the case names no control pipe";
 
-    auto accepter = created.accepter;
+    const auto created = appbox::RemoteAccepter::CreateCompetitive(pipe_name.value(), options);
+    ASSERT_TRUE(created.has_value()) << created.error();
+
+    const auto& accepter = *created;
     accepter->SetSessionCallback([id, &received](const appbox::RemoteSession::Ptr& session) {
         std::weak_ptr<appbox::RemoteSession> weak_session = session;
         session->RegisterMethod(appbox::MsgLauncherStart::Method,
@@ -299,12 +304,12 @@ TEST_F(E2E_MultiInstance, ServerIdentityMismatch)
 
                                     if (auto pipe = weak_session.lock())
                                     {
-                                        pipe->SendResponse(rpc_id, nlohmann::json(response));
+                                        (void)pipe->SendResponse(rpc_id, nlohmann::json(response));
                                     }
                                 });
     });
 
-    ASSERT_TRUE(accepter->Start());
+    ASSERT_TRUE(accepter->Start().has_value());
 
     const auto exit_code =
         ProbeRunRawConfig(cwd.wstring(), MultiInstanceRequestDocument(id), LogRun{}, kSecondaryConfigName);

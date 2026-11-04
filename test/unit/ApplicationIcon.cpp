@@ -14,6 +14,7 @@
 #include "src/core/ApplicationIcon.hpp"
 #include "src/core/PackService.hpp"
 #include "ZipReader.hpp"
+#include "utils/ErrorCodeText.hpp"
 #include "utils/LauncherPath.hpp"
 #include <chrono>
 #include <cstdint>
@@ -688,7 +689,8 @@ TEST(Unit_ApplicationIcon, PackWritesTheIconOfTheStartupFile)
               "");
 
     const auto extracted = temp.Get() / L"extracted";
-    ASSERT_EQ(appbox::ExtractArchive(zip_path.wstring(), extracted.wstring()), appbox::ZIPREADER_SUCCESS);
+    const auto unpacked = appbox::ExtractArchive(zip_path.wstring(), extracted.wstring());
+    ASSERT_TRUE(unpacked) << appbox::test::DescribeErrorCode(unpacked.error());
 
     /* The extracted program carries the icon of the packaged application. */
     const auto entry = extracted / L"app.exe";

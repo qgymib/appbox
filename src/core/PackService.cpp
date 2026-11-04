@@ -1,3 +1,13 @@
+/*
+ * The header chain of this file reaches `<windows.h>` through
+ * `common/ErrorCode.hpp`, and `winnt.h` defines aliases of the `STATUS_*`
+ * names which `ntstatus.h` defines. A translation unit which spells such a
+ * name therefore takes the table of `ntstatus.h`, which `common/WinAPI.h`
+ * is the first header of when it is used; the two lines below give the same
+ * precedence without the rest of that header.
+ */
+#include <ntstatus.h>
+#define WIN32_NO_STATUS
 #include "PackService.hpp"
 #include "ApplicationIcon.hpp"
 #include "EnvironmentIsolationFile.hpp"
@@ -39,7 +49,7 @@ namespace
  */
 std::string ToZipEntrySuffix(const std::wstring& relative)
 {
-    auto entry = appbox::WideToUTF8(relative);
+    auto entry = appbox::WideToUTF8(relative).value_or(std::string());
     std::replace(entry.begin(), entry.end(), '\\', '/');
     return entry;
 }
@@ -151,7 +161,7 @@ std::string AddImportedFolder(appbox::ZipWriter& writer, const std::wstring& sou
     const auto      end = std::filesystem::recursive_directory_iterator();
     if (ec)
     {
-        return "failed to enumerate '" + appbox::WideToUTF8(root_string) + "'";
+        return "failed to enumerate '" + appbox::WideToUTF8(root_string).value_or(std::string()) + "'";
     }
 
     while (it != end)
@@ -205,7 +215,7 @@ std::string AddImportedFolder(appbox::ZipWriter& writer, const std::wstring& sou
         it.increment(ec);
         if (ec)
         {
-            return "failed to enumerate '" + appbox::WideToUTF8(full) + "'";
+            return "failed to enumerate '" + appbox::WideToUTF8(full).value_or(std::string()) + "'";
         }
     }
 
@@ -380,7 +390,7 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
             continue;
         }
 
-        const auto token = appbox::WideToUTF8(entry.layer_key);
+        const auto token = appbox::WideToUTF8(entry.layer_key).value_or(std::string());
         error = EnsureDirectory(writer, added, layer_prefix + "/" + token);
         if (!error.empty())
         {
@@ -389,7 +399,8 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
 
         for (const auto& imported : imports)
         {
-            const auto prefix = layer_prefix + "/" + token + "/" + appbox::WideToUTF8(imported.import_name);
+            const auto prefix =
+                layer_prefix + "/" + token + "/" + appbox::WideToUTF8(imported.import_name).value_or(std::string());
             error = EnsureDirectory(writer, added, prefix);
             if (!error.empty())
             {
@@ -421,7 +432,7 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
             continue;
         }
 
-        const auto layer = layer_prefix + "/" + appbox::WideToUTF8(owner->layer_key);
+        const auto layer = layer_prefix + "/" + appbox::WideToUTF8(owner->layer_key).value_or(std::string());
         error = EnsureDirectory(writer, added, layer);
         if (!error.empty())
         {
@@ -446,7 +457,7 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
             continue;
         }
 
-        std::string prefix = layer_prefix + "/" + appbox::WideToUTF8(owner->layer_key);
+        std::string prefix = layer_prefix + "/" + appbox::WideToUTF8(owner->layer_key).value_or(std::string());
         error = EnsureDirectory(writer, added, prefix);
         if (!error.empty())
         {
@@ -459,7 +470,7 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
             {
                 continue;
             }
-            prefix += "/" + appbox::WideToUTF8(part);
+            prefix += "/" + appbox::WideToUTF8(part).value_or(std::string());
             error = EnsureDirectory(writer, added, prefix);
             if (!error.empty())
             {
@@ -474,7 +485,8 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
             return appbox::kBuildCancelledError;
         }
 
-        if (!writer.AddFileDisk(file.source_path, prefix + "/" + appbox::WideToUTF8(file.file_name), error))
+        if (!writer.AddFileDisk(file.source_path,
+                                prefix + "/" + appbox::WideToUTF8(file.file_name).value_or(std::string()), error))
         {
             return error;
         }
@@ -497,7 +509,7 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
             continue;
         }
 
-        std::string prefix = layer_prefix + "/" + appbox::WideToUTF8(owner->layer_key);
+        std::string prefix = layer_prefix + "/" + appbox::WideToUTF8(owner->layer_key).value_or(std::string());
         error = EnsureDirectory(writer, added, prefix);
         if (!error.empty())
         {
@@ -510,7 +522,7 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
             {
                 continue;
             }
-            prefix += "/" + appbox::WideToUTF8(part);
+            prefix += "/" + appbox::WideToUTF8(part).value_or(std::string());
             error = EnsureDirectory(writer, added, prefix);
             if (!error.empty())
             {
@@ -529,7 +541,7 @@ std::string WriteResourceTree(appbox::ZipWriter& writer, const std::string& root
 
         /* An empty marker file: the buffer only has to be a valid pointer. */
         const char empty = 0;
-        if (!writer.AddFileBuffer(prefix + "/" + appbox::WideToUTF8(marker), &empty, 0, error))
+        if (!writer.AddFileBuffer(prefix + "/" + appbox::WideToUTF8(marker).value_or(std::string()), &empty, 0, error))
         {
             return error;
         }
@@ -650,9 +662,9 @@ appbox::LauncherConfig BuildLauncherConfig(const appbox::PackModel& model, const
         launch /= file.relative_path;
 
         appbox::LauncherStartup launcher_startup;
-        launcher_startup.trigger = appbox::WideToUTF8(file.trigger);
+        launcher_startup.trigger = appbox::WideToUTF8(file.trigger).value_or(std::string());
         launcher_startup.auto_start = file.auto_start;
-        launcher_startup.executable = appbox::WideToUTF8(launch.wstring());
+        launcher_startup.executable = appbox::WideToUTF8(launch.wstring()).value_or(std::string());
         config.startups.push_back(std::move(launcher_startup));
     }
 
@@ -833,7 +845,7 @@ std::vector<char> BuildLauncherImage(const appbox::PackModel& model, const appbo
 std::string WriteSelfExtractingProgram(const std::wstring& exe_path, const std::vector<char>& image,
                                        const std::filesystem::path& payload)
 {
-    const auto display = appbox::WideToUTF8(exe_path);
+    const auto display = appbox::WideToUTF8(exe_path).value_or(std::string());
 
     std::ofstream out(exe_path, std::ios::binary | std::ios::trunc);
     if (!out)
@@ -1011,7 +1023,7 @@ std::string Pack(const PackModel& model, const RegistryModel& registry, const Fi
          * the extracted archive shows the packaged application under its own
          * name instead of the launcher name.
          */
-        const auto launcher_entry = WideToUTF8(LauncherEntryName(model));
+        const auto launcher_entry = WideToUTF8(LauncherEntryName(model)).value_or(std::string());
         if (launcher_entry.empty())
         {
             return "no startup file selected";

@@ -38,13 +38,14 @@ TEST_F(E2E_Reg, Transacted_CreateIsRefused)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\Transacted_Create_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto        subkey = L"Software\\AppBoxTest\\Transacted_Create_" +
+                               appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const std::string expected = "Transacted";
 
     ProtocolRegTransacted::Req req;
     req.Api = ProtocolRegTransacted::ApiKind::Create;
     req.Access = ProtocolRegTransacted::AccessKind::Write;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Value = "TestValue";
     req.Data = expected;
     req.End = ProtocolRegTransacted::EndKind::Commit;

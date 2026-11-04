@@ -5,7 +5,6 @@
 #define _WIN32_WINNT 0x0600
 #endif
 #include <windows.h>
-#include <spdlog/spdlog.h>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -36,6 +35,21 @@ constexpr std::uint32_t kDefaultCallTimeoutMs = 5000;
  * which is a defect of the two ends and no error of the method.
  */
 constexpr int kResponseDecodeErrorCode = -1;
+
+/**
+ * @brief Error code a call reports when its connection ended before an answer.
+ *
+ * The code describes a request which never reached its peer, or whose answer
+ * was lost because the connection closed: the peer did not refuse the request
+ * and it did not answer it either, so a caller which can reach its peer again
+ * is free to send the request once more.
+ *
+ * The code is distinct from `kResponseDecodeErrorCode` on purpose: a connection
+ * which closes is a peer which went away, while an answer which cannot be read
+ * is a peer which answered something else. A caller which had to tell the two
+ * apart would read the same code for both without this constant.
+ */
+constexpr int kSessionClosedErrorCode = -2;
 
 /**
  * @brief One framed JSON-RPC session over a connected named pipe handle.
@@ -97,9 +111,11 @@ public:
      * @param[in] pipe Connected pipe handle, opened for overlapped I/O.
      * @param[in] peer_pid Process at the other end of the pipe, zero when it is
      *                     unknown.
-     * @return The new session instance.
+     * @return The new session instance, or `kRemoteEventCreateFailed` when the
+     *         events it waits on cannot be created. A session which cannot be
+     *         created releases the handle it was given.
      */
-    static Ptr Create(HANDLE pipe, DWORD peer_pid);
+    static tl::expected<Ptr, ErrorCode> Create(HANDLE pipe, DWORD peer_pid) noexcept;
 
     ~RemoteSession();
 
@@ -112,7 +128,7 @@ public:
      *
      * @param[in] max_request_size Largest payload which is accepted, in bytes.
      */
-    void SetMaxRequestSize(std::size_t max_request_size);
+    void SetMaxRequestSize(std::size_t max_request_size) noexcept;
 
     /**
      * @brief Set the handler which reports the end of the connection.
@@ -123,7 +139,7 @@ public:
      *
      * @param[in] handler Handler to set, an empty function removes it.
      */
-    void SetClosedHandler(ClosedHandler handler);
+    void SetClosedHandler(ClosedHandler handler) noexcept;
 
     /**
      * @brief Register the handler of one method.
@@ -134,7 +150,7 @@ public:
      * @param[in] method Method name to register.
      * @param[in] handler Handler of the method.
      */
-    void RegisterMethod(const std::string& method, MethodHandler handler);
+    void RegisterMethod(const std::string& method, MethodHandler handler) noexcept;
 
     /**
      * @brief Answer one request which a handler of this session received.
@@ -142,10 +158,16 @@ public:
      * The answer carries the id of the request, which the session kept when it
      * dispatched the request. The call may be made from any thread.
      *
+     * An answer of a request which is not in the table of the session is
+     * dropped, which is what a second answer of one request reports: the
+     * caller has no way to act on it, so the outcome is a success.
+     *
      * @param[in] request_id Id of the request, as the handler received it.
      * @param[in] result Result of the method or the error it reports.
+     * @return Success, or the code of an answer which cannot be framed
+     *         (`kRpcFrameTooLarge`).
      */
-    void SendResponse(std::uint64_t request_id, const RemoteResult& result);
+    tl::expected<void, ErrorCode> SendResponse(std::uint64_t request_id, const RemoteResult& result) noexcept;
 
     /**
      * @brief Send a request and return the future of its answer.
@@ -158,7 +180,7 @@ public:
      * @param[in] params Parameters of the method.
      * @return Future of the answer of the peer.
      */
-    std::future<RemoteResult> Call(const std::string& method, const nlohmann::json& params);
+    std::future<RemoteResult> Call(const std::string& method, const nlohmann::json& params) noexcept;
 
     /**
      * @brief Send a request and wait a bounded time for its answer.
@@ -167,12 +189,17 @@ public:
      * time is reported as `ERROR_TIMEOUT` and the request is dropped, so an
      * answer which arrives afterwards is discarded without ending the session.
      *
+     * The failure of the call is the error the peer reported or the one this
+     * end composes for its own failure - a session which is closed and a peer
+     * which did not answer in time - so the answer stays a `RemoteResult` and
+     * no code of the session is reported through it.
+     *
      * @param[in] method Method name to call.
      * @param[in] params Parameters of the method.
      * @param[in] timeout_ms Budget of the wait.
      * @return Answer of the peer or the error of the call.
      */
-    RemoteResult Call(const std::string& method, const nlohmann::json& params, std::uint32_t timeout_ms);
+    RemoteResult Call(const std::string& method, const nlohmann::json& params, std::uint32_t timeout_ms) noexcept;
 
     /**
      * @brief Strong-typed request of one protocol struct.
@@ -188,7 +215,7 @@ public:
      */
     template <typename Protocol>
     tl::expected<typename Protocol::Rsp, RemoteError> Call(const typename Protocol::Req& request,
-                                                           std::uint32_t timeout_ms = kDefaultCallTimeoutMs)
+                                                           std::uint32_t timeout_ms = kDefaultCallTimeoutMs) noexcept
     {
         const RemoteResult result = Call(Protocol::Method, nlohmann::json(request), timeout_ms);
         if (!result.has_value())
@@ -211,7 +238,7 @@ public:
      * @brief Process at the other end of the connection.
      * @return Process id of the peer, zero when it is unknown.
      */
-    DWORD PeerProcessId() const;
+    DWORD PeerProcessId() const noexcept;
 
     /**
      * @brief Query the process at the other end of the session of a request.
@@ -222,17 +249,21 @@ public:
      * @param[in] request_id Id of a request this session received.
      * @return Process id of the peer, zero when it is unknown.
      */
-    DWORD PeerProcessIdOfRequest(std::uint64_t request_id) const;
+    DWORD PeerProcessIdOfRequest(std::uint64_t request_id) const noexcept;
 
     /**
      * @brief Start the thread which reads, writes and dispatches for the session.
      *
      * The call is idempotent: a session which is started already keeps the
-     * thread it has. A session whose events cannot be created or whose thread
-     * cannot be started reports the reason and serves nothing, which ends it the
-     * way a closed connection does.
+     * thread it has and reports success.
+     *
+     * @return Success, `kRemoteEventCreateFailed` when an event the thread waits
+     *         on does not exist, or `kRemoteThreadStartFailed` when the thread
+     *         cannot be started. A session which cannot start serves nothing
+     *         and closes its connection, which ends it the way a closed
+     *         connection does.
      */
-    void Start();
+    tl::expected<void, ErrorCode> Start() noexcept;
 
     /**
      * @brief Send one message, the frame header is prepended transparently.
@@ -242,8 +273,11 @@ public:
      * uses Call() instead, which keeps the request table.
      *
      * @param[in] data Message payload.
+     * @return Success, or `kRpcFrameTooLarge` for a payload the frame header
+     *         cannot describe. Such a message is dropped, the peer gets no
+     *         answer.
      */
-    void Send(MsgPtr data);
+    tl::expected<void, ErrorCode> Send(MsgPtr data) noexcept;
 
     /**
      * @brief Close the pipe of the session.
@@ -251,14 +285,14 @@ public:
      * The pending reads and writes complete with an error, so the owner of the
      * session learns that the connection is gone. The call may be repeated.
      */
-    void Close();
+    void Close() noexcept;
 
     /**
      * @brief Wait until the messages which are queued for the peer are written.
      * @param[in] timeout_ms Upper bound of the wait.
      * @return true when nothing is pending any more, otherwise false.
      */
-    bool WaitForPendingWrites(std::uint32_t timeout_ms);
+    bool WaitForPendingWrites(std::uint32_t timeout_ms) noexcept;
 
     /**
      * @brief Wait until every request this session received is answered.
@@ -269,7 +303,7 @@ public:
      * @param[in] timeout_ms Upper bound of the wait.
      * @return true when nothing is pending any more, otherwise false.
      */
-    bool WaitForIncomingResponses(std::uint32_t timeout_ms);
+    bool WaitForIncomingResponses(std::uint32_t timeout_ms) noexcept;
 
     /**
      * @brief End the session and fail the requests which still wait.
@@ -277,7 +311,7 @@ public:
      * Every caller which waits for an answer is released with an error instead
      * of waiting for ever, and the connection is closed. The call is idempotent.
      */
-    void Stop();
+    void Stop() noexcept;
 
 private:
     RemoteSession();

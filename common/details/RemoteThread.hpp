@@ -12,8 +12,6 @@
 #define _WIN32_WINNT 0x0600
 #endif
 #include <windows.h>
-#include <string>
-#include <system_error>
 #include <thread>
 
 namespace appbox
@@ -76,22 +74,6 @@ inline void CloseHandleIfValid(HANDLE& handle)
     }
 
     handle = INVALID_HANDLE_VALUE;
-}
-
-/**
- * @brief Describe a Win32 error code the way the system describes it.
- *
- * The text is used for the log lines of the RPC layer, which report the reason
- * a pipe or a session ended next to the numeric code.
- *
- * @param[in] error Error code, as `GetLastError()` reports it.
- * @return The system description of the code, empty for a code it does not
- *         describe.
- */
-inline std::string DescribeWin32Error(DWORD error)
-{
-    const std::error_code code(static_cast<int>(error), std::system_category());
-    return code.message();
 }
 
 } // namespace detail

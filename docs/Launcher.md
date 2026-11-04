@@ -32,8 +32,14 @@ A launcher whose file is shorter than the trailer or whose last bytes carry no
 magic is an ordinary launcher of an archive: it reads its resources from the
 `app` directory beside it, exactly as before. A program which carries the magic
 but whose fields do not describe the bytes in front of the trailer is treated as
-an ordinary launcher as well and logs a warning, so a damaged program reports the
-missing resources instead of a failure of its own.
+an ordinary launcher as well, so a damaged program reports the missing resources
+instead of a failure of its own.
+
+`ReadTrailer()` of `common/ExecutablePayload.hpp` tells those cases apart: a
+program without a trailer answers an empty value, a file which cannot be measured
+or read answers `kPayloadTrailerUnreadable`, and a trailer which does not hold
+answers `kPayloadTrailerInconsistent`. The launcher logs the code of the last two
+and starts the run the way it starts a program without a payload.
 
 The payload holds the resource tree of the archive below `app` and nothing else:
 the launcher is the program itself, so the payload carries neither a launcher
@@ -82,6 +88,12 @@ that sharing conflict is the only failure and the file which is already there
 has the size of the embedded module, the launcher logs a warning and injects the
 existing file. Every other failure, such as a cache directory which cannot be
 created, refuses the run with a non zero exit code before any program starts.
+
+`data/cache` is the only directory of a run which is meant to stay: it holds the
+released modules and the extracted patch packages, and the launcher neither
+releases an entry of a package nor clears the directory on exit. Every other
+folder a run creates below the temporary directory of the machine belongs to the
+run and is gone once the run is over.
 
 ## Startup files
 
@@ -302,6 +314,37 @@ payload which cannot be read - an image of an older packer or a damaged payload 
 is no configuration, and the process is isolated the way it was before the
 packer wrote one: the decision never trusts a payload which only happens to be
 there.
+
+### The transport of the control pipe
+
+The control pipe carries framed JSON-RPC messages. The layer lives in
+`common/RpcCodec.hpp`, `common/RemoteSession.hpp`, `common/RemoteAccepter.hpp`
+and `common/RemoteConnector.hpp`, and it reports its own failures as codes of
+`common/ErrorCode.hpp`: the frame codec answers `kRpcFrameMagicInvalid`,
+`kRpcFrameTooLarge`, `kRpcResponseNotObject`, `kRpcResponseIdMissing`,
+`kRpcResponseEmpty` and `kRpcResponseInvalid`, the session answers
+`kRemoteEventCreateFailed` and `kRemoteThreadStartFailed`, the server answers the
+Win32 code of the failed creation, and the connector answers
+`kPipeConnectTimeout`, `kPipeConnectFailed` and `kPipeStateFailed`.
+
+`RemoteError` and `RemoteResult` are not such a code, and they are kept on
+purpose. A `RemoteError` is the error object of the wire protocol of JSON-RPC:
+it is what one peer tells the other about a method it could not serve, so its
+`code`, `message` and `data` are written by the peer and belong to the protocol.
+A failure of an interface of `common/` is described by a code of
+`common/ErrorCode.hpp` alone; the text of a message which a caller sees is
+composed by the module which shows it, which for the control pipe is the
+launcher beside the message of the failed call.
+`RemoteResult` therefore answers either the value of the method or the error
+object of the peer, and a failure of the session itself - a closed connection, a
+peer which did not answer in time - is reported on that same channel.
+
+A creation of the server answers the Win32 code of `CreateNamedPipe()`, because
+that code is what the launcher forwards to its own peer and names in its report
+of a failed start. `ERROR_ACCESS_DENIED` is the answer of the first instance for
+two situations, a name which another server of this user holds and a name this
+process may not use, and the caller tells them apart with
+`detail::AccepterPeerIsReachable()`.
 
 ### The start request
 
@@ -539,6 +582,13 @@ pipe again after the wait of the shutdown race: either the next run of the sandb
 serves the request, or the client wins the race itself and becomes the master
 instance which starts the sandbox. The budget of 30 s bounds the retries; a client
 which uses it up reports `ERROR_TIMEOUT` (1460).
+
+A connection which closes is a peer which went away, whatever moment of the
+handshake it closes in: a pipe which cannot be connected any more, a request whose
+write failed and a request whose connection closed before the answer arrived are
+all raced again. Only an answer the client cannot read names another reason, which
+is `ERROR_INVALID_DATA` (13): such an answer comes from a server which is not the
+one this run speaks to, so racing for the pipe again would not change it.
 
 ## Configuration
 

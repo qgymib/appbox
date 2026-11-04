@@ -95,7 +95,7 @@ DWORD ReadString(HKEY key, const std::wstring& name, std::string& text)
     const DWORD code = RegQueryValueExW(key, name.c_str(), nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size);
     if (code == ERROR_SUCCESS)
     {
-        text = appbox::WideToUTF8(buffer);
+        text = appbox::WideToUTF8(buffer).value_or(std::string());
     }
     return code;
 }
@@ -206,7 +206,7 @@ appbox::test::ProtocolRegTransacted::Rsp appbox::test::ProbeRegTransacted_Entry(
     HKEY         view_root = nullptr;  /* The root the probe reads the key through afterwards. */
     std::wstring object_name;
 
-    const auto hive = appbox::UTF8ToWide(req.Hive);
+    const auto hive = appbox::UTF8ToWide(req.Hive).value_or(std::wstring());
     if (!hive.empty())
     {
         rsp.mount_code = RegLoadAppKeyW(hive.c_str(), &mount_root, KEY_ALL_ACCESS, 0, 0);
@@ -216,12 +216,13 @@ appbox::test::ProtocolRegTransacted::Rsp appbox::test::ProbeRegTransacted_Entry(
         }
 
         view_root = mount_root;
-        object_name = appbox::UTF8ToWide(req.Key);
+        object_name = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
     }
     else
     {
         view_root = appbox::test::RegistryRootHandle(req.Root);
-        if (view_root == nullptr || !BuildViewPath(req.Root, appbox::UTF8ToWide(req.Key), object_name))
+        if (view_root == nullptr ||
+            !BuildViewPath(req.Root, appbox::UTF8ToWide(req.Key).value_or(std::wstring()), object_name))
         {
             rsp.mount_code = ERROR_INVALID_PARAMETER;
             return rsp;
@@ -230,8 +231,8 @@ appbox::test::ProtocolRegTransacted::Rsp appbox::test::ProbeRegTransacted_Entry(
         rsp.mount_code = ERROR_SUCCESS;
     }
 
-    const auto key_path = appbox::UTF8ToWide(req.Key);
-    const auto value_name = appbox::UTF8ToWide(req.Value);
+    const auto key_path = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
+    const auto value_name = appbox::UTF8ToWide(req.Value).value_or(std::wstring());
 
     UNICODE_STRING    us;
     OBJECT_ATTRIBUTES oa;
@@ -280,7 +281,8 @@ appbox::test::ProtocolRegTransacted::Rsp appbox::test::ProbeRegTransacted_Entry(
 
         if (!value_name.empty() && !req.Data.empty())
         {
-            rsp.write_code = WriteString(registry_key, value_name, appbox::UTF8ToWide(req.Data));
+            rsp.write_code =
+                WriteString(registry_key, value_name, appbox::UTF8ToWide(req.Data).value_or(std::wstring()));
         }
 
         if (req.ReadBack)

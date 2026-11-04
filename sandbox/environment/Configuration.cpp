@@ -14,34 +14,24 @@ bool appbox::environment::ParseIsolationDocument(const std::string& text, std::v
 
     const std::string description = "the environment isolation file";
 
-    environment_isolation::Document document;
-    try
+    /*
+     * The document is read as the structure of its schema
+     * (`common/EnvironmentIsolation.hpp`) and never member by member, so a
+     * member which is missing, which is of another type or which names an
+     * unknown mode is refused while the file is read. The reader reports the
+     * refusal by code; the wording of the report is written here, because the
+     * text of a failure belongs to the module which shows it.
+     */
+    const auto parsed_document = environment_isolation::ParseDocument(text);
+    if (!parsed_document)
     {
-        /*
-         * The document is read as the structure of its schema
-         * (`common/EnvironmentIsolation.hpp`) and never member by member, so a
-         * member which is missing, which is of another type or which names an
-         * unknown mode is refused while the file is read. The error text of an
-         * entry names its position in the list.
-         */
-        document = nlohmann::json::parse(text).get<environment_isolation::Document>();
-    }
-    catch (const IsolationDocumentError& e)
-    {
-        error = e.what();
-        return false;
-    }
-    catch (const std::exception& e)
-    {
-        error = description + " is not valid JSON: " + e.what();
+        error = parsed_document.error() == ErrorCode::kIsolationDocumentUnsupportedVersion
+                    ? description + " carries a schema version which is not supported"
+                    : description + " is not a valid isolation document";
         return false;
     }
 
-    if (document.version != environment_isolation::kVersion)
-    {
-        error = description + " carries version " + std::to_string(document.version) + ", which is not supported";
-        return false;
-    }
+    const environment_isolation::Document& document = *parsed_document;
 
     /*
      * The entries are collected apart from the result: a document which is
@@ -57,11 +47,11 @@ bool appbox::environment::ParseIsolationDocument(const std::string& text, std::v
             const environment_isolation::Entry& item = document.entries[index];
 
             ConfiguredVariable variable;
-            variable.name = UTF8ToWide(item.name);
-            variable.value = UTF8ToWide(item.value);
+            variable.name = UTF8ToWide(item.name).value_or(std::wstring());
+            variable.value = UTF8ToWide(item.value).value_or(std::wstring());
             variable.isolation = item.isolation;
             variable.merge = item.merge;
-            variable.merge_string = UTF8ToWide(item.merge_string);
+            variable.merge_string = UTF8ToWide(item.merge_string).value_or(std::wstring());
 
             /*
              * A variable which is listed twice is refused by the reader and not
@@ -73,7 +63,7 @@ bool appbox::environment::ParseIsolationDocument(const std::string& text, std::v
             {
                 if (NamesEqual(listed.name, variable.name))
                 {
-                    error = environment_isolation::EntryPrefix(index) + "the variable is listed twice";
+                    error = "entries[" + std::to_string(index) + "]: the variable is listed twice";
                     return false;
                 }
             }
@@ -204,8 +194,8 @@ bool appbox::environment::State::Build(std::string& text, std::string& error) co
         for (const auto& entry : entries)
         {
             environment_isolation::StateEntry item;
-            item.name = WideToUTF8(entry.name);
-            item.value = WideToUTF8(entry.value);
+            item.name = WideToUTF8(entry.name).value_or(std::string());
+            item.value = WideToUTF8(entry.value).value_or(std::string());
             item.deleted = entry.deleted;
             document.entries.push_back(std::move(item));
         }
@@ -231,31 +221,20 @@ bool appbox::environment::State::Parse(const std::string& text, std::string& err
 
     const std::string description = "the environment state file";
 
-    environment_isolation::StateDocument document;
-    try
+    /*
+     * The document is read as the structure of its schema
+     * (`common/EnvironmentIsolation.hpp`) and never member by member, so a
+     * member which is missing or which is of another type is refused while the
+     * file is read. The reader reports the refusal by code; the wording of the
+     * report is written here, because the text of a failure belongs to the
+     * module which shows it.
+     */
+    const auto parsed_document = environment_isolation::ParseStateDocument(text);
+    if (!parsed_document)
     {
-        /*
-         * The document is read as the structure of its schema
-         * (`common/EnvironmentIsolation.hpp`) and never member by member, so a
-         * member which is missing or which is of another type is refused while
-         * the file is read.
-         */
-        document = nlohmann::json::parse(text).get<environment_isolation::StateDocument>();
-    }
-    catch (const IsolationDocumentError& e)
-    {
-        error = e.what();
-        return false;
-    }
-    catch (const std::exception& e)
-    {
-        error = description + " is not valid JSON: " + e.what();
-        return false;
-    }
-
-    if (document.version != environment_isolation::kStateVersion)
-    {
-        error = description + " carries version " + std::to_string(document.version) + ", which is not supported";
+        error = parsed_document.error() == ErrorCode::kIsolationDocumentUnsupportedVersion
+                    ? description + " carries a schema version which is not supported"
+                    : description + " is not a valid state document";
         return false;
     }
 
@@ -263,11 +242,11 @@ bool appbox::environment::State::Parse(const std::string& text, std::string& err
 
     try
     {
-        for (const auto& item : document.entries)
+        for (const auto& item : parsed_document->entries)
         {
             Modification modification;
-            modification.name = UTF8ToWide(item.name);
-            modification.value = UTF8ToWide(item.value);
+            modification.name = UTF8ToWide(item.name).value_or(std::wstring());
+            modification.value = UTF8ToWide(item.value).value_or(std::wstring());
             modification.deleted = item.deleted;
 
             /* A variable which is listed twice ends up with the last entry. */

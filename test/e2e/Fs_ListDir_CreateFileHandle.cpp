@@ -86,7 +86,7 @@ TEST_F(E2E_Fs, ListDir_CreateFileHandle)
                              (create_file ? " (CreateFileW)" : " (NtOpenFile)"));
 
                 ProtocolListDirNt::Req req;
-                req.path = appbox::WideToUTF8(folder);
+                req.path = appbox::WideToUTF8(folder).value_or(std::string());
                 req.extended = extended;
                 req.info_class = cls;
                 req.create_file = create_file;

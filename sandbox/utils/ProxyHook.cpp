@@ -144,8 +144,8 @@ bool appbox::network::SockaddrOfAddress(const network_isolation::Address& addres
 bool appbox::network::SockaddrFromEndpoint(const socks5::Endpoint& endpoint, int family, sockaddr_storage& storage,
                                            int& length)
 {
-    network_isolation::Address address;
-    if (!network_isolation::ParseAddress(endpoint.host, address))
+    const auto address = network_isolation::ParseAddress(endpoint.host);
+    if (!address)
     {
         /*
          * A domain name is never the address of a socket: the sandbox resolves
@@ -155,7 +155,7 @@ bool appbox::network::SockaddrFromEndpoint(const socks5::Endpoint& endpoint, int
         return false;
     }
 
-    return SockaddrOfAddress(address, endpoint.port, family, storage, length);
+    return SockaddrOfAddress(*address, endpoint.port, family, storage, length);
 }
 
 bool appbox::network::WriteAddress(const socks5::Endpoint& endpoint, int family, sockaddr* address, int* length)

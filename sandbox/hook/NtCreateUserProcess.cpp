@@ -41,7 +41,7 @@ static nlohmann::json NtCreateUserProcessLogParam(PHANDLE ProcessHandle, PHANDLE
     std::wstring                                   image_path;
     if (image.GetName(image_path))
     {
-        param["ImagePathName"] = appbox::WideToUTF8(image_path);
+        param["ImagePathName"] = appbox::WideToUTF8(image_path).value_or(std::string());
     }
 
     return param;
@@ -94,13 +94,13 @@ bool ResolveImagePath(const std::wstring& nt_path, std::wstring& view_path, std:
 {
     reparse_failure = STATUS_SUCCESS;
 
-    std::wstring dos_nt_path;
-    if (!appbox::MappingAsDosNtPath(nt_path, dos_nt_path))
+    const auto dos_nt_path = appbox::MappingAsDosNtPath(nt_path);
+    if (!dos_nt_path)
     {
         return false;
     }
 
-    auto result = appbox::filesystem::Resolve(dos_nt_path);
+    auto result = appbox::filesystem::Resolve(*dos_nt_path);
 
     /*
      * A reparse point of the image path which the view could not resolve fails
@@ -121,7 +121,7 @@ bool ResolveImagePath(const std::wstring& nt_path, std::wstring& view_path, std:
     }
 
     layer_path = result->bInUpper ? result->uPath : result->hPath[0].fPath;
-    view_path = result->viewPath.empty() ? dos_nt_path : result->viewPath;
+    view_path = result->viewPath.empty() ? *dos_nt_path : result->viewPath;
     return true;
 }
 
@@ -373,7 +373,8 @@ static NTSTATUS NTAPI Hook_NtCreateUserProcess(PHANDLE ProcessHandle, PHANDLE Th
     const NTSTATUS injection = InjectSandbox(process, *inject_data);
     if (!NT_SUCCESS(injection))
     {
-        LOG_E("failed to inject the sandbox into the process of {}", appbox::WideToUTF8(image_path));
+        LOG_E("failed to inject the sandbox into the process of {}",
+              appbox::WideToUTF8(image_path).value_or("<unconvertible>"));
         TerminateAndClose(process, ProcessHandle, ThreadHandle);
         return injection;
     }

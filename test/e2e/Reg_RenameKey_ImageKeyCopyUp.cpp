@@ -54,7 +54,8 @@ TEST_F(E2E_Reg, RenameKey_ImageKeyCopyUp)
 
     auto config = tree.Build();
 
-    const auto parent = L"Software\\AppBoxTest\\RenameKey_Image_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto parent = L"Software\\AppBoxTest\\RenameKey_Image_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto old_key = parent + L"\\Old";
     const auto hive_key = L"HKEY_CURRENT_USER\\" + old_key;
 
@@ -65,7 +66,7 @@ TEST_F(E2E_Reg, RenameKey_ImageKeyCopyUp)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegRenameKey::Req req;
-    req.Key = appbox::WideToUTF8(old_key);
+    req.Key = appbox::WideToUTF8(old_key).value_or(std::string());
     req.NewName = "New";
     req.Mode = ProtocolRegRenameKey::ModeKind::HiveHandle;
 

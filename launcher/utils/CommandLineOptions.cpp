@@ -1,7 +1,7 @@
 #include "utils/GetExecutableDir.hpp"
 #include "CommandLineOptions.hpp"
 #include "LogFileName.hpp"
-#include "SetLogLevel.hpp"
+#include "LogLevelName.hpp"
 #include "WString.hpp"
 #include <CLI/CLI.hpp>
 #include <cstdlib>
@@ -14,6 +14,46 @@ namespace
 
 /** Name of the directory the log files of a run land in by default. */
 constexpr const wchar_t* kLogDirName = L"log";
+
+/**
+ * @brief Map a level of a run onto the level of the logging library.
+ *
+ * The launcher is the module which logs, so it is the place which knows the
+ * library: `common/LogLevelName.hpp` names the levels of a command line only.
+ *
+ * @param[in] level Level of the run.
+ * @return The level of the logging library.
+ */
+spdlog::level::level_enum LogLevelOfRun(appbox::LogLevel level)
+{
+    switch (level)
+    {
+    case appbox::LogLevel::Trace:
+        return spdlog::level::trace;
+    case appbox::LogLevel::Debug:
+        return spdlog::level::debug;
+    case appbox::LogLevel::Info:
+        return spdlog::level::info;
+    case appbox::LogLevel::Warn:
+        return spdlog::level::warn;
+    case appbox::LogLevel::Error:
+        return spdlog::level::err;
+    case appbox::LogLevel::Critical:
+        return spdlog::level::critical;
+    case appbox::LogLevel::Off:
+    default:
+        return spdlog::level::off;
+    }
+}
+
+/**
+ * @brief Apply the level of a run to the logging library.
+ * @param[in] level Level of the run.
+ */
+void ApplyLogLevel(appbox::LogLevel level)
+{
+    spdlog::set_level(LogLevelOfRun(level));
+}
 
 /**
  * @brief Resolve the directory the log files of a run are written into.
@@ -80,22 +120,24 @@ std::wstring OwnLogFileName()
  */
 void SetupLoggingImpl(appbox::CommandLineOptions& opt)
 {
-    const auto level = appbox::UTF8ToWide(opt.log_level);
+    const auto parsed = appbox::ParseLogLevel(appbox::UTF8ToWide(opt.log_level).value_or(std::wstring()));
 
     /*
-     * An unknown name is reported by SetLogLevel(), which keeps the report of a
-     * name which is not a level visible instead of muting the run silently.
+     * A name which is no level reports no log file: the run then behaves like a
+     * run which names `off`, and the name it was given stays in the options for
+     * whoever reports it.
      */
-    appbox::SetLogLevel(level);
+    const appbox::LogLevel level = parsed.has_value() ? parsed.value() : appbox::LogLevel::Off;
 
-    if (!appbox::IsLogLevelEnabled(level))
+    ApplyLogLevel(level);
+
+    if (!appbox::LogLevelEnablesLogFile(level))
     {
         /*
          * The run asks for no log file: no directory is created and the
          * messages of the launcher are dropped as well, so a run without a log
          * costs nothing.
          */
-        appbox::SetLogLevel(L"off");
         opt.log_dir.clear();
         return;
     }
@@ -107,7 +149,8 @@ void SetupLoggingImpl(appbox::CommandLineOptions& opt)
     std::filesystem::create_directories(dir, ec);
     if (ec)
     {
-        SPDLOG_ERROR("the log directory '{}' cannot be created: {}", appbox::WideToUTF8(opt.log_dir), ec.message());
+        SPDLOG_ERROR("the log directory '{}' cannot be created: {}",
+                     appbox::WideToUTF8(opt.log_dir).value_or("<unconvertible>"), ec.message());
         return;
     }
 
@@ -129,7 +172,7 @@ void SetupLoggingImpl(appbox::CommandLineOptions& opt)
     }
 
     /* The level applies to the file logger the run just installed as well. */
-    appbox::SetLogLevel(level);
+    ApplyLogLevel(level);
 }
 
 } // namespace
@@ -171,7 +214,7 @@ void appbox::CommandLineOptions::ParseOptions()
              * call of the sandboxed application. A run which names no level
              * writes no log file at all, which is what a run does by default.
              */
-            this->log_level = appbox::WideToUTF8(level);
+            this->log_level = appbox::WideToUTF8(level).value_or(std::string());
         },
         "Level of the log files of the run: trace, debug, info, warn, err, critical or off. A run which names no "
         "level writes no log file. Default: no log file");
@@ -199,7 +242,7 @@ void appbox::CommandLineOptions::ParseOptions()
     app.add_option_function<std::wstring>(
         "--X-AppBox-Startup",
         [this](const std::wstring& arg) {
-            startup_trigger = appbox::WideToUTF8(arg);
+            startup_trigger = appbox::WideToUTF8(arg).value_or(std::string());
             has_startup_trigger = true;
         },
         "Run the startup file with the given trigger instead of the auto start files");

@@ -40,7 +40,7 @@ inline constexpr std::size_t kProgramExtensionSize = 4;
  * @param[in] value The number.
  * @param[in] digits Number of the digits to append.
  */
-inline void AppendPaddedNumber(std::wstring& out, unsigned value, unsigned digits)
+inline void AppendPaddedNumber(std::wstring& out, unsigned value, unsigned digits) noexcept
 {
     wchar_t buffer[10];
 
@@ -61,7 +61,7 @@ inline void AppendPaddedNumber(std::wstring& out, unsigned value, unsigned digit
  * @param[in] name Name to test.
  * @return true when the name ends with `.exe`.
  */
-inline bool EndsWithProgramExtension(const std::wstring& name)
+inline bool EndsWithProgramExtension(const std::wstring& name) noexcept
 {
     const std::size_t size = kProgramExtensionSize;
     if (name.size() <= size)
@@ -107,7 +107,8 @@ inline bool EndsWithProgramExtension(const std::wstring& name)
  * @param[in] pid Process id of the process.
  * @return The file name without a directory.
  */
-inline std::wstring LogFileNameOf(const std::wstring& image_path, const LogFileTimestamp& utc, unsigned long pid)
+inline std::wstring LogFileNameOf(const std::wstring& image_path, const LogFileTimestamp& utc,
+                                  unsigned long pid) noexcept
 {
     /* The name of the program, without its directory. */
     std::wstring program = image_path;
@@ -146,4 +147,4 @@ inline std::wstring LogFileNameOf(const std::wstring& image_path, const LogFileT
 
 } // namespace appbox
 
-#endif
+#endif // APPBOX_COMMON_LOG_FILE_NAME_HPP

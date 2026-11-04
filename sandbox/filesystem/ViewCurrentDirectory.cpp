@@ -94,20 +94,23 @@ void appbox::filesystem::SetViewCurrentDirectory()
     std::wstring view;
     if (!RebaseCurrentDirectory(cwd, RebaseLayerPathToView, view))
     {
-        LOG_W("the current directory '{}' is not a path the view can name", appbox::WideToUTF8(cwd));
+        LOG_W("the current directory '{}' is not a path the view can name",
+              appbox::WideToUTF8(cwd).value_or("<unconvertible>"));
         return;
     }
 
     if (view == cwd)
     {
-        LOG_D("the current directory '{}' belongs to no layer of the view", appbox::WideToUTF8(cwd));
+        LOG_D("the current directory '{}' belongs to no layer of the view",
+              appbox::WideToUTF8(cwd).value_or("<unconvertible>"));
         return;
     }
 
     /* The counted form of the entry point stores the length in a USHORT. */
     if (view.size() * sizeof(wchar_t) > 0xFFFFu)
     {
-        LOG_W("the path of the view is too long for the directory of the process: {}", appbox::WideToUTF8(view));
+        LOG_W("the path of the view is too long for the directory of the process: {}",
+              appbox::WideToUTF8(view).value_or("<unconvertible>"));
         return;
     }
 
@@ -132,10 +135,10 @@ void appbox::filesystem::SetViewCurrentDirectory()
     if (!NT_SUCCESS(status))
     {
         LOG_W("the current directory of the process stays '{}': RtlSetCurrentDirectory_U failed with {:#x}",
-              appbox::WideToUTF8(cwd), status);
+              appbox::WideToUTF8(cwd).value_or("<unconvertible>"), status);
         return;
     }
 
-    LOG_I("the current directory of the process is the view path '{}' instead of '{}'", appbox::WideToUTF8(view),
-          appbox::WideToUTF8(cwd));
+    LOG_I("the current directory of the process is the view path '{}' instead of '{}'",
+          appbox::WideToUTF8(view).value_or("<unconvertible>"), appbox::WideToUTF8(cwd).value_or("<unconvertible>"));
 }

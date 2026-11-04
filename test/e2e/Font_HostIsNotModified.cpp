@@ -127,8 +127,8 @@ TEST_F(E2E_Font, HostIsNotModified)
     const std::wstring fonts_folder = GetKnownFolderPath(L"#Fonts#", false);
 
     ProtocolFonts::Req req;
-    req.family = appbox::WideToUTF8(font.family);
-    req.view_path = appbox::WideToUTF8(fonts_folder + L"\\" + packed_name);
+    req.family = appbox::WideToUTF8(font.family).value_or(std::string());
+    req.view_path = appbox::WideToUTF8(fonts_folder + L"\\" + packed_name).value_or(std::string());
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolFonts>(req);
     ASSERT_TRUE(rsp.enumerated);

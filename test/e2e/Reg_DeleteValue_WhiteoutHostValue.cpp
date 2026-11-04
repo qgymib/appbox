@@ -34,8 +34,8 @@ TEST_F(E2E_Reg, DeleteValue_WhiteoutHostValue)
 
     auto config = tree.Build();
 
-    const auto subkey =
-        L"Software\\AppBoxTest\\DeleteValue_WhiteoutHostValue_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\DeleteValue_WhiteoutHostValue_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
@@ -43,7 +43,7 @@ TEST_F(E2E_Reg, DeleteValue_WhiteoutHostValue)
     ASSERT_TRUE(real_key.SetString(L"KeptValue", L"kept"));
 
     ProtocolRegDeleteValue::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Value = "HostValue";
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteValue>(req);
@@ -63,11 +63,11 @@ TEST_F(E2E_Reg, DeleteValue_WhiteoutHostValue)
     ASSERT_EQ(RegOpenKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, KEY_QUERY_VALUE, &key), ERROR_SUCCESS);
     ASSERT_EQ(RegQueryValueExW(key, L"HostValue", nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size),
               ERROR_SUCCESS);
-    EXPECT_EQ(appbox::WideToUTF8(buffer), "host");
+    EXPECT_EQ(appbox::WideToUTF8(buffer).value_or(std::string()), "host");
 
     size = sizeof(buffer);
     ASSERT_EQ(RegQueryValueExW(key, L"KeptValue", nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size),
               ERROR_SUCCESS);
     RegCloseKey(key);
-    EXPECT_EQ(appbox::WideToUTF8(buffer), "kept");
+    EXPECT_EQ(appbox::WideToUTF8(buffer).value_or(std::string()), "kept");
 }

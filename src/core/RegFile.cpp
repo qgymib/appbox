@@ -422,8 +422,8 @@ bool ResolveRegKeyPath(const std::wstring& text, std::wstring& out, std::string&
     std::wstring root;
     if (!ResolveRootKeyName(parts.front(), root))
     {
-        error = LineError(line,
-                          "the key path starts with an unknown root key: '" + appbox::WideToUTF8(parts.front()) + "'");
+        error = LineError(line, "the key path starts with an unknown root key: '" +
+                                    appbox::WideToUTF8(parts.front()).value_or(std::string()) + "'");
         return false;
     }
 
@@ -524,8 +524,8 @@ bool ResolveHexType(const std::wstring& spec, appbox::RegistryValueType& out, st
 
     if (!appbox::ResolveRegistryValueType(static_cast<std::uint32_t>(code), out))
     {
-        error =
-            LineError(line, "the value line holds an unsupported type index: hex(" + appbox::WideToUTF8(spec) + ")");
+        error = LineError(line, "the value line holds an unsupported type index: hex(" +
+                                    appbox::WideToUTF8(spec).value_or(std::string()) + ")");
         return false;
     }
     return true;
@@ -797,7 +797,7 @@ bool LoadRegFile(const std::wstring& path, std::vector<RegFileEntry>& entries, s
     std::ifstream stream(std::filesystem::path(path), std::ios::binary);
     if (!stream)
     {
-        error = "the file could not be opened: '" + WideToUTF8(path) + "'";
+        error = "the file could not be opened: '" + WideToUTF8(path).value_or(std::string()) + "'";
         return false;
     }
 
@@ -806,14 +806,14 @@ bool LoadRegFile(const std::wstring& path, std::vector<RegFileEntry>& entries, s
     std::wstring text;
     if (!DecodeRegFile(bytes, text, error))
     {
-        error = "'" + WideToUTF8(path) + "': " + error;
+        error = "'" + WideToUTF8(path).value_or(std::string()) + "': " + error;
         return false;
     }
 
     std::vector<RegFileEntry> parsed;
     if (!ParseRegText(text, parsed, error))
     {
-        error = "'" + WideToUTF8(path) + "': " + error;
+        error = "'" + WideToUTF8(path).value_or(std::string()) + "': " + error;
         return false;
     }
 
@@ -831,7 +831,8 @@ bool MergeRegFile(RegistryModel& model, const std::vector<RegFileEntry>& entries
     {
         if (entry.operation == RegFileOperation::RemoveKey && IsRootKeyPath(entry.key_path))
         {
-            error = LineError(entry.line, "a root key cannot be removed: '" + WideToUTF8(entry.key_path) + "'");
+            error = LineError(entry.line, "a root key cannot be removed: '" +
+                                              WideToUTF8(entry.key_path).value_or(std::string()) + "'");
             return false;
         }
     }

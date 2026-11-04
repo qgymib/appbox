@@ -67,7 +67,7 @@ private:
  */
 std::string ToNt(const std::filesystem::path& path)
 {
-    return appbox::WideToUTF8(L"\\??\\" + path.wstring());
+    return appbox::WideToUTF8(L"\\??\\" + path.wstring()).value_or(std::string());
 }
 
 /**
@@ -186,7 +186,7 @@ bool AddIsolation(View& view, const std::string& isolation)
         stream << document.dump(2);
     }
 
-    view.config.filesystem_isolation_dos_paths.push_back(appbox::WideToUTF8(path.wstring()));
+    view.config.filesystem_isolation_dos_paths.push_back(appbox::WideToUTF8(path.wstring()).value_or(std::string()));
     return true;
 }
 

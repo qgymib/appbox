@@ -69,7 +69,7 @@ TEST_F(E2E_Fs, DefaultMerge_WritesTheFileOfTheHost)
     /* The write reaches the file of the host filesystem. */
     {
         ProtocolWriteFile::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt").value_or(std::string());
         req.Data = "written";
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolWriteFile>(req);

@@ -109,7 +109,7 @@ TEST_F(E2E_Fs, Marker_StreamIsNotReported)
     /* The enumeration reports the streams of the file without the marker. */
     {
         ProtocolFindStreams::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kFileName);
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kFileName).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolFindStreams>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -121,7 +121,8 @@ TEST_F(E2E_Fs, Marker_StreamIsNotReported)
     /* The marker stream cannot be read. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kFileName + L":" + kMarkerStream);
+        req.FileName =
+            appbox::WideToUTF8(FolderPath() + L"\\" + kFileName + L":" + kMarkerStream).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -130,7 +131,8 @@ TEST_F(E2E_Fs, Marker_StreamIsNotReported)
     /* A stream whose name is reserved cannot be created. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kFileName + L":stream.$APPBOX_DELETE$");
+        req.FileName =
+            appbox::WideToUTF8(FolderPath() + L"\\" + kFileName + L":stream.$APPBOX_DELETE$").value_or(std::string());
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 

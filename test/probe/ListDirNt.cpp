@@ -20,7 +20,7 @@ appbox::test::ProtocolListDirNt::Rsp appbox::test::ProbeListDirNt_Entry(
     const auto& req = request;
 
     NtDirectoryQuery query;
-    query.path = appbox::UTF8ToWide(req.path);
+    query.path = appbox::UTF8ToWide(req.path).value_or(std::wstring());
     query.info_class = req.info_class;
     query.extended = req.extended;
     query.create_file = req.create_file;

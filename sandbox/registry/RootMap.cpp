@@ -13,8 +13,8 @@ namespace
  */
 bool EqualsIgnoreCase(const std::wstring& left, const std::wstring& right)
 {
-    std::wstring suffix;
-    return appbox::PrefixCompareExchange(left, right, L"", true, suffix) && suffix.empty();
+    const auto suffix = appbox::PrefixCompareExchange(left, right, L"", true);
+    return suffix && suffix->empty();
 }
 
 /**

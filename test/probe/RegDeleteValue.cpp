@@ -24,8 +24,8 @@ appbox::test::ProtocolRegDeleteValue::Rsp appbox::test::ProbeRegDeleteValue_Entr
         return rsp;
     }
 
-    const auto key_path = appbox::UTF8ToWide(req.Key);
-    const auto value_name = appbox::UTF8ToWide(req.Value);
+    const auto key_path = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
+    const auto value_name = appbox::UTF8ToWide(req.Value).value_or(std::wstring());
 
     HKEY key = nullptr;
     rsp.open_code = RegOpenKeyExW(root, key_path.c_str(), 0, KEY_SET_VALUE | KEY_QUERY_VALUE, &key);
@@ -66,7 +66,7 @@ appbox::test::ProtocolRegDeleteValue::Rsp appbox::test::ProbeRegDeleteValue_Entr
             break;
         }
 
-        rsp.names.push_back(appbox::WideToUTF8(name));
+        rsp.names.push_back(appbox::WideToUTF8(name).value_or(std::string()));
     }
 
     RegCloseKey(probe);

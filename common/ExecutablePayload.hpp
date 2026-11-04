@@ -1,12 +1,14 @@
 #ifndef APPBOX_COMMON_EXECUTABLE_PAYLOAD_HPP
 #define APPBOX_COMMON_EXECUTABLE_PAYLOAD_HPP
 
-#include "WString.hpp"
+#include "ErrorCode.hpp"
+#include <tl/expected.hpp>
 #include <array>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <system_error>
 
@@ -58,7 +60,7 @@ struct PayloadLocation
  * @param[in] location Position and length of the payload.
  * @return The 32 bytes to write behind the payload.
  */
-inline std::array<char, kTrailerSize> BuildTrailer(const PayloadLocation& location)
+inline std::array<char, kTrailerSize> BuildTrailer(const PayloadLocation& location) noexcept
 {
     std::array<char, kTrailerSize> trailer{};
     std::memcpy(trailer.data(), &location.offset, sizeof(location.offset));
@@ -72,52 +74,41 @@ inline std::array<char, kTrailerSize> BuildTrailer(const PayloadLocation& locati
 }
 
 /**
- * @brief Outcome of reading the trailer of a program file.
- */
-enum class TrailerStatus
-{
-    Absent,    ///< The file carries no payload trailer.
-    Present,   ///< The trailer was read and describes the payload.
-    Unreadable ///< The file cannot be read, or it ends with an inconsistent trailer.
-};
-
-/**
  * @brief Read the trailer of a self-extracting program.
  *
  * A file which is shorter than the trailer, or whose last bytes do not carry
- * the magic, is an ordinary program: it has no payload. A file which carries
- * the magic but whose fields do not describe the bytes before the trailer is
- * reported as unreadable, so a damaged program is not mistaken for a payload.
+ * the magic, is an ordinary program: it has no payload, which is the empty
+ * optional and not a failure. A file which carries the magic but whose fields
+ * do not describe the bytes before the trailer is reported apart from one which
+ * cannot be read at all, so a damaged program is neither mistaken for a payload
+ * nor for a plain program.
  *
  * @param[in] program Path of the program file.
- * @param[out] location Position and length of the payload, filled when the
- *             trailer is present.
- * @param[out] error Description of the failure, empty unless the status is
- *             `Unreadable`.
- * @return The status of the trailer.
+ * @return The position of the payload, an empty optional for a program which
+ *         carries no trailer, or the code of the failure:
+ *         `kPayloadTrailerUnreadable` when the file cannot be measured, opened
+ *         or read, and `kPayloadTrailerInconsistent` when its trailer does not
+ *         hold.
  */
-inline TrailerStatus ReadTrailer(const std::filesystem::path& program, PayloadLocation& location, std::string& error)
+inline tl::expected<std::optional<PayloadLocation>, ErrorCode> ReadTrailer(
+    const std::filesystem::path& program) noexcept
 {
-    error.clear();
-
     std::error_code ec;
     const auto      file_size = std::filesystem::file_size(program, ec);
     if (ec)
     {
-        error = "failed to measure '" + WideToUTF8(program.wstring()) + "'";
-        return TrailerStatus::Unreadable;
+        return tl::unexpected<ErrorCode>(ErrorCode::kPayloadTrailerUnreadable);
     }
 
     if (file_size < kTrailerSize)
     {
-        return TrailerStatus::Absent;
+        return std::optional<PayloadLocation>{};
     }
 
     std::ifstream file(program, std::ios::binary);
     if (!file)
     {
-        error = "failed to read '" + WideToUTF8(program.wstring()) + "'";
-        return TrailerStatus::Unreadable;
+        return tl::unexpected<ErrorCode>(ErrorCode::kPayloadTrailerUnreadable);
     }
 
     file.seekg(static_cast<std::streamoff>(file_size - kTrailerSize));
@@ -125,13 +116,12 @@ inline TrailerStatus ReadTrailer(const std::filesystem::path& program, PayloadLo
     file.read(trailer.data(), static_cast<std::streamsize>(trailer.size()));
     if (!file)
     {
-        error = "failed to read '" + WideToUTF8(program.wstring()) + "'";
-        return TrailerStatus::Unreadable;
+        return tl::unexpected<ErrorCode>(ErrorCode::kPayloadTrailerUnreadable);
     }
 
     if (std::memcmp(trailer.data() + 24, kMagic, kMagicSize) != 0)
     {
-        return TrailerStatus::Absent;
+        return std::optional<PayloadLocation>{};
     }
 
     std::uint64_t offset = 0;
@@ -147,13 +137,12 @@ inline TrailerStatus ReadTrailer(const std::filesystem::path& program, PayloadLo
     if (version != kTrailerVersion || reserved != 0 || size == 0 || offset > payload_end ||
         size != payload_end - offset)
     {
-        error = "the payload trailer of '" + WideToUTF8(program.wstring()) + "' is inconsistent";
-        return TrailerStatus::Unreadable;
+        return tl::unexpected<ErrorCode>(ErrorCode::kPayloadTrailerInconsistent);
     }
 
-    location.offset = offset;
-    location.size = size;
-    return TrailerStatus::Present;
+    return std::optional<PayloadLocation>{
+        PayloadLocation{ offset, size }
+    };
 }
 
 } // namespace appbox::executable_payload

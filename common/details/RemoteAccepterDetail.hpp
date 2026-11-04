@@ -22,9 +22,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <stdexcept>
 #include <string>
-#include <system_error>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -56,36 +54,6 @@ constexpr const char* kRemoteAccepterPipeDacl = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;
  * entry of a pipe handle.
  */
 constexpr const char* kRemoteAccepterPipeSddl = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;OW)S:(ML;;NW;;;ME)";
-
-/**
- * @brief Map an error of CreateNamedPipe() to the result of the creation.
- *
- * The first instance of a pipe is created with FILE_FLAG_FIRST_PIPE_INSTANCE,
- * so a name which is already taken is reported as ERROR_ACCESS_DENIED, exactly
- * like a name whose pipe denies the access of this process. The two cases are
- * told apart by the caller, which probes the pipe before it asks for the
- * mapping: a pipe which is held by a live server counts as reachable, including
- * a pipe whose instances all serve a client at that moment.
- *
- * @param[in] error Error code of CreateNamedPipe().
- * @param[in] peer_reachable Whether the pipe of that name is held by a live
- *                           server of this user.
- * @return The outcome of the creation.
- */
-inline ServerCreateStatus ClassifyAccepterCreateError(DWORD error, bool peer_reachable)
-{
-    if (error == ERROR_SUCCESS)
-    {
-        return ServerCreateStatus::Created;
-    }
-
-    if (error == ERROR_ACCESS_DENIED)
-    {
-        return peer_reachable ? ServerCreateStatus::AlreadyRunning : ServerCreateStatus::AccessDenied;
-    }
-
-    return ServerCreateStatus::Failed;
-}
 
 /**
  * @brief Classify an error of the accept loop of the pipe server.
@@ -152,7 +120,7 @@ inline bool AccepterConnectionWasAbandoned(DWORD error)
  *         of the pipe serves a client, false when the name carries no pipe which
  *         this user may use.
  */
-inline bool AccepterPeerIsReachable(const std::string& pipe)
+inline bool AccepterPeerIsReachable(const std::string& pipe) noexcept
 {
     const HANDLE h = ::CreateFileA(pipe.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
     if (h != INVALID_HANDLE_VALUE)
@@ -161,10 +129,7 @@ inline bool AccepterPeerIsReachable(const std::string& pipe)
         return true;
     }
 
-    const DWORD error = ::GetLastError();
-    SPDLOG_DEBUG("the pipe '{}' cannot be connected: {}", pipe, error);
-
-    return error == ERROR_PIPE_BUSY;
+    return ::GetLastError() == ERROR_PIPE_BUSY;
 }
 
 /**
@@ -329,7 +294,6 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
                 h = CreatePipeInstance(open_mode, security_dacl_only.Attributes());
                 if (h != INVALID_HANDLE_VALUE)
                 {
-                    SPDLOG_WARN("the integrity label of the pipe is refused, the pipe is created without it");
                     error = ERROR_SUCCESS;
                     return h;
                 }
@@ -473,26 +437,21 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
      */
     void OnConnected(HANDLE instance)
     {
+        /* A process which cannot be queried leaves the peer unknown. */
         DWORD peer_pid = 0;
         if (!::GetNamedPipeClientProcessId(instance, &peer_pid))
         {
-            SPDLOG_WARN("[HANDLE: {}] cannot query the client process: {}", static_cast<void*>(instance),
-                        ::GetLastError());
             peer_pid = 0;
         }
 
-        RemoteSession::Ptr session;
-        try
+        const auto created = RemoteSession::Create(instance, peer_pid);
+        if (!created.has_value())
         {
-            session = RemoteSession::Create(instance, peer_pid);
-        }
-        catch (const std::exception& e)
-        {
-            SPDLOG_ERROR("cannot create the session of the connection: {}", e.what());
-            ::CloseHandle(instance);
+            /* The session closed the handle it was given, the connection is gone. */
             return;
         }
 
+        const RemoteSession::Ptr& session = *created;
         session->SetMaxRequestSize(options.max_request_size);
 
         /*
@@ -507,17 +466,17 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
 
         if (callback)
         {
+            /*
+             * The callback registers the methods of the session, it reports its
+             * own failures; a callback which throws leaves the session without
+             * the methods it failed to register.
+             */
             try
             {
                 callback(session);
             }
-            catch (const std::exception& e)
-            {
-                SPDLOG_ERROR("the session callback failed: {}", e.what());
-            }
             catch (...)
             {
-                SPDLOG_ERROR("the session callback failed");
             }
         }
 
@@ -542,7 +501,11 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
             session_map[session_id] = session;
         }
 
-        session->Start();
+        /*
+         * A session which cannot start closes its connection and reports the
+         * end of it, which releases the entry the table just took.
+         */
+        (void)session->Start();
     }
 
     /**
@@ -613,8 +576,6 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
         {
             const std::uint32_t delay_ms = kAcceptRetryDelaysMs[accept_retry++];
 
-            SPDLOG_WARN("cannot create a pipe instance: {}, retry {} in {} ms", error, accept_retry, delay_ms);
-
             /* The wait is bounded by the stop event, so a stop does not wait for it. */
             if (::WaitForSingleObject(stop_event, delay_ms) == detail::kWaitObjectFirst)
             {
@@ -624,7 +585,6 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
             return !stopping.load();
         }
 
-        SPDLOG_ERROR("the pipe server cannot accept connections any more: {}", error);
         accept_failed = true;
 
         HANDLE listener_to_close = TakeListener();
@@ -641,17 +601,13 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
             return false;
         }
 
+        /* The callback reports its own failures; nothing is thrown on this thread. */
         try
         {
             callback(kind, error);
         }
-        catch (const std::exception& e)
-        {
-            SPDLOG_ERROR("the accept failure callback failed: {}", e.what());
-        }
         catch (...)
         {
-            SPDLOG_ERROR("the accept failure callback failed");
         }
 
         return false;
@@ -715,7 +671,6 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
                      * probes the pipe of its sandbox must not stop the sandbox
                      * it probes.
                      */
-                    SPDLOG_DEBUG("a client left the pipe before the connection was established: {}", error);
                     continue;
                 }
 
@@ -738,28 +693,26 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
 
     /**
      * @brief Start the accept thread.
-     * @return true when the accepter is listening, otherwise false.
+     * @return Success when the accepter listens, otherwise the code of the reason.
      */
-    bool Start()
+    tl::expected<void, ErrorCode> Start() noexcept
     {
         std::lock_guard<std::mutex> lock(state_mutex);
 
         if (state != Lifecycle::Running)
         {
-            SPDLOG_ERROR("the pipe server cannot be started, it is stopping");
-            return false;
+            return tl::unexpected<ErrorCode>(ErrorCode::kInvalidState);
         }
 
         if (thread.joinable())
         {
-            SPDLOG_ERROR("the pipe server is already started");
-            return false;
+            /* The thread serves already, a second start keeps the thread it has. */
+            return {};
         }
 
         if (accept_event == nullptr || stop_event == nullptr)
         {
-            SPDLOG_ERROR("the events of the pipe server cannot be created");
-            return false;
+            return tl::unexpected<ErrorCode>(ErrorCode::kRemoteEventCreateFailed);
         }
 
         try
@@ -772,13 +725,12 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
             auto self = shared_from_this();
             thread = std::thread([self]() { self->Run(); });
         }
-        catch (const std::exception& e)
+        catch (const std::exception&)
         {
-            SPDLOG_ERROR("the accept thread of the pipe server cannot be created: {}", e.what());
-            return false;
+            return tl::unexpected<ErrorCode>(ErrorCode::kRemoteThreadStartFailed);
         }
 
-        return true;
+        return {};
     }
 
     /**
@@ -841,7 +793,7 @@ struct RemoteAccepter::Data : std::enable_shared_from_this<Data>
                 std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
             if (left.count() <= 0)
             {
-                SPDLOG_WARN("the requests of the sessions are still unanswered, the sessions are drained");
+                /* The budget is used up, the sessions are drained below. */
                 break;
             }
 
@@ -929,26 +881,18 @@ inline RemoteAccepter::~RemoteAccepter()
 }
 
 /* Definition of the contract on the declaration. */
-inline RemoteAccepter::Ptr RemoteAccepter::Create(const std::string& pipe)
+inline tl::expected<RemoteAccepter::Ptr, Win32ErrorCode> RemoteAccepter::Create(const std::string& pipe) noexcept
 {
     Options options;
     options.first_instance = false;
 
-    CreateResult result = CreateCompetitive(pipe, options);
-    if (result.status != ServerCreateStatus::Created || !result.accepter)
-    {
-        throw std::system_error(static_cast<int>(result.error_code), std::system_category(),
-                                "CreateNamedPipe() failed");
-    }
-
-    return result.accepter;
+    return CreateCompetitive(pipe, options);
 }
 
 /* Definition of the contract on the declaration. */
-inline RemoteAccepter::CreateResult RemoteAccepter::CreateCompetitive(const std::string& pipe, const Options& options)
+inline tl::expected<RemoteAccepter::Ptr, Win32ErrorCode> RemoteAccepter::CreateCompetitive(
+    const std::string& pipe, const Options& options) noexcept
 {
-    CreateResult result;
-
     Ptr obj(new RemoteAccepter);
     obj->data_->pipe_path = pipe;
     obj->data_->options = options;
@@ -957,25 +901,14 @@ inline RemoteAccepter::CreateResult RemoteAccepter::CreateCompetitive(const std:
     if (options.restrict_to_current_user && (!obj->data_->security.Build(detail::kRemoteAccepterPipeSddl) ||
                                              !obj->data_->security_dacl_only.Build(detail::kRemoteAccepterPipeDacl)))
     {
-        const DWORD error = ::GetLastError();
-        SPDLOG_ERROR("cannot build the security descriptor of the pipe: {}", error);
-
-        result.status = ServerCreateStatus::Failed;
-        result.error_code = error;
-        return result;
+        return tl::unexpected<Win32ErrorCode>(::GetLastError());
     }
 
     DWORD        error = ERROR_SUCCESS;
     const HANDLE handle = obj->data_->CreateInstance(error);
     if (handle == INVALID_HANDLE_VALUE)
     {
-        const bool peer_reachable = (error == ERROR_ACCESS_DENIED) && detail::AccepterPeerIsReachable(pipe);
-
-        result.status = detail::ClassifyAccepterCreateError(error, peer_reachable);
-        result.error_code = error;
-
-        SPDLOG_DEBUG("cannot create the pipe '{}': {} ({})", pipe, error, static_cast<int>(result.status));
-        return result;
+        return tl::unexpected<Win32ErrorCode>(error);
     }
 
     /*
@@ -987,27 +920,24 @@ inline RemoteAccepter::CreateResult RemoteAccepter::CreateCompetitive(const std:
         obj->data_->listener = handle;
     }
 
-    result.status = ServerCreateStatus::Created;
-    result.error_code = ERROR_SUCCESS;
-    result.accepter = obj;
-    return result;
+    return obj;
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteAccepter::SetSessionCallback(SessionCallback callback)
+inline void RemoteAccepter::SetSessionCallback(SessionCallback callback) noexcept
 {
     std::lock_guard<std::mutex> lock(data_->callback_mutex);
     data_->session_callback = std::move(callback);
 }
 
 /* Definition of the contract on the declaration. */
-inline bool RemoteAccepter::Start()
+inline tl::expected<void, ErrorCode> RemoteAccepter::Start() noexcept
 {
     return data_->Start();
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteAccepter::Stop()
+inline void RemoteAccepter::Stop() noexcept
 {
     if (data_)
     {
@@ -1016,7 +946,7 @@ inline void RemoteAccepter::Stop()
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteAccepter::SetAcceptFailureCallback(AcceptFailureCallback callback)
+inline void RemoteAccepter::SetAcceptFailureCallback(AcceptFailureCallback callback) noexcept
 {
     std::lock_guard<std::mutex> lock(data_->callback_mutex);
     data_->accept_failure_callback = std::move(callback);

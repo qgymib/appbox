@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <set>
 #include <string>
+#include "ErrorCode.hpp"
 #include "SandboxId.hpp"
 
 namespace
@@ -46,6 +47,29 @@ bool HasCanonicalShape(const std::string& text)
     }
 
     return true;
+}
+
+/**
+ * @brief Assert that a call reported the failure of an unusable identifier.
+ *
+ * The two functions which read an identifier report every text they refuse with
+ * the same code, because a caller cannot act on the reason a text is no
+ * identifier: the value is unusable either way.
+ *
+ * @param[in] result Result of the call to inspect.
+ * @return true when the result carries a value, which the caller asserts false.
+ */
+template <typename T>
+bool CarriesValue(const tl::expected<T, appbox::ErrorCode>& result)
+{
+    EXPECT_FALSE(result.has_value());
+    if (result.has_value())
+    {
+        return true;
+    }
+
+    EXPECT_EQ(result.error(), appbox::ErrorCode::kInvalidArgument);
+    return false;
 }
 
 } // namespace
@@ -132,29 +156,58 @@ TEST(Unit_SandboxId, ValidateAcceptsTheCanonicalFormOnly)
 
 /**
  * @brief Both spellings a document may carry are normalized to the canonical
- *        one, and a text which is no identifier at all is refused instead of
- *        being repaired.
+ *        one, so a caller never has to know which of the two it received.
  */
 TEST(Unit_SandboxId, NormalizeAcceptsBothSpellings)
 {
     const std::string canonical = "2b1f7c4e-9a3d-4f6b-8c2e-5d7a1b3c9e0f";
 
-    EXPECT_EQ(appbox::NormalizeSandboxId("2b1f7c4e9a3d4f6b8c2e5d7a1b3c9e0f"), canonical);
-    EXPECT_EQ(appbox::NormalizeSandboxId(canonical), canonical);
-    EXPECT_EQ(appbox::NormalizeSandboxId("2B1F7C4E9A3D4F6B8C2E5D7A1B3C9E0F"), canonical);
-    EXPECT_EQ(appbox::NormalizeSandboxId("2B1F7C4E-9A3D-4F6B-8C2E-5D7A1B3C9E0F"), canonical);
+    const auto digits = appbox::NormalizeSandboxId("2b1f7c4e9a3d4f6b8c2e5d7a1b3c9e0f");
+    ASSERT_TRUE(digits.has_value());
+    EXPECT_EQ(digits.value(), canonical);
+
+    const auto spelled = appbox::NormalizeSandboxId(canonical);
+    ASSERT_TRUE(spelled.has_value());
+    EXPECT_EQ(spelled.value(), canonical);
+
+    const auto upper_digits = appbox::NormalizeSandboxId("2B1F7C4E9A3D4F6B8C2E5D7A1B3C9E0F");
+    ASSERT_TRUE(upper_digits.has_value());
+    EXPECT_EQ(upper_digits.value(), canonical);
+
+    const auto upper_spelled = appbox::NormalizeSandboxId("2B1F7C4E-9A3D-4F6B-8C2E-5D7A1B3C9E0F");
+    ASSERT_TRUE(upper_spelled.has_value());
+    EXPECT_EQ(upper_spelled.value(), canonical);
 
     /* A normalized identifier is normalized to itself, so a caller may run the
        call on a value it already normalized. */
-    EXPECT_EQ(appbox::NormalizeSandboxId(appbox::NormalizeSandboxId(canonical)), canonical);
+    const auto twice = appbox::NormalizeSandboxId(spelled.value());
+    ASSERT_TRUE(twice.has_value());
+    EXPECT_EQ(twice.value(), canonical);
+}
 
-    /* Text which is no identifier. */
-    EXPECT_TRUE(appbox::NormalizeSandboxId("").empty());
-    EXPECT_TRUE(appbox::NormalizeSandboxId("2b1f7c4e9a3d4f6b8c2e5d7a1b3c9e0").empty());
-    EXPECT_TRUE(appbox::NormalizeSandboxId("2b1f7c4e9a3d4f6b8c2e5d7a1b3c9e0ff").empty());
-    EXPECT_TRUE(appbox::NormalizeSandboxId("2b1f7c4e-9a3d-4f6b8c2e-5d7a1b3c9e0f").empty());
-    EXPECT_TRUE(appbox::NormalizeSandboxId("2b1f7c4e-9a3d-4f6b-8c2e-5d7a1b3c9e0z").empty());
-    EXPECT_TRUE(appbox::NormalizeSandboxId("appbox").empty());
+/**
+ * @brief A text which is no identifier is refused with the code of an unusable
+ *        argument instead of being repaired or reported as an empty value.
+ *
+ * The code tells "the text is no identifier" from a successful result, which a
+ * caller needs because an empty text is a legal input of the call and not a
+ * failure of it.
+ */
+TEST(Unit_SandboxId, NormalizeRefusesTextWhichIsNoId)
+{
+    CarriesValue(appbox::NormalizeSandboxId(""));
+
+    /* Too few and too many digits for either spelling. */
+    CarriesValue(appbox::NormalizeSandboxId("2b1f7c4e9a3d4f6b8c2e5d7a1b3c9e0"));
+    CarriesValue(appbox::NormalizeSandboxId("2b1f7c4e9a3d4f6b8c2e5d7a1b3c9e0ff"));
+
+    /* A hyphen the layout does not name, and one digit which is no digit. */
+    CarriesValue(appbox::NormalizeSandboxId("2b1f7c4e-9a3d-4f6b8c2e-5d7a1b3c9e0f"));
+    CarriesValue(appbox::NormalizeSandboxId("2b1f7c4e-9a3d-4f6b-8c2e-5d7a1b3c9e0z"));
+
+    /* A text of another alphabet, and a text of a wrong separator. */
+    CarriesValue(appbox::NormalizeSandboxId("appbox"));
+    CarriesValue(appbox::NormalizeSandboxId("2b1f7c4e_9a3d_4f6b_8c2e_5d7a1b3c9e0f"));
 }
 
 /**
@@ -165,12 +218,28 @@ TEST(Unit_SandboxId, PipeNameJoinsThePrefixAndTheId)
 {
     const std::string canonical = "2b1f7c4e-9a3d-4f6b-8c2e-5d7a1b3c9e0f";
 
-    EXPECT_EQ(appbox::SandboxPipeName(canonical), "\\\\.\\pipe\\appbox_" + canonical);
-    EXPECT_EQ(appbox::SandboxPipeName(appbox::GenerateSandboxId()).rfind("\\\\.\\pipe\\appbox_", 0), 0u);
+    const auto name = appbox::SandboxPipeName(canonical);
+    ASSERT_TRUE(name.has_value());
+    EXPECT_EQ(name.value(), "\\\\.\\pipe\\appbox_" + canonical);
 
-    /* An identifier which is not canonical never becomes a pipe name. */
-    EXPECT_TRUE(appbox::SandboxPipeName("").empty());
-    EXPECT_TRUE(appbox::SandboxPipeName("2b1f7c4e9a3d4f6b8c2e5d7a1b3c9e0f").empty());
-    EXPECT_TRUE(appbox::SandboxPipeName("2B1F7C4E-9A3D-4F6B-8C2E-5D7A1B3C9E0F").empty());
-    EXPECT_TRUE(appbox::SandboxPipeName("appbox").empty());
+    const auto generated = appbox::SandboxPipeName(appbox::GenerateSandboxId());
+    ASSERT_TRUE(generated.has_value());
+    EXPECT_EQ(generated.value().rfind("\\\\.\\pipe\\appbox_", 0), 0u);
+}
+
+/**
+ * @brief An identifier which is not canonical never becomes a pipe name, and
+ *        the call reports why instead of answering an empty name.
+ */
+TEST(Unit_SandboxId, PipeNameRefusesIdsWhichAreNotCanonical)
+{
+    CarriesValue(appbox::SandboxPipeName(""));
+
+    /* The 32 digit spelling and the upper case spelling are identifiers, but
+       neither of them is canonical: the name of the pipe is derived from the
+       canonical text alone, so two spellings never name two pipes. */
+    CarriesValue(appbox::SandboxPipeName("2b1f7c4e9a3d4f6b8c2e5d7a1b3c9e0f"));
+    CarriesValue(appbox::SandboxPipeName("2B1F7C4E-9A3D-4F6B-8C2E-5D7A1B3C9E0F"));
+
+    CarriesValue(appbox::SandboxPipeName("appbox"));
 }

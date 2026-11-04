@@ -152,7 +152,8 @@ TEST_F(E2E_Launcher_Shell, CommandRunsInsideTheSandbox)
     const auto folder = GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\" + kFolderName;
     const auto file = folder + L"\\shell.txt";
 
-    const auto run = ProbeShellRun(GetCWDString(), config, { "echo", "hello>", appbox::WideToUTF8(file) });
+    const auto run =
+        ProbeShellRun(GetCWDString(), config, { "echo", "hello>", appbox::WideToUTF8(file).value_or(std::string()) });
 
     EXPECT_EQ(run.exit_code, 0u);
     EXPECT_TRUE(run.reported.empty());

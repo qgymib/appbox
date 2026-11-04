@@ -89,7 +89,7 @@ TEST_F(E2E_MultiInstance, AutoRollback)
      * startup file is the probe of the case and the second one names a file
      * which exists and is no program.
      */
-    launcher_config.startups[0].executable = appbox::WideToUTF8(ProbePath(ProbeBitness::Bit64));
+    launcher_config.startups[0].executable = appbox::WideToUTF8(ProbePath(ProbeBitness::Bit64)).value_or(std::string());
 
     const auto broken = cwd / kBrokenProgramName;
     ASSERT_TRUE(WriteBrokenProgram(broken));
@@ -97,7 +97,7 @@ TEST_F(E2E_MultiInstance, AutoRollback)
     appbox::LauncherStartup missing;
     missing.trigger = "missing";
     missing.auto_start = true;
-    missing.executable = appbox::WideToUTF8(broken.wstring());
+    missing.executable = appbox::WideToUTF8(broken.wstring()).value_or(std::string());
     launcher_config.startups.push_back(missing);
 
     /* The run starts the program which works, not the file which is missing. */

@@ -33,7 +33,8 @@ TEST_F(E2E_Reg, Hide_CreateInSandbox)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\Hide_CreateInSandbox_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto        subkey = L"Software\\AppBoxTest\\Hide_CreateInSandbox_" +
+                               appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const std::string expected = "HiddenValue";
 
     RealHkcuKey real_key(subkey);
@@ -48,7 +49,7 @@ TEST_F(E2E_Reg, Hide_CreateInSandbox)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegWriteValue::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Value = "TestValue";
     req.Data = expected;
 
@@ -77,6 +78,6 @@ TEST_F(E2E_Reg, Hide_CreateInSandbox)
         ASSERT_EQ(RegQueryValueExW(key, L"HostValue", nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size),
                   ERROR_SUCCESS);
         RegCloseKey(key);
-        EXPECT_EQ(appbox::WideToUTF8(buffer), "host");
+        EXPECT_EQ(appbox::WideToUTF8(buffer).value_or(std::string()), "host");
     }
 }

@@ -194,8 +194,8 @@ std::vector<appbox::VariableMapping> appbox::SelectVariables(const std::vector<S
         }
 
         VariableMapping mapping;
-        mapping.name = UTF8ToWide(variable.name);
-        mapping.path = UTF8ToWide(path);
+        mapping.name = UTF8ToWide(variable.name).value_or(std::wstring());
+        mapping.path = UTF8ToWide(path).value_or(std::wstring());
         selected.push_back(std::move(mapping));
     }
 
@@ -237,7 +237,7 @@ std::wstring appbox::ExpandVariables(std::wstring_view text, const std::vector<V
             if (StartsWithIgnoreCase(reference, kVariablePrefix))
             {
                 LOG_W("the value references '{}', whose prefix is not spelled 'APPBOX:', the reference is kept",
-                      WideToUTF8(std::wstring(reference)));
+                      ToUTF8OrEmpty(std::wstring(reference)));
             }
 
             result.append(text.substr(index, end - index + 1));
@@ -260,12 +260,12 @@ std::wstring appbox::ExpandVariables(std::wstring_view text, const std::vector<V
             if (other_case != nullptr)
             {
                 LOG_W("the value references the variable '{}', which the table spells '{}', the reference is kept",
-                      WideToUTF8(std::wstring(name)), WideToUTF8(other_case->name));
+                      ToUTF8OrEmpty(std::wstring(name)), WideToUTF8(other_case->name).value_or("<unconvertible>"));
             }
             else
             {
                 LOG_W("the value references the variable '{}', which the sandbox does not know, the reference is kept",
-                      WideToUTF8(std::wstring(name)));
+                      ToUTF8OrEmpty(std::wstring(name)));
             }
 
             result.append(text.substr(index, end - index + 1));

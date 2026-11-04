@@ -86,7 +86,7 @@ TEST_F(E2E_Fs, Merge_CreatesTheHostFileAfterTheSandboxCopyIsRemoved)
     /* The first run deletes the copy of the sandbox. */
     {
         ProtocolDeleteFileW::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolDeleteFileW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -99,7 +99,7 @@ TEST_F(E2E_Fs, Merge_CreatesTheHostFileAfterTheSandboxCopyIsRemoved)
     /* The second run creates the entry, which no sandbox layer holds now. */
     {
         ProtocolWriteFile::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\data.txt").value_or(std::string());
         req.Data = "written";
         req.dwCreationDisposition = CREATE_ALWAYS;
 

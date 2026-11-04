@@ -40,14 +40,15 @@ TEST_F(E2E_Reg, CompressKey_ReadHandle)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\CompressKey_ReadHandle_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\CompressKey_ReadHandle_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
     ASSERT_TRUE(real_key.SetString(L"HostValue", L"host"));
 
     ProtocolRegKeyApi::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Api = ProtocolRegKeyApi::ApiKind::CompressKey;
     req.Mode = ProtocolRegKeyApi::ModeKind::ReadHandle;
 

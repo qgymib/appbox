@@ -25,7 +25,9 @@
 #include <cstring>
 #include <cwctype>
 #include <memory>
+#include <optional>
 #include <string>
+#include <tl/expected.hpp>
 #include <utility>
 #include <vector>
 
@@ -245,39 +247,39 @@ inline bool ResolveAsVolumePath(const std::wstring& dosNtPath, std::wstring& vol
  *                            volume.
  * @param[in] keepDrive Whether the shape of the path carries the drive of the
  *                      volume.
- * @param[out] viewPath Path of the view, in the shape of \p layerPath.
- * @return true when the path is below the root of the upper layer.
+ * @return The path of the view in the shape of \p layerPath, or
+ *         `std::nullopt` when the path is below no root of the upper layer.
  */
-inline bool ResolveRebaseUpperPathToView(const std::wstring& layerPath, const std::wstring& upperRoot,
-                                         const std::wstring& namespacePrefix, bool keepDrive, std::wstring& viewPath)
+inline std::optional<std::wstring> ResolveRebaseUpperPathToView(const std::wstring& layerPath,
+                                                                const std::wstring& upperRoot,
+                                                                const std::wstring& namespacePrefix,
+                                                                bool                keepDrive) noexcept
 {
     if (upperRoot.empty() || !ResolveIsBelowI(layerPath, upperRoot))
     {
-        return false;
+        return std::nullopt;
     }
 
     const std::wstring remainder = layerPath.substr(upperRoot.size());
     if (remainder.size() < 2 || remainder[0] != L'\\' || !appbox::filesystem::IsDriveLetter(remainder[1]))
     {
-        return false;
+        return std::nullopt;
     }
 
     if (remainder.size() > 2 && remainder[2] != L'\\')
     {
-        return false;
+        return std::nullopt;
     }
 
     /* The path is the root of the drive of the view when it has no component. */
     const std::wstring rest = remainder.size() > 2 ? remainder.substr(2) : L"\\";
     if (!keepDrive)
     {
-        viewPath = rest;
-        return true;
+        return rest;
     }
 
     const wchar_t drive = static_cast<wchar_t>(std::towupper(remainder[1]));
-    viewPath = namespacePrefix + drive + L":" + rest;
-    return true;
+    return namespacePrefix + drive + L":" + rest;
 }
 
 /**
@@ -313,7 +315,22 @@ inline ResolveFileLayerVec ResolveMapViewPathToHost(const appbox::filesystem::Re
     {
         ResolveFileLayer layer;
         layer.base_fs = fs.fs_upper;
-        appbox::MappingPathInSandbox(path, layer.base_fs, layer.file_fs);
+        const auto upper_file = appbox::MappingPathInSandbox(path, layer.base_fs);
+        if (upper_file)
+        {
+            layer.file_fs = *upper_file;
+        }
+        else
+        {
+            /*
+             * The path is no absolute path of a drive, so no layer of the view
+             * can hold the entry. The candidate stays in the list with an empty
+             * file path, which no lookup matches: the layers below and the host
+             * layer are still searched, which is what a view without an upper
+             * layer of its own produced before the mapping reported a code.
+             */
+            layer.file_fs.clear();
+        }
         ret.push_back(layer);
     }
 
@@ -322,8 +339,16 @@ inline ResolveFileLayerVec ResolveMapViewPathToHost(const appbox::filesystem::Re
     {
         ResolveFileLayer layer;
         layer.base_fs = mapping.host_nt_path;
-        if (appbox::PrefixCompareExchange(path, mapping.mapped_nt_path, layer.base_fs, true, layer.file_fs))
+
+        /*
+         * A mapping whose prefix the path does not start with holds no entry of
+         * this path, which is the ordinary case of a path which lives in
+         * another layer: the answer of the comparison is the branch itself.
+         */
+        const auto file_fs = appbox::PrefixCompareExchange(path, mapping.mapped_nt_path, layer.base_fs, true);
+        if (file_fs)
         {
+            layer.file_fs = *file_fs;
             ret.push_back(layer);
         }
     }
@@ -531,9 +556,8 @@ inline void ResolveApplyIsolation(const appbox::filesystem::IsolationTable* isol
         return;
     }
 
-    appbox::FilesystemIsolation mode = appbox::FilesystemIsolation::WriteCopy;
-    appbox::FilesystemEntryKind source_kind = appbox::FilesystemEntryKind::Directory;
-    if (!isolation->Lookup(view_path, mode, source_kind))
+    const auto listed = isolation->Lookup(view_path);
+    if (!listed)
     {
         /*
          * Without a listed entry the default of the view applies, which the
@@ -543,6 +567,9 @@ inline void ResolveApplyIsolation(const appbox::filesystem::IsolationTable* isol
          */
         return;
     }
+
+    const appbox::FilesystemIsolation mode = listed->mode;
+    const appbox::FilesystemEntryKind source_kind = listed->source_kind;
 
     resolve_result.isolation = mode;
     resolve_result.isolationSource = source_kind;
@@ -586,7 +613,7 @@ inline void ResolveApplyIsolation(const appbox::filesystem::IsolationTable* isol
 inline ResolvePlainResult ResolvePlain(const appbox::filesystem::ResolveFs& fs, const std::wstring& vPath,
                                        const appbox::filesystem::ResolveOption&  option,
                                        const appbox::filesystem::IsolationTable* isolation,
-                                       const appbox::filesystem::ResolveOps&     ops)
+                                       const appbox::filesystem::ResolveOps&     ops) noexcept
 {
     auto resolve_result = std::make_shared<appbox::filesystem::ResolveResult>();
     resolve_result->status = appbox::filesystem::ResolveResult::Status::Exists;
@@ -863,16 +890,16 @@ inline std::wstring ResolveJoinRemainder(const std::wstring& target, const std::
 /**
  * @brief Remove the components which name the current or the parent directory.
  * @param[in] path Path of the view.
- * @param[out] normalized Path without a `.` or a `..` component.
- * @return `STATUS_SUCCESS`, or a failure when the path leaves its drive.
+ * @return The path without a `.` or a `..` component, or
+ *         `kReparseTargetNotInView` when the path leaves its drive.
  */
-inline NTSTATUS ResolveNormalizeViewPath(const std::wstring& path, std::wstring& normalized)
+inline tl::expected<std::wstring, ErrorCode> ResolveNormalizeViewPath(const std::wstring& path) noexcept
 {
     std::wstring              root;
     std::vector<std::wstring> components;
     if (!ResolveSplitViewPath(path, root, components))
     {
-        return STATUS_REPARSE_POINT_NOT_RESOLVED;
+        return tl::make_unexpected(ErrorCode::kReparseTargetNotInView);
     }
 
     std::vector<std::wstring> collapsed;
@@ -889,7 +916,7 @@ inline NTSTATUS ResolveNormalizeViewPath(const std::wstring& path, std::wstring&
             /* The target leaves the drive of the view, which no layer holds. */
             if (collapsed.empty())
             {
-                return STATUS_REPARSE_POINT_NOT_RESOLVED;
+                return tl::make_unexpected(ErrorCode::kReparseTargetNotInView);
             }
             collapsed.pop_back();
             continue;
@@ -900,12 +927,23 @@ inline NTSTATUS ResolveNormalizeViewPath(const std::wstring& path, std::wstring&
 
     if (collapsed.empty())
     {
-        normalized = root + L"\\";
-        return STATUS_SUCCESS;
+        return root + L"\\";
     }
 
-    normalized = ResolveJoinComponents(root, collapsed, collapsed.size());
-    return STATUS_SUCCESS;
+    return ResolveJoinComponents(root, collapsed, collapsed.size());
+}
+
+/**
+ * @brief Build the failure a target which is no path of the view reports.
+ *
+ * The status is the one the view answered before the code existed, so a caller
+ * which forwards the status of the result behaves the same.
+ *
+ * @return The failure of a target which is not in the view.
+ */
+inline appbox::filesystem::ResolveError ResolveTargetNotInViewError() noexcept
+{
+    return appbox::filesystem::ResolveError{ ErrorCode::kReparseTargetNotInView, STATUS_REPARSE_POINT_NOT_RESOLVED };
 }
 
 /**
@@ -923,21 +961,18 @@ inline NTSTATUS ResolveNormalizeViewPath(const std::wstring& path, std::wstring&
  * @param[in] nameAttributes Lookup attributes of the call.
  * @param[in] isolation Isolation modes of the virtual filesystem, may be null.
  * @param[in] ops Operations of the resolution.
- * @param[out] expanded Path of the view which the caller reaches, the path
- *                      itself when it carries no redirecting reparse point.
- * @return `STATUS_SUCCESS` or the failure of the view.
+ * @return Path of the view which the caller reaches - the path itself when it
+ *         carries no redirecting reparse point - or the failure of the view.
  */
-inline NTSTATUS ResolveExpandFirstReparsePoint(const appbox::filesystem::ResolveFs& fs, const std::wstring& viewPath,
-                                               bool followFinal, ULONG nameAttributes,
-                                               const appbox::filesystem::IsolationTable* isolation,
-                                               const appbox::filesystem::ResolveOps& ops, std::wstring& expanded)
+inline tl::expected<std::wstring, appbox::filesystem::ResolveError> ResolveExpandFirstReparsePoint(
+    const appbox::filesystem::ResolveFs& fs, const std::wstring& viewPath, bool followFinal, ULONG nameAttributes,
+    const appbox::filesystem::IsolationTable* isolation, const appbox::filesystem::ResolveOps& ops) noexcept
 {
     std::wstring              root;
     std::vector<std::wstring> components;
     if (!ResolveSplitViewPath(viewPath, root, components))
     {
-        expanded = viewPath;
-        return STATUS_SUCCESS;
+        return viewPath;
     }
 
     for (std::size_t index = 0; index < components.size(); ++index)
@@ -976,8 +1011,8 @@ inline NTSTATUS ResolveExpandFirstReparsePoint(const appbox::filesystem::Resolve
         }
         if (!NT_SUCCESS(read))
         {
-            ResolveWarn(ops, L"failed to read the reparse data of " + hit.fPath + L": " + std::to_wstring(read));
-            return STATUS_REPARSE_POINT_NOT_RESOLVED;
+            /* The status of the layer reaches the caller unchanged. */
+            return tl::make_unexpected(appbox::filesystem::ResolveError{ ErrorCode::kReparseDataInvalid, read });
         }
         if (!appbox::filesystem::IsRedirectingReparseTag(appbox::filesystem::ReparseTagOf(data)))
         {
@@ -985,27 +1020,23 @@ inline NTSTATUS ResolveExpandFirstReparsePoint(const appbox::filesystem::Resolve
             continue;
         }
 
-        std::wstring   target;
-        const NTSTATUS translated = appbox::filesystem::ReparseTargetToViewPathCore(data, prefix, fs, target);
-        if (!NT_SUCCESS(translated))
+        const auto target = appbox::filesystem::ReparseTargetToViewPathCore(data, prefix, fs);
+        if (!target)
         {
-            ResolveWarn(ops, L"the reparse point of " + prefix + L" names no path of the view");
-            return translated;
+            return tl::make_unexpected(target.error());
         }
 
-        ResolveDebug(ops, L"reparse point: " + prefix + L" -> " + target);
-        expanded = ResolveJoinRemainder(target, components, index + 1);
-        return STATUS_SUCCESS;
+        return ResolveJoinRemainder(*target, components, index + 1);
     }
 
-    expanded = viewPath;
-    return STATUS_SUCCESS;
+    /* The path carries no component which redirects the namespace. */
+    return viewPath;
 }
 
 } // namespace detail
 } // namespace appbox
 
-inline ULONG appbox::filesystem::ReparseTagOf(const std::vector<BYTE>& data)
+inline ULONG appbox::filesystem::ReparseTagOf(const std::vector<BYTE>& data) noexcept
 {
     if (data.size() < sizeof(ULONG))
     {
@@ -1017,12 +1048,13 @@ inline ULONG appbox::filesystem::ReparseTagOf(const std::vector<BYTE>& data)
     return tag;
 }
 
-inline bool appbox::filesystem::ReadReparseTarget(const std::vector<BYTE>& data, ReparseTarget& target)
+inline tl::expected<appbox::filesystem::ReparseTarget, appbox::ErrorCode> appbox::filesystem::ReadReparseTarget(
+    const std::vector<BYTE>& data) noexcept
 {
     /* The four fields which count the names have to be inside the data. */
     if (data.size() < kReparseHeaderSize + 4 * sizeof(USHORT))
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kReparseDataInvalid);
     }
 
     const auto* buffer = reinterpret_cast<const REPARSE_DATA_BUFFER*>(data.data());
@@ -1032,6 +1064,8 @@ inline bool appbox::filesystem::ReadReparseTarget(const std::vector<BYTE>& data,
     USHORT      printOffset = 0;
     USHORT      printLength = 0;
     std::size_t pathBufferOffset = 0;
+
+    ReparseTarget target;
 
     if (buffer->ReparseTag == IO_REPARSE_TAG_MOUNT_POINT)
     {
@@ -1046,7 +1080,7 @@ inline bool appbox::filesystem::ReadReparseTarget(const std::vector<BYTE>& data,
     {
         if (data.size() < kSymbolicLinkPathBufferOffset)
         {
-            return false;
+            return tl::make_unexpected(ErrorCode::kReparseDataInvalid);
         }
 
         const auto& variant = buffer->ReparseBuffer.SymbolicLinkReparseBuffer;
@@ -1059,15 +1093,20 @@ inline bool appbox::filesystem::ReadReparseTarget(const std::vector<BYTE>& data,
     }
     else
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kReparseDataInvalid);
     }
 
-    return detail::ResolveReadReparseName(data, pathBufferOffset, substituteOffset, substituteLength,
-                                          target.substitute) &&
-           detail::ResolveReadReparseName(data, pathBufferOffset, printOffset, printLength, target.print);
+    if (!detail::ResolveReadReparseName(data, pathBufferOffset, substituteOffset, substituteLength,
+                                        target.substitute) ||
+        !detail::ResolveReadReparseName(data, pathBufferOffset, printOffset, printLength, target.print))
+    {
+        return tl::make_unexpected(ErrorCode::kReparseDataInvalid);
+    }
+
+    return target;
 }
 
-inline bool appbox::filesystem::IsRedirectingReparseTag(ULONG tag)
+inline bool appbox::filesystem::IsRedirectingReparseTag(ULONG tag) noexcept
 {
     return tag == IO_REPARSE_TAG_MOUNT_POINT || tag == IO_REPARSE_TAG_SYMLINK;
 }
@@ -1076,7 +1115,7 @@ inline appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveCore(co
                                                                               const std::wstring&   view_path,
                                                                               const ResolveOption&  option,
                                                                               const IsolationTable* isolation,
-                                                                              const ResolveOps&     ops)
+                                                                              const ResolveOps&     ops) noexcept
 {
     detail::ResolvePlainResult plain = detail::ResolvePlain(fs, view_path, option, isolation, ops);
 
@@ -1093,36 +1132,39 @@ inline appbox::filesystem::ResolveResult::Ptr appbox::filesystem::ResolveCore(co
      * the path the caller spelled, and it keeps the file system of a layer
      * from following a link the view never decided about.
      */
-    std::wstring   expanded;
-    const NTSTATUS status = ExpandReparsePointsCore(fs, plain.viewPath, option.reparseFollow, option.NameAttributes,
-                                                    isolation, ops, expanded);
-    if (!NT_SUCCESS(status))
+    const auto expanded =
+        ExpandReparsePointsCore(fs, plain.viewPath, option.reparseFollow, option.NameAttributes, isolation, ops);
+    if (!expanded)
     {
+        /*
+         * The class of the failure stays in `common/`: the result carries the
+         * status the layer reported, which is what the caller forwards, and the
+         * sink of the run reports the code next to it.
+         */
         detail::ResolveWarn(ops, L"failed to resolve the reparse point of " + plain.viewPath + L": " +
-                                     std::to_wstring(status));
-        plain.result->reparseStatus = status;
+                                     std::to_wstring(static_cast<std::int32_t>(expanded.error().code)) + L" / " +
+                                     std::to_wstring(expanded.error().status));
+        plain.result->reparseStatus = expanded.error().status;
         return plain.result;
     }
 
-    if (expanded == plain.viewPath)
+    if (*expanded == plain.viewPath)
     {
         /* The path carries no link which redirects the namespace. */
         return plain.result;
     }
 
-    detail::ResolvePlainResult resolved = detail::ResolvePlain(fs, expanded, option, isolation, ops);
+    detail::ResolvePlainResult resolved = detail::ResolvePlain(fs, *expanded, option, isolation, ops);
     return resolved.result;
 }
 
-inline NTSTATUS appbox::filesystem::ExpandReparsePointsCore(const ResolveFs& fs, const std::wstring& view_path,
-                                                            ReparseFollowMode mode, ULONG name_attributes,
-                                                            const IsolationTable* isolation, const ResolveOps& ops,
-                                                            std::wstring& effective_view_path)
+inline tl::expected<std::wstring, appbox::filesystem::ResolveError> appbox::filesystem::ExpandReparsePointsCore(
+    const ResolveFs& fs, const std::wstring& view_path, ReparseFollowMode mode, ULONG name_attributes,
+    const IsolationTable* isolation, const ResolveOps& ops) noexcept
 {
     if (mode == ReparseFollowMode::None)
     {
-        effective_view_path = view_path;
-        return STATUS_SUCCESS;
+        return view_path;
     }
 
     /*
@@ -1135,43 +1177,39 @@ inline NTSTATUS appbox::filesystem::ExpandReparsePointsCore(const ResolveFs& fs,
 
     for (std::size_t depth = 0; depth <= kMaxReparseDepth; ++depth)
     {
-        std::wstring   expanded;
-        const NTSTATUS status = detail::ResolveExpandFirstReparsePoint(fs, current, mode == ReparseFollowMode::All,
-                                                                       name_attributes, isolation, ops, expanded);
-        if (!NT_SUCCESS(status))
+        const auto expanded = detail::ResolveExpandFirstReparsePoint(fs, current, mode == ReparseFollowMode::All,
+                                                                     name_attributes, isolation, ops);
+        if (!expanded)
         {
-            return status;
+            return tl::make_unexpected(expanded.error());
         }
 
-        if (expanded == current)
+        if (*expanded == current)
         {
-            effective_view_path = streamName.empty() ? current : current + L":" + streamName;
-            return STATUS_SUCCESS;
+            return streamName.empty() ? current : current + L":" + streamName;
         }
 
-        current = std::move(expanded);
+        current = std::move(*expanded);
     }
 
-    detail::ResolveWarn(ops, L"the chain of reparse points of " + view_path + L" is too deep");
-    return STATUS_REPARSE_POINT_NOT_RESOLVED;
+    return tl::make_unexpected(ResolveError{ ErrorCode::kReparseDepthExceeded, STATUS_REPARSE_POINT_NOT_RESOLVED });
 }
 
-inline NTSTATUS appbox::filesystem::ReparseTargetToViewPathCore(const std::vector<BYTE>& data,
-                                                                const std::wstring& link_view_path, const ResolveFs& fs,
-                                                                std::wstring& target_view_path)
+inline tl::expected<std::wstring, appbox::filesystem::ResolveError> appbox::filesystem::ReparseTargetToViewPathCore(
+    const std::vector<BYTE>& data, const std::wstring& link_view_path, const ResolveFs& fs) noexcept
 {
-    ReparseTarget target;
-    if (!ReadReparseTarget(data, target))
+    const auto target = ReadReparseTarget(data);
+    if (!target)
     {
-        return STATUS_NOT_A_REPARSE_POINT;
+        return tl::make_unexpected(ResolveError{ target.error(), STATUS_NOT_A_REPARSE_POINT });
     }
 
-    if (target.substitute.empty())
+    if (target->substitute.empty())
     {
-        return STATUS_REPARSE_POINT_NOT_RESOLVED;
+        return tl::make_unexpected(detail::ResolveTargetNotInViewError());
     }
 
-    if (target.relative)
+    if (target->relative)
     {
         /*
          * The view maps a layer by replacing the prefix of the path, so the
@@ -1179,36 +1217,47 @@ inline NTSTATUS appbox::filesystem::ReparseTargetToViewPathCore(const std::vecto
          * relative to the directory of the link names the same entry in the
          * view as it does in the layer.
          */
-        std::wstring joined = DirName(link_view_path);
-        if (joined.empty())
+        const auto dir_name = DirName(link_view_path);
+        if (!dir_name)
         {
-            return STATUS_REPARSE_POINT_NOT_RESOLVED;
+            return tl::make_unexpected(detail::ResolveTargetNotInViewError());
         }
+
+        std::wstring joined = *dir_name;
         if (joined.back() != L'\\')
         {
             joined += L'\\';
         }
-        joined += target.substitute;
+        joined += target->substitute;
 
-        return detail::ResolveNormalizeViewPath(joined, target_view_path);
+        const auto normalized = detail::ResolveNormalizeViewPath(joined);
+        if (!normalized)
+        {
+            return tl::make_unexpected(detail::ResolveTargetNotInViewError());
+        }
+        return *normalized;
     }
 
-    std::wstring   viewPath;
-    const NTSTATUS status = ViewNamespaceTargetCore(target.substitute, fs, viewPath);
-    if (!NT_SUCCESS(status))
+    const auto view_path = ViewNamespaceTargetCore(target->substitute, fs);
+    if (!view_path)
     {
-        return status;
+        return tl::make_unexpected(view_path.error());
     }
 
-    return detail::ResolveNormalizeViewPath(viewPath, target_view_path);
+    const auto normalized = detail::ResolveNormalizeViewPath(*view_path);
+    if (!normalized)
+    {
+        return tl::make_unexpected(detail::ResolveTargetNotInViewError());
+    }
+    return *normalized;
 }
 
-inline NTSTATUS appbox::filesystem::ViewNamespaceTargetCore(const std::wstring& target, const ResolveFs& fs,
-                                                            std::wstring& view_target)
+inline tl::expected<std::wstring, appbox::filesystem::ResolveError> appbox::filesystem::ViewNamespaceTargetCore(
+    const std::wstring& target, const ResolveFs& fs) noexcept
 {
     if (target.empty())
     {
-        return STATUS_REPARSE_POINT_NOT_RESOLVED;
+        return tl::make_unexpected(detail::ResolveTargetNotInViewError());
     }
 
     /*
@@ -1216,11 +1265,10 @@ inline NTSTATUS appbox::filesystem::ViewNamespaceTargetCore(const std::wstring& 
      * for a handle, so a link which an application creates out of a handle it
      * holds would otherwise store the layout of the sandbox.
      */
-    std::wstring viewPath;
-    if (RebaseLayerPathToViewCore(fs, target, viewPath))
+    const auto rebased = RebaseLayerPathToViewCore(fs, target);
+    if (rebased)
     {
-        view_target = viewPath;
-        return STATUS_SUCCESS;
+        return *rebased;
     }
 
     /*
@@ -1229,21 +1277,21 @@ inline NTSTATUS appbox::filesystem::ViewNamespaceTargetCore(const std::wstring& 
      * and `\??\Volume{GUID}` into the drive of the view, and refuses the
      * namespaces which belong to another isolation domain.
      */
-    if (appbox::MappingAsDosNtPath(target, viewPath))
+    const auto mapped = appbox::MappingAsDosNtPath(target);
+    if (mapped)
     {
-        view_target = viewPath;
-        return STATUS_SUCCESS;
+        return *mapped;
     }
 
-    return STATUS_REPARSE_POINT_NOT_RESOLVED;
+    return tl::make_unexpected(detail::ResolveTargetNotInViewError());
 }
 
-inline bool appbox::filesystem::RebaseLayerPathToViewCore(const ResolveFs& fs, const std::wstring& layer_path,
-                                                          std::wstring& view_path)
+inline tl::expected<std::wstring, appbox::filesystem::ResolveError> appbox::filesystem::RebaseLayerPathToViewCore(
+    const ResolveFs& fs, const std::wstring& layer_path) noexcept
 {
     if (layer_path.empty())
     {
-        return false;
+        return tl::make_unexpected(detail::ResolveTargetNotInViewError());
     }
 
     /*
@@ -1252,10 +1300,11 @@ inline bool appbox::filesystem::RebaseLayerPathToViewCore(const ResolveFs& fs, c
      */
     if (!detail::ResolveDosNtNamespace(layer_path).empty())
     {
-        if (detail::ResolveRebaseUpperPathToView(layer_path, fs.fs_upper, detail::ResolveDosNtNamespace(fs.fs_upper),
-                                                 true, view_path))
+        const auto upper = detail::ResolveRebaseUpperPathToView(layer_path, fs.fs_upper,
+                                                                detail::ResolveDosNtNamespace(fs.fs_upper), true);
+        if (upper)
         {
-            return true;
+            return *upper;
         }
 
         for (const auto& mapping : fs.fs_lower)
@@ -1265,52 +1314,51 @@ inline bool appbox::filesystem::RebaseLayerPathToViewCore(const ResolveFs& fs, c
                 continue;
             }
 
-            view_path = mapping.mapped_nt_path + layer_path.substr(mapping.host_nt_path.size());
-            return true;
+            return mapping.mapped_nt_path + layer_path.substr(mapping.host_nt_path.size());
         }
 
-        return false;
+        return tl::make_unexpected(detail::ResolveTargetNotInViewError());
     }
 
     /*
      * The name of a handle starts at the root of its volume, so the same
      * comparison runs on the two paths without their namespace and drive.
      */
-    std::wstring upperPath;
-    if (detail::ResolveAsVolumePath(fs.fs_upper, upperPath) &&
-        detail::ResolveRebaseUpperPathToView(layer_path, upperPath, L"", false, view_path))
+    std::wstring upper_path;
+    if (detail::ResolveAsVolumePath(fs.fs_upper, upper_path))
     {
-        return true;
+        const auto upper = detail::ResolveRebaseUpperPathToView(layer_path, upper_path, L"", false);
+        if (upper)
+        {
+            return *upper;
+        }
     }
 
     for (const auto& mapping : fs.fs_lower)
     {
-        std::wstring lowerPath;
-        std::wstring mappedPath;
-        if (!detail::ResolveAsVolumePath(mapping.host_nt_path, lowerPath) ||
-            !detail::ResolveAsVolumePath(mapping.mapped_nt_path, mappedPath))
+        std::wstring lower_path;
+        std::wstring mapped_path;
+        if (!detail::ResolveAsVolumePath(mapping.host_nt_path, lower_path) ||
+            !detail::ResolveAsVolumePath(mapping.mapped_nt_path, mapped_path))
         {
             continue;
         }
-        if (lowerPath.empty() || !detail::ResolveIsBelowI(layer_path, lowerPath))
+        if (lower_path.empty() || !detail::ResolveIsBelowI(layer_path, lower_path))
         {
             continue;
         }
 
-        const std::wstring remainder = layer_path.substr(lowerPath.size());
-        if (mappedPath == L"\\")
+        const std::wstring remainder = layer_path.substr(lower_path.size());
+        if (mapped_path == L"\\")
         {
             /* The layer is mounted at the root of the volume of the view. */
-            view_path = remainder.empty() ? L"\\" : remainder;
+            return remainder.empty() ? std::wstring(L"\\") : remainder;
         }
-        else
-        {
-            view_path = mappedPath + remainder;
-        }
-        return true;
+
+        return mapped_path + remainder;
     }
 
-    return false;
+    return tl::make_unexpected(detail::ResolveTargetNotInViewError());
 }
 
 #endif // APPBOX_COMMON_DETAILS_RESOLVE_CORE_DETAIL_HPP

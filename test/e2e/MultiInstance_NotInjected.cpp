@@ -38,7 +38,7 @@ std::vector<std::string> LogFilesBelow(const std::filesystem::path& dir)
     {
         if (entry.is_regular_file(ec) && entry.path().extension() == L".log")
         {
-            files.push_back(appbox::WideToUTF8(entry.path().wstring()));
+            files.push_back(appbox::WideToUTF8(entry.path().wstring()).value_or(std::string()));
         }
     }
 
@@ -104,7 +104,7 @@ TEST_F(E2E_MultiInstance, PackedLauncherIsNotInjected)
     appbox::LauncherStartup packed;
     packed.trigger = "packed";
     packed.auto_start = false;
-    packed.executable = appbox::WideToUTF8(program.wstring());
+    packed.executable = appbox::WideToUTF8(program.wstring()).value_or(std::string());
     packed.arguments = { "--X-AppBox-LogLevel", "info" };
     launcher_config.startups.push_back(std::move(packed));
 
@@ -136,7 +136,8 @@ TEST_F(E2E_MultiInstance, PackedLauncherIsNotInjected)
      * named after its image: a file of that name would prove that the injection
      * module logged for the packed launcher.
      */
-    const auto program_name = appbox::WideToUTF8(std::filesystem::path(kSelfExtractingProgramName).stem().wstring());
+    const auto program_name =
+        appbox::WideToUTF8(std::filesystem::path(kSelfExtractingProgramName).stem().wstring()).value_or(std::string());
     for (const auto& log : LogFilesBelow(cwd / appbox::test::kCaseLogDirName))
     {
         EXPECT_FALSE(CarriesName(log, program_name)) << "the outer sandbox logged for the packed launcher: " << log;

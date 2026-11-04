@@ -139,7 +139,7 @@ NTSTATUS ReadReparseData(const std::wstring& layer_path, std::vector<BYTE>& data
  */
 void LogWarn(const std::wstring& message)
 {
-    SPDLOG_WARN("{}", appbox::WideToUTF8(message));
+    SPDLOG_WARN("{}", appbox::WideToUTF8(message).value_or("<unconvertible>"));
 }
 
 /**
@@ -148,7 +148,7 @@ void LogWarn(const std::wstring& message)
  */
 void LogDebug(const std::wstring& message)
 {
-    SPDLOG_DEBUG("{}", appbox::WideToUTF8(message));
+    SPDLOG_DEBUG("{}", appbox::WideToUTF8(message).value_or("<unconvertible>"));
 }
 
 /**
@@ -200,7 +200,7 @@ const char* StatusText(appbox::filesystem::ResolveResult::Status status)
 
 appbox::ViewPathResolver::ViewPathResolver(const appbox::SandboxConfig& config)
 {
-    fs_.fs_upper = appbox::UTF8ToWide(config.fs_upper);
+    fs_.fs_upper = appbox::UTF8ToWide(config.fs_upper).value_or(std::wstring());
 
     /*
      * The isolation file of a layer lists paths whose first component is the
@@ -213,8 +213,8 @@ appbox::ViewPathResolver::ViewPathResolver(const appbox::SandboxConfig& config)
     for (const auto& lower : config.fs_lower)
     {
         appbox::filesystem::ResolveFsMapping mapping;
-        mapping.mapped_nt_path = appbox::UTF8ToWide(lower.mapped_nt_path);
-        mapping.host_nt_path = appbox::UTF8ToWide(lower.host_nt_path);
+        mapping.mapped_nt_path = appbox::UTF8ToWide(lower.mapped_nt_path).value_or(std::wstring());
+        mapping.host_nt_path = appbox::UTF8ToWide(lower.host_nt_path).value_or(std::wstring());
         fs_.fs_lower.push_back(mapping);
 
         const auto layer_key = appbox::filesystem::IsolationTable::LayerKeyOf(mapping.host_nt_path);
@@ -232,7 +232,8 @@ appbox::ViewPathResolver::ViewPathResolver(const appbox::SandboxConfig& config)
      */
     for (const auto& path : config.filesystem_isolation_dos_paths)
     {
-        std::ifstream stream(std::filesystem::path(appbox::UTF8ToWide(path)), std::ios::binary);
+        const std::wstring host_path = appbox::UTF8ToWide(path).value_or(std::wstring());
+        std::ifstream      stream(std::filesystem::path(host_path), std::ios::binary);
         if (!stream.is_open())
         {
             SPDLOG_DEBUG("the filesystem isolation file does not exist: {}", path);
@@ -241,18 +242,20 @@ appbox::ViewPathResolver::ViewPathResolver(const appbox::SandboxConfig& config)
 
         const std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
 
-        std::vector<std::wstring> unmapped;
-        std::string               error;
-        if (!isolation_.Parse(text, layers, unmapped, error))
+        const auto outcome = isolation_.Parse(text, layers);
+        if (!outcome)
         {
-            SPDLOG_WARN("the filesystem isolation file '{}' is ignored: {}", path, error);
+            SPDLOG_WARN("the filesystem isolation file '{}' is ignored: {}", path,
+                        outcome.error() == appbox::ErrorCode::kIsolationDocumentUnsupportedVersion
+                            ? "its schema version is not supported"
+                            : "it does not fit its schema");
             continue;
         }
 
-        for (const auto& entry : unmapped)
+        for (const auto& entry : outcome->unmapped)
         {
             SPDLOG_WARN("the filesystem isolation file '{}' lists a path which no layer of the view maps: {}", path,
-                        appbox::WideToUTF8(entry));
+                        appbox::WideToUTF8(entry).value_or("<unconvertible>"));
         }
     }
 
@@ -270,18 +273,16 @@ bool appbox::ViewPathResolver::Resolve(const std::wstring& view_path, std::wstri
      * instead of a folder of this machine, so the layer key is expanded first.
      * A path without a key is a path of the view already and stays unchanged.
      */
-    std::wstring dos_path;
-    try
+    const auto expanded = appbox::ExpandKnownFolder(view_path);
+    if (!expanded)
     {
-        dos_path = appbox::ExpandKnownFolder(view_path);
-    }
-    catch (const std::exception& e)
-    {
-        error = "the known folder of the image cannot be resolved: " + appbox::WideToUTF8(view_path) + " (" + e.what() +
-                ")";
+        error = "the known folder of the image cannot be resolved: " +
+                appbox::WideToUTF8(view_path).value_or(std::string()) + " (" +
+                std::to_string(static_cast<std::int32_t>(expanded.error())) + ")";
         return false;
     }
 
+    const std::wstring& dos_path = *expanded;
     if (dos_path.empty())
     {
         error = "the path of the image is empty";
@@ -292,8 +293,8 @@ bool appbox::ViewPathResolver::Resolve(const std::wstring& view_path, std::wstri
     const DWORD  converted = appbox::ConvertDosPathToNtPath(dos_path, nt_path);
     if (converted != 0)
     {
-        error = "the path of the image cannot be resolved: " + appbox::WideToUTF8(dos_path) + " (" +
-                std::to_string(converted) + ")";
+        error = "the path of the image cannot be resolved: " + appbox::WideToUTF8(dos_path).value_or(std::string()) +
+                " (" + std::to_string(converted) + ")";
         return false;
     }
 
@@ -310,24 +311,26 @@ bool appbox::ViewPathResolver::Resolve(const std::wstring& view_path, std::wstri
      */
     if (!NT_SUCCESS(result->reparseStatus))
     {
-        error = "a reparse point of the path names no path of the view: " + appbox::WideToUTF8(dos_path);
+        error = "a reparse point of the path names no path of the view: " +
+                appbox::WideToUTF8(dos_path).value_or(std::string());
         return false;
     }
 
     if (result->status != appbox::filesystem::ResolveResult::Status::Exists || result->hPath.empty())
     {
-        error = "the image was not found in the sandbox view: " + appbox::WideToUTF8(dos_path) + " (" +
-                StatusText(result->status) + ")";
+        error = "the image was not found in the sandbox view: " + appbox::WideToUTF8(dos_path).value_or(std::string()) +
+                " (" + StatusText(result->status) + ")";
         return false;
     }
 
     host_path = ToDosPath(result->hPath[0].fPath);
     if (host_path.empty())
     {
-        error = "the layer of the image has no host path: " + appbox::WideToUTF8(dos_path);
+        error = "the layer of the image has no host path: " + appbox::WideToUTF8(dos_path).value_or(std::string());
         return false;
     }
 
-    SPDLOG_DEBUG("the image of '{}' is '{}'", appbox::WideToUTF8(dos_path), appbox::WideToUTF8(host_path));
+    SPDLOG_DEBUG("the image of '{}' is '{}'", appbox::WideToUTF8(dos_path).value_or("<unconvertible>"),
+                 appbox::WideToUTF8(host_path).value_or("<unconvertible>"));
     return true;
 }

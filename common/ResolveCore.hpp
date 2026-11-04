@@ -2,9 +2,12 @@
 #define APPBOX_COMMON_RESOLVE_CORE_HPP
 
 #include "WinAPI.h" /* Must be first include file */
+#include "ErrorCode.hpp"
+#include "ResolveError.hpp"
 #include "ResolveTypes.hpp"
 #include <cstddef>
 #include <string>
+#include <tl/expected.hpp>
 #include <vector>
 
 namespace appbox::filesystem
@@ -120,15 +123,15 @@ struct ReparseTarget
  * @param[in] data Data of a reparse point.
  * @return The tag, zero when the data is too short to carry one.
  */
-ULONG ReparseTagOf(const std::vector<BYTE>& data);
+ULONG ReparseTagOf(const std::vector<BYTE>& data) noexcept;
 
 /**
  * @brief Read the target of the data of a reparse point.
  * @param[in] data Data of the reparse point.
- * @param[out] target The target the data carries.
- * @return true when the data carries a target the view understands.
+ * @return The target the data carries, or `kReparseDataInvalid` when the data
+ *         carries no target the view understands.
  */
-bool ReadReparseTarget(const std::vector<BYTE>& data, ReparseTarget& target);
+tl::expected<ReparseTarget, ErrorCode> ReadReparseTarget(const std::vector<BYTE>& data) noexcept;
 
 /**
  * @brief Whether a reparse point redirects the namespace of the view.
@@ -144,7 +147,7 @@ bool ReadReparseTarget(const std::vector<BYTE>& data, ReparseTarget& target);
  * @param[in] tag Tag of a reparse point.
  * @return true when the tag names a target the view has to resolve.
  */
-bool IsRedirectingReparseTag(ULONG tag);
+bool IsRedirectingReparseTag(ULONG tag) noexcept;
 
 /**
  * @brief Resolve a path of the view.
@@ -157,6 +160,10 @@ bool IsRedirectingReparseTag(ULONG tag);
  * point of a redirecting tag is expanded first, so the isolation of the target
  * decides the answer.
  *
+ * A failure of an expansion is part of the result and not of the answer of the
+ * call: the caller reads `ResolveResult::reparseStatus`, which carries the
+ * status the failure reported.
+ *
  * @param[in] fs The layers of the view.
  * @param[in] view_path Path of the view to resolve.
  * @param[in] option Lookup option.
@@ -166,7 +173,7 @@ bool IsRedirectingReparseTag(ULONG tag);
  * @return The resolution result.
  */
 ResolveResult::Ptr ResolveCore(const ResolveFs& fs, const std::wstring& view_path, const ResolveOption& option,
-                               const IsolationTable* isolation, const ResolveOps& ops);
+                               const IsolationTable* isolation, const ResolveOps& ops) noexcept;
 
 /**
  * @brief Expand the reparse points of a path of the view.
@@ -188,13 +195,13 @@ ResolveResult::Ptr ResolveCore(const ResolveFs& fs, const std::wstring& view_pat
  * @param[in] isolation Isolation modes of the view, null for a view without an
  *                      isolation.
  * @param[in] ops Access to the file system, see ResolveOps.
- * @param[out] effective_view_path Path of the view the caller reaches, only set
- *                                 when the call succeeds.
- * @return `STATUS_SUCCESS` or the failure of the view.
+ * @return The path of the view the caller reaches, or the failure of the view
+ *         together with the status the file system reported.
  */
-NTSTATUS ExpandReparsePointsCore(const ResolveFs& fs, const std::wstring& view_path, ReparseFollowMode mode,
-                                 ULONG name_attributes, const IsolationTable* isolation, const ResolveOps& ops,
-                                 std::wstring& effective_view_path);
+tl::expected<std::wstring, ResolveError> ExpandReparsePointsCore(const ResolveFs& fs, const std::wstring& view_path,
+                                                                 ReparseFollowMode mode, ULONG name_attributes,
+                                                                 const IsolationTable* isolation,
+                                                                 const ResolveOps&     ops) noexcept;
 
 /**
  * @brief Turn the target of a reparse point of a link into a path of the view.
@@ -209,13 +216,11 @@ NTSTATUS ExpandReparsePointsCore(const ResolveFs& fs, const std::wstring& view_p
  * @param[in] data Data of the reparse point.
  * @param[in] link_view_path Path of the view of the link itself.
  * @param[in] fs The layers of the view.
- * @param[out] target_view_path Path of the view the link names, only set when
- *                              the call succeeds.
- * @return `STATUS_SUCCESS`, `STATUS_NOT_A_REPARSE_POINT` when the data carries
- *         no reparse point the view understands, or the failure of the view.
+ * @return The path of the view the link names, or the failure of the view.
  */
-NTSTATUS ReparseTargetToViewPathCore(const std::vector<BYTE>& data, const std::wstring& link_view_path,
-                                     const ResolveFs& fs, std::wstring& target_view_path);
+tl::expected<std::wstring, ResolveError> ReparseTargetToViewPathCore(const std::vector<BYTE>& data,
+                                                                     const std::wstring&      link_view_path,
+                                                                     const ResolveFs&         fs) noexcept;
 
 /**
  * @brief Turn the target of a reparse point into a path of the view.
@@ -230,12 +235,11 @@ NTSTATUS ReparseTargetToViewPathCore(const std::vector<BYTE>& data, const std::w
  * @param[in] target Name the reparse point follows, as the caller or the layer
  *                   spells it.
  * @param[in] fs The layers of the view.
- * @param[out] view_target Path of the view which the target names, only set when
- *                         the call succeeds.
- * @return `STATUS_SUCCESS`, or `STATUS_REPARSE_POINT_NOT_RESOLVED` when the
- *         target is no path of the view.
+ * @return Path of the view which the target names, or `kReparseTargetNotInView`
+ *         when the target is no path of the view.
  */
-NTSTATUS ViewNamespaceTargetCore(const std::wstring& target, const ResolveFs& fs, std::wstring& view_target);
+tl::expected<std::wstring, ResolveError> ViewNamespaceTargetCore(const std::wstring& target,
+                                                                 const ResolveFs&    fs) noexcept;
 
 /**
  * @brief Translate the path of a layer back into the path of the view.
@@ -255,11 +259,12 @@ NTSTATUS ViewNamespaceTargetCore(const std::wstring& target, const ResolveFs& fs
  * @param[in] fs The layers of the view.
  * @param[in] layer_path Path of the upper layer, of a lower layer or of the host
  *                       layer, relative to the root of its volume.
- * @param[out] view_path Path of the view the layer path belongs to, in the same
- *                       form.
- * @return true when the path is below a layer of the view.
+ * @return The path of the view the layer path belongs to, or
+ *         `kReparseTargetNotInView` when the path is below no layer of the
+ *         view.
  */
-bool RebaseLayerPathToViewCore(const ResolveFs& fs, const std::wstring& layer_path, std::wstring& view_path);
+tl::expected<std::wstring, ResolveError> RebaseLayerPathToViewCore(const ResolveFs&    fs,
+                                                                   const std::wstring& layer_path) noexcept;
 
 } // namespace appbox::filesystem
 

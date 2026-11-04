@@ -292,10 +292,11 @@ static NTSTATUS NTAPI Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredA
                                 FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
     }
 
-    std::wstring nativate_fs_path;
-    if (!appbox::MappingAsDosNtPath(nativate_fs_nt_path, nativate_fs_path))
+    const auto nativate_fs_path = appbox::MappingAsDosNtPath(nativate_fs_nt_path);
+    if (!nativate_fs_path)
     {
-        LOG_D(L"MappingAsDosNtPath failed: {}", nativate_fs_nt_path);
+        LOG_D(L"MappingAsDosNtPath failed: {} ({})", nativate_fs_nt_path,
+              static_cast<int32_t>(nativate_fs_path.error()));
         return sys_NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize,
                                 FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
     }
@@ -314,7 +315,7 @@ static NTSTATUS NTAPI Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredA
      * neither forge a marker nor hide an entry with one, while a call which
      * only looks the entry up reports an entry which is missing.
      */
-    const auto marker_placement = appbox::filesystem::ReservedMarkerNamePlacement(nativate_fs_path);
+    const auto marker_placement = appbox::filesystem::ReservedMarkerNamePlacement(*nativate_fs_path);
     if (marker_placement == appbox::filesystem::MarkerNamePlacement::Parent)
     {
         return STATUS_OBJECT_PATH_NOT_FOUND;
@@ -344,7 +345,7 @@ static NTSTATUS NTAPI Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredA
                                        : appbox::filesystem::ReparseFollowMode::All;
 
     /* Resolve path in sandbox. */
-    auto resolve_result = appbox::filesystem::Resolve(nativate_fs_path, resolve_option);
+    auto resolve_result = appbox::filesystem::Resolve(*nativate_fs_path, resolve_option);
     LOG_T("resolve: {}", appbox::DumpJson(nlohmann::json(*resolve_result)));
 
     /*
@@ -472,7 +473,11 @@ static NTSTATUS NTAPI Hook_NtCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredA
          */
         const std::wstring& parent = target_host ? resolve_result->hostPath : resolve_result->uPath;
         const size_t parent_base = target_host ? resolve_result->hostPathBaseSize : resolve_result->uPathBaseSize;
-        appbox::filesystem::CreateDirectories(appbox::filesystem::DirName(parent), parent_base);
+        const auto   parent_dir = appbox::filesystem::DirName(parent);
+        if (parent_dir)
+        {
+            appbox::filesystem::CreateDirectories(*parent_dir, parent_base);
+        }
     }
     /*
      * A modification lands in the overlay, so the entry has to be in it before

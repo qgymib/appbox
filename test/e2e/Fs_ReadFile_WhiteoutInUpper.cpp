@@ -41,7 +41,8 @@ TEST_F(E2E_Fs, ReadFile_WhiteoutInUpper)
     /* Try to read file */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt");
+        req.FileName =
+            appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_NE(rsp.code, 0);

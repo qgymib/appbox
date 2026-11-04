@@ -202,6 +202,20 @@ nlohmann::json DesiredAccessToJson(ACCESS_MASK DesiredAccess);
  */
 std::string UnicodeStringToUTF8(const PUNICODE_STRING str);
 
+/**
+ * @brief Convert a wide text to UTF-8 for a record of the sandbox.
+ *
+ * The log path and the hooks which report a structure run inside the hooked
+ * kernel call, where a conversion which reported a failure by an exception
+ * would unwind through the call. The helper therefore answers the text of the
+ * conversion and an empty text for a text the code page cannot carry, which is
+ * the wording the sandbox has always used for a name it cannot read.
+ *
+ * @param[in] text Wide text to convert.
+ * @return The UTF-8 representation, empty when the text cannot be converted.
+ */
+std::string ToUTF8OrEmpty(const std::wstring& text);
+
 } // namespace appbox
 
 #endif // APPBOX_SANDBOX_UTILS_LOG_HPP

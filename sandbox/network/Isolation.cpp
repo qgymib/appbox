@@ -42,7 +42,8 @@ NTSTATUS appbox::network::Isolation::Init()
         std::ifstream stream(path, std::ios::binary);
         if (!stream.is_open())
         {
-            LOG_D("the network isolation file does not exist: {}", appbox::WideToUTF8(path));
+            LOG_D("the network isolation file does not exist: {}",
+                  appbox::WideToUTF8(path).value_or("<unconvertible>"));
             continue;
         }
 
@@ -56,7 +57,8 @@ NTSTATUS appbox::network::Isolation::Init()
              * redirections nor its proxy take part in the run: the layers
              * below it stay in place.
              */
-            LOG_W("the network isolation file '{}' is ignored: {}", appbox::WideToUTF8(path), error);
+            LOG_W("the network isolation file '{}' is ignored: {}",
+                  appbox::WideToUTF8(path).value_or("<unconvertible>"), error);
             continue;
         }
 

@@ -46,7 +46,7 @@ ProtocolReadFileFull::Rsp ReadHostFile(const std::wstring& folder, const wchar_t
                                        const std::filesystem::path& cwd, appbox::LauncherConfig& config)
 {
     ProtocolReadFileFull::Req req;
-    req.FileName = appbox::WideToUTF8(folder + L"\\" + name + L"\\host.txt");
+    req.FileName = appbox::WideToUTF8(folder + L"\\" + name + L"\\host.txt").value_or(std::string());
     return Probe(cwd, config).Call<ProtocolReadFileFull>(req);
 }
 

@@ -15,7 +15,7 @@ namespace detail
  * @param[in] arg The argument to quote.
  * @return The quoted argument, or the plain argument when no quoting is needed.
  */
-inline std::wstring QuoteArgument(const std::wstring& arg)
+inline std::wstring QuoteArgument(const std::wstring& arg) noexcept
 {
     /* Quoting is needed when the argument is empty or contains a space, tab or quote. */
     if (!arg.empty() && arg.find_first_of(L" \t\"") == std::wstring::npos)
@@ -65,7 +65,7 @@ inline std::wstring QuoteArgument(const std::wstring& arg)
  * @param[in] args List of command line arguments.
  * @return Command line string with quotes and escaping as needed.
  */
-inline std::wstring BuildCommandLine(const std::wstring& exe, const std::vector<std::wstring>& args)
+inline std::wstring BuildCommandLine(const std::wstring& exe, const std::vector<std::wstring>& args) noexcept
 {
     std::wstring cmdline = detail::QuoteArgument(exe);
     for (const auto& arg : args)

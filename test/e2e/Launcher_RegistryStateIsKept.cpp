@@ -53,7 +53,8 @@ TEST_F(E2E_Launcher, RegistryStateIsKept)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\RegistryStateIsKept_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\RegistryStateIsKept_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     HiveBuilder builder(GetCWD());
     builder.SetValue(L"HKEY_CURRENT_USER\\" + subkey, L"TestValue", REG_SZ, StringData(L"packed"));
@@ -65,7 +66,7 @@ TEST_F(E2E_Launcher, RegistryStateIsKept)
     /* The first run seeds the state directory and writes its own value. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "TestValue";
         req.Data = "sandbox";
 
@@ -80,7 +81,7 @@ TEST_F(E2E_Launcher, RegistryStateIsKept)
     /* The second run mounts the hive of the first run. */
     {
         ProtocolRegReadValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "TestValue";
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);

@@ -1,7 +1,6 @@
 #include "ProxyConfig.hpp"
 #include "NetworkIsolation.hpp"
 #include <nlohmann/json.hpp>
-#include <exception>
 
 namespace
 {
@@ -20,8 +19,6 @@ namespace
 appbox::network::ProxyConfig ReadProxy(const appbox::network_isolation::Document& document)
 {
     using appbox::network_isolation::IsSocks5Token;
-    using appbox::network_isolation::PortText;
-    using appbox::network_isolation::ReadPortText;
 
     if (!document.proxy.has_value())
     {
@@ -45,10 +42,12 @@ appbox::network::ProxyConfig ReadProxy(const appbox::network_isolation::Document
     }
     config.server = proxy.server;
 
-    if (ReadPortText(proxy.port, config.port) != PortText::Ok)
+    const auto port = appbox::network_isolation::ReadPortText(proxy.port);
+    if (!port)
     {
         return {};
     }
+    config.port = *port;
 
     /* The credentials are optional; a member which carries no text is absent. */
     config.username = proxy.username;
@@ -63,28 +62,22 @@ bool appbox::network::ParseProxyConfig(const std::string& text, ProxyConfig& out
 {
     out = ProxyConfig{};
 
-    try
+    /*
+     * The document is read as the structure of its schema
+     * (`common/NetworkIsolation.hpp`) and never member by member. The proxy
+     * member of the structure is read leniently, so a member of another type
+     * leaves the default of the proxy instead of failing the document. A text
+     * which is no document of the schema describes a session without a proxy,
+     * which is the behaviour of a sandbox without a network isolation file.
+     */
+    const auto document = network_isolation::ParseDocument(text);
+    if (!document)
     {
-        /*
-         * The document is read as the structure of its schema
-         * (`common/NetworkIsolation.hpp`) and never member by member. The proxy
-         * member of the structure is read leniently, so a member of another
-         * type leaves the default of the proxy instead of failing the document.
-         */
-        const auto document = nlohmann::json::parse(text).get<network_isolation::Document>();
-        if (document.version != network_isolation::kVersion)
-        {
-            return false;
-        }
-
-        out = ReadProxy(document);
-        return true;
-    }
-    catch (const std::exception&)
-    {
-        out = ProxyConfig{};
         return false;
     }
+
+    out = ReadProxy(*document);
+    return true;
 }
 
 std::string appbox::network::DescribeProxy(const ProxyConfig& config)

@@ -302,7 +302,8 @@ bool EnumerateFolder(const std::wstring& directory, std::vector<FolderEntry>& en
             return true;
         }
 
-        error = "failed to read '" + appbox::WideToUTF8(directory) + "' (error " + std::to_string(status) + ")";
+        error = "failed to read '" + appbox::WideToUTF8(directory).value_or(std::string()) + "' (error " +
+                std::to_string(status) + ")";
         return false;
     }
 
@@ -329,7 +330,8 @@ bool EnumerateFolder(const std::wstring& directory, std::vector<FolderEntry>& en
         ::FindClose(handle);
         if (status != ERROR_NO_MORE_FILES)
         {
-            error = "failed to read '" + appbox::WideToUTF8(directory) + "' (error " + std::to_string(status) + ")";
+            error = "failed to read '" + appbox::WideToUTF8(directory).value_or(std::string()) + "' (error " +
+                    std::to_string(status) + ")";
             return false;
         }
 
@@ -490,7 +492,8 @@ bool ResolveRoot(const appbox::CaptureFilesystemRoot& root, appbox::PresetDirect
     }
     if (!IsPathBelow(scan, real))
     {
-        error = "the folder is not part of the preset directory: " + appbox::WideToUTF8(root.scan_path);
+        error = "the folder is not part of the preset directory: " +
+                appbox::WideToUTF8(root.scan_path).value_or(std::string());
         return false;
     }
 
@@ -667,7 +670,8 @@ bool WalkRegistryKey(HKEY key, const std::wstring& path, CaptureContext& context
 
     if (depth >= kMaxRegistryDepth)
     {
-        spdlog::warn("the capture stopped at a registry key which is too deep: {}", appbox::WideToUTF8(path));
+        spdlog::warn("the capture stopped at a registry key which is too deep: {}",
+                     appbox::WideToUTF8(path).value_or(std::string()));
         return true;
     }
 
@@ -691,8 +695,8 @@ bool WalkRegistryKey(HKEY key, const std::wstring& path, CaptureContext& context
         if (status != ERROR_SUCCESS)
         {
             ++context.skipped;
-            spdlog::warn("the capture skipped a registry key below {} (error {})", appbox::WideToUTF8(path),
-                         static_cast<int>(status));
+            spdlog::warn("the capture skipped a registry key below {} (error {})",
+                         appbox::WideToUTF8(path).value_or(std::string()), static_cast<int>(status));
             break;
         }
 
@@ -756,7 +760,7 @@ bool WalkRegistry(const std::vector<std::wstring>& roots, CaptureContext& contex
         }
         if (canonical.empty())
         {
-            error = "unknown registry root key: " + appbox::WideToUTF8(root);
+            error = "unknown registry root key: " + appbox::WideToUTF8(root).value_or(std::string());
             return false;
         }
 
@@ -770,7 +774,7 @@ bool WalkRegistry(const std::vector<std::wstring>& roots, CaptureContext& contex
         }
         if (handle == nullptr)
         {
-            error = "the registry root key is not available: " + appbox::WideToUTF8(root);
+            error = "the registry root key is not available: " + appbox::WideToUTF8(root).value_or(std::string());
             return false;
         }
 

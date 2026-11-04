@@ -355,7 +355,8 @@ static NTSTATUS CreateRootKeys(HANDLE hive_root)
         NTSTATUS status = fn_create_key(&key, KEY_ALL_ACCESS, &oa, 0, nullptr, REG_OPTION_NON_VOLATILE, &disposition);
         if (!NT_SUCCESS(status))
         {
-            LOG_E("failed to create the root key {} in the hive: {:#x}", appbox::WideToUTF8(root_name), status);
+            LOG_E("failed to create the root key {} in the hive: {:#x}",
+                  appbox::WideToUTF8(root_name).value_or("<unconvertible>"), status);
             return status;
         }
 
@@ -409,11 +410,13 @@ static bool LoadIsolationTable(appbox::registry::Hive::Data& data, std::string& 
         {
             if (archive_layer)
             {
-                error = "the registry isolation file of the archive does not exist: " + appbox::WideToUTF8(path);
+                error = "the registry isolation file of the archive does not exist: " +
+                        appbox::WideToUTF8(path).value_or(std::string());
                 return false;
             }
 
-            LOG_D("a patch package carries no registry isolation file: {}", appbox::WideToUTF8(path));
+            LOG_D("a patch package carries no registry isolation file: {}",
+                  appbox::WideToUTF8(path).value_or("<unconvertible>"));
             continue;
         }
 
@@ -421,7 +424,8 @@ static bool LoadIsolationTable(appbox::registry::Hive::Data& data, std::string& 
         std::string       detail;
         if (!data.isolation.Parse(text, detail))
         {
-            error = "the registry isolation file '" + appbox::WideToUTF8(path) + "' cannot be used: " + detail;
+            error = "the registry isolation file '" + appbox::WideToUTF8(path).value_or(std::string()) +
+                    "' cannot be used: " + detail;
             return false;
         }
     }
@@ -728,13 +732,14 @@ static bool RecordKeyWhiteout(const std::wstring& relative)
                                                         REG_OPTION_NON_VOLATILE, &marker, nullptr);
     if (!NT_SUCCESS(status))
     {
-        LOG_E("failed to record the whiteout of the key {}: {:#x}", appbox::WideToUTF8(relative), status);
+        LOG_E("failed to record the whiteout of the key {}: {:#x}",
+              appbox::WideToUTF8(relative).value_or("<unconvertible>"), status);
         return false;
     }
 
     CloseHiveHandle(marker);
     s_hive_data->whiteout_possible = true;
-    LOG_I("the key {} was deleted inside the sandbox", appbox::WideToUTF8(relative));
+    LOG_I("the key {} was deleted inside the sandbox", appbox::WideToUTF8(relative).value_or("<unconvertible>"));
     return true;
 }
 
@@ -762,8 +767,9 @@ static bool RecordValueWhiteout(const std::wstring& relative, const std::wstring
                                                         nullptr, 0, nullptr, REG_OPTION_NON_VOLATILE, &marker, nullptr);
     if (!NT_SUCCESS(status))
     {
-        LOG_E("failed to record the whiteout of the value {} of {}: {:#x}", appbox::WideToUTF8(value_name),
-              appbox::WideToUTF8(relative), status);
+        LOG_E("failed to record the whiteout of the value {} of {}: {:#x}",
+              appbox::WideToUTF8(value_name).value_or("<unconvertible>"),
+              appbox::WideToUTF8(relative).value_or("<unconvertible>"), status);
         return false;
     }
 
@@ -775,14 +781,16 @@ static bool RecordValueWhiteout(const std::wstring& relative, const std::wstring
 
     if (!NT_SUCCESS(status))
     {
-        LOG_E("failed to record the whiteout of the value {} of {}: {:#x}", appbox::WideToUTF8(value_name),
-              appbox::WideToUTF8(relative), status);
+        LOG_E("failed to record the whiteout of the value {} of {}: {:#x}",
+              appbox::WideToUTF8(value_name).value_or("<unconvertible>"),
+              appbox::WideToUTF8(relative).value_or("<unconvertible>"), status);
         return false;
     }
 
     s_hive_data->whiteout_possible = true;
-    LOG_I("the value {} of {} was deleted inside the sandbox", appbox::WideToUTF8(value_name),
-          appbox::WideToUTF8(relative));
+    LOG_I("the value {} of {} was deleted inside the sandbox",
+          appbox::WideToUTF8(value_name).value_or("<unconvertible>"),
+          appbox::WideToUTF8(relative).value_or("<unconvertible>"));
     return true;
 }
 
@@ -1091,8 +1099,9 @@ static NTSTATUS CopyMergedKey(HANDLE hive_key, const std::wstring& view_path, co
         }
 
         status = WriteValue(destination, entry.name, type, data);
-        LOG_D("snapshot of {}: value {} type {} size {} -> {:#x}", appbox::WideToUTF8(relative),
-              appbox::WideToUTF8(entry.name), type, data.size(), status);
+        LOG_D("snapshot of {}: value {} type {} size {} -> {:#x}",
+              appbox::WideToUTF8(relative).value_or("<unconvertible>"),
+              appbox::WideToUTF8(entry.name).value_or("<unconvertible>"), type, data.size(), status);
         if (!NT_SUCCESS(status))
         {
             return status;
@@ -1115,8 +1124,8 @@ static NTSTATUS CopyMergedKey(HANDLE hive_key, const std::wstring& view_path, co
         const std::wstring child_view = appbox::registry::JoinKeyPath(view_path, entry.name);
         const std::wstring child_relative = appbox::registry::JoinKeyPath(relative, entry.name);
 
-        LOG_D("snapshot of {}: sub key {} (layer {})", appbox::WideToUTF8(relative), appbox::WideToUTF8(entry.name),
-              static_cast<int>(entry.layer));
+        LOG_D("snapshot of {}: sub key {} (layer {})", appbox::WideToUTF8(relative).value_or("<unconvertible>"),
+              appbox::WideToUTF8(entry.name).value_or("<unconvertible>"), static_cast<int>(entry.layer));
 
         /*
          * A child of the state hive is opened from that layer, a child which
@@ -1214,7 +1223,8 @@ static void DeleteOverlayFile(const std::wstring& dos_path)
     const NTSTATUS status = sys_NtDeleteFile(&oa);
     if (!NT_SUCCESS(status) && status != STATUS_OBJECT_NAME_NOT_FOUND && status != STATUS_OBJECT_PATH_NOT_FOUND)
     {
-        LOG_W("failed to remove the temporary hive file {}: {:#x}", appbox::WideToUTF8(dos_path), status);
+        LOG_W("failed to remove the temporary hive file {}: {:#x}",
+              appbox::WideToUTF8(dos_path).value_or("<unconvertible>"), status);
     }
 }
 
@@ -1291,7 +1301,7 @@ NTSTATUS appbox::registry::Hive::Init()
     LONG err = fn_load_app_key(data->hive_path.c_str(), &hive_root, KEY_ALL_ACCESS, 0, 0);
     if (err != ERROR_SUCCESS)
     {
-        LOG_E("RegLoadAppKeyW({}) failed: {}", appbox::WideToUTF8(data->hive_path), err);
+        LOG_E("RegLoadAppKeyW({}) failed: {}", appbox::WideToUTF8(data->hive_path).value_or("<unconvertible>"), err);
         delete data;
         return STATUS_UNSUCCESSFUL;
     }
@@ -1329,7 +1339,7 @@ NTSTATUS appbox::registry::Hive::Init()
         if (err != ERROR_SUCCESS)
         {
             LOG_W("RegLoadAppKeyW({}) failed: {}: the view carries the state of the sandbox alone",
-                  appbox::WideToUTF8(appbox::sandbox->wRegistryImageHiveDOSPath), err);
+                  appbox::WideToUTF8(appbox::sandbox->wRegistryImageHiveDOSPath).value_or("<unconvertible>"), err);
         }
         else
         {
@@ -1390,9 +1400,11 @@ NTSTATUS appbox::registry::Hive::Init()
     data->whiteout_possible = WhiteoutStoreExists();
 
     LOG_I("registry hive mounted: {} (mount: {}, image: {}, hkcu: {}, whiteout store: {})",
-          appbox::WideToUTF8(data->hive_path), appbox::WideToUTF8(data->hive_mount_name),
-          data->image_root == nullptr ? std::string("none") : appbox::WideToUTF8(data->image_mount_name),
-          appbox::WideToUTF8(data->hkcu_prefix), data->whiteout_possible);
+          appbox::WideToUTF8(data->hive_path).value_or("<unconvertible>"),
+          appbox::WideToUTF8(data->hive_mount_name).value_or("<unconvertible>"),
+          data->image_root == nullptr ? std::string("none")
+                                      : appbox::WideToUTF8(data->image_mount_name).value_or("<unconvertible>"),
+          appbox::WideToUTF8(data->hkcu_prefix).value_or("<unconvertible>"), data->whiteout_possible);
     return STATUS_SUCCESS;
 }
 
@@ -1947,7 +1959,7 @@ static NTSTATUS OpenIsolatedKeyEntry(const std::wstring& view_path, const std::w
                 /* Failing closed: the caller asked for a write and the image
                  * must never receive one. */
                 LOG_E("failed to copy the key {} of the image up into the state hive: {:#x}",
-                      appbox::WideToUTF8(relative), st_copy);
+                      appbox::WideToUTF8(relative).value_or("<unconvertible>"), st_copy);
             }
             return st_copy;
         }
@@ -1975,7 +1987,8 @@ static NTSTATUS OpenIsolatedKeyEntry(const std::wstring& view_path, const std::w
              */
             LOG_W("the hive layer did not answer the transacted open of {} and the isolation never enlists the host "
                   "layer into a transaction: {:#x}",
-                  appbox::WideToUTF8(relative), appbox::registry::kTransactedHostFallbackStatus);
+                  appbox::WideToUTF8(relative).value_or("<unconvertible>"),
+                  appbox::registry::kTransactedHostFallbackStatus);
             return appbox::registry::kTransactedHostFallbackStatus;
 
         case appbox::registry::TransactedFallback::CopyUp:
@@ -2031,7 +2044,8 @@ static NTSTATUS OpenIsolatedKeyEntry(const std::wstring& view_path, const std::w
         {
             /* Failing closed: a fallback to the real key would let the writes
              * of the caller escape into the host registry. */
-            LOG_E("failed to copy the key {} up into the hive: {:#x}", appbox::WideToUTF8(relative), st_copy);
+            LOG_E("failed to copy the key {} up into the hive: {:#x}",
+                  appbox::WideToUTF8(relative).value_or("<unconvertible>"), st_copy);
         }
         return st_copy;
     }
@@ -2277,7 +2291,8 @@ static NTSTATUS CreateIsolatedKeyEntry(const std::wstring& view_path, const std:
         InitializeObjectAttributes(&oa, &us, Attributes, parent, SecurityDescriptor);
         oa.SecurityQualityOfService = SecurityQualityOfService;
 
-        LOG_D("the key {} is created in the real registry (merge)", appbox::WideToUTF8(relative));
+        LOG_D("the key {} is created in the real registry (merge)",
+              appbox::WideToUTF8(relative).value_or("<unconvertible>"));
         return sys_NtCreateKey(KeyHandle, DesiredAccess, &oa, TitleIndex, Class, CreateOptions, Disposition);
     }
 
@@ -2868,8 +2883,9 @@ NTSTATUS appbox::registry::Hive::SetIsolatedValue(appbox::registry::HandleView h
 
         HANDLE   key = nullptr;
         NTSTATUS status = CreateRealKey(view_path, KEY_SET_VALUE | KEY_QUERY_VALUE, key);
-        LOG_D("the value {} of {} is written in the real registry (merge): {:#x}", appbox::WideToUTF8(value_name),
-              appbox::WideToUTF8(relative), status);
+        LOG_D("the value {} of {} is written in the real registry (merge): {:#x}",
+              appbox::WideToUTF8(value_name).value_or("<unconvertible>"),
+              appbox::WideToUTF8(relative).value_or("<unconvertible>"), status);
         if (!NT_SUCCESS(status))
         {
             return status;
@@ -2902,8 +2918,8 @@ NTSTATUS appbox::registry::Hive::SetIsolatedValue(appbox::registry::HandleView h
                                         nullptr, 0, nullptr, REG_OPTION_NON_VOLATILE, nullptr, &key, nullptr);
         if (!NT_SUCCESS(status))
         {
-            LOG_E("failed to copy the key {} of the image up for a value write: {:#x}", appbox::WideToUTF8(relative),
-                  status);
+            LOG_E("failed to copy the key {} of the image up for a value write: {:#x}",
+                  appbox::WideToUTF8(relative).value_or("<unconvertible>"), status);
             return status;
         }
 
@@ -2941,7 +2957,8 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedKey(appbox::registry::HandleView 
             return STATUS_ACCESS_DENIED;
         }
 
-        LOG_D("the key {} is deleted in the real registry (merge)", appbox::WideToUTF8(relative));
+        LOG_D("the key {} is deleted in the real registry (merge)",
+              appbox::WideToUTF8(relative).value_or("<unconvertible>"));
         return sys_NtDeleteKey(KeyHandle);
     }
 
@@ -3061,8 +3078,9 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedValue(appbox::registry::HandleVie
         }
 
         appbox::registry::KeyGuard guard(real);
-        LOG_D("the value {} of {} is deleted in the real registry (merge)", appbox::WideToUTF8(value_name),
-              appbox::WideToUTF8(relative));
+        LOG_D("the value {} of {} is deleted in the real registry (merge)",
+              appbox::WideToUTF8(value_name).value_or("<unconvertible>"),
+              appbox::WideToUTF8(relative).value_or("<unconvertible>"));
         return sys_NtDeleteValueKey(real, &us);
     }
 
@@ -3135,8 +3153,9 @@ NTSTATUS appbox::registry::Hive::DeleteIsolatedValue(appbox::registry::HandleVie
 
     case appbox::registry::DeleteTarget::HostDelete:
         /* The route of the host layer was answered above. */
-        LOG_E("the delete of the value {} of {} was routed to the wrong layer", appbox::WideToUTF8(value_name),
-              appbox::WideToUTF8(relative));
+        LOG_E("the delete of the value {} of {} was routed to the wrong layer",
+              appbox::WideToUTF8(value_name).value_or("<unconvertible>"),
+              appbox::WideToUTF8(relative).value_or("<unconvertible>"));
         return STATUS_UNSUCCESSFUL;
     }
 
@@ -3180,7 +3199,8 @@ static NTSTATUS CopyUpImageKey(const std::wstring& relative, ULONG depth)
                                     REG_OPTION_NON_VOLATILE, nullptr, &upper, nullptr);
     if (!NT_SUCCESS(status))
     {
-        LOG_E("failed to copy the key {} of the image up: {:#x}", appbox::WideToUTF8(relative), status);
+        LOG_E("failed to copy the key {} of the image up: {:#x}",
+              appbox::WideToUTF8(relative).value_or("<unconvertible>"), status);
         return status;
     }
     appbox::registry::KeyGuard upper_guard(upper);
@@ -3311,7 +3331,8 @@ NTSTATUS appbox::registry::Hive::RenameIsolatedKey(appbox::registry::HandleView 
             return STATUS_CANNOT_DELETE;
         }
 
-        LOG_D("the key {} is renamed in the real registry (merge)", appbox::WideToUTF8(relative));
+        LOG_D("the key {} is renamed in the real registry (merge)",
+              appbox::WideToUTF8(relative).value_or("<unconvertible>"));
         return sys_NtRenameKey(KeyHandle, &new_name_unicode);
     }
 
@@ -3618,13 +3639,15 @@ NTSTATUS appbox::registry::Hive::SaveIsolatedKey(appbox::registry::HandleView ha
     const std::wstring scratch = BuildSaveHivePath();
     DeleteSaveHiveFiles(scratch);
 
-    LOG_D("save of {}: temporary hive {}", appbox::WideToUTF8(relative), appbox::WideToUTF8(scratch));
+    LOG_D("save of {}: temporary hive {}", appbox::WideToUTF8(relative).value_or("<unconvertible>"),
+          appbox::WideToUTF8(scratch).value_or("<unconvertible>"));
 
     HKEY       scratch_root = nullptr;
     const LONG loaded = s_hive_data->load_app_key(scratch.c_str(), &scratch_root, KEY_ALL_ACCESS, 0, 0);
     if (loaded != ERROR_SUCCESS)
     {
-        LOG_E("failed to mount the temporary hive {} of a save: {}", appbox::WideToUTF8(scratch), loaded);
+        LOG_E("failed to mount the temporary hive {} of a save: {}",
+              appbox::WideToUTF8(scratch).value_or("<unconvertible>"), loaded);
         CloseHiveHandle(owned);
         return STATUS_UNSUCCESSFUL;
     }
@@ -3654,7 +3677,8 @@ NTSTATUS appbox::registry::Hive::SaveIsolatedKey(appbox::registry::HandleView ha
         }
 
         status = extended ? sys_NtSaveKeyEx(snapshot, FileHandle, Format) : sys_NtSaveKey(snapshot, FileHandle);
-        LOG_I("save of {}: {} values exported, write {:#x}", appbox::WideToUTF8(relative), values, status);
+        LOG_I("save of {}: {} values exported, write {:#x}", appbox::WideToUTF8(relative).value_or("<unconvertible>"),
+              values, status);
     }
 
     CloseHiveHandle(snapshot);
@@ -3666,7 +3690,8 @@ NTSTATUS appbox::registry::Hive::SaveIsolatedKey(appbox::registry::HandleView ha
 
     if (!NT_SUCCESS(status))
     {
-        LOG_W("the save snapshot of {} failed: {:#x}", appbox::WideToUTF8(relative), status);
+        LOG_W("the save snapshot of {} failed: {:#x}", appbox::WideToUTF8(relative).value_or("<unconvertible>"),
+              status);
     }
     return status;
 }

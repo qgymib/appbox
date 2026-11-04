@@ -83,7 +83,7 @@ TEST_F(E2E_Fs, Merge_CreatesTheFoldersOfANewFileInTheHost)
     /* The entry no layer holds is created in the host filesystem. */
     {
         ProtocolWriteFile::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\fresh\\new.txt");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\fresh\\new.txt").value_or(std::string());
         req.Data = "made";
         req.dwCreationDisposition = CREATE_ALWAYS;
 

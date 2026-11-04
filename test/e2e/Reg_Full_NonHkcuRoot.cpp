@@ -39,7 +39,7 @@ ProtocolRegReadValue::Rsp ReadValue(const std::string& root_name, const std::wst
 {
     ProtocolRegReadValue::Req req;
     req.Root = root_name;
-    req.Key = appbox::WideToUTF8(key_path);
+    req.Key = appbox::WideToUTF8(key_path).value_or(std::string());
     req.Value = value_name;
     return Probe(cwd, config).Call<ProtocolRegReadValue>(req);
 }
@@ -68,7 +68,7 @@ TEST_F(E2E_Reg, Full_NonHkcuRoot)
 
     auto config = tree.Build();
 
-    const auto suffix = appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto suffix = appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto machine_key = L"Software\\AppBoxTest\\Full_NonHkcuRoot_" + suffix;
     const auto classes_key = L"AppBoxTest\\Full_NonHkcuRoot_" + suffix;
     const auto config_key = L"AppBoxTest\\Full_NonHkcuRoot_" + suffix;

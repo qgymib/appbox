@@ -9,7 +9,7 @@ appbox::test::ProtocolReadFileFull::Rsp appbox::test::ProbeReadFileFull_Entry(
     const auto& req = request;
 
     appbox::test::ProtocolReadFileFull::Rsp rsp;
-    rsp.code = appbox::test::ReadFileFull(appbox::UTF8ToWide(req.FileName), rsp.data);
+    rsp.code = appbox::test::ReadFileFull(appbox::UTF8ToWide(req.FileName).value_or(std::wstring()), rsp.data);
 
     return rsp;
 }

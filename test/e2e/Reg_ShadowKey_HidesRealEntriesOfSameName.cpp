@@ -41,7 +41,7 @@ static void WriteRealValue(const std::wstring& subkey, const wchar_t* value, con
     ASSERT_EQ(RegCreateKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr),
               ERROR_SUCCESS);
 
-    auto wdata = appbox::UTF8ToWide(data);
+    auto wdata = appbox::UTF8ToWide(data).value_or(std::wstring());
     ASSERT_EQ(RegSetValueExW(key, value, 0, REG_SZ, reinterpret_cast<const BYTE*>(wdata.c_str()),
                              static_cast<DWORD>((wdata.size() + 1) * sizeof(wchar_t))),
               ERROR_SUCCESS);
@@ -64,7 +64,7 @@ static std::string ReadRealValue(const std::wstring& subkey, const wchar_t* valu
     DWORD   buf_size = sizeof(buf);
     EXPECT_EQ(RegQueryValueExW(key, value, nullptr, nullptr, reinterpret_cast<LPBYTE>(buf), &buf_size), ERROR_SUCCESS);
     RegCloseKey(key);
-    return appbox::WideToUTF8(buf);
+    return appbox::WideToUTF8(buf).value_or(std::string());
 }
 
 /**
@@ -105,8 +105,8 @@ TEST_F(E2E_Reg, ShadowKey_HidesRealEntriesOfSameName)
 
     auto config = tree.Build();
 
-    const auto subkey =
-        L"Software\\AppBoxTest\\ShadowKey_HidesRealEntriesOfSameName_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\ShadowKey_HidesRealEntriesOfSameName_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto conflict = subkey + L"\\Conflict";
 
     const std::string host_data = "host";
@@ -121,7 +121,7 @@ TEST_F(E2E_Reg, ShadowKey_HidesRealEntriesOfSameName)
     /* Create the shadow of the key and write the same named value into it. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         req.Value = "TestValue";
         req.Data = sandbox_data;
         auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
@@ -133,7 +133,7 @@ TEST_F(E2E_Reg, ShadowKey_HidesRealEntriesOfSameName)
     /* Create the same named sub key inside the hive and write its marker. */
     {
         ProtocolRegWriteValue::Req req;
-        req.Key = appbox::WideToUTF8(conflict);
+        req.Key = appbox::WideToUTF8(conflict).value_or(std::string());
         req.Value = "Marker";
         req.Data = sandbox_data;
         auto rsp = Probe(GetCWD(), config).Call<ProtocolRegWriteValue>(req);
@@ -145,7 +145,7 @@ TEST_F(E2E_Reg, ShadowKey_HidesRealEntriesOfSameName)
     /* The value enumeration sees one "TestValue", the one of the hive layer. */
     {
         ProtocolRegEnumValue::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         auto rsp = Probe(GetCWD(), config).Call<ProtocolRegEnumValue>(req);
         ASSERT_EQ(rsp.open_code, 0u);
         ASSERT_EQ(rsp.enum_code, 0u);
@@ -159,7 +159,7 @@ TEST_F(E2E_Reg, ShadowKey_HidesRealEntriesOfSameName)
     /* The sub key enumeration sees one "Conflict", the one of the hive layer. */
     {
         ProtocolRegEnumKey::Req req;
-        req.Key = appbox::WideToUTF8(subkey);
+        req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
         auto rsp = Probe(GetCWD(), config).Call<ProtocolRegEnumKey>(req);
         ASSERT_EQ(rsp.open_code, 0u);
         ASSERT_EQ(rsp.count_code, 0u);
@@ -174,7 +174,7 @@ TEST_F(E2E_Reg, ShadowKey_HidesRealEntriesOfSameName)
     /* The shadowed sub key answers from the hive. */
     {
         ProtocolRegReadValue::Req req;
-        req.Key = appbox::WideToUTF8(conflict);
+        req.Key = appbox::WideToUTF8(conflict).value_or(std::string());
         req.Value = "Marker";
         auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(req);
         ASSERT_EQ(rsp.open_code, 0u);

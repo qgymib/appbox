@@ -55,13 +55,13 @@ std::vector<std::string> Items(const std::wstring& text)
         const std::size_t end = text.find(L'\0', start);
         if (end == std::wstring::npos)
         {
-            items.push_back(appbox::WideToUTF8(text.substr(start)));
+            items.push_back(appbox::WideToUTF8(text.substr(start)).value_or(std::string()));
             break;
         }
 
         if (end != start)
         {
-            items.push_back(appbox::WideToUTF8(text.substr(start, end - start)));
+            items.push_back(appbox::WideToUTF8(text.substr(start, end - start)).value_or(std::string()));
         }
 
         start = end + 1;
@@ -146,7 +146,7 @@ void ReadValue(HKEY key, const std::wstring& name, appbox::test::ProtocolRegRead
 
     const std::wstring text = WideText(data);
     const std::size_t  end = text.find(L'\0');
-    answer.text = appbox::WideToUTF8(end == std::wstring::npos ? text : text.substr(0, end));
+    answer.text = appbox::WideToUTF8(end == std::wstring::npos ? text : text.substr(0, end)).value_or(std::string());
     answer.items = Items(text);
 }
 
@@ -165,7 +165,8 @@ appbox::test::ProtocolRegReadValues::Rsp appbox::test::ProbeRegReadValues_Entry(
     const auto root = appbox::test::RegistryRootHandle(req.Root);
     if (root != nullptr)
     {
-        open_code = RegOpenKeyExW(root, appbox::UTF8ToWide(req.Key).c_str(), 0, KEY_QUERY_VALUE, &key);
+        const std::wstring wide_key = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
+        open_code = RegOpenKeyExW(root, wide_key.c_str(), 0, KEY_QUERY_VALUE, &key);
     }
 
     for (const auto& name : req.Values)
@@ -175,7 +176,7 @@ appbox::test::ProtocolRegReadValues::Rsp appbox::test::ProbeRegReadValues_Entry(
 
         if (open_code == ERROR_SUCCESS)
         {
-            ReadValue(key, appbox::UTF8ToWide(name), answer);
+            ReadValue(key, appbox::UTF8ToWide(name).value_or(std::wstring()), answer);
         }
 
         rsp.values.push_back(std::move(answer));

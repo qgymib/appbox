@@ -35,7 +35,7 @@ constexpr wchar_t kFirstPackageName[] = L"AppBoxTest_Patch.First.txt";
  */
 bool HoldsFile(const ProtocolListDir::Rsp& rsp, const std::wstring& name)
 {
-    const auto utf8 = appbox::WideToUTF8(name);
+    const auto utf8 = appbox::WideToUTF8(name).value_or(std::string());
     return std::any_of(rsp.entries.begin(), rsp.entries.end(),
                        [&utf8](const ProtocolListDir::Rsp::Entry& entry) { return entry.file && entry.name == utf8; });
 }
@@ -104,7 +104,7 @@ TEST_F(E2E_Patch, ContentOverridesTheApp)
     /* The file every layer carries is the file of the last package. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\" + kSharedName);
+        req.FileName = appbox::WideToUTF8(folder + L"\\" + kSharedName).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -114,7 +114,7 @@ TEST_F(E2E_Patch, ContentOverridesTheApp)
     /* The layers below the last package stay in place for the other resources. */
     {
         ProtocolListDir::Req req;
-        req.path = appbox::WideToUTF8(folder);
+        req.path = appbox::WideToUTF8(folder).value_or(std::string());
         req.method = ProtocolListDir::Req::Method::Std;
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolListDir>(req);

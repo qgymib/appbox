@@ -71,6 +71,10 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
      * The events are automatic reset events: a wait consumes the signal, so the
      * thread which signals one never has to know whether the thread of the
      * session already noticed the previous one.
+     *
+     * The state does not report the failure itself: the factory of the session
+     * asks with HasEvents() and answers the code, so a state which was built
+     * without its events is never handed out.
      */
     Data()
     {
@@ -78,6 +82,16 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
         write_event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
         write_queued_event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
         stop_event = ::CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    }
+
+    /**
+     * @brief Whether every event the thread waits on was created.
+     * @return true when the session can serve its connection.
+     */
+    bool HasEvents() const noexcept
+    {
+        return read_event != nullptr && write_event != nullptr && write_queued_event != nullptr &&
+               stop_event != nullptr;
     }
 
     ~Data()
@@ -183,7 +197,7 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
             return true;
         }
 
-        OnConnectionEnded(static_cast<int>(error), "the read of the pipe failed: " + detail::DescribeWin32Error(error));
+        OnConnectionEnded(static_cast<int>(error), "the read of the pipe failed");
         return false;
     }
 
@@ -204,8 +218,7 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
         if (!::GetOverlappedResult(pipe, &read_ov, &transferred, FALSE))
         {
             const DWORD error = ::GetLastError();
-            OnConnectionEnded(static_cast<int>(error),
-                              "the connection to the peer ended: " + detail::DescribeWin32Error(error));
+            OnConnectionEnded(static_cast<int>(error), "the connection to the peer ended");
             return false;
         }
 
@@ -245,24 +258,27 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
          */
         for (;;)
         {
-            std::string payload;
-            std::string error;
+            const auto decoded = TryDecodeFrame(recv_data);
+            if (!decoded.has_value())
+            {
+                /*
+                 * A frame which is no frame of this protocol cannot be skipped:
+                 * the stream holds no position to resynchronise at, so the
+                 * connection is dropped and the code names the reason.
+                 */
+                OnConnectionEnded(static_cast<int>(ERROR_INVALID_DATA),
+                                  "the peer sent an invalid frame: " +
+                                      std::to_string(static_cast<int>(decoded.error())),
+                                  kResponseDecodeErrorCode);
+                return;
+            }
 
-            const FrameStatus status = TryDecodeFrame(recv_data, payload, error);
-            if (status == FrameStatus::NeedMoreData)
+            if (decoded->status == FrameStatus::NeedMoreData)
             {
                 return;
             }
 
-            if (status == FrameStatus::ProtocolError)
-            {
-                SPDLOG_ERROR("[HANDLE: {}] {}", NativeHandle(), error);
-                /* Report the failure instead of leaving the loop with an exception. */
-                OnConnectionEnded(static_cast<int>(ERROR_INVALID_DATA), "the peer sent an invalid frame: " + error);
-                return;
-            }
-
-            OnMessage(payload);
+            OnMessage(decoded->payload);
         }
     }
 
@@ -273,18 +289,27 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
      * cannot arrive any more: the pending requests are failed and the pipe is
      * closed, which ends the loop of the thread.
      *
-     * @param[in] code Code of the failure.
+     * The code a caller receives describes why the connection ended and never
+     * depends on the peer alone: a pipe the peer closed, a pipe whose read or
+     * write failed and a session its owner stopped all report
+     * `kSessionClosedErrorCode`, while a payload which is no frame of this
+     * protocol reports `kResponseDecodeErrorCode`, because the peer of that
+     * payload answered something this end cannot read.
+     *
+     * @param[in] code Code of the failure, as the operating system or the frame
+     *                 decoder reported it.
      * @param[in] message Description of the failure.
+     * @param[in] report The code a waiting caller reads instead of the failure
+     *                 code of the transport.
      */
-    void OnConnectionEnded(int code, const std::string& message)
+    void OnConnectionEnded(int code, const std::string& message, int report = kSessionClosedErrorCode)
     {
         if (ended.exchange(true))
         {
             return;
         }
 
-        SPDLOG_DEBUG("[HANDLE: {}] {}", NativeHandle(), message);
-        FailPending(code, message);
+        FailPending(report, message + " (transport code " + std::to_string(code) + ")");
         Close();
         NotifyClosed();
     }
@@ -308,17 +333,13 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
             return;
         }
 
+        /* The owner reports its own failures; nothing is thrown on this thread. */
         try
         {
             handler();
         }
-        catch (const std::exception& e)
-        {
-            SPDLOG_ERROR("the closed handler of the session failed: {}", e.what());
-        }
         catch (...)
         {
-            SPDLOG_ERROR("the closed handler of the session failed");
         }
     }
 
@@ -336,7 +357,6 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
     {
         if (payload.size() > max_request_size)
         {
-            SPDLOG_WARN("request of {} bytes exceeds the limit of {} bytes", payload.size(), max_request_size);
             AnswerError(nlohmann::json(), -32600, "Invalid Request");
             return;
         }
@@ -346,16 +366,14 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
         {
             message = nlohmann::json::parse(payload);
         }
-        catch (const std::exception& e)
+        catch (const std::exception&)
         {
-            SPDLOG_WARN("malformed request: {}", e.what());
             AnswerError(nlohmann::json(), -32700, "Parse error");
             return;
         }
 
         if (!message.is_object())
         {
-            SPDLOG_WARN("request is not an object");
             AnswerError(nlohmann::json(), -32600, "Invalid Request");
             return;
         }
@@ -371,14 +389,12 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
                 return;
             }
 
-            SPDLOG_WARN("message has neither a method nor an answer");
             AnswerError(it_id != message.end() ? *it_id : nlohmann::json(), -32600, "Invalid Request");
             return;
         }
 
         if (!it_method->is_string() || it_id == message.end())
         {
-            SPDLOG_WARN("request has no method or no id");
             AnswerError(it_id != message.end() ? *it_id : nlohmann::json(), -32600, "Invalid Request");
             return;
         }
@@ -414,7 +430,6 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
 
         if (!handler)
         {
-            SPDLOG_ERROR("method not found: {}", method);
             AnswerError(id, -32601, "Method not found");
             return;
         }
@@ -430,19 +445,19 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
         const auto           it_params = message.find("params");
         const nlohmann::json param = (it_params == message.end()) ? nlohmann::json(nullptr) : *it_params;
 
+        /*
+         * A handler which throws answers with the internal error, so the peer
+         * is released instead of waiting for an answer which never comes.
+         */
         try
         {
             handler(uid, param);
         }
-        catch (const std::exception& e)
-        {
-            SPDLOG_ERROR("the handler of {} failed: {}", method, e.what());
-            SendResponse(uid, tl::unexpected<RemoteError>(RemoteError{ -32603, "Internal error", nlohmann::json() }));
-        }
         catch (...)
         {
-            SPDLOG_ERROR("the handler of {} failed", method);
-            SendResponse(uid, tl::unexpected<RemoteError>(RemoteError{ -32603, "Internal error", nlohmann::json() }));
+            /* The answer of this end is small, so its outcome is not reported. */
+            (void)SendResponse(uid,
+                               tl::unexpected<RemoteError>(RemoteError{ -32603, "Internal error", nlohmann::json() }));
         }
     }
 
@@ -457,22 +472,23 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
      */
     void OnAnswer(const nlohmann::json& message)
     {
-        std::uint64_t id = 0;
-        RemoteResult  result;
-        std::string   error;
-        if (!ParseRpcResponse(message, id, result, error))
+        const auto parsed = ParseRpcResponse(message);
+        if (!parsed.has_value())
         {
-            SPDLOG_ERROR("invalid response: {}", error);
+            /*
+             * An answer whose request cannot be read names no entry of the
+             * table, so it is discarded the way a late answer is discarded.
+             */
             return;
         }
 
         PendingRequest::Ptr pending;
         {
             std::lock_guard<std::mutex> lock(pending_mutex);
-            const auto                  it = pending_requests.find(id);
+            const auto                  it = pending_requests.find(parsed->id);
             if (it == pending_requests.end())
             {
-                SPDLOG_DEBUG("the answer of request {} arrived after its caller gave up", id);
+                /* The caller gave up, the answer is discarded. */
                 return;
             }
 
@@ -482,11 +498,11 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
 
         try
         {
-            pending->promise.set_value(std::move(result));
+            pending->promise.set_value(parsed->result);
         }
-        catch (const std::future_error& e)
+        catch (const std::future_error&)
         {
-            SPDLOG_ERROR("failed to deliver the answer of request {}: {}", id, e.what());
+            /* The caller gave up between the lookup and the delivery. */
         }
     }
 
@@ -496,7 +512,7 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
      * @param[in] code Error code of the specification.
      * @param[in] text Error message.
      */
-    void AnswerError(const nlohmann::json& id, int code, const std::string& text)
+    void AnswerError(const nlohmann::json& id, int code, const std::string& text) noexcept
     {
         nlohmann::json err;
         err["code"] = code;
@@ -507,7 +523,8 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
         rsp["error"] = err;
         rsp["id"] = id;
 
-        QueueWrite(std::make_shared<std::string>(rsp.dump()));
+        /* The error answer of this end is small, so the outcome is not reported. */
+        (void)QueueWrite(std::make_shared<std::string>(rsp.dump()));
     }
 
     /**
@@ -519,21 +536,20 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
      * which is why it may be made from any thread without blocking it.
      *
      * @param[in] data Payload to write.
+     * @return Success, or the code of a payload the header cannot describe. A
+     *         payload which cannot be framed is dropped, the peer gets no answer.
      */
-    void QueueWrite(MsgPtr data)
+    tl::expected<void, ErrorCode> QueueWrite(MsgPtr data) noexcept
     {
-        std::string header;
-        std::string error;
-
-        if (!MakeFrameHeader(data->size(), header, error))
+        const auto header = MakeFrameHeader(data->size());
+        if (!header.has_value())
         {
-            SPDLOG_ERROR("[HANDLE: {}] {}", NativeHandle(), error);
-            return;
+            return tl::unexpected<ErrorCode>(header.error());
         }
 
         {
             std::lock_guard<std::mutex> lock(write_mutex);
-            send_queue.push_back(std::make_shared<std::string>(std::move(header)));
+            send_queue.push_back(std::make_shared<std::string>(*header));
             send_queue.push_back(std::move(data));
         }
 
@@ -541,6 +557,8 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
         {
             ::SetEvent(write_queued_event);
         }
+
+        return {};
     }
 
     /**
@@ -582,13 +600,12 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
             return;
         }
 
-        const DWORD error = ::GetLastError();
-        if (error == ERROR_IO_PENDING)
+        if (::GetLastError() == ERROR_IO_PENDING)
         {
             return;
         }
 
-        SPDLOG_DEBUG("[HANDLE: {}] write pipe failed: {}", NativeHandle(), error);
+        /* The write failed, the message is released and the queue moves on. */
         CompleteWrite();
     }
 
@@ -609,7 +626,7 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
         DWORD transferred = 0;
         if (!::GetOverlappedResult(pipe, &write_ov, &transferred, FALSE))
         {
-            SPDLOG_DEBUG("[HANDLE: {}] write pipe failed: {}", NativeHandle(), ::GetLastError());
+            /* The write of the connection failed, the session keeps serving the read side. */
             CompleteWrite();
             return true;
         }
@@ -658,8 +675,8 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
         {
             /* Fail fast instead of keeping a caller which can never be answered. */
             std::promise<RemoteResult> promise;
-            promise.set_value(
-                tl::unexpected<RemoteError>(RemoteError{ -1, "the session is closed", nlohmann::json() }));
+            promise.set_value(tl::unexpected<RemoteError>(
+                RemoteError{ kSessionClosedErrorCode, "the session is closed", nlohmann::json() }));
             return promise.get_future();
         }
 
@@ -678,9 +695,22 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
         request["id"] = id;
         request["params"] = params;
 
-        QueueWrite(std::make_shared<std::string>(request.dump()));
+        auto future = pending->promise.get_future();
 
-        return pending->promise.get_future();
+        const auto queued = QueueWrite(std::make_shared<std::string>(request.dump()));
+        if (!queued.has_value())
+        {
+            /*
+             * A request the header cannot describe is never written, so the
+             * caller is released at once instead of waiting for an answer which
+             * cannot come.
+             */
+            Forget(id);
+            pending->promise.set_value(tl::unexpected<RemoteError>(
+                RemoteError{ kResponseDecodeErrorCode, "the request is too large", nlohmann::json() }));
+        }
+
+        return future;
     }
 
     /**
@@ -713,9 +743,9 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
                 item.second->promise.set_value(
                     tl::unexpected<RemoteError>(RemoteError{ code, message, nlohmann::json() }));
             }
-            catch (const std::future_error& e)
+            catch (const std::future_error&)
             {
-                SPDLOG_ERROR("failed to deliver the failure of request {}: {}", item.first, e.what());
+                /* The caller gave up before the connection ended. */
             }
         }
     }
@@ -729,8 +759,10 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
      *
      * @param[in] request_id Id of the request, as its handler received it.
      * @param[in] result Result of the method or the error it reports.
+     * @return Success, or the code of an answer the frame header cannot
+     *         describe (`kRpcFrameTooLarge`).
      */
-    void SendResponse(std::uint64_t request_id, const RemoteResult& result)
+    tl::expected<void, ErrorCode> SendResponse(std::uint64_t request_id, const RemoteResult& result) noexcept
     {
         IncomingRequest::Ptr request;
         {
@@ -742,6 +774,8 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
                 incoming_requests.erase(it);
             }
         }
+
+        tl::expected<void, ErrorCode> outcome;
 
         if (request)
         {
@@ -768,13 +802,10 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
             }
 
             rsp["id"] = request->id;
-            QueueWrite(std::make_shared<std::string>(rsp.dump()));
-        }
-        else
-        {
-            SPDLOG_ERROR("SendResponse(id={}): not found", request_id);
+            outcome = QueueWrite(std::make_shared<std::string>(rsp.dump()));
         }
 
+        /* An answer of a request which is not in the table is dropped. */
         {
             std::lock_guard<std::mutex> lock(request_mutex);
             if (inflight > 0)
@@ -783,6 +814,8 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
             }
         }
         inflight_cv.notify_all();
+
+        return outcome;
     }
 
     /**
@@ -884,21 +917,22 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
 
     /**
      * @brief Start the thread which serves the connection.
+     * @return Success, or the code of the reason the session cannot serve.
      */
-    void Start()
+    tl::expected<void, ErrorCode> Start() noexcept
     {
         if (started.exchange(true))
         {
-            SPDLOG_WARN("the session is started already");
-            return;
+            /* The session serves already, a second start keeps the thread it has. */
+            return {};
         }
 
-        if (read_event == nullptr || write_event == nullptr || write_queued_event == nullptr || stop_event == nullptr)
+        if (!HasEvents())
         {
-            SPDLOG_ERROR("the events of the session cannot be created, the connection serves nothing");
+            /* Without its events the session serves nothing, which ends it like a closed link. */
             started = false;
             CloseHandleNow();
-            return;
+            return tl::unexpected<ErrorCode>(ErrorCode::kRemoteEventCreateFailed);
         }
 
         try
@@ -911,12 +945,14 @@ struct RemoteSession::Data : std::enable_shared_from_this<Data>
             auto self = shared_from_this();
             thread = std::thread([self]() { self->Run(); });
         }
-        catch (const std::exception& e)
+        catch (const std::exception&)
         {
-            SPDLOG_ERROR("the thread of the session cannot be created: {}", e.what());
             started = false;
             CloseHandleNow();
+            return tl::unexpected<ErrorCode>(ErrorCode::kRemoteThreadStartFailed);
         }
+
+        return {};
     }
 
     /**
@@ -1017,9 +1053,21 @@ inline RemoteSession::~RemoteSession()
 }
 
 /* Definition of the contract on the declaration. */
-inline RemoteSession::Ptr RemoteSession::Create(HANDLE pipe, DWORD peer_pid)
+inline tl::expected<RemoteSession::Ptr, ErrorCode> RemoteSession::Create(HANDLE pipe, DWORD peer_pid) noexcept
 {
     Ptr session(new RemoteSession);
+
+    if (!session->data_->HasEvents())
+    {
+        /*
+         * A session which cannot wait on its pipe serves nothing, so it closes
+         * the handle it was given instead of leaving a connection which no
+         * thread completes.
+         */
+        detail::CloseHandleIfValid(pipe);
+        return tl::unexpected<ErrorCode>(ErrorCode::kRemoteEventCreateFailed);
+    }
+
     session->data_->pipe_handle.store(pipe);
     session->data_->peer_pid = peer_pid;
 
@@ -1027,33 +1075,34 @@ inline RemoteSession::Ptr RemoteSession::Create(HANDLE pipe, DWORD peer_pid)
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteSession::SetMaxRequestSize(std::size_t max_request_size)
+inline void RemoteSession::SetMaxRequestSize(std::size_t max_request_size) noexcept
 {
     data_->max_request_size = max_request_size;
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteSession::SetClosedHandler(ClosedHandler handler)
+inline void RemoteSession::SetClosedHandler(ClosedHandler handler) noexcept
 {
     std::lock_guard<std::mutex> lock(data_->callback_mutex);
     data_->closed_handler = std::move(handler);
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteSession::RegisterMethod(const std::string& method, MethodHandler handler)
+inline void RemoteSession::RegisterMethod(const std::string& method, MethodHandler handler) noexcept
 {
     std::lock_guard<std::mutex> lock(data_->method_mutex);
     data_->method_handlers[method] = std::move(handler);
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteSession::SendResponse(std::uint64_t request_id, const RemoteResult& result)
+inline tl::expected<void, ErrorCode> RemoteSession::SendResponse(std::uint64_t       request_id,
+                                                                 const RemoteResult& result) noexcept
 {
-    data_->SendResponse(request_id, result);
+    return data_->SendResponse(request_id, result);
 }
 
 /* Definition of the contract on the declaration. */
-inline std::future<RemoteResult> RemoteSession::Call(const std::string& method, const nlohmann::json& params)
+inline std::future<RemoteResult> RemoteSession::Call(const std::string& method, const nlohmann::json& params) noexcept
 {
     std::uint64_t id = 0;
     return data_->SendRequest(method, params, id);
@@ -1061,7 +1110,7 @@ inline std::future<RemoteResult> RemoteSession::Call(const std::string& method, 
 
 /* Definition of the contract on the declaration. */
 inline RemoteResult RemoteSession::Call(const std::string& method, const nlohmann::json& params,
-                                        std::uint32_t timeout_ms)
+                                        std::uint32_t timeout_ms) noexcept
 {
     std::uint64_t id = 0;
     auto          future = data_->SendRequest(method, params, id);
@@ -1082,13 +1131,13 @@ inline RemoteResult RemoteSession::Call(const std::string& method, const nlohman
 }
 
 /* Definition of the contract on the declaration. */
-inline DWORD RemoteSession::PeerProcessId() const
+inline DWORD RemoteSession::PeerProcessId() const noexcept
 {
     return data_->peer_pid;
 }
 
 /* Definition of the contract on the declaration. */
-inline DWORD RemoteSession::PeerProcessIdOfRequest(std::uint64_t request_id) const
+inline DWORD RemoteSession::PeerProcessIdOfRequest(std::uint64_t request_id) const noexcept
 {
     {
         std::lock_guard<std::mutex> lock(data_->request_mutex);
@@ -1102,37 +1151,37 @@ inline DWORD RemoteSession::PeerProcessIdOfRequest(std::uint64_t request_id) con
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteSession::Start()
+inline tl::expected<void, ErrorCode> RemoteSession::Start() noexcept
 {
-    data_->Start();
+    return data_->Start();
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteSession::Send(MsgPtr data)
+inline tl::expected<void, ErrorCode> RemoteSession::Send(MsgPtr data) noexcept
 {
-    data_->QueueWrite(std::move(data));
+    return data_->QueueWrite(std::move(data));
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteSession::Close()
+inline void RemoteSession::Close() noexcept
 {
     data_->Close();
 }
 
 /* Definition of the contract on the declaration. */
-inline bool RemoteSession::WaitForPendingWrites(std::uint32_t timeout_ms)
+inline bool RemoteSession::WaitForPendingWrites(std::uint32_t timeout_ms) noexcept
 {
     return data_->WaitForPendingWrites(timeout_ms);
 }
 
 /* Definition of the contract on the declaration. */
-inline bool RemoteSession::WaitForIncomingResponses(std::uint32_t timeout_ms)
+inline bool RemoteSession::WaitForIncomingResponses(std::uint32_t timeout_ms) noexcept
 {
     return data_->WaitForIncomingResponses(timeout_ms);
 }
 
 /* Definition of the contract on the declaration. */
-inline void RemoteSession::Stop()
+inline void RemoteSession::Stop() noexcept
 {
     if (data_)
     {

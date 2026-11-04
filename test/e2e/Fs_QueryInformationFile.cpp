@@ -71,7 +71,7 @@ ProtocolQueryInformationFile::Rsp QueryInformationFile(const std::vector<QueryAc
     for (const auto& action : actions)
     {
         ProtocolQueryInformationFile::Req::Item item;
-        item.path = appbox::WideToUTF8(action.file);
+        item.path = appbox::WideToUTF8(action.file).value_or(std::string());
         item.mode = action.mode;
         item.length = action.length;
         req.items.push_back(item);
@@ -133,8 +133,8 @@ TEST_F(E2E_Fs, QueryInformationFile_ViewPath)
         GetCWD(), config);
     ASSERT_EQ(rsp.items.size(), static_cast<size_t>(3));
 
-    const std::string packed_name = appbox::WideToUTF8(ExpectedName(L"data.txt"));
-    const std::string host_name = appbox::WideToUTF8(ExpectedName(L"host.txt"));
+    const std::string packed_name = appbox::WideToUTF8(ExpectedName(L"data.txt")).value_or(std::string());
+    const std::string host_name = appbox::WideToUTF8(ExpectedName(L"host.txt")).value_or(std::string());
 
     /* The handle of the lower layer and the handle of the copy of the overlay
      * are both named after the view. */
@@ -220,7 +220,7 @@ TEST_F(E2E_Fs, QueryInformationFile_SmallBuffer)
         GetCWD(), config);
     ASSERT_EQ(rsp.items.size(), static_cast<size_t>(1));
 
-    const std::string name = appbox::WideToUTF8(expected);
+    const std::string name = appbox::WideToUTF8(expected).value_or(std::string());
     EXPECT_EQ(rsp.items[0].status, static_cast<long>(STATUS_SUCCESS));
     EXPECT_EQ(rsp.items[0].nameStatus, static_cast<long>(STATUS_SUCCESS));
     EXPECT_EQ(rsp.items[0].normalizedStatus, static_cast<long>(STATUS_SUCCESS));

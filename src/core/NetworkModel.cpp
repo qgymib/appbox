@@ -31,7 +31,7 @@ bool HasWhitespace(const std::wstring& text)
  */
 std::string Quote(const std::wstring& text)
 {
-    return "'" + appbox::WideToUTF8(text) + "'";
+    return "'" + appbox::WideToUTF8(text).value_or(std::string()) + "'";
 }
 
 /**
@@ -78,8 +78,7 @@ bool ValidateRedirect(const std::wstring& value, std::string& error)
         return false;
     }
 
-    appbox::network_isolation::Address address;
-    if (!appbox::network_isolation::ParseAddress(appbox::WideToUTF8(value), address))
+    if (!appbox::network_isolation::ParseAddress(appbox::WideToUTF8(value).value_or(std::string())))
     {
         error = "the redirect target " + Quote(value) + " is not an IPv4 or an IPv6 address";
         return false;
@@ -128,27 +127,32 @@ bool ValidateProxyServer(const std::wstring& value, std::string& error)
  */
 bool ValidateProxyPort(const std::wstring& value, std::string& error)
 {
-    std::uint16_t                             port = 0;
-    const appbox::network_isolation::PortText outcome =
-        appbox::network_isolation::ReadPortText(appbox::WideToUTF8(value), port);
-
-    if (outcome == appbox::network_isolation::PortText::Ok || outcome == appbox::network_isolation::PortText::Empty)
+    const auto port = appbox::network_isolation::ReadPortText(appbox::WideToUTF8(value).value_or(std::string()));
+    if (port)
     {
         return true;
     }
-    if (outcome == appbox::network_isolation::PortText::NotDecimal)
+
+    /*
+     * An empty port means the port was not entered yet, which is what the
+     * workspace stores while the user fills the field in. Every other refusal
+     * is reported with the wording of the workspace, because the text of a
+     * failure belongs to the module which shows it.
+     */
+    switch (port.error())
     {
+    case appbox::ErrorCode::kPortEmpty:
+        return true;
+    case appbox::ErrorCode::kPortNotDecimal:
         error = "the proxy port " + Quote(value) + " is not a decimal number";
         return false;
-    }
-    if (outcome == appbox::network_isolation::PortText::LeadingZero)
-    {
+    case appbox::ErrorCode::kPortLeadingZero:
         error = "the proxy port " + Quote(value) + " has a leading zero";
         return false;
+    default:
+        error = "the proxy port " + Quote(value) + " is not between 1 and 65535";
+        return false;
     }
-
-    error = "the proxy port " + Quote(value) + " is not between 1 and 65535";
-    return false;
 }
 
 } // namespace
@@ -253,7 +257,8 @@ std::ptrdiff_t NetworkModel::IndexOfHostname(const std::wstring& hostname) const
 {
     for (std::size_t index = 0; index < dns_entries_.size(); ++index)
     {
-        if (network_isolation::HostnamesEqual(WideToUTF8(dns_entries_[index].hostname), WideToUTF8(hostname)))
+        if (network_isolation::HostnamesEqual(WideToUTF8(dns_entries_[index].hostname).value_or(std::string()),
+                                              WideToUTF8(hostname).value_or(std::string())))
         {
             return static_cast<std::ptrdiff_t>(index);
         }

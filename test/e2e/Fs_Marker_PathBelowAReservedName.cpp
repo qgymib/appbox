@@ -73,7 +73,7 @@ TEST_F(E2E_Fs, Marker_PathBelowAReservedName)
     /* The name of the marker is no entry of the view. */
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kReservedName);
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kReservedName).value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -83,7 +83,8 @@ TEST_F(E2E_Fs, Marker_PathBelowAReservedName)
     /* Nothing hangs below a name the view reserves. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\" + kReservedName + L"\\inside.txt");
+        req.FileName =
+            appbox::WideToUTF8(FolderPath() + L"\\" + kReservedName + L"\\inside.txt").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_PATH_NOT_FOUND));

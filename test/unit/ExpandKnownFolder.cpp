@@ -53,34 +53,52 @@ std::wstring PathOfA32BitProcess(const std::wstring& key)
 
 TEST(Unit_ExpandKnownFolder, PlainPathIsReturnedUnchanged)
 {
-    EXPECT_EQ(appbox::ExpandKnownFolder(L""), L"");
-    EXPECT_EQ(appbox::ExpandKnownFolder(L"C:\\Apps\\run.exe"), L"C:\\Apps\\run.exe");
+    const auto absolute = appbox::ExpandKnownFolder(L"C:\\Apps\\run.exe");
+    ASSERT_TRUE(absolute);
+    EXPECT_EQ(*absolute, L"C:\\Apps\\run.exe");
+}
+
+/**
+ * @brief A text which carries no path at all is reported by its code.
+ *
+ * The expansion of an empty text used to answer the empty text, which no caller
+ * could tell apart from a folder whose path is empty.
+ */
+TEST(Unit_ExpandKnownFolder, EmptyPathIsReportedByItsCode)
+{
+    const auto expanded = appbox::ExpandKnownFolder(L"");
+    ASSERT_FALSE(expanded);
+    EXPECT_EQ(expanded.error(), appbox::ErrorCode::kPathEmpty);
 }
 
 TEST(Unit_ExpandKnownFolder, TokenPrefixIsExpanded)
 {
     const auto expanded = appbox::ExpandKnownFolder(L"#ProgramFiles#\\MyApp\\app.exe");
-    EXPECT_NE(expanded, L"#ProgramFiles#\\MyApp\\app.exe");
-    EXPECT_NE(expanded.find(L"MyApp\\app.exe"), std::wstring::npos);
-    EXPECT_TRUE(NoDoubledSeparator(expanded));
+    ASSERT_TRUE(expanded);
+    EXPECT_NE(*expanded, L"#ProgramFiles#\\MyApp\\app.exe");
+    EXPECT_NE(expanded->find(L"MyApp\\app.exe"), std::wstring::npos);
+    EXPECT_TRUE(NoDoubledSeparator(*expanded));
 
     /* The expanded prefix must be the real folder path. */
-    std::wstring folder;
-    ASSERT_TRUE(appbox::SearchFolderID(L"#ProgramFiles#", folder));
-    EXPECT_EQ(expanded.find(folder), static_cast<std::size_t>(0));
+    const auto folder = appbox::SearchFolderID(L"#ProgramFiles#");
+    ASSERT_TRUE(folder);
+    EXPECT_EQ(expanded->find(*folder), static_cast<std::size_t>(0));
 }
 
 TEST(Unit_ExpandKnownFolder, TokenWithoutRemainderHasNoTrailingSeparator)
 {
-    const auto   expanded = appbox::ExpandKnownFolder(L"#ProgramFiles#");
-    std::wstring folder;
-    ASSERT_TRUE(appbox::SearchFolderID(L"#ProgramFiles#", folder));
-    EXPECT_EQ(expanded, folder);
+    const auto expanded = appbox::ExpandKnownFolder(L"#ProgramFiles#");
+    const auto folder = appbox::SearchFolderID(L"#ProgramFiles#");
+    ASSERT_TRUE(expanded);
+    ASSERT_TRUE(folder);
+    EXPECT_EQ(*expanded, *folder);
 }
 
 TEST(Unit_ExpandKnownFolder, UnknownTokenIsReturnedUnchanged)
 {
-    EXPECT_EQ(appbox::ExpandKnownFolder(L"#NoSuchFolder#\\x"), L"#NoSuchFolder#\\x");
+    const auto expanded = appbox::ExpandKnownFolder(L"#NoSuchFolder#\\x");
+    ASSERT_TRUE(expanded);
+    EXPECT_EQ(*expanded, L"#NoSuchFolder#\\x");
 }
 
 /**
@@ -89,10 +107,13 @@ TEST(Unit_ExpandKnownFolder, UnknownTokenIsReturnedUnchanged)
  */
 TEST(Unit_ExpandKnownFolder, PercentDelimitedTokenIsNotALayerKey)
 {
-    EXPECT_EQ(appbox::ExpandKnownFolder(L"%ProgramFiles%\\MyApp\\app.exe"), L"%ProgramFiles%\\MyApp\\app.exe");
+    const auto expanded = appbox::ExpandKnownFolder(L"%ProgramFiles%\\MyApp\\app.exe");
+    ASSERT_TRUE(expanded);
+    EXPECT_EQ(*expanded, L"%ProgramFiles%\\MyApp\\app.exe");
 
-    std::wstring folder;
-    EXPECT_FALSE(appbox::SearchFolderID(L"%ProgramFiles%", folder));
+    const auto folder = appbox::SearchFolderID(L"%ProgramFiles%");
+    ASSERT_FALSE(folder);
+    EXPECT_EQ(folder.error(), appbox::ErrorCode::kKnownFolderUnknown);
 }
 
 /**
@@ -119,8 +140,7 @@ TEST(Unit_ExpandKnownFolder, LayerKeysUseTheHashDelimiter)
         EXPECT_EQ(key.back(), L'#');
         EXPECT_EQ(key.find(L'%'), std::wstring::npos);
 
-        std::wstring folder;
-        EXPECT_TRUE(appbox::SearchFolderID(key, folder));
+        EXPECT_TRUE(appbox::SearchFolderID(key));
     }
 }
 
@@ -139,9 +159,13 @@ TEST(Unit_ExpandKnownFolder, RemovedLayerKeysAreNotKnown)
 
     for (const auto& key : keys)
     {
-        std::wstring folder;
-        EXPECT_FALSE(appbox::SearchFolderID(key, folder));
-        EXPECT_EQ(appbox::ExpandKnownFolder(key + L"\\MyApp\\app.exe"), key + L"\\MyApp\\app.exe");
+        const auto folder = appbox::SearchFolderID(key);
+        ASSERT_FALSE(folder);
+        EXPECT_EQ(folder.error(), appbox::ErrorCode::kKnownFolderUnknown);
+
+        const auto expanded = appbox::ExpandKnownFolder(key + L"\\MyApp\\app.exe");
+        ASSERT_TRUE(expanded);
+        EXPECT_EQ(*expanded, key + L"\\MyApp\\app.exe");
     }
 }
 
@@ -215,10 +239,12 @@ TEST(Unit_ExpandKnownFolder, VariablesFollowTheKnownFolderTable)
         EXPECT_EQ(variables[index].name, names[index]);
 
         /* The first view is the real folder of this machine. */
-        EXPECT_EQ(variables[index].path, appbox::WideToUTF8(appbox::test::GetKnownFolderPath(keys[index], false)));
+        EXPECT_EQ(variables[index].path,
+                  appbox::WideToUTF8(appbox::test::GetKnownFolderPath(keys[index], false)).value_or(std::string()));
 
         /* The second view is the folder a 32 bit process sees. */
-        EXPECT_EQ(variables[index].path_x86, appbox::WideToUTF8(PathOfA32BitProcess(keys[index])));
+        EXPECT_EQ(variables[index].path_x86,
+                  appbox::WideToUTF8(PathOfA32BitProcess(keys[index])).value_or(std::string()));
     }
 }
 
@@ -237,9 +263,13 @@ TEST(Unit_ExpandKnownFolder, ExpansionOnlyKeysAreNoLayers)
 
     for (const auto& key : keys)
     {
-        std::wstring folder;
-        EXPECT_FALSE(appbox::SearchFolderID(key, folder));
-        EXPECT_EQ(appbox::ExpandKnownFolder(key + L"\\MyApp\\app.exe"), key + L"\\MyApp\\app.exe");
+        const auto folder = appbox::SearchFolderID(key);
+        ASSERT_FALSE(folder);
+        EXPECT_EQ(folder.error(), appbox::ErrorCode::kKnownFolderUnknown);
+
+        const auto expanded = appbox::ExpandKnownFolder(key + L"\\MyApp\\app.exe");
+        ASSERT_TRUE(expanded);
+        EXPECT_EQ(*expanded, key + L"\\MyApp\\app.exe");
     }
 }
 

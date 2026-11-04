@@ -55,7 +55,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
     /* The folder and the file below it do not exist in the view. */
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(folder);
+        req.FileName = appbox::WideToUTF8(folder).value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         EXPECT_EQ(rsp.attributes, static_cast<DWORD>(INVALID_FILE_ATTRIBUTES));
@@ -63,7 +63,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
     }
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\packed.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\packed.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -72,7 +72,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
     /* Creating the folder succeeds. */
     {
         ProtocolCreateDirectoryW::Req req;
-        req.PathName = appbox::WideToUTF8(folder);
+        req.PathName = appbox::WideToUTF8(folder).value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateDirectoryW>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -81,7 +81,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
     /* The folder the sandbox created is visible, the packed content is not. */
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(folder);
+        req.FileName = appbox::WideToUTF8(folder).value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         ASSERT_EQ(rsp.code, static_cast<DWORD>(ERROR_SUCCESS));
@@ -89,7 +89,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
     }
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\packed.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\packed.txt").value_or(std::string());
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -98,7 +98,7 @@ TEST_F(E2E_Fs, Whiteout_FolderHidesItsSubtree)
     /* A file inside the folder the sandbox created lands in the overlay. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(folder + L"\\new.txt");
+        req.FileName = appbox::WideToUTF8(folder + L"\\new.txt").value_or(std::string());
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
 

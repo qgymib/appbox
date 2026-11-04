@@ -56,7 +56,8 @@ TEST_F(E2E_Fs, DeleteOnClose_LowerLayer)
     /* Open the file and let the close of the handle delete it. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt");
+        req.FileName =
+            appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt").value_or(std::string());
         req.dwDesiredAccess = DELETE;
         req.dwCreationDisposition = OPEN_EXISTING;
         req.dwFlagsAndAttributes = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_DELETE_ON_CLOSE;
@@ -82,7 +83,8 @@ TEST_F(E2E_Fs, DeleteOnClose_LowerLayer)
     /* The delete hides the entry of the lower layer from the view. */
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt");
+        req.FileName =
+            appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\data.txt").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));

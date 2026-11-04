@@ -34,7 +34,8 @@ TEST_F(E2E_Reg, DeleteKey_NonEmpty)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\DeleteKey_NonEmpty_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\DeleteKey_NonEmpty_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
@@ -50,7 +51,7 @@ TEST_F(E2E_Reg, DeleteKey_NonEmpty)
 
     /* The key which still holds a visible sub key cannot be deleted. */
     ProtocolRegDeleteKey::Req blocked;
-    blocked.Key = appbox::WideToUTF8(subkey);
+    blocked.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     blocked.Mode = ProtocolRegDeleteKey::ModeKind::Reg;
 
     const auto blocked_rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteKey>(blocked);
@@ -59,7 +60,7 @@ TEST_F(E2E_Reg, DeleteKey_NonEmpty)
 
     /* The sub key of the host is deleted inside the sandbox. */
     ProtocolRegDeleteKey::Req child;
-    child.Key = appbox::WideToUTF8(subkey + L"\\HostChild");
+    child.Key = appbox::WideToUTF8(subkey + L"\\HostChild").value_or(std::string());
     child.Mode = ProtocolRegDeleteKey::ModeKind::Reg;
 
     const auto child_rsp = Probe(GetCWD(), config).Call<ProtocolRegDeleteKey>(child);
@@ -78,7 +79,7 @@ TEST_F(E2E_Reg, DeleteKey_NonEmpty)
     ASSERT_EQ(RegQueryValueExW(key, L"HostValue", nullptr, nullptr, reinterpret_cast<LPBYTE>(buffer), &size),
               ERROR_SUCCESS);
     RegCloseKey(key);
-    EXPECT_EQ(appbox::WideToUTF8(buffer), "host");
+    EXPECT_EQ(appbox::WideToUTF8(buffer).value_or(std::string()), "host");
 
     HKEY child_key = nullptr;
     ASSERT_EQ(RegOpenKeyExW(HKEY_CURRENT_USER, (subkey + L"\\HostChild").c_str(), 0, KEY_READ, &child_key),

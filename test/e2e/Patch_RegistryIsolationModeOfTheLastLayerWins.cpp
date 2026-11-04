@@ -77,7 +77,8 @@ TEST_F(E2E_Patch, RegistryIsolationModeOfTheLastLayerWins)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\PatchRegistryIsolation_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\PatchRegistryIsolation_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
     const auto hive_key = L"HKEY_CURRENT_USER\\" + subkey;
 
     /* The key and its two values belong to the host. */
@@ -114,7 +115,7 @@ TEST_F(E2E_Patch, RegistryIsolationModeOfTheLastLayerWins)
     ASSERT_TRUE(WritePackage(GetCWD(), L"01-bar.zip", bar));
 
     ProtocolRegReadValues::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Values = { "HostA", "HostB", "Own", "Packed" };
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValues>(req);
@@ -138,5 +139,5 @@ TEST_F(E2E_Patch, RegistryIsolationModeOfTheLastLayerWins)
     DWORD   size = sizeof(buffer);
     ASSERT_EQ(RegQueryValueExW(host.get(), L"HostA", nullptr, &type, reinterpret_cast<LPBYTE>(buffer), &size),
               ERROR_SUCCESS);
-    EXPECT_EQ(appbox::WideToUTF8(buffer), "host");
+    EXPECT_EQ(appbox::WideToUTF8(buffer).value_or(std::string()), "host");
 }

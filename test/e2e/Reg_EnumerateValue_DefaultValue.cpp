@@ -39,7 +39,7 @@ static void WriteRealValue(const std::wstring& subkey, const wchar_t* value, con
     ASSERT_EQ(RegCreateKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr),
               ERROR_SUCCESS);
 
-    auto wdata = appbox::UTF8ToWide(data);
+    auto wdata = appbox::UTF8ToWide(data).value_or(std::wstring());
     ASSERT_EQ(RegSetValueExW(key, value, 0, REG_SZ, reinterpret_cast<const BYTE*>(wdata.c_str()),
                              static_cast<DWORD>((wdata.size() + 1) * sizeof(wchar_t))),
               ERROR_SUCCESS);
@@ -62,7 +62,7 @@ static std::string ReadRealValue(const std::wstring& subkey, const wchar_t* valu
     DWORD   buf_size = sizeof(buf);
     EXPECT_EQ(RegQueryValueExW(key, value, nullptr, nullptr, reinterpret_cast<LPBYTE>(buf), &buf_size), ERROR_SUCCESS);
     RegCloseKey(key);
-    return appbox::WideToUTF8(buf);
+    return appbox::WideToUTF8(buf).value_or(std::string());
 }
 
 /**
@@ -82,7 +82,7 @@ static void WriteSandboxValue(const std::wstring& subkey, const std::string& val
                               const std::filesystem::path& cwd, const appbox::LauncherConfig& config)
 {
     ProtocolRegWriteValue::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Value = value;
     req.Data = data;
     auto rsp = Probe(cwd, config).Call<ProtocolRegWriteValue>(req);
@@ -107,7 +107,7 @@ static ProtocolRegEnumValue::Rsp EnumerateSandboxValues(const std::wstring& subk
                                                         const appbox::LauncherConfig& config)
 {
     ProtocolRegEnumValue::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     return Probe(cwd, config).Call<ProtocolRegEnumValue>(req);
 }
 
@@ -135,8 +135,8 @@ TEST_F(E2E_Reg, EnumValue_DefaultValueInHive)
 
     auto config = tree.Build();
 
-    const auto subkey =
-        L"Software\\AppBoxTest\\EnumValue_DefaultValueInHive_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\EnumValue_DefaultValueInHive_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     const std::string default_data = "DefaultData";
     const std::string first_data = "FirstData";
@@ -198,8 +198,8 @@ TEST_F(E2E_Reg, EnumValue_DefaultValueOfRealKey)
 
     auto config = tree.Build();
 
-    const auto subkey =
-        L"Software\\AppBoxTest\\EnumValue_DefaultValueOfRealKey_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\EnumValue_DefaultValueOfRealKey_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     const std::string host_default = "HostDefault";
     const std::string host_data = "HostData";
@@ -263,8 +263,8 @@ TEST_F(E2E_Reg, EnumValue_DefaultValueShadowed)
 
     auto config = tree.Build();
 
-    const auto subkey =
-        L"Software\\AppBoxTest\\EnumValue_DefaultValueShadowed_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\EnumValue_DefaultValueShadowed_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     const std::string host_default = "HostDefault";
     const std::string sandbox_default = "SandboxDefault";

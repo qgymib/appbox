@@ -73,14 +73,14 @@ TEST_F(E2E_Fs, Stream_WhiteoutFileHidesItsStream)
     /* The stream of the hidden file is not part of the view. */
     {
         ProtocolReadFileFull::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolReadFileFull>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
     }
     {
         ProtocolQueryAttributes::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolQueryAttributes>(req);
         EXPECT_EQ(rsp.attributes, static_cast<DWORD>(INVALID_FILE_ATTRIBUTES));
@@ -88,7 +88,7 @@ TEST_F(E2E_Fs, Stream_WhiteoutFileHidesItsStream)
     }
     {
         ProtocolDeleteFileW::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:stream").value_or(std::string());
 
         const auto rsp = Probe(GetCWD(), config).Call<ProtocolDeleteFileW>(req);
         EXPECT_EQ(rsp.code, static_cast<DWORD>(ERROR_FILE_NOT_FOUND));
@@ -97,7 +97,7 @@ TEST_F(E2E_Fs, Stream_WhiteoutFileHidesItsStream)
     /* The entry the sandbox creates itself is visible afterwards. */
     {
         ProtocolWriteFile::Req req;
-        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:created");
+        req.FileName = appbox::WideToUTF8(FolderPath() + L"\\f.txt:created").value_or(std::string());
         req.Data = "created";
         req.dwCreationDisposition = CREATE_NEW;
 

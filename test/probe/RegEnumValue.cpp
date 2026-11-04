@@ -17,8 +17,9 @@ appbox::test::ProtocolRegEnumValue::Rsp appbox::test::ProbeRegEnumValue_Entry(
 
     appbox::test::ProtocolRegEnumValue::Rsp rsp;
 
-    HKEY key = nullptr;
-    rsp.open_code = RegOpenKeyExW(HKEY_CURRENT_USER, appbox::UTF8ToWide(req.Key).c_str(), 0, KEY_READ, &key);
+    HKEY               key = nullptr;
+    const std::wstring wide_key = appbox::UTF8ToWide(req.Key).value_or(std::wstring());
+    rsp.open_code = RegOpenKeyExW(HKEY_CURRENT_USER, wide_key.c_str(), 0, KEY_READ, &key);
     if (rsp.open_code != ERROR_SUCCESS)
     {
         return rsp;
@@ -44,14 +45,14 @@ appbox::test::ProtocolRegEnumValue::Rsp appbox::test::ProbeRegEnumValue_Entry(
             break;
         }
 
-        const auto value_name = appbox::WideToUTF8(name);
+        const auto value_name = appbox::WideToUTF8(name).value_or(std::string());
         rsp.names.push_back(value_name);
 
         wchar_t buf[128] = {};
         DWORD   buf_size = sizeof(buf);
         if (RegQueryValueExW(key, name, nullptr, &type, reinterpret_cast<LPBYTE>(buf), &buf_size) == ERROR_SUCCESS)
         {
-            rsp.values[value_name] = appbox::WideToUTF8(buf);
+            rsp.values[value_name] = appbox::WideToUTF8(buf).value_or(std::string());
         }
     }
 

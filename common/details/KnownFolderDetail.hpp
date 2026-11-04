@@ -10,9 +10,8 @@
 #include "KnownFolder.hpp"
 #include "WString.hpp"
 #include <Shlobj.h>
-#include <spdlog/spdlog.h>
-#include <stdexcept>
 #include <string>
+#include <tl/expected.hpp>
 #include <vector>
 
 namespace appbox
@@ -114,15 +113,15 @@ inline const FolderMapping kKnownFolders[] = {
  * the public interface of the header.
  *
  * @param[in] guid Known folder id.
- * @return Path of the folder.
- * @throw std::runtime_error The folder cannot be resolved on this machine.
+ * @return Path of the folder, or `kKnownFolderUnavailable` when this machine
+ *         cannot resolve the folder.
  */
-inline std::wstring GetFolderPath(const GUID& guid)
+inline tl::expected<std::wstring, ErrorCode> GetFolderPath(const GUID& guid) noexcept
 {
     wchar_t* path = nullptr;
-    if (SHGetKnownFolderPath(guid, 0, nullptr, &path) != S_OK)
+    if (SHGetKnownFolderPath(guid, 0, nullptr, &path) != S_OK || path == nullptr)
     {
-        throw std::runtime_error("Failed to get known folder path");
+        return tl::make_unexpected(ErrorCode::kKnownFolderUnavailable);
     }
 
     std::wstring folder_path(path);
@@ -139,18 +138,20 @@ inline std::wstring GetFolderPath(const GUID& guid)
  * added later brings its variable with it.
  *
  * @param[in] key Layer key of the table.
- * @param[out] name Name of the variable, in UTF-8.
- * @return false when the key is not delimited by `#` and names no variable.
+ * @return Name of the variable in UTF-8, or the class of the refusal:
+ *         - `kKnownFolderUnknown` when the key is not delimited by `#` and
+ *           names no variable;
+ *         - `kTextConversionFailed` when the name cannot be carried by the
+ *           UTF-8 code page.
  */
-inline bool VariableNameOf(const std::wstring& key, std::string& name)
+inline tl::expected<std::string, ErrorCode> VariableNameOf(const std::wstring& key) noexcept
 {
     if (key.size() < 3 || key.front() != L'#' || key.back() != L'#')
     {
-        return false;
+        return tl::make_unexpected(ErrorCode::kKnownFolderUnknown);
     }
 
-    name = WideToUTF8(key.substr(1, key.size() - 2));
-    return true;
+    return WideToUTF8(key.substr(1, key.size() - 2));
 }
 
 /**
@@ -172,7 +173,7 @@ inline bool IsReferenceFolder(const FolderMapping& entry)
 
 } // namespace detail
 
-inline bool SearchFolderID(const std::wstring& name, std::wstring& folder_path)
+inline tl::expected<std::wstring, ErrorCode> SearchFolderID(const std::wstring& name) noexcept
 {
     for (const auto& entry : detail::kKnownFolders)
     {
@@ -183,38 +184,32 @@ inline bool SearchFolderID(const std::wstring& name, std::wstring& folder_path)
 
         if (name == entry.name)
         {
-            folder_path = detail::GetFolderPath(entry.guid);
-            return true;
+            return detail::GetFolderPath(entry.guid);
         }
     }
-    return false;
+    return tl::make_unexpected(ErrorCode::kKnownFolderUnknown);
 }
 
-inline std::vector<KnownFolderVariable> KnownFolderVariables()
+inline std::vector<KnownFolderVariable> KnownFolderVariables() noexcept
 {
     std::vector<KnownFolderVariable> variables;
 
     for (const auto& entry : detail::kKnownFolders)
     {
-        std::string name;
-        if (!detail::VariableNameOf(entry.name, name))
+        const auto name = detail::VariableNameOf(entry.name);
+        if (!name)
         {
-            SPDLOG_WARN("a known folder of the table is not delimited by '#', its variable is skipped");
             continue;
         }
 
         /*
          * A folder which cannot be resolved on this machine is skipped: the
-         * other variables stay usable instead of failing the whole start.
+         * other variables stay usable instead of failing the whole start. The
+         * skip is what the empty second view of the entry records as well.
          */
-        std::wstring folder_path;
-        try
+        const auto folder_path = detail::GetFolderPath(entry.guid);
+        if (!folder_path)
         {
-            folder_path = detail::GetFolderPath(entry.guid);
-        }
-        catch (const std::exception& e)
-        {
-            SPDLOG_WARN("the variable '{}' is skipped, its known folder cannot be resolved: {}", name, e.what());
             continue;
         }
 
@@ -227,27 +222,48 @@ inline std::vector<KnownFolderVariable> KnownFolderVariables()
         std::wstring folder_path_x86;
         if (entry.guid_x86 == nullptr)
         {
-            folder_path_x86 = folder_path;
+            folder_path_x86 = *folder_path;
         }
         else if (entry.guid_x86 != &detail::kFolderNotApplicable)
         {
-            try
+            const auto x86_path = detail::GetFolderPath(*entry.guid_x86);
+            if (x86_path)
             {
-                folder_path_x86 = detail::GetFolderPath(*entry.guid_x86);
-            }
-            catch (const std::exception& e)
-            {
-                SPDLOG_WARN("the variable '{}' names no folder in a 32 bit process: {}", name, e.what());
+                /* A folder which this machine cannot resolve names no path for
+                 * a 32 bit process, which the empty text records. */
+                folder_path_x86 = *x86_path;
             }
         }
 
-        variables.push_back(KnownFolderVariable{ name, WideToUTF8(folder_path), WideToUTF8(folder_path_x86) });
+        /*
+         * The texts of the entry are UTF-8, like the other texts of the
+         * injected configuration. A folder whose path the code page cannot carry
+         * is skipped the way a folder this machine cannot resolve is: the other
+         * variables stay usable instead of failing the whole start.
+         */
+        const auto folder_text = WideToUTF8(*folder_path);
+        if (!folder_text)
+        {
+            continue;
+        }
+
+        std::string folder_text_x86;
+        if (!folder_path_x86.empty())
+        {
+            const auto converted_x86 = WideToUTF8(folder_path_x86);
+            if (!converted_x86)
+            {
+                continue;
+            }
+            folder_text_x86 = *converted_x86;
+        }
+        variables.push_back(KnownFolderVariable{ *name, *folder_text, std::move(folder_text_x86) });
     }
 
     return variables;
 }
 
-inline std::vector<KnownFolderReference> KnownFolderReferences()
+inline std::vector<KnownFolderReference> KnownFolderReferences() noexcept
 {
     std::vector<KnownFolderReference> references;
 
@@ -258,36 +274,29 @@ inline std::vector<KnownFolderReference> KnownFolderReferences()
             continue;
         }
 
-        std::string name;
-        if (!detail::VariableNameOf(entry.name, name))
+        if (!detail::VariableNameOf(entry.name))
         {
-            SPDLOG_WARN("a known folder of the table is not delimited by '#', its reference is skipped");
             continue;
         }
 
         /* A folder which cannot be resolved on this machine names no path. */
-        std::wstring folder_path;
-        try
+        const auto folder_path = detail::GetFolderPath(entry.guid);
+        if (!folder_path)
         {
-            folder_path = detail::GetFolderPath(entry.guid);
-        }
-        catch (const std::exception& e)
-        {
-            SPDLOG_WARN("the reference '{}' is skipped, its known folder cannot be resolved: {}", name, e.what());
             continue;
         }
 
-        references.push_back(KnownFolderReference{ entry.name.substr(1, entry.name.size() - 2), folder_path });
+        references.push_back(KnownFolderReference{ entry.name.substr(1, entry.name.size() - 2), *folder_path });
     }
 
     return references;
 }
 
-inline std::wstring ExpandKnownFolder(const std::wstring& path)
+inline tl::expected<std::wstring, ErrorCode> ExpandKnownFolder(const std::wstring& path) noexcept
 {
     if (path.empty())
     {
-        return path;
+        return tl::make_unexpected(ErrorCode::kPathEmpty);
     }
 
     /* Only a `#Name#` delimited token is expanded. */
@@ -317,22 +326,28 @@ inline std::wstring ExpandKnownFolder(const std::wstring& path)
         if (path.compare(0, entry.name.size(), entry.name) == 0)
         {
             const auto folder = detail::GetFolderPath(entry.guid);
+            if (!folder)
+            {
+                return tl::make_unexpected(folder.error());
+            }
+
             const auto rest = path.substr(entry.name.size());
             if (rest.empty())
             {
-                return folder;
+                return *folder;
             }
             if (rest.front() == L'\\')
             {
                 /* The remainder already carries a separator, appending
                  * another one would produce a doubled backslash which the
                  * NT object manager rejects. */
-                return folder + rest;
+                return *folder + rest;
             }
-            return folder + L"\\" + rest;
+            return *folder + L"\\" + rest;
         }
     }
 
+    /* A path which names no known folder is its own expansion. */
     return path;
 }
 

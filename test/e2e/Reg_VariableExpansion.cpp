@@ -136,7 +136,7 @@ TEST_F(E2E_Reg, VariableExpansion)
     ASSERT_FALSE(packed_before.empty());
 
     ProtocolRegReadValues::Req req;
-    req.Key = appbox::WideToUTF8(subkey);
+    req.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     req.Values = { "Sz", "ExpandSz", "MultiSz", "Dword", "Binary", "System32Sz", "CaseSz" };
 
     const auto rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValues>(req);
@@ -149,15 +149,15 @@ TEST_F(E2E_Reg, VariableExpansion)
     }
 
     EXPECT_EQ(rsp.values[0].type, static_cast<DWORD>(REG_SZ));
-    EXPECT_EQ(rsp.values[0].text, appbox::WideToUTF8(documents + L"\\Foo\\Bar"));
+    EXPECT_EQ(rsp.values[0].text, appbox::WideToUTF8(documents + L"\\Foo\\Bar").value_or(std::string()));
 
     EXPECT_EQ(rsp.values[1].type, static_cast<DWORD>(REG_EXPAND_SZ));
-    EXPECT_EQ(rsp.values[1].text, appbox::WideToUTF8(profile + L"\\Foo"));
+    EXPECT_EQ(rsp.values[1].text, appbox::WideToUTF8(profile + L"\\Foo").value_or(std::string()));
 
     /* Every item of the list is expanded on its own. */
     EXPECT_EQ(rsp.values[2].type, static_cast<DWORD>(REG_MULTI_SZ));
     ASSERT_EQ(rsp.values[2].items.size(), 2u);
-    EXPECT_EQ(rsp.values[2].items[0], appbox::WideToUTF8(documents + L"\\Foo"));
+    EXPECT_EQ(rsp.values[2].items[0], appbox::WideToUTF8(documents + L"\\Foo").value_or(std::string()));
     EXPECT_EQ(rsp.values[2].items[1], "plain");
 
     /* The types which carry no text keep their bytes. */
@@ -171,7 +171,7 @@ TEST_F(E2E_Reg, VariableExpansion)
 
     /* The system folder of the machine is referenced like every other folder. */
     EXPECT_EQ(rsp.values[5].type, static_cast<DWORD>(REG_SZ));
-    EXPECT_EQ(rsp.values[5].text, appbox::WideToUTF8(system32 + L"\\Foo"));
+    EXPECT_EQ(rsp.values[5].text, appbox::WideToUTF8(system32 + L"\\Foo").value_or(std::string()));
 
     /* A reference which is spelled with another case keeps its spelling. */
     EXPECT_EQ(rsp.values[6].type, static_cast<DWORD>(REG_SZ));

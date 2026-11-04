@@ -11,10 +11,15 @@ namespace appbox
 
 /**
  * @brief Generate a random string.
+ *
+ * The characters are drawn from the ASCII digits and letters, which makes the
+ * answer usable as a name of a file or of an entry of a document. A length of
+ * zero answers an empty string.
+ *
  * @param[in] length The length of the string.
  * @return The random string.
  */
-inline std::string RandomString(size_t length)
+inline std::string RandomString(size_t length) noexcept
 {
     static const char chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 

@@ -86,7 +86,7 @@ TEST_F(E2E_Fs, ListDir_EmptyFolderOfTheLayer)
     /* Create a file inside the folder of the layer should success. */
     {
         ProtocolCreateFileW::Req req;
-        req.FileName = appbox::WideToUTF8(logs + L"\\" + wName);
+        req.FileName = appbox::WideToUTF8(logs + L"\\" + wName).value_or(std::string());
         req.dwDesiredAccess = GENERIC_WRITE;
         req.dwCreationDisposition = CREATE_NEW;
         auto rsp = Probe(GetCWD(), config).Call<ProtocolCreateFileW>(req);

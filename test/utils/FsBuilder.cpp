@@ -77,7 +77,7 @@ static void WriteDefaultRegistryIsolation(const std::filesystem::path& root)
     for (const wchar_t* name : appbox::registry_isolation::kRootKeyNames)
     {
         appbox::registry_isolation::KeyEntry entry;
-        entry.path = appbox::WideToUTF8(name);
+        entry.path = appbox::WideToUTF8(name).value_or(std::string());
         entry.isolation = appbox::RegistryKeyIsolation::WriteCopy;
         document.keys.push_back(std::move(entry));
     }

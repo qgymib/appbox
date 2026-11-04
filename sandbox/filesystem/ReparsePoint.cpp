@@ -212,7 +212,14 @@ NTSTATUS appbox::filesystem::ViewNamespaceTarget(const std::wstring& target, std
         return STATUS_UNSUCCESSFUL;
     }
 
-    return ViewNamespaceTargetCore(target, appbox::sandbox->fs, viewTarget);
+    const auto view_target = ViewNamespaceTargetCore(target, appbox::sandbox->fs);
+    if (!view_target)
+    {
+        return appbox::filesystem::ResolveStatusOf(view_target.error());
+    }
+
+    viewTarget = *view_target;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS appbox::filesystem::ReparseTargetToViewPath(const std::vector<BYTE>& data, const std::wstring& linkViewPath,
@@ -223,20 +230,27 @@ NTSTATUS appbox::filesystem::ReparseTargetToViewPath(const std::vector<BYTE>& da
         return STATUS_UNSUCCESSFUL;
     }
 
-    return ReparseTargetToViewPathCore(data, linkViewPath, appbox::sandbox->fs, targetViewPath);
+    const auto target = ReparseTargetToViewPathCore(data, linkViewPath, appbox::sandbox->fs);
+    if (!target)
+    {
+        return appbox::filesystem::ResolveStatusOf(target.error());
+    }
+
+    targetViewPath = *target;
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS appbox::filesystem::TranslateReparseDataToView(const std::vector<BYTE>& data, std::vector<BYTE>& translated)
 {
-    ReparseTarget target;
-    if (!ReadReparseTarget(data, target))
+    const auto target = ReadReparseTarget(data);
+    if (!target)
     {
         /* A tag the view does not resolve keeps the data of the caller. */
         translated = data;
         return STATUS_SUCCESS;
     }
 
-    if (target.relative)
+    if (target->relative)
     {
         /*
          * A relative target names the same entry in the view as it does in the
@@ -247,13 +261,13 @@ NTSTATUS appbox::filesystem::TranslateReparseDataToView(const std::vector<BYTE>&
     }
 
     std::wstring   substitute;
-    const NTSTATUS status = ViewNamespaceTarget(target.substitute, substitute);
+    const NTSTATUS status = ViewNamespaceTarget(target->substitute, substitute);
     if (!NT_SUCCESS(status))
     {
         return status;
     }
 
-    std::wstring print = target.print;
+    std::wstring print = target->print;
     if (!print.empty())
     {
         std::wstring viewPrint;
@@ -292,6 +306,12 @@ NTSTATUS appbox::filesystem::ExpandReparsePoints(const ResolveFs& fs, const std:
                                                  ReparseFollowMode mode, ULONG nameAttributes,
                                                  const IsolationTable* isolation, std::wstring& effectiveViewPath)
 {
-    return ExpandReparsePointsCore(fs, viewPath, mode, nameAttributes, isolation, SandboxResolveOps(),
-                                   effectiveViewPath);
+    const auto expanded = ExpandReparsePointsCore(fs, viewPath, mode, nameAttributes, isolation, SandboxResolveOps());
+    if (!expanded)
+    {
+        return ResolveStatusOf(expanded.error());
+    }
+
+    effectiveViewPath = *expanded;
+    return STATUS_SUCCESS;
 }

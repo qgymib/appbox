@@ -49,7 +49,8 @@ TEST_F(E2E_Reg, Full_HidesRealValue)
 
     auto config = tree.Build();
 
-    const auto subkey = L"Software\\AppBoxTest\\Full_HidesRealValue_" + appbox::UTF8ToWide(appbox::RandomString(8));
+    const auto subkey = L"Software\\AppBoxTest\\Full_HidesRealValue_" +
+                        appbox::UTF8ToWide(appbox::RandomString(8)).value_or(std::wstring());
 
     RealHkcuKey real_key(subkey);
     ASSERT_NE(real_key.get(), nullptr);
@@ -64,7 +65,7 @@ TEST_F(E2E_Reg, Full_HidesRealValue)
     ASSERT_TRUE(builder.Write(error)) << error;
 
     ProtocolRegReadValue::Req shared;
-    shared.Key = appbox::WideToUTF8(subkey);
+    shared.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     shared.Value = "Shared";
 
     const auto shared_rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(shared);
@@ -73,7 +74,7 @@ TEST_F(E2E_Reg, Full_HidesRealValue)
     EXPECT_EQ(shared_rsp.data, "sandbox");
 
     ProtocolRegReadValue::Req hidden;
-    hidden.Key = appbox::WideToUTF8(subkey);
+    hidden.Key = appbox::WideToUTF8(subkey).value_or(std::string());
     hidden.Value = "RealOnly";
 
     const auto hidden_rsp = Probe(GetCWD(), config).Call<ProtocolRegReadValue>(hidden);
@@ -88,6 +89,6 @@ TEST_F(E2E_Reg, Full_HidesRealValue)
     ASSERT_EQ(RegOpenKeyExW(HKEY_CURRENT_USER, subkey.c_str(), 0, KEY_QUERY_VALUE, &key), ERROR_SUCCESS);
     ASSERT_EQ(RegQueryValueExW(key, L"RealOnly", nullptr, &type, reinterpret_cast<LPBYTE>(buffer), &size),
               ERROR_SUCCESS);
-    EXPECT_EQ(appbox::WideToUTF8(buffer), "host");
+    EXPECT_EQ(appbox::WideToUTF8(buffer).value_or(std::string()), "host");
     RegCloseKey(key);
 }

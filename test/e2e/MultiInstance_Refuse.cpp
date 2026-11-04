@@ -119,7 +119,7 @@ TEST_F(E2E_MultiInstance, RefusesDifferentSandboxId)
     auto other_config = MultiInstanceConfig(other, other_id, "other");
     other_config.hide_console = true;
     other_config.startup.screen = false;
-    other_config.startups[0].executable = appbox::WideToUTF8(ProbePath(ProbeBitness::Bit64));
+    other_config.startups[0].executable = appbox::WideToUTF8(ProbePath(ProbeBitness::Bit64)).value_or(std::string());
 
     const auto exit_code = ProbeRunRawConfig(other.wstring(), nlohmann::json(other_config), LogRun{});
 

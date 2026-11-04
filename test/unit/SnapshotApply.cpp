@@ -382,7 +382,8 @@ TEST(Unit_SnapshotApply, ReportsAFileWhichIsNotOnTheHostAnymore)
     EXPECT_EQ(report.applied, 0u);
     EXPECT_TRUE(report.ignored.empty());
     ASSERT_EQ(report.errors.size(), 1u);
-    EXPECT_TRUE(Mentions(report.errors, name + L"\\gone.dll")) << appbox::WideToUTF8(report.errors[0].message);
+    EXPECT_TRUE(Mentions(report.errors, name + L"\\gone.dll"))
+        << appbox::WideToUTF8(report.errors[0].message).value_or(std::string());
     EXPECT_EQ(report.total_errors, 1u);
 }
 
@@ -594,7 +595,8 @@ TEST(Unit_SnapshotApply, IgnoresARegistryValueOfATypeTheWorkspaceCannotStore)
     EXPECT_EQ(report.applied, 0u);
     EXPECT_TRUE(report.errors.empty());
     ASSERT_EQ(report.ignored.size(), 1u);
-    EXPECT_TRUE(Mentions(report.ignored, L"Broken")) << appbox::WideToUTF8(report.ignored[0].message);
+    EXPECT_TRUE(Mentions(report.ignored, L"Broken"))
+        << appbox::WideToUTF8(report.ignored[0].message).value_or(std::string());
     EXPECT_EQ(report.total_ignored, 1u);
     EXPECT_EQ(registry.FindKey(L"HKEY_CURRENT_USER\\Software\\AppBoxTest"), nullptr);
 }
@@ -686,7 +688,8 @@ TEST(Unit_SnapshotApply, IgnoresARemovedEnvironmentVariable)
     EXPECT_EQ(report.applied, 0u);
     EXPECT_TRUE(report.errors.empty());
     ASSERT_EQ(report.ignored.size(), 1u);
-    EXPECT_TRUE(Mentions(report.ignored, L"APPBOX_GONE")) << appbox::WideToUTF8(report.ignored[0].message);
+    EXPECT_TRUE(Mentions(report.ignored, L"APPBOX_GONE"))
+        << appbox::WideToUTF8(report.ignored[0].message).value_or(std::string());
     EXPECT_TRUE(environment.IsEmpty());
 }
 

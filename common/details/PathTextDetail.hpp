@@ -9,9 +9,9 @@
  */
 
 #include "PathText.hpp"
-#include <cassert>
 #include <cstddef>
 #include <string>
+#include <tl/expected.hpp>
 #include <vector>
 
 namespace appbox
@@ -36,7 +36,7 @@ namespace detail
  * @param[in] delimiter Delimiter to split on.
  * @return The parts of the text, in the order they appear.
  */
-inline std::vector<std::wstring> SplitKeepingEmpty(const std::wstring& text, const std::wstring& delimiter)
+inline std::vector<std::wstring> SplitKeepingEmpty(const std::wstring& text, const std::wstring& delimiter) noexcept
 {
     std::vector<std::wstring> result;
 
@@ -67,15 +67,27 @@ namespace filesystem
 {
 
 /* Definition of the contract on the declaration. */
-inline std::wstring DirName(const std::wstring& path)
+inline tl::expected<std::wstring, ErrorCode> DirName(const std::wstring& path) noexcept
 {
-    assert(path[0] == L'\\');
+    if (path.empty())
+    {
+        return tl::make_unexpected(ErrorCode::kPathEmpty);
+    }
 
     /* Remote trailing slash */
     auto cp_path = path;
-    while (cp_path.back() == L'\\')
+    while (!cp_path.empty() && cp_path.back() == L'\\')
     {
         cp_path.pop_back();
+    }
+
+    /*
+     * A path which is nothing but separators names the root of a volume, which
+     * has no directory above it.
+     */
+    if (cp_path.empty())
+    {
+        return std::wstring{};
     }
 
     auto vec = appbox::detail::SplitKeepingEmpty(cp_path, L"\\");
@@ -97,7 +109,7 @@ inline std::wstring DirName(const std::wstring& path)
 
 /* Definition of the contract on the declaration. */
 inline std::vector<std::wstring> Sequence(const std::wstring& path, std::size_t offset, const std::wstring& delimiter,
-                                          bool bIncludeLast)
+                                          bool bIncludeLast) noexcept
 {
     std::vector<std::wstring> result;
 
@@ -116,13 +128,13 @@ inline std::vector<std::wstring> Sequence(const std::wstring& path, std::size_t 
 }
 
 /* Definition of the contract on the declaration. */
-inline bool IsDriveLetter(wchar_t character)
+inline bool IsDriveLetter(wchar_t character) noexcept
 {
     return (character >= L'A' && character <= L'Z') || (character >= L'a' && character <= L'z');
 }
 
 /* Definition of the contract on the declaration. */
-inline std::size_t StreamNameSeparator(const std::wstring& path)
+inline tl::expected<std::size_t, ErrorCode> StreamNameSeparator(const std::wstring& path) noexcept
 {
     const auto last_separator = path.find_last_of(L'\\');
     const auto name_begin = last_separator == std::wstring::npos ? 0 : last_separator + 1;
@@ -130,44 +142,44 @@ inline std::size_t StreamNameSeparator(const std::wstring& path)
     const auto colon = path.find(L':', name_begin);
     if (colon == std::wstring::npos)
     {
-        return std::wstring::npos;
+        return tl::make_unexpected(ErrorCode::kPathNoStreamName);
     }
 
     /* The component of the drive, see the declaration. */
     if (colon == name_begin + 1 && colon + 1 == path.size() && IsDriveLetter(path[name_begin]))
     {
-        return std::wstring::npos;
+        return tl::make_unexpected(ErrorCode::kPathNoStreamName);
     }
 
     return colon;
 }
 
 /* Definition of the contract on the declaration. */
-inline bool CarriesStreamName(const std::wstring& path)
+inline bool CarriesStreamName(const std::wstring& path) noexcept
 {
-    return StreamNameSeparator(path) != std::wstring::npos;
+    return StreamNameSeparator(path).has_value();
 }
 
 /* Definition of the contract on the declaration. */
-inline std::wstring StreamNameOf(const std::wstring& path)
+inline std::wstring StreamNameOf(const std::wstring& path) noexcept
 {
     const auto separator = StreamNameSeparator(path);
-    if (separator == std::wstring::npos)
+    if (!separator)
     {
         return {};
     }
-    return path.substr(separator + 1);
+    return path.substr(*separator + 1);
 }
 
 /* Definition of the contract on the declaration. */
-inline std::wstring EntryPathOfStream(const std::wstring& path)
+inline std::wstring EntryPathOfStream(const std::wstring& path) noexcept
 {
     const auto separator = StreamNameSeparator(path);
-    if (separator == std::wstring::npos)
+    if (!separator)
     {
         return path;
     }
-    return path.substr(0, separator);
+    return path.substr(0, *separator);
 }
 
 } // namespace filesystem

@@ -43,7 +43,8 @@ TEST_F(E2E_Fs, LaunchProcess_FromLower)
     /* Launch the executable from the sandbox view. */
     {
         ProtocolLaunchProcess::Req req;
-        req.FileName = appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\cmd.exe");
+        req.FileName =
+            appbox::WideToUTF8(GetKnownFolderPath(L"#USERPROFILE#", false) + L"\\cmd.exe").value_or(std::string());
         req.Arguments = { "/c", "exit 42" };
 
         auto rsp = Probe(GetCWD(), config).Call<ProtocolLaunchProcess>(req);
