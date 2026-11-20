@@ -272,9 +272,9 @@ bool WriteVariable(appbox::test::ProtocolEnvironmentWrite::Entry entry, const st
     switch (entry)
     {
     case Entry::Ansi: {
-        const std::string ansi_name = appbox::WideToUTF8(name).value_or(std::string());
-        const std::string ansi_value =
-            value == nullptr ? std::string() : appbox::WideToUTF8(*value).value_or(std::string());
+        /* The entry point reads its arguments in the code page of the machine. */
+        const std::string ansi_name = appbox::test::WideToAcp(name);
+        const std::string ansi_value = value == nullptr ? std::string() : appbox::test::WideToAcp(*value);
         return ::SetEnvironmentVariableA(ansi_name.c_str(), value == nullptr ? nullptr : ansi_value.c_str()) != FALSE;
     }
     case Entry::RtlNull:

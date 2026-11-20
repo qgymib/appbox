@@ -61,6 +61,13 @@ struct ProtocolEnvironmentRead
 
         /**
          * @brief Value of every name, read with the ANSI entry point.
+         *
+         * The entry point reports the bytes of the code page of the machine,
+         * and the payload of the session carries UTF-8 only, so the value is
+         * the view of the entry point decoded through the code page of the
+         * machine, as UTF-8. A character the code page has no bytes for is
+         * replaced by the system, so the view and the wide one differ by that
+         * substitution on a machine whose code page cannot spell the value.
          */
         std::vector<std::string> ansi_values;
 
@@ -71,6 +78,10 @@ struct ProtocolEnvironmentRead
 
         /**
          * @brief The ANSI expansion of every text.
+         *
+         * Like the values of the ANSI entry point, the expansion is the view
+         * of the entry point decoded through the code page of the machine, as
+         * UTF-8.
          */
         std::vector<std::string> ansi_expanded;
 
@@ -82,6 +93,10 @@ struct ProtocolEnvironmentRead
 
         /**
          * @brief Entries of the ANSI block which enumerates the environment.
+         *
+         * Like the values of the ANSI entry point, every entry is the view of
+         * the entry point decoded through the code page of the machine, as
+         * UTF-8.
          */
         std::vector<std::string> ansi_entries;
 

@@ -112,6 +112,7 @@ add_executable(AppBoxTests
     "unit/ZipWriter.cpp"
 
     # End-to-end cases.
+    "e2e/Env_AnsiViewDecodesTheLocalizedHostValue.cpp"
     "e2e/Env_BlockOfTheProcessIsComposed.cpp"
     "e2e/Env_Full_HidesTheHostValue.cpp"
     "e2e/Env_MalformedIsolationFile_FallsBack.cpp"

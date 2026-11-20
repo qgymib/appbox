@@ -117,11 +117,12 @@ std::string ReadWide(const std::wstring& name, bool& found)
 /**
  * @brief Read a variable with the ANSI entry point of the process environment.
  * @param[in] name Name of the variable.
- * @return The value of the variable, empty when it is not held.
+ * @return The value of the variable, decoded through the code page of the
+ *         machine, as UTF-8. Empty when it is not held.
  */
 std::string ReadAnsi(const std::wstring& name)
 {
-    const std::string ansi_name = appbox::WideToUTF8(name).value_or(std::string());
+    const std::string ansi_name = appbox::test::WideToAcp(name);
 
     std::vector<char> buffer(32768);
     const DWORD length = ::GetEnvironmentVariableA(ansi_name.c_str(), buffer.data(), static_cast<DWORD>(buffer.size()));
@@ -130,7 +131,7 @@ std::string ReadAnsi(const std::wstring& name)
         return std::string();
     }
 
-    return std::string(buffer.data(), length);
+    return appbox::test::AcpToUTF8(std::string(buffer.data(), length));
 }
 
 /**
@@ -160,7 +161,8 @@ std::vector<std::string> ReadWideEntries()
 
 /**
  * @brief Read the entries of the ANSI block which enumerates the environment.
- * @return The entries of the block, each one `name=value`.
+ * @return The entries of the block, each one `name=value`, decoded through the
+ *         code page of the machine, as UTF-8.
  */
 std::vector<std::string> ReadAnsiEntries()
 {
@@ -175,7 +177,7 @@ std::vector<std::string> ReadAnsiEntries()
     for (const char* cursor = block; *cursor != '\0';)
     {
         const std::string entry(cursor);
-        entries.push_back(entry);
+        entries.push_back(appbox::test::AcpToUTF8(entry));
         cursor += entry.size() + 1;
     }
 
@@ -209,25 +211,38 @@ std::string ExpandWide(const std::wstring& text)
 
 /**
  * @brief Expand the references of a text with the ANSI entry point.
- * @param[in] text The text to expand.
- * @return The expanded text.
+ * @param[in] text The text to expand, in UTF-8.
+ * @return The expanded text, decoded through the code page of the machine, as
+ *         UTF-8.
  */
 std::string ExpandAnsi(const std::string& text)
 {
-    const DWORD needed = ::ExpandEnvironmentStringsA(text.c_str(), nullptr, 0);
+    /*
+     * The entry point reads its argument in the code page of the machine, and
+     * the request names its texts in UTF-8, so the text is encoded back before
+     * the call.
+     */
+    const std::string ansi_text = appbox::test::WideToAcp(appbox::UTF8ToWide(text).value_or(std::wstring()));
+    if (ansi_text.empty())
+    {
+        return std::string();
+    }
+
+    const DWORD needed = ::ExpandEnvironmentStringsA(ansi_text.c_str(), nullptr, 0);
     if (needed == 0)
     {
         return std::string();
     }
 
     std::vector<char> buffer(needed);
-    const DWORD       written = ::ExpandEnvironmentStringsA(text.c_str(), buffer.data(), needed);
+    const DWORD       written = ::ExpandEnvironmentStringsA(ansi_text.c_str(), buffer.data(), needed);
     if (written == 0 || written > needed)
     {
         return std::string();
     }
 
-    return std::string(buffer.data(), written - 1);
+    /* The reported size counts the terminator of the text. */
+    return appbox::test::AcpToUTF8(std::string(buffer.data(), written - 1));
 }
 
 /**
