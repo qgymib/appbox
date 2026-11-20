@@ -38,7 +38,7 @@ struct DependencyInfo
 struct AboutInfo
 {
     /**
-     * @brief Version of the CMake project, e.g. `"0.1.0"`.
+     * @brief Version of the CMake project, e.g. `"1.0.0"`.
      */
     std::string version;
 

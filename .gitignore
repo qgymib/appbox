@@ -34,3 +34,4 @@ __pycache__/
 # AI Agents
 /AGENTS.md
 /.codebuddy
+/.codegraph

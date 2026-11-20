@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(appbox VERSION 0.1.0)
+project(appbox VERSION 1.0.0)
 
 ###############################################################################
 # Dependency library form
@@ -97,6 +97,29 @@ appbox_escape_resource_path(APPBOX_RESOURCE_LAUNCHER_RC "${APPBOX_RESOURCE_LAUNC
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EmbeddedResources.rc.in"
     "${APPBOX_GENERATED_DIR}/EmbeddedResources.generated.rc"
+    @ONLY
+)
+
+###############################################################################
+# Version resource
+#
+# The file properties the Explorer shows for the executable come from a
+# VS_VERSION_INFO resource whose numbers and strings are generated from the
+# project version of this file: cmake/VersionInfo.rc.in is configured into a
+# resource script which src/resource.rc includes, so the version the About
+# dialog reports and the version the file properties show are always the same.
+# The launcher configures its own copy of the template with the file properties
+# of its own product (see launcher/CMakeLists.txt).
+###############################################################################
+set(APPBOX_FILE_VERSION_QUAD "${appbox_VERSION_MAJOR},${appbox_VERSION_MINOR},${appbox_VERSION_PATCH},0")
+set(APPBOX_PROJECT_VERSION "${appbox_VERSION}")
+set(APPBOX_FILE_DESCRIPTION "appbox application packer")
+set(APPBOX_INTERNAL_NAME "AppBox")
+set(APPBOX_ORIGINAL_FILENAME "AppBox.exe")
+
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VersionInfo.rc.in"
+    "${APPBOX_GENERATED_DIR}/AppBoxVersionInfo.generated.rc"
     @ONLY
 )
 

@@ -122,6 +122,23 @@ configure_file(
     @ONLY
 )
 
+# The version resource of the launcher: cmake/VersionInfo.rc.in is configured
+# into a second generated resource script which launcher/resource.rc includes.
+# The version numbers are the values of the top level project, so the launcher
+# reports the same version the packer does; the file description and the names
+# describe the launcher product.
+set(APPBOX_FILE_VERSION_QUAD "${appbox_VERSION_MAJOR},${appbox_VERSION_MINOR},${appbox_VERSION_PATCH},0")
+set(APPBOX_PROJECT_VERSION "${appbox_VERSION}")
+set(APPBOX_FILE_DESCRIPTION "appbox sandboxed application launcher")
+set(APPBOX_INTERNAL_NAME "AppBoxLauncher")
+set(APPBOX_ORIGINAL_FILENAME "AppBoxLauncher.exe")
+
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/VersionInfo.rc.in"
+    "${APPBOX_GENERATED_DIR}/LauncherVersionInfo.generated.rc"
+    @ONLY
+)
+
 # The modules have to exist before the resource compiler reads them. A Visual
 # Studio generator records them as inputs of the resource compiler, so a module
 # which changes recompiles the resource script on its own. The other generators

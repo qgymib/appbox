@@ -31,3 +31,8 @@ IDI_ICON1 ICON DISCARDABLE "../docs/icon.ico"
 // sandbox injection modules it carries.
 #include "core/EmbeddedResourceIds.h"
 #include "EmbeddedResources.generated.rc"
+
+// The version resource, generated from cmake/VersionInfo.rc.in at configure
+// time with the version of the CMake project and the file properties of the
+// packer (see the `Version resource` section of the top level CMakeLists.txt).
+#include "AppBoxVersionInfo.generated.rc"

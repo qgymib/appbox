@@ -34,3 +34,8 @@ IDI_ICON1 ICON DISCARDABLE "../docs/icon.ico"
 // the numbers.
 #include "EmbeddedResourceIds.h"
 #include "LauncherResources.generated.rc"
+
+// The version resource, generated from cmake/VersionInfo.rc.in at configure
+// time with the version of the CMake project and the file properties of the
+// launcher (see launcher/CMakeLists.txt).
+#include "LauncherVersionInfo.generated.rc"

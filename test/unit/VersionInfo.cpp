@@ -163,8 +163,10 @@ TEST(Unit_VersionInfo, TheRunningProgramReportsItsOwnName)
     }
 
     /*
-     * The launcher carries no version resource of its own, so its own name is
-     * the fallback: the file name of the running program.
+     * The launcher carries a version resource of its own, whose ProductName
+     * names the product the repository builds (cmake/VersionInfo.rc.in); a
+     * packed launcher carries the properties of the packaged application
+     * instead, which the cases above verify.
      */
-    EXPECT_EQ(appbox::ReadImageDisplayName(launcher), std::filesystem::path(launcher).stem().wstring());
+    EXPECT_EQ(appbox::ReadImageDisplayName(launcher), L"appbox");
 }
