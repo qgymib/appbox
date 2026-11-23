@@ -2,7 +2,16 @@
 # See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-multi-platform.yml
 name: ci-win
 
-on: [push, workflow_dispatch]
+# `branches` must stay listed next to `tags`: on `push` events a `tags`
+# filter without `branches` would drop every branch build. With both filters
+# present either match triggers, so branch pushes build as before and a `v*`
+# tag push additionally runs the release-attachment steps at the end of the
+# job.
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,6 +22,14 @@ env:
 jobs:
   build:
     runs-on: windows-latest
+
+    # The release-attachment steps at the bottom attach the archive to the
+    # GitHub Release through `gh`, which needs `contents: write`; everything
+    # else keeps the read-only token granted at the workflow level. Scoped to
+    # the job so no other job could gain write access; the Debug matrix leg
+    # shares the token but never runs those steps.
+    permissions:
+      contents: write
 
     strategy:
       fail-fast: false
@@ -66,3 +83,34 @@ jobs:
           path: ./build/Release/appbox-*.zip
           archive: false
           if-no-files-found: error
+
+      # Release attachments, extending the release-only chain above. The extra
+      # ref guard restricts these steps to `v*` tag pushes: a branch literally
+      # named `v2` still reads `refs/heads/v2` here, so only a real tag passes.
+      # Branch builds and manual dispatches never touch the Release API.
+      #
+      # The Release is expected to exist already - pushing the tag alone is
+      # not enough, since `gh release upload` attaches files to a Release
+      # object. Failing loudly instead of creating one keeps publishing
+      # deliberate: create the Release (GitHub offers to when cutting it from
+      # the tag), then re-run the red job to attach the archive.
+      - name: Verify release exists
+        if: success() && matrix.build_type == 'Release' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{github.token}}
+        run: gh release view ${{github.ref_name}}
+
+      # The archive name embeds the project version, which only `cpack` knows,
+      # so the file is resolved from disk instead of duplicating the naming
+      # rule here. PowerShell does not expand wildcards for native commands,
+      # so `Get-ChildItem` locates the archive and its full path is handed to
+      # `gh`, which resolves the repository from `GITHUB_REPOSITORY`. The
+      # explicit `throw` keeps a missing archive reporting a clear reason.
+      - name: Upload release assets
+        if: success() && matrix.build_type == 'Release' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{github.token}}
+        run: |
+          $zip = Get-ChildItem ./build/Release/appbox-*.zip -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $zip) { throw "No release archive found under ./build/Release" }
+          gh release upload ${{github.ref_name}} $zip.FullName --clobber
