@@ -2,6 +2,7 @@
 #include "RemoteConnector.hpp"
 #include <gtest/gtest.h>
 #include <windows.h>
+#include <sddl.h>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -238,6 +239,36 @@ private:
     HANDLE handle_ = INVALID_HANDLE_VALUE; /* Client end of the pipe */
 };
 
+/**
+ * @brief Create one instance of a pipe whose DACL grants the system alone.
+ *
+ * The descriptor is the one of the control pipe of a sandbox without the access
+ * control entry of the owner, so the process of the case is a client of another
+ * user: the name exists, the connection is refused.
+ *
+ * @param[in] pipe Name of the pipe.
+ * @return The handle of the instance, INVALID_HANDLE_VALUE on failure.
+ */
+HANDLE CreateSystemOnlyPipeInstance(const std::string& pipe)
+{
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    if (!::ConvertStringSecurityDescriptorToSecurityDescriptorA("D:P(A;;GA;;;SY)", SDDL_REVISION_1, &descriptor,
+                                                                nullptr))
+    {
+        return INVALID_HANDLE_VALUE;
+    }
+
+    SECURITY_ATTRIBUTES attributes;
+    attributes.nLength = sizeof(attributes);
+    attributes.lpSecurityDescriptor = descriptor;
+    attributes.bInheritHandle = FALSE;
+
+    const HANDLE instance = ::CreateNamedPipeA(pipe.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_WAIT,
+                                               PIPE_UNLIMITED_INSTANCES, 4096, 4096, 0, &attributes);
+    ::LocalFree(descriptor);
+    return instance;
+}
+
 } // namespace
 
 /**
@@ -339,15 +370,99 @@ TEST(Unit_RemoteAccepter, BusyPipeReportsAlreadyRunning)
 }
 
 /**
- * @brief A name which carries no pipe at all is not reachable.
+ * @brief A name which carries no pipe at all reports the name as missing.
  *
  * The access denial of the creation is a pipe of another user only when nothing
- * of this user holds the name, so the probe has to report the other direction
- * as well.
+ * of this user holds the name. A name which is gone at the probe belongs to a
+ * run of this user which closed the pipe in between, which is the window of the
+ * shutdown race: the launcher races again instead of reporting a pipe of
+ * another user, so the probe has to report the missing name as its own answer.
  */
-TEST(Unit_RemoteAccepter, MissingPipeIsNotReachable)
+TEST(Unit_RemoteAccepter, MissingPipeReportsNameMissing)
 {
-    EXPECT_FALSE(appbox::detail::AccepterPeerIsReachable(MakePipePath()));
+    EXPECT_EQ(appbox::detail::ProbeAccepterPeer(MakePipePath()), appbox::detail::AccepterPeerProbe::NameMissing);
+}
+
+/**
+ * @brief A pipe which the process of the case may not open is unusable.
+ *
+ * The instance of the case grants the system alone, so the process of the case
+ * is the client of another user: the name is present and refuses the probe,
+ * which is the answer a launcher reports instead of racing again.
+ */
+TEST(Unit_RemoteAccepter, ForeignPipeReportsUnusable)
+{
+    const std::string pipe = MakePipePath();
+
+    const HANDLE instance = CreateSystemOnlyPipeInstance(pipe);
+    ASSERT_NE(instance, INVALID_HANDLE_VALUE) << ::GetLastError();
+
+    /*
+     * The probe has to be refused by the descriptor, which holds as long as the
+     * case runs in a context which the descriptor does not grant: a context of
+     * the system cannot be a client of another user, so the case is not one.
+     */
+    const HANDLE granted =
+        ::CreateFileA(pipe.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (granted != INVALID_HANDLE_VALUE)
+    {
+        ::CloseHandle(granted);
+        ::CloseHandle(instance);
+        GTEST_SKIP() << "the case runs in a context which the descriptor of the case grants";
+    }
+    ASSERT_EQ(::GetLastError(), static_cast<DWORD>(ERROR_ACCESS_DENIED));
+
+    EXPECT_EQ(appbox::detail::ProbeAccepterPeer(pipe), appbox::detail::AccepterPeerProbe::Unusable);
+
+    ::CloseHandle(instance);
+}
+
+/**
+ * @brief A name which a live server holds is reachable.
+ *
+ * The launcher hands its request over to a server which the probe reaches: an
+ * instance which waits for a client serves the probe at once, and the name
+ * stays served while the accepter prepares the next instance for the client
+ * which follows.
+ */
+TEST(Unit_RemoteAccepter, ServedPipeReportsReachable)
+{
+    const std::string pipe = MakePipePath();
+
+    const auto created = appbox::RemoteAccepter::CreateCompetitive(pipe, FirstInstanceOptions());
+    ASSERT_TRUE(created.has_value()) << static_cast<int>(created.error());
+    ASSERT_TRUE((*created)->Start().has_value());
+
+    EXPECT_EQ(appbox::detail::ProbeAccepterPeer(pipe), appbox::detail::AccepterPeerProbe::Reachable);
+
+    (*created)->Stop();
+}
+
+/**
+ * @brief A pipe whose only instance serves a client is reachable as well.
+ *
+ * A server which is busy at the moment of the probe is no pipe of another user:
+ * the probe is refused with `ERROR_PIPE_BUSY`, which says nothing about the
+ * owner of the name, so a launcher which loses the race while the master
+ * instance is busy hands its request over instead of reporting a refusal.
+ */
+TEST(Unit_RemoteAccepter, BusyPipeReportsReachable)
+{
+    const std::string pipe = MakePipePath();
+
+    /* One instance, which a client holds: every further connection is busy. */
+    const HANDLE instance =
+        ::CreateNamedPipeA(pipe.c_str(), PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE | PIPE_WAIT, 1, 4096, 4096, 0, nullptr);
+    ASSERT_NE(instance, INVALID_HANDLE_VALUE) << ::GetLastError();
+
+    const HANDLE client =
+        ::CreateFileA(pipe.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+    ASSERT_NE(client, INVALID_HANDLE_VALUE) << ::GetLastError();
+
+    EXPECT_EQ(appbox::detail::ProbeAccepterPeer(pipe), appbox::detail::AccepterPeerProbe::Reachable);
+
+    ::CloseHandle(client);
+    ::CloseHandle(instance);
 }
 
 /**

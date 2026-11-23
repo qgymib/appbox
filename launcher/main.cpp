@@ -823,36 +823,60 @@ static DWORD RunLauncher()
 
         /*
          * The creation reports the Win32 code of the failed instance. An access
-         * denial is the answer of two different situations: another server of
-         * this user holds the name, which this run hands its request over to,
-         * or the name belongs to a pipe this user may not use. The probe of the
-         * name tells them apart.
+         * denial is the answer of three different situations: another server of
+         * this user holds the name, which this run hands its request over to; a
+         * run of this user closed the pipe between the creation and the probe,
+         * which is the window of the shutdown race; or the name belongs to a
+         * pipe this user may not use. The probe of the name tells them apart.
          */
-        if (created.error() == ERROR_ACCESS_DENIED && appbox::detail::AccepterPeerIsReachable(pipe))
-        {
-            const auto handover = HandOverToMaster(opt, pipe);
-            if (!handover.retry)
-            {
-                return handover.exit_code;
-            }
-
-            const auto retry = appbox::NextShutdownRetry(budget, delay);
-            if (retry.delay_ms == 0)
-            {
-                SPDLOG_ERROR("the sandbox serves no request and does not come back within {} ms", budget);
-                return ERROR_TIMEOUT;
-            }
-
-            SPDLOG_INFO("the sandbox ends its run, race for its control pipe again in {} ms", retry.delay_ms);
-            Sleep(retry.delay_ms);
-
-            budget = retry.remaining_ms;
-            delay = retry.next_delay_ms;
-            continue;
-        }
-
         if (created.error() == ERROR_ACCESS_DENIED)
         {
+            const auto peer = appbox::detail::ProbeAccepterPeer(pipe);
+
+            if (peer == appbox::detail::AccepterPeerProbe::Reachable)
+            {
+                const auto handover = HandOverToMaster(opt, pipe);
+                if (!handover.retry)
+                {
+                    return handover.exit_code;
+                }
+            }
+
+            /*
+             * A server which refused the handshake, and a name which vanished
+             * while the race ran, are both no reason to refuse the request: the
+             * sandbox is closing or was closed in between, and the sandbox the
+             * name stands for is still one which may be started. The run waits
+             * for the interval of the shutdown race and competes for the name
+             * once more, which the run which closed it left free.
+             */
+            if (peer != appbox::detail::AccepterPeerProbe::Unusable)
+            {
+                const auto retry = appbox::NextShutdownRetry(budget, delay);
+                if (retry.delay_ms == 0)
+                {
+                    SPDLOG_ERROR("the sandbox serves no request and does not come back within {} ms", budget);
+                    return ERROR_TIMEOUT;
+                }
+
+                if (peer == appbox::detail::AccepterPeerProbe::NameMissing)
+                {
+                    SPDLOG_INFO("the control pipe '{}' of the sandbox vanished while the race ran, race for it "
+                                "again in {} ms",
+                                pipe, retry.delay_ms);
+                }
+                else
+                {
+                    SPDLOG_INFO("the sandbox ends its run, race for its control pipe again in {} ms", retry.delay_ms);
+                }
+
+                Sleep(retry.delay_ms);
+
+                budget = retry.remaining_ms;
+                delay = retry.next_delay_ms;
+                continue;
+            }
+
             SPDLOG_ERROR("the control pipe '{}' of the sandbox cannot be used by this user", pipe);
             return ERROR_ACCESS_DENIED;
         }

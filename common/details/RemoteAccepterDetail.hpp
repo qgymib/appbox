@@ -105,31 +105,50 @@ inline bool AccepterConnectionWasAbandoned(DWORD error)
 }
 
 /**
- * @brief Test whether a pipe of a name is held by a live server.
+ * @brief Outcome of probing the name of the control pipe of a sandbox.
+ */
+enum class AccepterPeerProbe
+{
+    Reachable,   /* A live server holds the name, which serves a client or is busy. */
+    NameMissing, /* The name carries no pipe any more, it is gone at the probe. */
+    Unusable,    /* The name is present, but this process may not open it. */
+};
+
+/**
+ * @brief Probe the state of the pipe of a name.
  *
  * The probe connects to the pipe and closes the connection at once. A pipe whose
  * instances all serve a client refuses the connection with `ERROR_PIPE_BUSY`,
  * which says nothing about the server: the name exists and the server waits for
  * the next client as soon as one of its sessions ended. Such a pipe is reachable
  * as well, because the server which holds it is alive: a probe which reported it
- * as unreachable would turn a server which is busy at that moment into a pipe of
+ * as unusable would turn a server which is busy at that moment into a pipe of
  * another user.
  *
+ * A name which is gone at the probe answers the missing state, which is the
+ * window of a run of this user which closed the pipe between the creation of
+ * the first instance and this probe: the name existed there, or the creation
+ * would not have been refused with `ERROR_ACCESS_DENIED`.
+ *
  * @param[in] pipe Name of the pipe.
- * @return true when a client end of the pipe could be opened or every instance
- *         of the pipe serves a client, false when the name carries no pipe which
- *         this user may use.
+ * @return The state of the name at the moment of the probe.
  */
-inline bool AccepterPeerIsReachable(const std::string& pipe) noexcept
+inline AccepterPeerProbe ProbeAccepterPeer(const std::string& pipe) noexcept
 {
     const HANDLE h = ::CreateFileA(pipe.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
     if (h != INVALID_HANDLE_VALUE)
     {
         ::CloseHandle(h);
-        return true;
+        return AccepterPeerProbe::Reachable;
     }
 
-    return ::GetLastError() == ERROR_PIPE_BUSY;
+    const DWORD error = ::GetLastError();
+    if (error == ERROR_PIPE_BUSY)
+    {
+        return AccepterPeerProbe::Reachable;
+    }
+
+    return error == ERROR_FILE_NOT_FOUND ? AccepterPeerProbe::NameMissing : AccepterPeerProbe::Unusable;
 }
 
 /**

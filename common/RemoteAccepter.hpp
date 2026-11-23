@@ -26,9 +26,10 @@ namespace appbox
  * is what a caller of the launcher forwards to its own peer and what it names
  * in the report of a failed start. Two of the codes have a meaning the creation
  * alone can not decide: `ERROR_ACCESS_DENIED` is the answer of the first
- * instance both for a name which another server of this user holds and for a
- * name this process may not use. The caller tells them apart with
- * `detail::AccepterPeerIsReachable()`, which the header of the detail lives in.
+ * instance for a name which another server of this user holds, for a name this
+ * process may not use, and for a name which a closing run of this user released
+ * in between. The caller tells the situations apart with
+ * `detail::ProbeAccepterPeer()`, which the header of the detail lives in.
  */
 typedef DWORD Win32ErrorCode;
 
@@ -108,9 +109,11 @@ public:
      * this process won the race:
      * - a value is the accepter of this process, which now owns the name;
      * - `ERROR_ACCESS_DENIED` is a name whose first instance another process
-     *   created. The caller asks `detail::AccepterPeerIsReachable()` whether a
-     *   live server of this user holds the name - it may hand its request over
-     *   then - or whether the name belongs to another user;
+     *   created. The caller asks `detail::ProbeAccepterPeer()` for the state of
+     *   the name: a live server of this user holds it - the caller may hand its
+     *   request over then - or the name is gone, which is the window of a run
+     *   of this user which closed the pipe in between and races again, or the
+     *   name belongs to another user;
      * - any other code is a pipe which cannot be created at all.
      *
      * @param[in] pipe Name of the pipe, for example \\.\pipe\appbox.

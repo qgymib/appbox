@@ -252,19 +252,24 @@ its role:
 | --- | --- |
 | The instance was created | The run is the master instance of the sandbox. |
 | The name is taken | The run is a secondary instance and hands its request over. |
-| `ERROR_ACCESS_DENIED` | The pipe belongs to another user. The run leaves with `ERROR_ACCESS_DENIED` (5) instead of joining the pipe silently. |
+| `ERROR_ACCESS_DENIED` | The probe of the name decides: a name which a server serves takes the request over, a name which vanished is raced again, and a name which refuses the access belongs to another user. The run leaves with `ERROR_ACCESS_DENIED` (5) instead of joining the pipe silently. |
 | Any other failure | The run leaves with the code of the failure and starts nothing. |
 
-A creation which is refused with `ERROR_ACCESS_DENIED` names either a pipe of
-another user or a name which a launcher of this user took; the flag cannot tell
-the two apart. One connection to the pipe decides it: a name which accepts the
-connection belongs to a running sandbox, and so does a name whose instances all
-serve a client at that moment, which refuses the connection with
-`ERROR_PIPE_BUSY` (`AccepterPeerIsReachable()`). Only a name whose access
-control refuses the connection belongs to another user. A busy pipe is therefore
-no reason to refuse the run: the handover of a secondary instance waits for the
-next free instance of the pipe, which the master instance creates as soon as it
-accepted a connection.
+A creation which is refused with `ERROR_ACCESS_DENIED` names a pipe of another
+user, a name which a launcher of this user took, or a name which a run of this
+user closed in between; the flag cannot tell the three apart. One connection to
+the pipe decides it (`ProbeAccepterPeer()`): a name which accepts the connection
+belongs to a running sandbox, and so does a name whose instances all serve a
+client at that moment, which refuses the connection with `ERROR_PIPE_BUSY`. Only
+a name whose access control refuses the connection belongs to another user, and
+a name which is gone at the probe belonged to a run of this user which closed it
+between the creation and the probe - the window of the shutdown race, which is
+the race the run lost. A busy pipe is therefore no reason to refuse the run: the
+handover of a secondary instance waits for the next free instance of the pipe,
+which the master instance creates as soon as it accepted a connection. A name
+which vanished is no reason either: the run waits for the interval of the
+shutdown race and races again, so the request is served by the run which closed
+the sandbox once it starts it again, or by this run once it won the race itself.
 
 The master instance keeps at least one instance of the pipe open for its whole
 life and creates the next instance once a connection was established
@@ -342,9 +347,9 @@ peer which did not answer in time - is reported on that same channel.
 A creation of the server answers the Win32 code of `CreateNamedPipe()`, because
 that code is what the launcher forwards to its own peer and names in its report
 of a failed start. `ERROR_ACCESS_DENIED` is the answer of the first instance for
-two situations, a name which another server of this user holds and a name this
-process may not use, and the caller tells them apart with
-`detail::AccepterPeerIsReachable()`.
+three situations, a name which another server of this user holds, a name this
+process may not use, and a name which a closing run of this user released in
+between, and the caller tells them apart with `detail::ProbeAccepterPeer()`.
 
 ### The start request
 
